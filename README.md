@@ -398,6 +398,12 @@ revision, and bearer-token auth. All in-app analytics remain in your browser.
 It additionally exposes an optional **read-only analytics API** — see the next
 section.
 
+It also serves the **built-in documentation**: `/help` is the end-user guide
+(a **Help** button appears in the app once the server is detected) and `/docs`
+is the technical reference. Both are self-contained pages (`help.html`,
+`tech.html`) with no auth — they contain no user data — and redeploy with the
+app so they stay in step with it.
+
 For **Railway** specifically, see [README-deploy.md](README-deploy.md). The two
 things you must not skip: **attach a Volume at `/data`** (Railway's filesystem
 is wiped on redeploy — no volume, no persistence) and **set `AUTH_TOKEN`**

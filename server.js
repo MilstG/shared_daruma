@@ -30,6 +30,7 @@
 //   GET/PUT/DELETE /api/att/<key>                                     (AUTH_TOKEN)
 //   POST /api/backup , GET /api/backups , GET /api/backups/<name>     (AUTH_TOKEN)
 //        server-held copies of the app's "Backup all" JSON (gzipped, newest 10 kept)
+//   GET  /help , GET /docs  -> built-in user guide / technical reference (no auth)
 //
 // Analytics API v1 (read-only; GET = AUTH_TOKEN or READ_TOKEN, POST = AUTH_TOKEN):
 //   GET  /api/v1                       self-describing endpoint index (no auth — docs only)
@@ -1536,6 +1537,25 @@ function createApp(opts) {
     if (req.method === 'GET' && (url === '/' || url === '/index.html' || url === '/ledger.html')) {
       fs.readFile(htmlPath, (err, buf) => {
         if (err) return json(res, 500, { error: 'app HTML not found on server' });
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          'X-Content-Type-Options': 'nosniff',
+          'Referrer-Policy': 'no-referrer',
+        });
+        res.end(buf);
+      });
+      return;
+    }
+
+    // --- built-in documentation: /help (user guide) and /docs (technical reference).
+    // No auth: pure documentation, no user data. Served from files next to server.js so
+    // they redeploy with the app and stay in step with it.
+    const docFile = req.method === 'GET' && (url === '/help' || url === '/help.html') ? 'help.html'
+      : req.method === 'GET' && (url === '/docs' || url === '/tech.html') ? 'tech.html' : null;
+    if (docFile) {
+      fs.readFile(path.join(__dirname, docFile), (err, buf) => {
+        if (err) return json(res, 404, { error: docFile + ' not deployed alongside server.js' });
         res.writeHead(200, {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'no-cache',

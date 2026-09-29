@@ -414,6 +414,16 @@ await t('CSV formula guard catches the leading-whitespace bypass', async () => {
   ok(csv.includes("' =HYPERLINK"), 'whitespace-led formula must be prefixed');
 });
 
+console.log('\nbuilt-in documentation');
+await t('user guide and technical reference served without auth', async () => {
+  for (const [p, marker] of [['/help', 'Ledger User Guide'], ['/docs', 'Ledger Technical Reference']]) {
+    const r = await fetch(base + p);
+    eq(r.status, 200, p);
+    ok((r.headers.get('content-type') || '').startsWith('text/html'), p + ' content type');
+    ok((await r.text()).includes(marker), p + ' carries its title');
+  }
+});
+
 console.log('\nAPI: server-held backups');
 let bkName;
 await t('POST /api/backup stores the client backup (full token only, shape-checked)', async () => {
