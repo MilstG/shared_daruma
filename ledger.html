@@ -421,6 +421,10 @@ tr.trow:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
 .guard{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--line);border-left:3px solid var(--gold);background:var(--panel2);padding:10px 14px;margin-top:14px;font-family:var(--prose);font-size:12.5px;line-height:1.55;color:var(--muted)}
 .guard.cooldown{border-left-color:var(--loss)} .guard.overtrading{border-left-color:var(--gold)}
 .guard b{color:var(--text)} .guard .gicon{font-size:15px;line-height:1.2;flex-shrink:0}
+.appfoot{display:flex;gap:20px;justify-content:center;align-items:center;flex-wrap:wrap;max-width:1500px;margin:30px auto 0;padding:14px 18px 6px;border-top:1px solid var(--line);font-size:12px;color:var(--faint)}
+.appfoot .af-name{letter-spacing:.08em;text-transform:uppercase;font-size:11px}
+.appfoot a{color:var(--muted);text-decoration:none}
+.appfoot a:hover{color:var(--accent);text-decoration:underline}
 
 /* day × hour heatmap */
 .dh-tbl{border-collapse:collapse;font-size:10px;width:100%;table-layout:fixed}
@@ -641,6 +645,13 @@ tr.trow:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
     <div id="projView" class="hide" role="tabpanel" aria-label="Projection"></div>
   </div>
 </div>
+
+<footer id="appfoot" class="appfoot hide">
+  <span class="af-name">Ledger</span>
+  <a href="help" target="_blank" rel="noopener">User guide</a>
+  <a href="docs" target="_blank" rel="noopener">Technical docs</a>
+  <a href="api/v1" target="_blank" rel="noopener">API</a>
+</footer>
 
 <div class="modal-bg" id="modal">
   <div class="modal">
@@ -6490,6 +6501,11 @@ async function loadDemo(){
 }
 (function(){ for(const id of ['demoBtn','demoBtn2']){ const b=$(id); if(b)b.onclick=loadDemo; } })();
 (function(){ const b=$('helpBtn'); if(b)b.onclick=()=>window.open('help','_blank','noopener'); })();
+// Docs entry points show whenever the page is SERVED (http/https) — the /help and /docs
+// routes come from server.js, so from file:// they'd 404 and stay hidden. Protocol-gated
+// rather than SRV-gated so they're findable even before/without the sync handshake.
+(function(){ if(/^https?:$/.test(location.protocol))
+  for(const id of ['appfoot','helpBtn','helpLink']){ const el=$(id); if(el)el.classList.remove('hide'); } })();
 
 /* ============================ tab-visible tripwire notifications ============================ */
 // The webhook covers the phone; this covers the desktop: when the app sits in a background
