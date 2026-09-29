@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ledger — Technical Reference</title>
+<style>
+/* Same self-contained posture as help.html: no external fonts or scripts.
+   Served at GET /docs by server.js; also opens directly from disk. */
+:root{
+  --bg:#f7f7f5; --panel:#ffffff; --panel2:#eef0f4; --fg:#1b2130; --muted:#5a6272;
+  --faint:#8a91a0; --line:#dcdfe6; --accent:#5560d8; --profit:#188a5c; --loss:#c73a4e;
+  --gold:#9a7a1f; --code-bg:#eef0f4;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0c0e14; --panel:#12141c; --panel2:#181b25; --fg:#e6e8ef; --muted:#a7adbd;
+    --faint:#6d7383; --line:#232734; --accent:#8b93ff; --profit:#2fd08c; --loss:#f4586a;
+    --gold:#d9b544; --code-bg:#181b25; color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 var(--sans);margin:0;padding:0 16px 60px}
+.wrap{max-width:1060px;margin:0 auto;display:flex;gap:44px;align-items:flex-start}
+main{min-width:0;flex:1;max-width:720px}
+h1,h2,h3{line-height:1.25}
+header.hero{padding:44px 0 8px}
+header.hero h1{font-size:34px;font-weight:600;margin:0 0 10px}
+header.hero .tagline{color:var(--muted);font-size:16px;max-width:62ch;margin:0}
+.backlink{display:inline-block;margin-top:18px;margin-right:18px;font-size:13px;color:var(--accent);text-decoration:none}
+.backlink:hover{text-decoration:underline}
+nav.toc{position:sticky;top:0;flex:0 0 230px;padding:44px 0 20px;font-size:13.5px;max-height:100vh;overflow-y:auto}
+nav.toc .toct{font:11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:0 0 10px}
+nav.toc a{display:block;color:var(--muted);text-decoration:none;padding:5px 0 5px 12px;border-left:2px solid var(--line)}
+nav.toc a:hover{color:var(--fg);border-left-color:var(--accent)}
+section{margin-top:52px}
+section h2{font-size:23px;font-weight:600;margin:0 0 4px;padding-top:8px}
+section .kicker{font:11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin:0 0 6px}
+h3{font-size:16.5px;font-weight:600;margin:26px 0 6px}
+p{margin:10px 0;max-width:70ch}
+ul,ol{margin:10px 0;padding-left:22px;max-width:68ch}
+li{margin:6px 0}
+li::marker{color:var(--faint)}
+b,strong{font-weight:600}
+a{color:var(--accent)}
+code,kbd{font:.92em var(--mono);background:var(--code-bg);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+pre{background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;font:12.5px/1.6 var(--mono);max-width:100%}
+pre code{background:none;border:none;padding:0;white-space:pre}
+.note{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--panel);padding:12px 16px;border-radius:0 8px 8px 0;margin:16px 0;color:var(--muted);max-width:70ch}
+.note.warn{border-left-color:var(--gold)}
+.note b{color:var(--fg)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+.tblwrap{overflow-x:auto;margin:14px 0}
+.tblwrap table{min-width:560px}
+th{text-align:left;font:11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding:8px 14px 8px 0;border-bottom:1px solid var(--line)}
+td{padding:9px 14px 9px 0;border-bottom:1px solid var(--line);vertical-align:top;color:var(--muted)}
+td:first-child{color:var(--fg)}
+.mono td:first-child{font:12.5px var(--mono);white-space:nowrap}
+footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:var(--faint);font-size:12.5px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+@media (max-width:800px){
+  .wrap{flex-direction:column;gap:0}
+  nav.toc{position:static;flex:none;width:100%;max-height:none;padding:20px 0 14px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:2px 14px}
+  nav.toc .toct{width:100%}
+  nav.toc a{border-left:none;padding:3px 0}
+  header.hero{padding-top:28px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc" aria-label="Sections">
+  <p class="toct">Contents</p>
+  <a href="#overview">Architecture overview</a>
+  <a href="#layout">Repository layout</a>
+  <a href="#client">Client architecture</a>
+  <a href="#reconstruction">Trade reconstruction</a>
+  <a href="#engine">Analytics engine</a>
+  <a href="#worker">The runtime worker</a>
+  <a href="#time">Time &amp; timezone layer</a>
+  <a href="#excursions">Excursions engine</a>
+  <a href="#sync">Persistence &amp; sync protocol</a>
+  <a href="#datamodel">Journal data model</a>
+  <a href="#serverarch">Server architecture</a>
+  <a href="#autointernals">Automation internals</a>
+  <a href="#api">API reference</a>
+  <a href="#constraints">Contributor constraints</a>
+  <a href="#testing">Testing</a>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>Ledger Technical Reference</h1>
+  <p class="tagline">How Ledger is built: the single-file architecture, the trade-reconstruction and analytics engine, the sync protocol, the zero-dependency server, and the extraction trick that keeps the server, the tests, and the app running the exact same code.</p>
+  <a class="backlink" href="/">← Back to Ledger</a>
+  <a class="backlink" href="help">User guide →</a>
+</header>
+
+<section id="overview">
+  <p class="kicker">01</p>
+  <h2>Architecture overview</h2>
+  <p>Three deliberate constraints shape everything:</p>
+  <ul>
+    <li><b>Single file.</b> The entire app — UI, styles, vendored Chart.js, analytics engine, and Web Worker source — is <code>ledger.html</code>. It works opened from disk (<code>file://</code>), from any static host, or served by the companion server. There is no build step, no bundler, no framework.</li>
+    <li><b>Zero dependencies.</b> <code>server.js</code> uses only Node built-ins (<code>http</code>, <code>fs</code>, <code>zlib</code>, <code>node:vm</code>, global <code>fetch</code>). <code>npm install</code> installs nothing.</li>
+    <li><b>Single source of truth.</b> The server and the test suites do not reimplement any math. Both <em>extract</em> the pure functions out of <code>ledger.html</code>'s source text and evaluate them — the server into a <code>node:vm</code> context, the tests into ephemeral ES modules. When the app's logic changes, the API's answers and the tests' subjects change with it automatically.</li>
+  </ul>
+  <p>The client is read-only against Hyperliquid's public info API. It never holds keys and has no code path that could place an order.</p>
+</section>
+
+<section id="layout">
+  <p class="kicker">02</p>
+  <h2>Repository layout</h2>
+  <div class="tblwrap"><table class="mono">
+    <tr><th>Path</th><th>Role</th></tr>
+    <tr><td>ledger.html</td><td>The app: UI, analytics engine, worker source, vendored Chart.js + fonts (≈6,800 lines). The first script block is vendor code; the second is the app.</td></tr>
+    <tr><td>server.js</td><td>Companion server: persistence, /api/v1 analytics, scheduled refresh, alerts, digests, Telegram bot, backups, metrics (≈1,800 lines).</td></tr>
+    <tr><td>help.html · tech.html</td><td>This documentation, served at /help and /docs. Self-contained, no external assets.</td></tr>
+    <tr><td>tests/</td><td>18 suites + harness; run with npm test. Extract functions from ledger.html and hit the server over real HTTP.</td></tr>
+    <tr><td>package.json · railway.json</td><td>Start script (node server.js) and host config. No dependencies.</td></tr>
+    <tr><td>README.md · README-deploy.md</td><td>Full feature docs and deployment guide.</td></tr>
+    <tr><td>AUDIT.md · AUDIT-2.md · AUDIT-3.md</td><td>Records of the three audit/build cycles, each marked addressed.</td></tr>
+    <tr><td>.github/workflows/test.yml</td><td>CI: the full suite on Node 18 and 22 for every push and PR.</td></tr>
+  </table></div>
+</section>
+
+<section id="client">
+  <p class="kicker">03</p>
+  <h2>Client architecture</h2>
+  <h3>Boot sequence</h3>
+  <ol>
+    <li><code>initServerSync()</code> probes <code>/api/health</code>. If a companion server answers, its snapshot is applied <em>before</em> any local reads, so the synced state wins.</li>
+    <li>Journal, settings, and saved MAE/MFE measurements hydrate from the active store (server snapshot, linked file, or IndexedDB/localStorage).</li>
+    <li>If wallets are remembered, <code>loadAll({auto:true})</code> rebuilds from cached fills and fetches only what is new; a 3-minute auto-refresh keeps it current while the tab is open.</li>
+  </ol>
+  <h3>Core state</h3>
+  <div class="tblwrap"><table class="mono">
+    <tr><th>Global</th><th>Holds</th></tr>
+    <tr><td>allTrades</td><td>Every reconstructed trade (perp + spot), open and closed, all wallets pooled.</td></tr>
+    <tr><td>journal</td><td>One object for every journal level, keyed by trade id, <code>day:YYYY-MM-DD</code>, or <code>week:GGGG-Www</code>.</td></tr>
+    <tr><td>settings</td><td>Wallets, view, tz, break-even band, R basis, rules, goals, theme.</td></tr>
+    <tr><td>openPositions · spotHoldings · accountValue</td><td>Latest exchange snapshot for the risk panel, tripwire, and sizer.</td></tr>
+    <tr><td>_excM</td><td>Per-trade MAE/MFE measurements (persisted separately from the candle cache).</td></tr>
+  </table></div>
+  <p><code>render()</code> is the single entry point: it filters by view/period, then fans out to the panel renderers (stats, charts, calendar, guardrails, tripwire, positions…). Derived caches are reset centrally by <code>resetDerivedState()</code> whenever the loaded wallet set changes (load, paste, demo, wallet removal), so no stale aggregate can leak across data sources.</p>
+</section>
+
+<section id="reconstruction">
+  <p class="kicker">04</p>
+  <h2>Trade reconstruction</h2>
+  <p><code>reconstructTrades(fills, addr, market)</code> turns the raw fill stream into round trips. Fills are filtered per market (a coin containing <code>/</code> or starting with <code>@</code> is spot), sorted by time, and folded through a per-coin position state machine:</p>
+  <ul>
+    <li>A fill that moves the position away from zero opens or <b>adds</b>; one that moves it toward zero <b>closes</b> (partially or fully); one that crosses zero closes the old trade and opens a flip.</li>
+    <li>Every trade accumulates open/close notionals, fees split by maker/taker, exchange-reported <code>closedPnl</code>, max size, liquidation flags, and a compact per-fill event list <code>[time, px, sz, ±1]</code> that later powers the replay chart, add-to-loser detection, and exact 14-day fee volume.</li>
+    <li><code>attributeFunding</code> assigns funding rows to whichever trade held the position when the payment occurred.</li>
+    <li>A trade whose opening fills predate the available history is flagged <code>partialHistory</code> instead of being silently miscounted.</li>
+  </ul>
+  <p>Trade ids are <code>&lt;wallet&gt;:&lt;coin&gt;:&lt;openTime&gt;</code> — stable across rebuilds, which is what lets journal entries survive any re-fetch.</p>
+</section>
+
+<section id="engine">
+  <p class="kicker">05</p>
+  <h2>Analytics engine</h2>
+  <ul>
+    <li><b>Scratch handling.</b> <code>isWin/isLoss/isBE</code> classify against the configurable break-even band (<code>_be</code>, default $50); scratches are excluded from win rate and never break streaks.</li>
+    <li><b>computeStats</b> returns the full headline block in one pass: net/fees/funding/volume, win rate, profit factor, payoff, expectancy, drawdown (absolute and % of high-water mark), streaks, R aggregates, hold times, Sharpe/Sortino from the calendar daily series, green days, median.</li>
+    <li><b>Determinism.</b> All Monte Carlo (projections, drawdown expectations, variance card, alert p95) runs on a seeded PRNG: <code>_srand(_hashSeed(label))</code>. Same inputs, same numbers, in the app, the worker, the server, and the tests.</li>
+    <li><b>Significance.</b> Edge significance uses a Student-t CDF built from <code>_lgamma</code>/<code>_ibetaReg</code> (tested against reference values); the pattern miner applies Benjamini-Hochberg FDR correction across all mined conditions so multiple testing cannot manufacture an edge.</li>
+    <li><b>Capital model.</b> Deposits/withdrawals from the ledger stream feed a time-weighted return (flows removed) and a money-weighted XIRR solved by bisection, clamped to ±[−99.99%, +1000%] with explicit display labels at the clamps.</li>
+    <li><b>Charts.</b> Large series are min-max decimated (<code>decimateIdx</code>) before Chart.js sees them, preserving spikes at a fraction of the points.</li>
+  </ul>
+</section>
+
+<section id="worker">
+  <p class="kicker">06</p>
+  <h2>The runtime worker</h2>
+  <p>Heavy jobs (reconstruction, mining, projections, diagnostic Monte Carlo) run off the main thread — without a separate worker file, which the single-file constraint forbids. At startup the app builds a <b>Blob worker from its own source</b>:</p>
+  <ul>
+    <li><code>_WORKER_LIB</code> names the top-level functions to lift; their source text is concatenated with <code>_WORKER_PRELUDE</code> (the handful of consts they close over) and a <code>_WORKER_DISPATCH</code> message router into a Blob URL.</li>
+    <li>Every job has a synchronous fallback: if workers are unavailable or a job exceeds the 120-second stall watchdog, the same function runs inline. Results are byte-identical by construction — it is literally the same source.</li>
+    <li>Engine state the functions need (settings, journal, break-even band, 1R basis) is posted with each job, never shared.</li>
+  </ul>
+</section>
+
+<section id="time">
+  <p class="kicker">07</p>
+  <h2>Time &amp; timezone layer</h2>
+  <p>All calendar logic goes through one tz-aware layer — <code>tzParts</code>, <code>tzMidnight</code>, <code>addDays</code>, <code>dayKey</code>, <code>dateBound</code> — driven by the UTC/local toggle in settings. Day stepping samples mid-day and re-normalizes rather than adding 24-hour constants, so DST's 23- and 25-hour days neither skip nor double a date. The day journal (<code>day:</code> keys), weekly review (<code>week:</code> ISO keys), calendar heatmap, day×hour matrix, and daily PnL all agree on what "a day" is because they share this layer.</p>
+</section>
+
+<section id="excursions">
+  <p class="kicker">08</p>
+  <h2>Excursions engine (MAE/MFE)</h2>
+  <ul>
+    <li>Interval selection is duration- <em>and age-aware</em>: Hyperliquid retains roughly the last ~5,000 candles per interval, so short-but-old trades automatically request coarser candles instead of asking for data that no longer exists; unmeasured trades retry one interval coarser on the next pass.</li>
+    <li>Candles cache in IndexedDB per coin+interval with covered-range tracking — re-runs and overlapping selections fetch only the gaps.</li>
+    <li>Measurements (<code>maePct/mfePct</code> per trade) persist separately from the candle cache and ride the sync/backup pipeline; the computation itself is a linear min/max pass, so the fetch dominates.</li>
+  </ul>
+</section>
+
+<section id="sync">
+  <p class="kicker">09</p>
+  <h2>Persistence &amp; sync protocol</h2>
+  <p>The synced unit is one snapshot: <code>{app:'ledger', version, wallets, settings, journal, excursions…}</code> under a monotonically increasing <code>rev</code>.</p>
+  <ol>
+    <li>Client edits mark dirty state: per-journal-id <b>edit counters</b> (<code>_dirtyJ</code>) and a settings baseline <code>_lastSyncedS</code> captured at the last successful sync.</li>
+    <li>Writes are debounced ~800 ms into <code>PUT /api/data {rev, snapshot}</code>. The server accepts only if <code>rev</code> matches its current revision; otherwise it answers <b>409</b> with the newer state.</li>
+    <li>On 409 the client applies the server state, then <b>re-applies its own unsynced edits on top</b>: journal ids whose edit counters advanced since the last sync, and settings fields that differ from the <code>_lastSyncedS</code> baseline (field-level, so two devices editing different settings both win). It then re-syncs at the new revision and rebases the baseline — including when the conflict produced no local merge, so a stale baseline can never re-push server-origin values later.</li>
+    <li>The server persists atomically (tmp file + rename, previous revision kept as <code>.bak</code>) and writes a rotating daily snapshot (14 kept) on every accepted write.</li>
+  </ol>
+  <p>Journal image attachments sync separately (<code>/api/att/&lt;base64url-id&gt;</code>, size-capped per trade and store-wide); candle caches deliberately never sync.</p>
+</section>
+
+<section id="datamodel">
+  <p class="kicker">10</p>
+  <h2>Journal data model</h2>
+  <div class="tblwrap"><table class="mono">
+    <tr><th>Key shape</th><th>Entry</th></tr>
+    <tr><td>&lt;wallet&gt;:&lt;coin&gt;:&lt;openTime&gt;</td><td>Per-trade: notes, tags[], setup, rating, mistakes[], risk, plan {entry, stop, target}, attachments flag.</td></tr>
+    <tr><td>day:YYYY-MM-DD</td><td>Day journal: bias, plan, maxLoss (arms the tripwire), review, adherence.</td></tr>
+    <tr><td>week:GGGG-Www</td><td>Weekly review: repeat, change, lesson (feeds the lessons library). ISO-8601 week, tz-aware.</td></tr>
+  </table></div>
+  <p>All three shapes live in the same object and are treated uniformly by sync, conflict merge, backup, and export. The full backup JSON (<code>version 9</code>) additionally carries per-wallet fill caches and excursion rows; the importer restores any older version it recognizes.</p>
+</section>
+
+<section id="serverarch">
+  <p class="kicker">11</p>
+  <h2>Server architecture</h2>
+  <h3>Engine extraction</h3>
+  <p>At boot, <code>buildEngine(htmlPath)</code> reads the served HTML, brace-matches every function named in <code>ENGINE_FNS</code> (plus a few one-line consts in <code>ENGINE_SHIMS</code>), and evaluates them in an isolated <code>node:vm</code> context <code>E</code>. Mutable knobs (<code>E.settings</code>, <code>E.journal</code>, <code>E._be</code>, <code>E._oneR</code>) are set per request by <code>setEngineState()</code>. If the served HTML predates a needed function, <code>/api/v1</code> analytics return 503 naming what is missing while persistence keeps working.</p>
+  <h3>Caches &amp; refresh</h3>
+  <ul>
+    <li>Per-wallet gzip JSON caches (<code>fills/ funding/ ledger/</code>) plus one <code>market.json</code> positions snapshot; trades are memoized against a cache signature and rebuilt only when inputs change.</li>
+    <li><code>POST /api/v1/refresh</code> mirrors the client's <code>loadAll</code>: incremental fill fetch with the same dedupe key, funding, positions (HIP-3 dexs derived from fills), spot, portfolio PnL. It is mutexed, rate-limited (15 s unless <code>force</code>), and guarded by a 5-minute watchdog plus a <b>generation counter</b>: a timed-out zombie refresh dies at its next cache write instead of overwriting newer data with stale bytes.</li>
+  </ul>
+  <h3>Access control</h3>
+  <ul>
+    <li><code>AUTH_TOKEN</code> — everything, compared with a timing-safe equality check; 401 responses carry a flat 300 ms delay to blunt online brute force.</li>
+    <li><code>READ_TOKEN</code> — exactly <code>GET /api/v1/*</code>; it can never touch <code>/api/data</code>, attachments, snapshots, backups, or refresh.</li>
+    <li><code>CORS_ORIGIN</code> — one exact origin, off by default. Responses set <code>nosniff</code> and <code>no-store</code>; CSV exports guard against spreadsheet formula injection.</li>
+  </ul>
+</section>
+
+<section id="autointernals">
+  <p class="kicker">12</p>
+  <h2>Automation internals</h2>
+  <ul>
+    <li><b>Alerts.</b> <code>gatherAlertState()</code> builds a plain snapshot (risk rows, today's net, funding 24h, current drawdown vs a seeded MC p95); the pure, exported <code>alertsFrom(state, cfg)</code> derives alert lines with dedupe keys (per position, per day, cooldown-scoped). Sent-state persists to <code>alert-state.json</code> so redeploys don't re-fire, and a failed delivery re-arms the key.</li>
+    <li><b>Delivery.</b> Webhook and Telegram are peer channels behind one <code>deliver()</code>; success on either counts. Digests record <code>webhookSent</code> and are retried on the next scheduled run if delivery failed.</li>
+    <li><b>Telegram.</b> A long-poll loop (<code>getUpdates?timeout=50</code>, 10 s backoff on network trouble) that answers only allowlisted chat ids. Replies come from the pure <code>telegramReply(cmd, state)</code> router over <code>buildBotState()</code> — engine analytics reduced to plain data, so the wording is unit-testable without a bot or network.</li>
+    <li><b>Backups.</b> <code>POST /api/backup</code> shape-checks (<code>app:'ledger'</code>), writes gzip atomically, prunes to the newest 10.</li>
+    <li><b>Metrics.</b> <code>GET /api/v1/metrics</code> flattens the headline numbers; <code>?format=prom</code> emits <code>ledger_*</code> gauges, numeric fields only.</li>
+  </ul>
+</section>
+
+<section id="api">
+  <p class="kicker">13</p>
+  <h2>API reference</h2>
+  <p><code>GET /api/v1</code> returns a machine-readable index of everything, including auth modes and filter docs. Summary:</p>
+  <div class="tblwrap"><table class="mono">
+    <tr><th>Endpoint</th><th>Auth</th><th>Returns</th></tr>
+    <tr><td>GET /api/health</td><td>none</td><td>{ok, auth, appSyncCapable} — the client's server-detection probe.</td></tr>
+    <tr><td>GET/PUT /api/data</td><td>full</td><td>The synced snapshot; PUT is revision-checked (409 on conflict).</td></tr>
+    <tr><td>GET /api/snapshots[/date]</td><td>full</td><td>Rotating daily snapshots (14 kept).</td></tr>
+    <tr><td>GET/PUT/DELETE /api/att/:key</td><td>full</td><td>Journal image attachments.</td></tr>
+    <tr><td>POST /api/backup · GET /api/backups[/:name]</td><td>full</td><td>Server-held full backups (gzip, newest 10).</td></tr>
+    <tr><td>POST /api/v1/refresh</td><td>full</td><td>Pull fills/funding/positions into server caches.</td></tr>
+    <tr><td>GET /api/v1/meta · trades[/:id] · stats · equity · calendar · breakdown · projection · kelly · capital · walkforward · risk · positions · spot/lots · whatif · digests · journal · tags · export/trades.csv · metrics</td><td>read</td><td>The analytics surface — same engine functions the app runs.</td></tr>
+    <tr><td>DELETE /api/v1/cache/:addr</td><td>full</td><td>Evict one wallet's server caches.</td></tr>
+    <tr><td>GET /help · GET /docs</td><td>none</td><td>This documentation.</td></tr>
+  </table></div>
+  <p><b>Shared filters</b>: <code>market</code>, <code>wallet</code>, <code>coin</code>, <code>dir</code>, <code>status</code>, <code>outcome</code> (uses the saved break-even band), <code>tag</code>, <code>q</code>, <code>from</code>/<code>to</code>, <code>tz=utc|local</code>. The 1R basis is pinned to the filtered closed set, mirroring the app.</p>
+</section>
+
+<section id="constraints">
+  <p class="kicker">14</p>
+  <h2>Contributor constraints</h2>
+  <div class="note warn"><b>These are load-bearing.</b> The extraction pipeline and CI enforce most of them; breaking one usually fails the suite immediately.</div>
+  <ul>
+    <li><b>Extractable functions stay top-level.</b> Anything in <code>ENGINE_FNS</code> or <code>_WORKER_LIB</code>, and anything the tests extract, must remain a top-level <code>function name(…)</code> declaration with balanced braces — no unbalanced <code>{</code>/<code>}</code> inside its string or regex literals, since both the server and the test harness brace-match source text.</li>
+    <li><b>Keep pure logic pure.</b> New analytics take plain data in and return plain data out; DOM access lives in the render layer. Pure functions get extracted and tested; render glue gets source-assertion tests.</li>
+    <li><b>No dependencies, no build step.</b> Vendoring (as with Chart.js) is the pattern; <code>package.json</code> stays empty of deps.</li>
+    <li><b>The worker is source text.</b> A function used in the worker must not close over module state beyond what <code>_WORKER_PRELUDE</code> carries.</li>
+    <li><b>Seed all randomness.</b> Any Monte Carlo goes through <code>_srand(_hashSeed(…))</code> so results are reproducible everywhere.</li>
+    <li><b>CSP and file:// support.</b> The app's strict CSP allows only the exchange API; no external scripts, fonts, or beacons. Every feature must still work opened from disk (server-dependent UI reveals itself only when the server is detected).</li>
+    <li><b>Sync-safe writes.</b> Any new journal write calls <code>markJEdit(key)</code> so the conflict merge can protect it; any new derived cache registers with <code>resetDerivedState()</code>.</li>
+  </ul>
+</section>
+
+<section id="testing">
+  <p class="kicker">15</p>
+  <h2>Testing</h2>
+  <p><code>npm test</code> runs 18 suites (~360 tests) via <code>tests/run-all.mjs</code>. The harness (<code>tests/harness.mjs</code>) provides <code>makeExtractor(html)</code>: <code>evalModule(names, exports, prelude)</code> brace-matches the named functions out of <code>ledger.html</code>, prepends a prelude of one-line consts, and imports the bundle as a data-URL ES module — the tests run the shipped source, not a copy.</p>
+  <div class="tblwrap"><table class="mono">
+    <tr><th>Suite</th><th>Covers</th></tr>
+    <tr><td>test-syntax</td><td>Every script block parses (vm.Script) — catches template-literal and escaping regressions whole-file.</td></tr>
+    <tr><td>test-newfeatures · features2-5</td><td>Reconstruction edge cases, capital/XIRR, scorecards, CSV import, clusters, shock, goals, fee tiers, ISO weeks, variance, risk creep, demo fills.</td></tr>
+    <tr><td>test-api · test-server</td><td>The server over real HTTP with a mocked exchange: auth scopes, 409 merges, refresh pipeline, capital, backups, metrics, engine-failure softness.</td></tr>
+    <tr><td>test-alerts</td><td>alertsFrom thresholds, webhook body shaping, telegramReply wording.</td></tr>
+    <tr><td>test-replay-auto · test-walkforward-panel</td><td>Source assertions for render-layer logic that can't be extracted.</td></tr>
+    <tr><td>test-projection · decay · edge-map · attribution · dexfilter · improvements</td><td>Seeded MC determinism, tz math, statistics against hand-computed and reference values.</td></tr>
+  </table></div>
+  <p>CI (<code>.github/workflows/test.yml</code>) runs the full suite on Node 18 and 22 on every push and pull request. The suites are offline — the exchange is mocked — and finish in well under a minute.</p>
+</section>
+
+<footer>
+  Ledger · technical reference, September 2026. For usage, see the <a href="help">user guide</a>; for deployment, README-deploy.md in the repository.
+</footer>
+</main>
+</div>
+</body>
+</html>

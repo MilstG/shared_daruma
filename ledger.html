@@ -464,7 +464,8 @@ tr.trow:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
     <p>Add one or more wallet addresses you trade with on Hyperliquid, then hit <strong>Load all</strong>. Everything is pulled read-only from Hyperliquid's public API — nothing leaves your browser — and every wallet's history is pooled into one combined view.</p>
     <p>Then attach notes, tags, a setup, a rating, mistakes, and your planned risk to any trade. Your journal is saved locally on this device.</p>
     <div class="steps"><span>1 · Load fills &amp; positions</span><span>2 · Rebuild trades + funding</span><span>3 · Read the analytics</span><span>4 · Journal each trade</span></div>
-    <p style="margin-top:14px"><button class="btn ghost" id="demoBtn" data-tip="Loads a seeded, synthetic 5-month fill history (perps + spot) through the normal import pipeline so every panel is populated. Nothing is fetched and no wallet is involved — reload or add a real address to clear it.">Just looking? Load sample data</button></p>
+    <p style="margin-top:14px"><button class="btn ghost" id="demoBtn" data-tip="Loads a seeded, synthetic 5-month fill history (perps + spot) through the normal import pipeline so every panel is populated. Nothing is fetched and no wallet is involved — reload or add a real address to clear it.">Just looking? Load sample data</button>
+    <a id="helpLink" class="hide" href="help" target="_blank" rel="noopener" style="margin-left:14px;font-size:13px">User guide →</a></p>
   </div>
 
   <div id="app" class="hide" role="main">
@@ -599,6 +600,7 @@ tr.trow:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
       <button class="linkish" id="autoBtn" data-tip="Auto-refresh: while this tab is open, re-fetch new fills every 3 minutes and automatically lock in MAE/MFE measurements for freshly closed trades. Incremental — only new activity is fetched.">⟳ auto: on</button>
       <button class="linkish" id="clearCandles" data-tip="Candles fetched for MAE/MFE excursions are cached in this browser (IndexedDB) and quietly become the largest thing stored. Clearing is safe — candles re-fetch on the next run, and completed MAE/MFE measurements are saved separately and kept.">Clear candle cache</button>
       <button class="linkish hide" id="installPWA" data-tip="Install Ledger as an app (available when the page is served over http/https and your browser supports it).">Install app</button>
+      <button class="linkish hide" id="helpBtn" data-tip="The built-in user guide: every view, the journaling habits, backups, alerts, and the Telegram bot — served by your own deployment.">Help</button>
     </div>
     <div class="fadv">
       <div class="grp"><label>From</label><input type="date" id="fFrom"></div>
@@ -952,6 +954,8 @@ async function unlinkFile(){ linkedHandle=null; linkedName=''; await idbDel('han
 
 function renderDatafile(state){ const el=$('datafile'); if(!el)return;
   if(SRV.enabled){
+    // the companion server also serves the built-in docs — surface the entry points
+    for(const id of ['helpBtn','helpLink']){ const h=$(id); if(h)h.classList.remove('hide'); }
     el.classList.remove('hide');
     if(SRV.needsAuth&&(!SRV.token||SRV.badAuth)){
       el.className='datafile';
@@ -6485,6 +6489,7 @@ async function loadDemo(){
   setStatus('Sample data loaded — '+allTrades.length+' synthetic trades across perps and spot. Nothing was fetched or saved to a wallet; add a real address whenever you like.');
 }
 (function(){ for(const id of ['demoBtn','demoBtn2']){ const b=$(id); if(b)b.onclick=loadDemo; } })();
+(function(){ const b=$('helpBtn'); if(b)b.onclick=()=>window.open('help','_blank','noopener'); })();
 
 /* ============================ tab-visible tripwire notifications ============================ */
 // The webhook covers the phone; this covers the desktop: when the app sits in a background

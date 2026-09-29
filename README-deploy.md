@@ -12,6 +12,8 @@ measurements — so they survive reboots, redeploys, and device switches.
 ledger.html     the app (unchanged single file — still works from file:// too)
 server.js       companion server: persistence + read-only analytics API (/api/v1),
                 scheduled refresh, webhook alerts, weekly digests, server backups
+help.html       built-in user guide, served at /help (a Help button appears in the app)
+tech.html       technical reference, served at /docs
 package.json    start script + node version (no dependencies to install)
 tests/          test suites (`npm test`; CI runs them on every push)
 ```

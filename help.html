@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ledger — User Guide</title>
+<style>
+/* Self-contained on purpose: no external fonts or scripts, so the guide works from any
+   deploy (and offline) with the same zero-dependency posture as the rest of the app.
+   Served at GET /help by server.js; also opens directly from disk. */
+:root{
+  --bg:#f7f7f5; --panel:#ffffff; --panel2:#eef0f4; --fg:#1b2130; --muted:#5a6272;
+  --faint:#8a91a0; --line:#dcdfe6; --accent:#5560d8; --profit:#188a5c; --loss:#c73a4e;
+  --gold:#9a7a1f; --code-bg:#eef0f4;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0c0e14; --panel:#12141c; --panel2:#181b25; --fg:#e6e8ef; --muted:#a7adbd;
+    --faint:#6d7383; --line:#232734; --accent:#8b93ff; --profit:#2fd08c; --loss:#f4586a;
+    --gold:#d9b544; --code-bg:#181b25; color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 var(--sans);margin:0;padding:0 16px 60px}
+.wrap{max-width:1060px;margin:0 auto;display:flex;gap:44px;align-items:flex-start}
+main{min-width:0;flex:1;max-width:720px}
+h1,h2,h3{line-height:1.25}
+header.hero{padding:44px 0 8px}
+header.hero h1{font-size:34px;font-weight:600;margin:0 0 10px}
+header.hero .tagline{color:var(--muted);font-size:16px;max-width:60ch;margin:0}
+.backlink{display:inline-block;margin-top:18px;font-size:13px;color:var(--accent);text-decoration:none}
+.backlink:hover{text-decoration:underline}
+.badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.badge{font:12px/1 var(--mono);color:var(--muted);border:1px solid var(--line);background:var(--panel);padding:6px 10px;border-radius:999px}
+nav.toc{position:sticky;top:0;flex:0 0 220px;padding:44px 0 20px;font-size:13.5px;max-height:100vh;overflow-y:auto}
+nav.toc .toct{font:11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:0 0 10px}
+nav.toc a{display:block;color:var(--muted);text-decoration:none;padding:5px 0 5px 12px;border-left:2px solid var(--line)}
+nav.toc a:hover{color:var(--fg);border-left-color:var(--accent)}
+section{margin-top:52px}
+section h2{font-size:23px;font-weight:600;margin:0 0 4px;padding-top:8px}
+section .kicker{font:11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin:0 0 6px}
+h3{font-size:16.5px;font-weight:600;margin:26px 0 6px}
+p{margin:10px 0;max-width:68ch}
+ul,ol{margin:10px 0;padding-left:22px;max-width:66ch}
+li{margin:6px 0}
+li::marker{color:var(--faint)}
+b,strong{font-weight:600}
+a{color:var(--accent)}
+code,kbd{font:.92em var(--mono);background:var(--code-bg);border:1px solid var(--line);border-radius:5px;padding:1px 5px;white-space:nowrap}
+.note{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--panel);padding:12px 16px;border-radius:0 8px 8px 0;margin:16px 0;color:var(--muted);max-width:68ch}
+.note.warn{border-left-color:var(--gold)}
+.note b{color:var(--fg)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+.tblwrap{overflow-x:auto;margin:14px 0}
+.tblwrap table{min-width:520px}
+th{text-align:left;font:11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding:8px 14px 8px 0;border-bottom:1px solid var(--line)}
+td{padding:9px 14px 9px 0;border-bottom:1px solid var(--line);vertical-align:top;color:var(--muted)}
+td:first-child{color:var(--fg);white-space:nowrap}
+.cmd td:first-child{font:13px var(--mono)}
+.pill{display:inline-block;font:11px/1 var(--mono);padding:3px 8px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);margin-right:4px}
+.pill.r{color:var(--loss)}
+.steps{counter-reset:s;list-style:none;padding:0;max-width:68ch}
+.steps li{counter-increment:s;position:relative;padding:0 0 4px 44px;margin:14px 0}
+.steps li::before{content:counter(s);position:absolute;left:0;top:1px;width:26px;height:26px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);color:var(--accent);font:600 13px/26px var(--mono);text-align:center}
+footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:var(--faint);font-size:12.5px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+@media (max-width:800px){
+  .wrap{flex-direction:column;gap:0}
+  nav.toc{position:static;flex:none;width:100%;max-height:none;padding:20px 0 14px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:2px 14px}
+  nav.toc .toct{width:100%}
+  nav.toc a{border-left:none;padding:3px 0}
+  header.hero{padding-top:28px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc" aria-label="Sections">
+  <p class="toct">Contents</p>
+  <a href="#start">Getting started</a>
+  <a href="#loading">Loading your data</a>
+  <a href="#trades">Trades view</a>
+  <a href="#journal">Journaling</a>
+  <a href="#diagnostic">Diagnostic view</a>
+  <a href="#excursions">Price excursions</a>
+  <a href="#review">Review view</a>
+  <a href="#project">Project view</a>
+  <a href="#guardrails">Rules &amp; guardrails</a>
+  <a href="#filters">Filters &amp; settings</a>
+  <a href="#exports">Exports &amp; backups</a>
+  <a href="#persistence">Saving your journal</a>
+  <a href="#server">The companion server</a>
+  <a href="#automation">Alerts &amp; automation</a>
+  <a href="#telegram">Telegram bot</a>
+  <a href="#faq">Troubleshooting</a>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>Ledger User Guide</h1>
+  <p class="tagline">Ledger is a trading journal for Hyperliquid. It reconstructs your trades from your fill history, runs the analytics a desk reviewer would, and gives you the journaling habits — plans, reviews, rules, lessons — that actually change behavior.</p>
+  <div class="badges">
+    <span class="badge">runs in your browser</span>
+    <span class="badge">read-only · no keys</span>
+    <span class="badge">perps + spot</span>
+    <span class="badge">multi-wallet</span>
+  </div>
+  <a class="backlink" href="/" style="margin-right:18px">← Back to Ledger</a>
+  <a class="backlink" href="docs">Technical reference →</a>
+  <div class="note" style="margin-top:20px"><b>Privacy model.</b> Everything is computed client-side from Hyperliquid's public API. Ledger never asks for keys and can never trade. Your notes stay in your browser unless you deliberately link a file or deploy the optional sync server.</div>
+</header>
+
+<section id="start">
+  <p class="kicker">01</p>
+  <h2>Getting started</h2>
+  <ol class="steps">
+    <li>Open <code>ledger.html</code> in a modern browser (Chrome or Edge recommended), or open your deployed URL if you run the companion server.</li>
+    <li>Paste a wallet address (<code>0x…</code>) and click <b>Add</b>. Add as many wallets as you like; each can carry a label. Every wallet's history is pooled into one combined view.</li>
+    <li>Click <b>Load all</b>. Ledger pages through your fills, reconstructs round-trip trades, fetches funding and open positions, and renders everything.</li>
+    <li>Explore the four tabs: <b>Trades</b>, <b>Diagnostic</b>, <b>Review</b>, and <b>Project</b>.</li>
+  </ol>
+  <h3>Just looking?</h3>
+  <p>Click <b>Load sample data</b> (on the welcome screen, or <b>Sample data</b> in the setup panel). It generates a realistic five-month synthetic history and runs it through the normal import pipeline, so every panel is populated. Nothing is fetched and nothing is saved — reload or add a real address to clear it.</p>
+  <h3>No wallet, or fills from another venue?</h3>
+  <p><b>Paste data</b> accepts raw fill JSON or a <b>CSV</b> (a header row with time, symbol, side, price, size — common column aliases are matched automatically, and you can also pick a file instead of pasting). The modal tells you live what format it detected. Imported fills feed the exact same engine.</p>
+</section>
+
+<section id="loading">
+  <p class="kicker">02</p>
+  <h2>Loading your data</h2>
+  <p>Loads are <b>incremental</b>: fills are cached in your browser (IndexedDB) and only new activity is fetched. While the tab is open, auto-refresh pulls new fills roughly every 3 minutes (toggle with <b>⟳ auto</b>).</p>
+  <ul>
+    <li><b>Shift-click Load all</b> forces a full re-fetch if something looks off.</li>
+    <li>A <b>data-health strip</b> under the header stays visible for as long as anything is incomplete — truncated fill history, partial funding fetches, failing browser storage — instead of a status message that scrolls away.</li>
+    <li>Hyperliquid's API caps how far back it pages. Your cached fills preserve history <em>beyond</em> that cap, which is why backups that include fill caches matter (see <a href="#exports">Exports &amp; backups</a>).</li>
+  </ul>
+</section>
+
+<section id="trades">
+  <p class="kicker">03</p>
+  <h2>The Trades view</h2>
+  <p>Every reconstructed round trip: direction, size, average entry/exit, PnL, fees, funding, duration, R multiple, and return. Toggle <b>Perps / Spot</b> at the top left; use the period buttons or a custom date range to narrow the window.</p>
+  <ul>
+    <li>Click a trade row to expand it: the fill-by-fill history, a <b>replay chart</b> with your entries and exits marked on real candles, and the journal editor.</li>
+    <li>Open positions appear alongside closed trades and are marked as such; their PnL updates as prices move.</li>
+    <li>Partial or truncated histories are flagged per trade rather than silently blended in.</li>
+  </ul>
+</section>
+
+<section id="journal">
+  <p class="kicker">04</p>
+  <h2>Journaling</h2>
+  <p>Journaling operates at three levels. All of it lives in the same store, syncs the same way, and feeds the analytics.</p>
+  <h3>Per trade</h3>
+  <p>On any trade row: <b>notes</b>, <b>tags</b>, a named <b>setup</b>, a 1–5 <b>rating</b>, <b>mistakes</b>, your planned <b>risk</b>, a trade <b>plan</b> (entry / stop / target — scored later for adherence), and image attachments (paste screenshots straight in). The more trades you journal, the sharper the pattern miner and setup scorecards get.</p>
+  <h3>Per day — the Day journal (Review tab)</h3>
+  <p>Write the plan <em>before</em> the session: bias, what you'll trade, and a <b>committed max loss</b>. That number becomes today's tripwire threshold — a limit you chose calmly, enforced when you aren't. End the day with a short review and an "I followed the plan" check. Clicking a day on the calendar heatmap opens that date's entry.</p>
+  <h3>Per week — the Weekly review wizard (Review tab)</h3>
+  <p>Three questions about the last completed week, with your best and worst trades prefilled: what worked, what changes, and a <b>one-line lesson</b>. Lessons collect into a browsable <b>lessons library</b> with the latest surfaced on top — the cheapest edge available is rereading your own lessons before the session.</p>
+</section>
+
+<section id="diagnostic">
+  <p class="kicker">05</p>
+  <h2>The Diagnostic view</h2>
+  <p>The full statistical work-up of the current view and period:</p>
+  <ul>
+    <li><b>Headline stats</b> — net, win rate, expectancy, profit factor, payoff, drawdown, Sharpe/Sortino, streaks, hold times, fees and funding, green days.</li>
+    <li><b>Edge significance</b> — is your expectancy statistically distinguishable from zero, with honest confidence bands and a Monte-Carlo drawdown expectation for your own return stream.</li>
+    <li><b>Breakdowns</b> — by coin, direction, weekday × hour heatmap, tag, setup, wallet — each with its contribution to the bottom line.</li>
+    <li><b>Pattern miner</b> — searches your journaled conditions (tags, setups, hours, sizes, and pairs of them) for the highest- and lowest-expectancy pockets, with multiple-testing correction so it doesn't sell you noise.</li>
+    <li><b>Discipline &amp; rules</b> — define personal rules (max trades/day, cooldown after a loss, daily loss limit, no adds to losers) and see how often you broke each one and what it cost.</li>
+    <li><b>Plan adherence</b> — for trades with a written plan: stop-honored rate, target-hit rate, planned vs realized R, and the total cost of blown stops.</li>
+    <li><b>Funding carry, leverage survivability, correlation clusters, scenario shock</b> — the quiet costs and the concentration risks of the open book.</li>
+    <li><b>Export report / Export PDF</b> — a self-contained snapshot of the whole view for sharing or archiving.</li>
+  </ul>
+</section>
+
+<section id="excursions">
+  <p class="kicker">06</p>
+  <h2>Price excursions (MAE/MFE)</h2>
+  <p>Run <b>Price excursions</b> to measure, from real candles, how far each trade ran against you (MAE) and in your favor (MFE) between entry and exit. This answers two expensive questions:</p>
+  <ul>
+    <li><b>Where should stops live?</b> If winners rarely drew down more than 1R, a tighter stop was free.</li>
+    <li><b>How much did you leave on the table?</b> MFE against realized exit shows whether your targets are too shy or too greedy.</li>
+  </ul>
+  <p>Candles are cached and fetched incrementally, so re-runs only fill gaps. Measurements for closed trades are saved permanently; the candle cache itself can be cleared any time without losing them.</p>
+</section>
+
+<section id="review">
+  <p class="kicker">07</p>
+  <h2>The Review view</h2>
+  <p>The habit loop. Besides the day journal and weekly wizard above, it holds:</p>
+  <ul>
+    <li><b>This week / last 30 days</b> — net, trades, win rate, expectancy, each against the prior window.</li>
+    <li><b>Monthly goals</b> — set a monthly target, a max-drawdown cap, and a trades/week cap; the month is tracked against them with pace and projection.</li>
+    <li><b>Costs &amp; variance</b> —
+      your current <b>Hyperliquid fee tier</b> from your exact trailing-14-day volume, the distance to the next tier, and what last month's taker flow would have cost one tier up or executed as maker (verify rates against app.hyperliquid.xyz/fees);
+      and <b>variance expectations</b> — simulated from your own win rate and distribution: the odds of a 4-, 5-, 6-loss streak in your next 200 trades, and your <b>1-in-20 bad month</b> at current sizing. Decide now what normal-bad looks like, so a live drawdown reads as variance instead of falsification.</li>
+    <li><b>Focus for next week</b> — a short list of concrete things your own numbers say to do differently.</li>
+  </ul>
+</section>
+
+<section id="project">
+  <p class="kicker">08</p>
+  <h2>The Project view</h2>
+  <p>Forward visualization — explicitly a <em>what-if</em>, not a forecast. Pick a lookback and a horizon; Ledger resamples your own daily results forward a few hundred times and shows where the paths land: the median, the good and rough stretches, the odds of finishing green, and a <b>drawdown reality-check</b> (the dip half of the futures contain, and the 1-in-20 one you should be sized to sit through).</p>
+  <p>It also carries the <b>pre-trade sizer</b>: account size, entry, stop → position size for your chosen risk, alongside Kelly-derived guidance from your actual edge.</p>
+</section>
+
+<section id="guardrails">
+  <p class="kicker">09</p>
+  <h2>Rules, tripwire &amp; guardrails</h2>
+  <p>Live banners watch the dashboard while you trade:</p>
+  <ul>
+    <li><span class="pill r">tripwire</span> When today's realized PnL (plus any open-position decline since your first look today) crosses your daily loss limit — the committed max loss from today's day journal, or your standing rule — a banner tells you to step away. It warns early at 60% of the limit.</li>
+    <li><span class="pill">unplanned trading</span> Two or more trades today with no day-journal plan filed gets a nudge: the review will ask why.</li>
+    <li><span class="pill">risk creep</span> If the median size of your last 20 trades has grown much faster than your capital, you'll hear about it — sizing that follows a win streak instead of the account is the classic failure.</li>
+    <li><span class="pill">tilt cooldown</span> After a loss, if your own history shows trades within the hour of a loss underperform, a cooldown suggestion appears.</li>
+  </ul>
+  <p><b>Desktop notifications:</b> when you save a loss limit (in rules or the day journal), Ledger offers browser notifications — then the tripwire fires an OS notification even when the tab is in the background. One notification per condition per day.</p>
+</section>
+
+<section id="filters">
+  <p class="kicker">10</p>
+  <h2>Filters, periods &amp; settings</h2>
+  <ul>
+    <li><b>Perps / Spot</b> toggle, period buttons (7/30/90 days…), and a custom date range apply everywhere.</li>
+    <li><b>Timezone toggle</b> (UTC / local) changes what "a day" means for the calendar, day×hour heatmap, day journal, and daily PnL.</li>
+    <li><b>Break-even band</b> (default $50): trades inside ±band count as scratches — neither wins nor losses — so tiny outcomes don't pollute your win rate. Set it to match your sizing.</li>
+    <li><b>R basis</b>: R multiples scale to your average loss by default, or to a fixed $ risk; either can be overridden per trade with journaled risk.</li>
+    <li><b>Install app</b>: when served over https, Ledger installs as a PWA.</li>
+  </ul>
+</section>
+
+<section id="exports">
+  <p class="kicker">11</p>
+  <h2>Exports &amp; backups</h2>
+  <div class="tblwrap"><table>
+    <tr><th>Button</th><th>What you get</th></tr>
+    <tr><td>Export CSV</td><td>The trade table as CSV.</td></tr>
+    <tr><td>Export tax</td><td>Accountant-ready CSV of every realized trade, tax-year column, per-year summary.</td></tr>
+    <tr><td>Tax PDF</td><td>Bank-statement-style PDF: yearly and monthly summaries plus every realized trade with a running balance. Generated entirely in your browser.</td></tr>
+    <tr><td>Spot lots</td><td>8949-style FIFO cost-basis lots for spot sales, short/long term flagged, unknown-basis lots marked for your accountant.</td></tr>
+    <tr><td>Export journal</td><td>Your journal entries as JSON.</td></tr>
+    <tr><td>Backup all</td><td><b>The important one.</b> Everything portable in one JSON — journal, wallets, settings, MAE/MFE measurements, and the fill caches that preserve history beyond the API's pagination cap. Re-import it to restore, including on another device.</td></tr>
+    <tr><td>Backup to server</td><td>(when server sync is connected) The same full backup stored on your server — newest 10 kept.</td></tr>
+    <tr><td>Clear candle cache</td><td>Frees the largest thing in browser storage; saved measurements are kept and candles re-fetch on the next run.</td></tr>
+  </table></div>
+  <div class="note warn"><b>Make a habit of Backup all.</b> Your fill caches are the only copy of history older than the exchange API serves. One JSON in a safe place covers you.</div>
+</section>
+
+<section id="persistence">
+  <p class="kicker">12</p>
+  <h2>Saving your journal: three modes</h2>
+  <ul>
+    <li><b>Browser storage</b> (default) — works out of the box; tied to this browser on this device.</li>
+    <li><b>Linked data file</b> — bind the journal to a real JSON file on disk that auto-saves on every change. Put it in a cloud-synced folder to use across devices. Chrome/Edge only.</li>
+    <li><b>Server sync</b> — deploy the companion server (next section) and every edit auto-saves within about a second, follows you across devices, and survives reinstalls. The status bar shows <code>☁ Server sync · rev N · saved</code>. Edits from two devices are merged, not lost: the newer state wins and your unsynced edits are re-applied on top.</li>
+  </ul>
+  <p>With server sync, the server also keeps <b>rotating daily snapshots</b> (last 14 days) — the <b>History</b> button restores any of them if an edit went wrong.</p>
+</section>
+
+<section id="server">
+  <p class="kicker">13</p>
+  <h2>The companion server</h2>
+  <p>Optional, zero-dependency, and small: one <code>server.js</code> that serves the app, persists your journal, and adds automation. The quick version (Railway, but any Node 18+ host works):</p>
+  <ol class="steps">
+    <li>Deploy the repo (start command <code>node server.js</code>).</li>
+    <li>Attach a persistent volume at <code>/data</code> — without one, your journal is wiped on every redeploy.</li>
+    <li>Set <code>AUTH_TOKEN</code> to a long random string. Your journal holds wallet addresses and trading notes; without a token anyone with the URL can read them.</li>
+    <li>Open the URL, enter the token once per browser. Done — sync is automatic from then on.</li>
+  </ol>
+  <p>It also exposes a <b>read-only analytics API</b> (<code>GET /api/v1</code> is self-describing) for scripts and dashboards, including <code>GET /api/v1/metrics</code> with a Prometheus mode for Grafana or Home Assistant. An optional <code>READ_TOKEN</code> grants analytics access and nothing else.</p>
+</section>
+
+<section id="automation">
+  <p class="kicker">14</p>
+  <h2>Alerts &amp; automation</h2>
+  <p>All opt-in via environment variables on the server:</p>
+  <div class="tblwrap"><table>
+    <tr><th>Variable</th><th>What it does</th></tr>
+    <tr><td><code>REFRESH_INTERVAL_MIN</code></td><td>Refresh server caches from Hyperliquid on a timer, so monitoring works with the app closed.</td></tr>
+    <tr><td><code>ALERT_WEBHOOK</code></td><td>Discord / Slack / ntfy / any JSON endpoint. Fires when something needs a human <em>during</em> the session.</td></tr>
+    <tr><td><code>ALERT_LIQ_PCT</code></td><td>Alert when a position is within this % of liquidation (default 10).</td></tr>
+    <tr><td><code>ALERT_DAILY_LOSS</code></td><td>$ daily-loss alert; falls back to your saved in-app rule.</td></tr>
+    <tr><td><code>ALERT_FUNDING_24H</code></td><td>Alert when funding paid per 24h exceeds this $.</td></tr>
+  </table></div>
+  <p>Alerts also fire on a drawdown deeper than the 95th percentile expectation for your own return stream — statistically unusual, not routine variance. Everything dedupes with a cooldown, and once a week a <b>weekly digest</b> (trades, net, win rate, expectancy, fees, best/worst, prior-week comparison) is written and delivered.</p>
+</section>
+
+<section id="telegram">
+  <p class="kicker">15</p>
+  <h2>The Telegram bot</h2>
+  <p>Set <code>TELEGRAM_BOT_TOKEN</code> (create a bot with <b>@BotFather</b>) and <code>TELEGRAM_CHAT_ID</code> (your chat id, comma-separate several — <b>@userinfobot</b> tells you yours). Alerts and digests then arrive on your phone, and the bot answers commands — read-only, always:</p>
+  <div class="tblwrap"><table class="cmd">
+    <tr><th>Command</th><th>Answer</th></tr>
+    <tr><td>/today</td><td>Realized PnL and trade count today, against your daily loss limit.</td></tr>
+    <tr><td>/risk</td><td>Open book: positions, gross and net exposure, account value, anything near liquidation.</td></tr>
+    <tr><td>/stats</td><td>Last 30 days: trades, net, win rate, expectancy, profit factor, fees.</td></tr>
+    <tr><td>/goals</td><td>This month against your goals: net vs target, projection, drawdown and trades/week caps.</td></tr>
+    <tr><td>/digest</td><td>The latest weekly digest.</td></tr>
+  </table></div>
+  <p>Messages from anyone outside your allowlist are ignored silently — no reply, no error, no confirmation the bot exists.</p>
+</section>
+
+<section id="faq">
+  <p class="kicker">16</p>
+  <h2>Troubleshooting</h2>
+  <h3>Numbers look off / trades missing</h3>
+  <p><b>Shift-click Load all</b> for a full re-fetch. Check the data-health strip: a "truncated" flag means the exchange API stopped serving older pages — history past that point exists only in your cached fills and backups.</p>
+  <h3>My win rate seems wrong</h3>
+  <p>Trades within the break-even band (default ±$50) count as scratches and don't enter the win rate. Adjust the band in settings to match your sizing.</p>
+  <h3>Spot symbols show as @123</h3>
+  <p>Spot pairs resolve to token names from exchange metadata; reload once with a network connection and they map through.</p>
+  <h3>The browser is using a lot of storage</h3>
+  <p>Cached candles from excursion runs are the bulk of it. <b>Clear candle cache</b> is safe — saved MAE/MFE measurements are kept.</p>
+  <h3>Two devices show different journals</h3>
+  <p>Without server sync or a shared linked file, each browser keeps its own store. Use <b>Backup all</b> → import to move data, or deploy the sync server for automatic merging.</p>
+  <h3>The token prompt never appears on my deployment</h3>
+  <p>You're likely serving an old <code>ledger.html</code> next to a newer server — the server logs a warning about it at boot. Redeploy with both files current.</p>
+  <h3>Alerts fired twice / not at all</h3>
+  <p>Alerts dedupe per position and per day with a 6-hour cooldown, and the dedupe state survives redeploys. If nothing fires at all, confirm <code>REFRESH_INTERVAL_MIN</code> is set — alerts are evaluated on the refresh schedule.</p>
+</section>
+
+<footer>
+  Ledger · a client-side Hyperliquid trading journal. This guide reflects the app as of September 2026; fee-tier figures are the base schedule — verify against app.hyperliquid.xyz/fees. Nothing here is financial advice.
+</footer>
+</main>
+</div>
+</body>
+</html>
