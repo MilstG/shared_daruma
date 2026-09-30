@@ -1,6 +1,8 @@
 // Pulse view (/pulse): the readiness, risk and trend math behind its dials, the next-step and
 // coach lines, the path switch, and the server routes that make it a separately installable app.
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import { t, ok, eq, report, makeExtractor } from './harness.mjs';
@@ -138,7 +140,7 @@ t('a trade cap set in Pulse survives a save from the full app’s day journal', 
 console.log('\nServer');
 const listen = app => new Promise(res => app.listen(0, () => res('http://127.0.0.1:' + app.address().port)));
 await t('/pulse serves the app, /pulse/ redirects, and Pulse has its own manifest and icon', async () => {
-  const app = server.createApp({ dataDir: '/nonexistent-ledger-test', auth: '', htmlPath });
+  const app = server.createApp({ dataDir: mkdtempSync(join(tmpdir(), 'ledger-pulse-')), auth: '', htmlPath });
   const b = await listen(app);
   try {
     const r = await fetch(b + '/pulse'); eq(r.status, 200); ok((await r.text()).includes('id="pzView"'));
