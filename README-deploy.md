@@ -56,6 +56,10 @@ tests/          test suites (`npm test`; CI runs them on every push)
 - **Stays in the browser (by design):** candle caches and fill caches
   (re-fetchable, large) and journal image attachments. "Backup all" still
   exports everything exportable as a portable JSON.
+- **Pulse (`/pulse`):** the same app in its simple dial view, installable as
+  its own app. Visitors without the access token keep their journal in their
+  own browser and never write to the server; set `AUTH_TOKEN` before sharing
+  the link, or everyone who opens it shares your journal.
 - **Standalone still works:** the same `ledger.html` opened from disk or any
   static host simply skips server sync (the boot probe gets no answer) and
   falls back to the linked-data-file / browser storage modes.

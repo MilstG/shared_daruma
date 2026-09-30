@@ -155,8 +155,9 @@ t('the question fits what happened', () => {
 
 console.log('\nCoach mode switch');
 t('coach mode defaults on and only an explicit false turns it off', () => {
-  const coachOn = (settings) => (0, eval)('(function(settings){ return (' + grabFn('coachOn') + ')(); })')(settings);
+  const coachOn = (settings, PZ) => (0, eval)('(function(settings,PZ){ return (' + grabFn('coachOn') + ')(); })')(settings, !!PZ);
   eq(coachOn({}), true); eq(coachOn({ coachMode: true }), true); eq(coachOn({ coachMode: false }), false);
+  eq(coachOn({ coachMode: false }, true), true, 'the Pulse view always shows the coach and game layers');
 });
 t('every coaching surface checks the switch; sync and backups carry it', () => {
   for (const fn of ['renderCoach', 'habitsSectionHtml', 'processSectionHtml', 'lastWeekFocusHtml', 'loadCoachLetter', 'findingCardHtml'])

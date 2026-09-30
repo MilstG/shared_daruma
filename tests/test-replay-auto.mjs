@@ -97,7 +97,7 @@ t('benchmark never breaks the diagnostic', () =>
 console.log('\nAuto-refresh + automatic ratchet (#6)');
 t('loadAll guarded against overlap and triggers the ratchet', () => {
   ok(html.includes('if(_loading)return; _loading=true; try{'));
-  ok(html.includes('} finally { _loading=false; }\n  autoRatchet();'));
+  ok(html.includes('} finally { _loading=false; if(PZ)pzRender(); }\n  autoRatchet();'));
 });
 t('auto-ratchet: recent unmeasured closed trades only, silent, budget-safe', () => {
   ok(html.includes('t.closeTime>now-21*86400e3&&!have[t.id]'));

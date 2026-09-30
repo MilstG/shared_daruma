@@ -568,9 +568,201 @@ tr.trow:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
 .calc-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0;font-size:12px;color:var(--muted);font-family:var(--prose)}
 .calc-row input{width:96px}
 .calc-out{font-family:var(--mono);font-weight:600;color:var(--text)}
+/* ============================ Pulse view (/pulse) ============================ */
+/* The full app squares every corner with *{border-radius:0!important}; Pulse's rounded shapes need !important to win. */
+#pz{display:none}
+body.pz-mode{background:#0A0C0F}
+body.pz-mode #pz{display:block}
+body.pz-mode .wrap,body.pz-mode #appfoot{display:none!important}
+#pz{--pz-bg:#0A0C0F;--pz-card:#14171C;--pz-line:#1F242B;--pz-line2:#2C333C;--pz-track:#232830;--pz-text:#F3F5F7;--pz-muted:#A1AAB5;--pz-soft:#D5DBE1;
+  --pz-good:#3FE0A0;--pz-mid:#F4C04E;--pz-low:#FF7A59;--pz-risk:#5AA9FF;--pz-xp:#B69CFF;--pz-streak:#FFB25A;--pz-num:'Barlow Condensed',sans-serif;
+  min-height:100vh;background:var(--pz-bg);color:var(--pz-text);font-family:Inter,system-ui,sans-serif;font-size:14px;line-height:1.45;font-variant-numeric:normal;-webkit-tap-highlight-color:transparent}
+#pz *{box-sizing:border-box}
+#pz a{color:var(--pz-good)}
+#pz button{font-family:inherit}
+#pz :focus-visible{outline:2px solid var(--pz-risk);outline-offset:2px}
+.pz-main{max-width:560px;margin:0 auto;padding:calc(14px + env(safe-area-inset-top)) 16px calc(96px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px}
+.pz-head{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:52px}
+.pz-kick{display:block;font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--pz-muted)}
+.pz-h1{margin:0;text-transform:none;font-family:var(--pz-num);font-size:34px;font-weight:600;line-height:1;letter-spacing:.01em}
+.pz-chips{display:flex;gap:8px;align-items:center}
+.pz-chip{display:inline-flex;align-items:center;gap:6px;height:44px;padding:0 14px;border-radius:22px!important;text-decoration:none;font-family:var(--pz-num);font-size:20px;font-weight:600;border:1px solid var(--pz-line);background:var(--pz-card);color:var(--pz-text);cursor:pointer}
+#pz a.pz-chip.streak{background:#1A1510;border-color:#3A2C18;color:var(--pz-streak)}
+#pz a.pz-chip.lvl{width:44px;padding:0;justify-content:center;border:2px solid var(--pz-xp);color:var(--pz-text)}
+.pz-chip.icon{width:44px;padding:0;justify-content:center;color:var(--pz-muted)}
+.pz-back{display:inline-flex;align-items:center;gap:2px;min-height:44px;font-size:14px;font-weight:600;text-decoration:none}
+#pz a.pz-back{color:var(--pz-muted)}
+.pz-card{background:var(--pz-card);border:1px solid var(--pz-line);border-radius:22px!important;padding:16px}
+.pz-lbl{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.pz-sub{margin:0;color:var(--pz-muted);font-size:14px;line-height:1.45}
+.pz-big{font-size:19px;font-weight:700;line-height:1.25}
+.pz-rings{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.pz-ringbtn{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 4px;border-radius:22px!important;border:1px solid transparent;background:none;color:var(--pz-text);cursor:pointer}
+.pz-ringbtn[aria-pressed="true"]{background:var(--pz-card);border-color:var(--pz-line2)}
+.pz-ringbtn .pz-rl{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--pz-muted)}
+.pz-ringbtn[aria-pressed="true"] .pz-rl{color:var(--pz-text)}
+.pz-ring{position:relative;display:block;width:var(--sz,96px);height:var(--sz,96px);flex-shrink:0}
+.pz-ring svg{display:block;width:100%;height:100%}
+.pz-ring .pz-track{fill:none;stroke:var(--pz-track);stroke-width:10}
+.pz-ring .pz-arc{fill:none;stroke-width:10;stroke-linecap:round;transition:stroke-dasharray .5s ease}
+.pz-rv{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--pz-num);font-size:calc(var(--sz,96px)*.37);font-weight:600;line-height:.95}
+.pz-rv small{font-family:Inter,system-ui,sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--pz-muted);margin-top:4px}
+.pz-detail{display:flex;flex-direction:column;gap:12px}
+.pz-dh{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.pz-link{display:inline-flex;align-items:center;gap:3px;min-height:36px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap}
+#pz a.pz-link{color:var(--pz-soft)}
+.pz-row{display:flex;flex-direction:column;gap:6px}
+.pz-row-t{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.pz-row-t span:first-child{color:var(--pz-soft)}
+.pz-row-t b{font-weight:700;white-space:nowrap}
+.pz-bar{height:6px;border-radius:3px!important;background:var(--pz-track);overflow:hidden}
+.pz-bar i{display:block;height:100%;border-radius:3px!important}
+.pz-cardlink{display:flex;align-items:center;gap:14px;text-decoration:none;color:var(--pz-text)}
+#pz a.pz-cardlink{color:var(--pz-text)}
+.pz-ico{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:44px;height:44px;border-radius:14px!important}
+.pz-coach{display:flex;gap:12px;background:#10201A;border-color:#1D3A2E}
+.pz-coach p{margin:0;color:#DDF7EC;font-size:14px;line-height:1.5}
+.pz-coach .pz-ico{width:32px;height:32px;border-radius:16px!important;background:#173A2C;color:var(--pz-good)}
+.pz-next{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:50px;padding:0 16px;border-radius:16px!important;background:#2B2413;border:1px solid #4A3C18;text-decoration:none;font-size:14px;font-weight:600}
+#pz a.pz-next{color:#F9DC8E}
+.pz-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.pz-grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.pz-tile{display:flex;flex-direction:column;gap:4px;padding:12px;border-radius:18px!important;border:1px solid var(--pz-line);background:var(--pz-card);min-width:0}
+.pz-tile .pz-n{font-family:var(--pz-num);font-size:28px;font-weight:600;line-height:1.05;overflow-wrap:anywhere}
+.pz-tile .pz-t{font-size:12px;color:var(--pz-soft)}
+.pz-tile.good{background:#10201A;border-color:#1D3A2E}
+.pz-tile.warm{background:#1A1510;border-color:#3A2C18}
+.pz-tile.cool{background:#101A24;border-color:#1C3247}
+.pz-tile.hot{background:#24160F;border-color:#45281A}
+.pz-parts{padding:4px 16px}
+.pz-part{display:flex;align-items:center;gap:12px;min-height:50px;border-bottom:1px solid var(--pz-line)}
+.pz-part:last-child{border-bottom:none}
+.pz-part .pz-pc{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:26px;height:26px;border-radius:13px!important}
+.pz-part .pz-pc.full{background:#173A2C;color:var(--pz-good)}
+.pz-part .pz-pc.part{background:#3A3016;color:var(--pz-mid)}
+.pz-part .pz-pc.miss{background:#3A1E16;color:var(--pz-low)}
+.pz-part .pz-pt{flex:1;display:flex;flex-direction:column;min-width:0}
+.pz-part .pz-pt b{font-size:14px;font-weight:600}
+.pz-part .pz-pt span{font-size:12px;color:var(--pz-muted)}
+.pz-part .pz-pp{font-family:var(--pz-num);font-size:20px;font-weight:600}
+.pz-chart{position:relative;display:flex;align-items:flex-end;gap:var(--gap,6px);height:var(--h,96px)}
+.pz-chart i{flex:1;min-width:2px;border-radius:3px!important}
+.pz-chart .pz-thr{position:absolute;left:0;right:0;border-top:1px dashed #4A535E;pointer-events:none}
+.pz-legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--pz-muted)}
+.pz-legend span{display:inline-flex;align-items:center;gap:6px}
+.pz-legend i{width:10px;height:10px;border-radius:3px!important}
+.pz-seg{display:flex;gap:4px;padding:4px;border-radius:16px!important;background:var(--pz-card);border:1px solid var(--pz-line)}
+.pz-seg button{min-width:52px;height:40px;border:0;border-radius:12px!important;background:none;color:var(--pz-muted);font-size:13px;font-weight:700;cursor:pointer}
+.pz-seg button[aria-pressed="true"]{background:var(--pz-text);color:var(--pz-bg)}
+.pz-ins{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--pz-line)}
+.pz-ins:last-child{border-bottom:none}
+.pz-tag{flex-shrink:0;margin-top:2px;padding:2px 8px;border-radius:8px!important;font-size:11px;font-weight:700;letter-spacing:.04em}
+.pz-tag.leak,.pz-tag.caution{background:#3A1E16;color:#FFB39E}
+.pz-tag.edge,.pz-tag.win{background:#173A2C;color:#9DF2CB}
+.pz-tag.info{background:#1B2330;color:#B9CBE2}
+.pz-ins b{display:block;font-size:14px;font-weight:600;margin-bottom:2px}
+.pz-ins span{font-size:13px;color:var(--pz-muted)}
+.pz-q{font-size:15px;font-weight:700;margin:0 0 8px}
+.pz-pills{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.pz-pill{height:46px;border-radius:14px!important;border:1px solid var(--pz-line2);background:var(--pz-card);color:var(--pz-soft);font-family:var(--pz-num);font-size:22px;font-weight:600;cursor:pointer}
+.pz-pill[aria-checked="true"]{background:var(--pz-good);border-color:var(--pz-good);color:#07140E}
+.pz-ends{display:flex;justify-content:space-between;font-size:12px;color:var(--pz-muted);margin-top:6px}
+.pz-step{display:flex;align-items:center;gap:6px}
+.pz-step button{width:44px;height:44px;border-radius:14px!important;border:1px solid var(--pz-line2);background:#1B1F25;color:var(--pz-text);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.pz-step output{min-width:36px;text-align:center;font-family:var(--pz-num);font-size:28px;font-weight:600}
+.pz-field{display:flex;flex-direction:column;gap:8px}
+.pz-field label{font-size:15px;font-weight:700}
+#pz input[type=text],#pz input[type=number],#pz input[type=password],#pz textarea{width:100%;font-family:Inter,system-ui,sans-serif;font-size:16px;line-height:1.4;padding:12px 14px;border-radius:14px!important;border:1px solid var(--pz-line2);background:var(--pz-card);color:var(--pz-text);outline:none}
+#pz textarea{resize:vertical;min-height:64px}
+#pz input::placeholder,#pz textarea::placeholder{color:#8B95A1}
+#pz input:focus,#pz textarea:focus{border-color:var(--pz-risk)}
+.pz-cta{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:56px;border-radius:28px!important;border:0;background:var(--pz-good);color:#07140E;font-size:16px;font-weight:700;cursor:pointer;text-decoration:none}
+.pz-cta:disabled{opacity:.6;cursor:default}
+.pz-cta .pz-xpb{padding:3px 10px;border-radius:12px!important;background:#0B2A1D;color:#8DF0C6;font-size:12px;font-weight:700}
+.pz-ghost{display:flex;align-items:center;justify-content:center;width:100%;min-height:50px;border-radius:25px!important;border:1px solid var(--pz-line2);background:none;color:var(--pz-text);font-size:15px;font-weight:600;cursor:pointer;text-decoration:none}
+.pz-sm{min-height:40px;width:auto;padding:0 16px;font-size:13px}
+.pz-badges{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.pz-badge{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 2px 8px;border-radius:16px!important;border:1px solid var(--pz-line);background:var(--pz-card);color:#8B95A1;cursor:pointer;min-width:0}
+.pz-badge.on{color:#D9CCFF}
+.pz-badge[aria-pressed="true"]{border-color:var(--pz-xp);background:#1B1F25}
+.pz-badge .pz-bc{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:20px!important;background:#1B1F25}
+.pz-badge.on .pz-bc{background:#2A2340}
+.pz-badge .pz-bt{font-size:11px;font-weight:600;line-height:1.2;text-align:center;overflow-wrap:anywhere}
+.pz-badge .pz-bp{font-size:10px;color:#8B95A1}
+.pz-dots{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.pz-dots span{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--pz-muted)}
+.pz-dots i{display:block;width:100%;height:8px;border-radius:4px!important;background:var(--pz-line2)}
+.pz-dots i.k{background:var(--pz-xp)}
+.pz-dots i.m{background:var(--pz-low)}
+.pz-xpbar{height:8px;border-radius:4px!important;background:var(--pz-track);overflow:hidden}
+.pz-xpbar i{display:block;height:100%;background:var(--pz-xp);border-radius:4px!important}
+.pz-trade{display:flex;flex-direction:column;gap:10px}
+.pz-trade-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.pz-trade-h b{font-size:16px}
+.pz-stars{display:flex;gap:6px}
+.pz-stars button{width:44px;height:44px;border-radius:14px!important;border:1px solid var(--pz-line2);background:#1B1F25;color:var(--pz-muted);font-family:var(--pz-num);font-size:20px;font-weight:600;cursor:pointer}
+.pz-stars button[aria-checked="true"]{background:var(--pz-xp);border-color:var(--pz-xp);color:#140E24}
+.pz-nav{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;height:calc(66px + env(safe-area-inset-bottom));padding:6px 6px env(safe-area-inset-bottom);background:rgba(15,18,22,.96);border-top:1px solid var(--pz-line);backdrop-filter:blur(8px)}
+.pz-nav a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-decoration:none;font-size:11px;font-weight:600}
+#pz .pz-nav a{color:var(--pz-muted)}
+#pz .pz-nav a[aria-current="page"]{color:var(--pz-good)}
+.pz-brand{display:none}
+.pz-navfoot{display:none}
+.pz-connect{max-width:440px;margin:0 auto;min-height:100vh;padding:calc(40px + env(safe-area-inset-top)) 20px 40px;display:flex;flex-direction:column;gap:16px;justify-content:center}
+.pz-connect h1{margin:0;font-family:var(--pz-num);font-size:44px;font-weight:600;line-height:1}
+.pz-fine{margin:0;font-size:13px;line-height:1.5;color:var(--pz-muted)}
+.pz-err{color:#FFB39E}
+.pz-note{position:fixed;left:50%;bottom:calc(78px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:60;max-width:min(92vw,520px);padding:10px 16px;border-radius:14px!important;background:#1B1F25;border:1px solid var(--pz-line2);color:var(--pz-soft);font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+.pz-note.err{border-color:#6A2E20;color:#FFB39E}
+.pz-note:empty{display:none}
+.pz-spin{display:inline-block;width:10px;height:10px;margin-right:8px;border-radius:50%!important;border:2px solid var(--pz-good);border-right-color:transparent;animation:pzspin .8s linear infinite;vertical-align:-1px}
+@keyframes pzspin{to{transform:rotate(360deg)}}
+.pz-sheet-bg{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center}
+.pz-sheet{width:100%;max-width:520px;max-height:88vh;overflow:auto;background:#101318;border:1px solid var(--pz-line);border-radius:24px 24px 0 0!important;padding:18px 18px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px}
+.pz-wl{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:48px;border-bottom:1px solid var(--pz-line)}
+.pz-wl code{font-size:13px;color:var(--pz-soft)}
+.pz-warn{padding:12px 14px;border-radius:14px!important;background:#2B2413;border:1px solid #4A3C18;color:#F9DC8E;font-size:13px;line-height:1.45}
+#pz #gmOut .diag-card{background:var(--pz-card);border:1px solid var(--pz-line);border-radius:18px!important;padding:14px}
+#pz #gmOut .gm-img{max-width:100%;border-radius:12px!important}
+#pz #gmOut .gm-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+#pz #gmOut .btn{min-height:40px;padding:0 14px;border-radius:20px!important;border:1px solid var(--pz-line2);background:none;color:var(--pz-text);font-size:13px;cursor:pointer}
+#pz #gmOut pre{display:none}
+@media (min-width:900px){
+  .pz-nav{top:0;right:auto;bottom:0;width:232px;height:auto;flex-direction:column;justify-content:flex-start;gap:4px;padding:28px 14px;border-top:0;border-right:1px solid var(--pz-line);background:#0D1014}
+  .pz-nav a{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;min-height:48px;padding:0 14px;border-radius:14px!important;font-size:15px}
+  #pz .pz-nav a[aria-current="page"]{background:var(--pz-card)}
+  .pz-brand{display:flex;align-items:center;gap:10px;padding:0 14px 22px;font-family:var(--pz-num);font-size:28px;font-weight:600}
+  .pz-navfoot{display:block;margin-top:auto;padding:0 14px}
+  #pz .pz-navfoot a{min-height:0;padding:0;font-size:13px;color:var(--pz-muted)}
+  .pz-main{max-width:1120px;margin:0 0 0 232px;padding:32px 40px 48px}
+  .pz-wide{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;align-items:start}
+  .pz-wide>.pz-span{grid-column:1/-1}
+  .pz-col{display:flex;flex-direction:column;gap:14px}
+  .pz-rings{gap:16px}
+  .pz-ringbtn{--sz:132px;padding:18px 8px}
+  .pz-badges{grid-template-columns:repeat(7,minmax(0,1fr))}
+  .pz-sheet-bg{align-items:center}
+  .pz-sheet{border-radius:24px!important}
+  .pz-note{bottom:24px;left:calc(50% + 116px)}
+}
+@media (max-width:899px){ .pz-wide,.pz-col{display:flex;flex-direction:column;gap:14px} }
+@media (max-width:360px){ .pz-ringbtn{--sz:84px} .pz-grid3{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (prefers-reduced-motion:reduce){ .pz-ring .pz-arc{transition:none} .pz-spin{animation:none} }
 </style>
 </head>
 <body>
+<script>/* Pulse view: /pulse (or ?pulse when opened from disk) switches to the simple dial view before
+   first paint, and points the install metadata at Pulse so "Add to Home Screen" installs Pulse. */
+(function(){ try{
+  if(!(/\/pulse\/?$/.test(location.pathname)||/[?&]pulse(?:[=&]|$)/.test(location.search)))return;
+  document.body.classList.add('pz-mode'); document.title='Pulse — Ledger';
+  var m=function(n,v){ var el=document.querySelector('meta[name="'+n+'"]'); if(el)el.setAttribute('content',v); };
+  m('theme-color','#0A0C0F'); m('apple-mobile-web-app-title','Pulse');
+  var ic=document.querySelector('link[rel="apple-touch-icon"]'); if(ic)ic.setAttribute('href',"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20180%20180'%3E%3Crect%20width='180'%20height='180'%20rx='38'%20fill='%230A0C0F'/%3E%3Ccircle%20cx='90'%20cy='90'%20r='52'%20fill='none'%20stroke='%23232830'%20stroke-width='18'/%3E%3Cpath%20d='M90%2038a52%2052%200%201%201-49.5%2036'%20fill='none'%20stroke='%233FE0A0'%20stroke-width='18'%20stroke-linecap='round'/%3E%3C/svg%3E");
+  if(/^https?:$/.test(location.protocol)){ var l=document.querySelector('link[rel="manifest"]'); if(l)l.setAttribute('href','/pulse.webmanifest'); }
+}catch(e){} })();
+</script>
+<div id="pz"><div id="pzView"></div><div id="pzSheet"></div><div id="pzNote" class="pz-note" role="status" aria-live="polite"></div></div>
 <div class="wrap">
   <header>
     <div class="brand"><h1>Ledger</h1><span class="tick">HL&nbsp;·&nbsp;terminal</span></div>
@@ -782,6 +974,7 @@ tr.trow:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
 
 <footer id="appfoot" class="appfoot hide">
   <span class="af-name">Ledger</span>
+  <a href="pulse" data-tip="The simple, gamified view: readiness, discipline and risk dials. Installable on its own and shareable — each visitor adds their own wallet.">Pulse view</a>
   <a href="help" target="_blank" rel="noopener">User guide</a>
   <a href="docs" target="_blank" rel="noopener">Technical docs</a>
   <a href="api/v1" target="_blank" rel="noopener">API</a>
@@ -805,6 +998,8 @@ tr.trow:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
 </div>
 
 <script>
+// Pulse view (/pulse) — set by the small script at the top of <body>; see section 11.
+const PZ=document.body.classList.contains('pz-mode');
 /* NOTE for editors: server.js and the test suites extract functions from this file by
    brace-matching from a top-level `function NAME(` header (single source of truth — no
    second copy of the math). Two constraints follow: functions on the extraction lists
@@ -960,7 +1155,8 @@ function syncFailed(msg){
   renderDatafile('error');
   clearTimeout(_srvTimer); _srvTimer=setTimeout(writeServer,SRV.retryMs);
 }
-function scheduleServerWrite(){ if(!SRV.enabled||_applying)return; clearTimeout(_srvTimer); _srvTimer=setTimeout(writeServer,800); }
+// No token (a visitor, or the owner before signing in): edits stay in this browser, never sent to be refused.
+function scheduleServerWrite(){ if(!SRV.enabled||_applying)return; if(SRV.needsAuth&&!SRV.token)return; clearTimeout(_srvTimer); _srvTimer=setTimeout(writeServer,800); }
 function srvFetch(p,o){ o=o||{}; o.headers=Object.assign({},o.headers);
   if(SRV.token)o.headers['Authorization']='Bearer '+SRV.token; return fetch(p,o); }
 async function writeServer(){
@@ -1508,8 +1704,9 @@ function setStatus(m,busy){ const s=$('status'); s.className='';
   // which arrive from imported backups and the exchange — identifiers, never markup.
   s.textContent=m;
   if(busy){ const d=document.createElement('span'); d.className='dot'; s.prepend(d); }
-  clearTimeout(_stTimer); if(!busy&&m) _stTimer=setTimeout(()=>{ if(s.className==='')s.textContent=''; },8000); }
-function setErr(m){ const s=$('status'); s.className='err'; s.textContent=m; }
+  clearTimeout(_stTimer); if(!busy&&m) _stTimer=setTimeout(()=>{ if(s.className==='')s.textContent=''; },8000);
+  if(PZ)pzNote(m,busy?'busy':''); }
+function setErr(m){ const s=$('status'); s.className='err'; s.textContent=m; if(PZ)pzNote(m,'err'); }
 // One download path for every export. The object URL is revoked after a grace period —
 // before this, every export leaked its blob for the life of the tab.
 function dlBlob(blob,name){ const a=document.createElement('a'); const u=URL.createObjectURL(blob);
@@ -5170,6 +5367,10 @@ function restoreDrafts(list){
   });
 }
 function render(){
+  if(PZ){ // Pulse draws only its own view; the hidden full dashboard isn't rebuilt
+    _be=(settings.beThreshold!=null?settings.beThreshold:50); _oneR=computeOneR(periodTrades());
+    try{ renderTripwire(); }catch(e){} // still arms the loss-limit notification
+    pzRender(); return; }
   const _drafts=captureDrafts();
   try{ renderInner(); } finally { restoreDrafts(_drafts); }
 }
@@ -5430,7 +5631,7 @@ const CHECKIN_FIELDS=[['sleep','Sleep'],['stress','Stress'],['focus','Focus']];
 // existed for the day — so the process score can tell "planned before the first trade"
 // from "wrote it up afterwards". Pure; null = nothing left worth keeping.
 function nextDayEntry(prev,e,now){
-  const has=['bias','plan','review','maxLoss','adherence','sleep','stress','focus'].some(k=>e[k]);
+  const has=['bias','plan','review','maxLoss','maxTrades','adherence','sleep','stress','focus'].some(k=>e[k]);
   if(!has)return null;
   const planned=!!(e.bias||e.plan||e.maxLoss>0);
   const out={...e,updatedAt:now};
@@ -5447,10 +5648,11 @@ function wireDayJournal(){
   b.onclick=()=>{
     const k=_dayJEditKey||dayJKey(Date.now());
     const num=parseFloat($('djMaxLoss').value);
+    const prevE=journal[k]||{};
     const e={bias:$('djBias').value.trim(), plan:$('djPlan').value.trim(),
       maxLoss:num>0?num:null, review:$('djReview').value.trim(),
-      adherence:$('djAdh').checked||null};
-    const prevE=journal[k]||{};
+      adherence:$('djAdh').checked||null,
+      maxTrades:prevE.maxTrades||null}; // Pulse's trade cap for the day — not edited here, so kept
     for(const [f] of CHECKIN_FIELDS){ const el=$('djCk_'+f);
       if(!el){ e[f]=prevE[f]||null; continue; } // check-in hidden (coach mode off): keep what's stored
       const v=parseInt(el.dataset.v); e[f]=v>=1&&v<=5?v:null; }
@@ -5747,7 +5949,7 @@ async function loadAll(opts){ opts=opts||{}; const fresh=!!opts.fresh, auto=!!op
     else setErr('Couldn\u2019t reach Hyperliquid from the browser ('+e.message+'). Use “Paste data” instead.'); }
   finally{ $('loadAll').disabled=false; }
 
-  } finally { _loading=false; }
+  } finally { _loading=false; if(PZ)pzRender(); }
   autoRatchet();
 }
 /* ============================ generic CSV fill import ============================ */
@@ -5965,7 +6167,7 @@ $('rangeBtn').addEventListener('click',()=>{ const f=$('rangeFields'); f.classLi
 
 $('themeBtn').addEventListener('click',async ()=>{ applyTheme(settings.theme==='bb'?'ink':'bb'); await Store.set(S_KEY,settings); if(allTrades.length)render(); });
 // Coach mode (default on) gates the coaching layer only; the data under it is never touched.
-function coachOn(){ return settings.coachMode!==false; }
+function coachOn(){ return PZ||settings.coachMode!==false; } // Pulse always shows the coach + game layers
 function syncCoachMode(){
   const on=coachOn(); document.body.classList.toggle('coach-off',!on);
   const b=$('coachSwitch'); if(b)b.setAttribute('aria-checked',on?'true':'false');
@@ -8480,6 +8682,499 @@ async function showReportCard(){
   catch(e){ setErr('Report card failed: '+e.message); }
 }
 
+/* ======================= 11 · PULSE: the simple, gamified view at /pulse ======================= */
+// Same data and the same scores as the full app, with fewer knobs: three dials (readiness,
+// discipline, risk used), one next step, and the progress layer. It renders into #pz when the
+// page is opened at /pulse (or with ?pulse from disk); the full app stays in the DOM, hidden, so
+// every loader, cache and sync path is shared. Pulse always shows the coach and game layers,
+// whatever the full app's coach-mode switch says (coachOn() is true in Pulse).
+const PZ_C=2*Math.PI*52;
+const PZ_COL={good:'#3FE0A0',mid:'#F4C04E',low:'#FF7A59',none:'#2C333C',risk:'#5AA9FF',xp:'#B69CFF'};
+const pzBand=v=>v==null?'none':v>=70?'good':v>=40?'mid':'low';
+const PZ_PART={plan:'Plan before the first trade',rules:'Rules kept',planned:'Stops written while open',stops:'Stops honored',limit:'Under the loss limit',journal:'Trades journaled'};
+
+// Readiness 0–100 from the session check-in (1–5 scales; stress counts inverted, as calm).
+// Weighted sleep .4 · calm .2 · focus .4 over whichever answers were given; null with none.
+function pzReadiness(e){
+  if(!e)return null;
+  let w=0, s=0;
+  for(const [k,wt,f] of [['sleep',0.4,v=>v],['stress',0.2,v=>6-v],['focus',0.4,v=>v]]){
+    const v=+e[k]; if(v>=1&&v<=5){ w+=wt; s+=wt*f(v)/5; } }
+  return w?Math.round(100*s/w):null;
+}
+// A day's process score from its parts — the same weighting processDays uses.
+function pzScoreOf(parts){
+  let sw=0, sv=0; for(const p in parts){ if(parts[p]==null||!PROCESS_W[p])continue; sw+=PROCESS_W[p]; sv+=PROCESS_W[p]*parts[p]; }
+  return sw?Math.round(100*sv/sw):null;
+}
+// How much of today's risk budget is used: trades opened today vs the cap, realized loss vs the
+// limit (today's check-in numbers beat the standing rules). used = the larger share (0–1, can
+// pass 1); null when neither a cap nor a limit is set. sizeX = median size of today's entries
+// vs the median of the 60 entries before today.
+function pzRisk(trades, dayE, rules, todayK, dayOf){
+  const opened=trades.filter(t=>t.openTime&&dayOf(t.openTime)===todayK);
+  const closedT=trades.filter(t=>!t.isOpen&&t.closeTime&&dayOf(t.closeTime)===todayK);
+  const net=closedT.reduce((s,t)=>s+t.net,0), loss=Math.max(0,-net);
+  const cap=dayE&&dayE.maxTrades>0?+dayE.maxTrades:(+rules.maxPerDay||0);
+  const limit=dayE&&dayE.maxLoss>0?+dayE.maxLoss:(+rules.dailyLossLimit||0);
+  const shares=[]; if(cap>0)shares.push(opened.length/cap); if(limit>0)shares.push(loss/limit);
+  const size=t=>Math.abs((+t.maxSize||0)*(+t.avgEntry||0));
+  const prior=trades.filter(t=>t.openTime&&dayOf(t.openTime)<todayK).sort((a,b)=>b.openTime-a.openTime).slice(0,60).map(size).filter(x=>x>0);
+  const now=opened.map(size).filter(x=>x>0);
+  const sizeX=prior.length>=5&&now.length?nfMedian(now)/nfMedian(prior):null;
+  return {trades:opened.length, closed:closedT, cap, loss, net, limit, used:shares.length?Math.max(...shares):null, sizeX};
+}
+// Process vs results over the trading days from fromKey on: days at 70+ vs the rest, with the
+// average day's net and the trade win rate on those days.
+function pzTrendStats(days, byDay, fromKey){
+  const ds=days.filter(d=>d.key>=fromKey);
+  const grp=hi=>{ const g=ds.filter(d=>(d.score>=70)===hi), tr=[];
+    for(const d of g)for(const t of (byDay[d.key]||[]))tr.push(t);
+    const w=tr.filter(t=>isWin(t.net)).length, l=tr.filter(t=>isLoss(t.net)).length;
+    return {n:g.length, avgNet:g.length?_avg(g.map(d=>d.net)):null, winRate:w+l?w/(w+l):null}; };
+  return {days:ds, avg:ds.length?Math.round(_avg(ds.map(d=>d.score))):null, hi:grp(true), lo:grp(false)};
+}
+// Does how you feel show up in how you trade? Process on check-in days at readiness 70+ vs below.
+function pzReadinessLink(days, J){
+  const hi=[], lo=[];
+  for(const d of days){ const r=pzReadiness(J['day:'+d.key]); if(r!=null)(r>=70?hi:lo).push(d.score); }
+  return hi.length>=3&&lo.length>=3?{hi:Math.round(_avg(hi)),lo:Math.round(_avg(lo)),n:hi.length+lo.length}:null;
+}
+// Chart bars: one per trading day, or weekly averages when there are too many days to read.
+function pzBars(days){
+  if(days.length<=40)return {unit:'Daily score',bars:days.map(d=>({v:d.score,tip:dayLabel(d.key)+': '+d.score}))};
+  const by={}; for(const d of days){ const w=isoWeekOfKey(d.key); (by[w]=by[w]||[]).push(d.score); }
+  return {unit:'Weekly average',bars:Object.keys(by).sort().map(w=>{ const v=Math.round(_avg(by[w])); return {v,tip:w+': '+v}; })};
+}
+function pzHasPlan(e){ return !!(e&&(e.plan||e.bias||e.maxLoss>0)); }
+// The single thing that lifts today's score the most, in words, with where to do it.
+function pzNextStep(day, dayE, todayTrades, J){
+  if(!pzHasPlan(dayE)&&pzReadiness(dayE)==null)return {text:'Do the 30-second check-in and set today’s plan',href:'#checkin'};
+  if(day&&day.parts.journal!=null&&day.parts.journal<1){
+    const t=todayTrades.filter(x=>!isJournaled(J[x.id])).sort((a,b)=>b.closeTime-a.closeTime)[0];
+    if(t){ const done=Math.round(day.parts.journal*day.n);
+      const s2=pzScoreOf({...day.parts,journal:Math.min(1,(done+1)/day.n)});
+      return {text:`Journal your ${dispMarket(dcoin(t))} ${String(t.dir||'').toLowerCase()} → ${s2}`,href:'#journal'}; } }
+  if(!pzHasPlan(dayE))return {text:'Write today’s plan before your next trade',href:'#checkin'};
+  return null;
+}
+// One line from the coach, most urgent first: today's limit, a losing streak in progress, then
+// the biggest leak in the numbers.
+function pzCoachLine(risk, findings){
+  if(risk.limit>0&&risk.loss>=risk.limit)return 'You’ve hit today’s loss limit. The best trade now is no trade — close the app and come back tomorrow.';
+  const c=[...risk.closed].sort((a,b)=>a.closeTime-b.closeTime);
+  if(c.length>=2&&isLoss(c[c.length-1].net)&&isLoss(c[c.length-2].net))return 'Two losses in a row. This is where tilt starts — step away for fifteen minutes, or make the next one half size.';
+  if(c.length===1&&isLoss(c[0].net))return 'One loss so far. That’s part of the plan — keep the next trade the same size, not bigger.';
+  const f=(findings||[]).find(x=>x.tone==='leak'||x.tone==='caution')||(findings||[])[0];
+  return f?f.title+'. '+f.action:'Journal every trade and the coach will start spotting your patterns.';
+}
+
+// ---- UI state (never stored) ----
+const PZ_TABS=['today','trends','checkin','progress','discipline','journal'];
+var pzS={ring:'discipline',range:30,badge:null,ck:null,sheet:false,jr:{},note:null};
+function pzTab(){ const h=(location.hash||'').slice(1); return PZ_TABS.includes(h)?h:'today'; }
+const PZI={
+  today:'<circle cx="12" cy="12" r="9"/><path d="M12 12l4-3"/>',
+  trends:'<path d="M5 20V11M12 20V5M19 20v-6"/>',
+  checkin:'<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+  progress:'<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM17 6h3v1a3 3 0 0 1-3 3M7 6H4v1a3 3 0 0 0 3 3"/>',
+  flame:'<path d="M12 22c4 0 7-3 7-7 0-4-3-6-4-10-2 2-3 4-3 6-1-1-2-2-2-4-2 2-5 5-5 8 0 4 3 7 7 7z"/>',
+  shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/>',
+  saved:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
+  bolt:'<path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>',
+  chat:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+  back:'<path d="M15 18l-6-6 6-6"/>', chev:'<path d="M9 6l6 6-6 6"/>', arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+  check:'<path d="M5 12l5 5 9-10"/>', minus:'<path d="M6 12h12"/>', plus:'<path d="M12 6v12M6 12h12"/>',
+  x:'<path d="M6 6l12 12M18 6L6 18"/>', lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  medal:'<circle cx="12" cy="9" r="6"/><path d="M8.5 14L7 22l5-3 5 3-1.5-8"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  pen:'<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+};
+function pzI(n,sz,sw){ return `<svg width="${sz||20}" height="${sz||20}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw||2}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PZI[n]||''}</svg>`; }
+function pzRing(value, pct, color, opts){ opts=opts||{};
+  const d=Math.max(0,Math.min(1,pct||0))*PZ_C;
+  return `<span class="pz-ring"${opts.size?` style="--sz:${opts.size}px"`:''}><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="52" class="pz-track"/><circle cx="60" cy="60" r="52" class="pz-arc" stroke="${color}" stroke-dasharray="${d.toFixed(1)} ${PZ_C.toFixed(1)}" transform="rotate(-90 60 60)"/></svg><span class="pz-rv">${value}${opts.cap?`<small>${opts.cap}</small>`:''}</span></span>`;
+}
+const pzBar=(pct,color)=>`<div class="pz-bar"><i style="width:${Math.round(Math.max(0,Math.min(1,pct||0))*100)}%;background:${color}"></i></div>`;
+function pzRows(rows,color){ return rows.map(r=>`<div class="pz-row"><div class="pz-row-t"><span>${esc(r.label)}</span><b>${esc(r.value)}</b></div>${pzBar(r.pct,r.color||color)}</div>`).join(''); }
+function pzFullHref(){ return /^https?:$/.test(location.protocol)?'/':location.pathname; }
+
+// Everything the screens read, from the shared coach/game contexts (both memoized).
+function pzData(){
+  const g=gameContext(), ctx=g.ctx, now=Date.now(), todayK=dayKey(now);
+  const dayE=journal['day:'+todayK]||null;
+  const day=ctx.days.find(d=>d.key===todayK)||null;
+  const last=ctx.days.filter(d=>d.key<todayK).slice(-1)[0]||null;
+  const risk=pzRisk(ctx.trades,dayE,nfRules(),todayK,dayKey);
+  const inbox=journalInbox(ctx.trades,journal,now);
+  return {g,ctx,todayK,dayE,day,last,risk,ready:pzReadiness(dayE),inbox,todayTrades:ctx.byDay[todayK]||[]};
+}
+
+function pzNav(tab){
+  const cur=tab==='discipline'?'today':tab==='journal'?'today':tab;
+  const items=[['today','Today'],['trends','Trends'],['checkin','Check-in'],['progress','Progress']];
+  return `<nav class="pz-nav" aria-label="Pulse"><div class="pz-brand">${pzRing('',0.72,PZ_COL.good,{size:30})}Pulse</div>
+    ${items.map(([k,l])=>`<a href="#${k}"${k===cur?' aria-current="page"':''}>${pzI(k,22)}<span>${l}</span></a>`).join('')}
+    <div class="pz-navfoot"><a href="${esc(pzFullHref())}">Open the full journal →</a></div></nav>`;
+}
+function pzHead(kick,title,extra){
+  return `<header class="pz-head"><div><span class="pz-kick">${esc(kick)}</span><h1 class="pz-h1">${esc(title)}</h1></div>${extra||''}</header>`;
+}
+function pzChips(g){
+  return `<div class="pz-chips"><a class="pz-chip streak" href="#progress" aria-label="${g.streak.current}-day discipline streak">${pzI('flame',18)}<span>${g.streak.current}</span></a>
+    <a class="pz-chip lvl" href="#progress" aria-label="Level ${g.level.level}">${g.level.level}</a>
+    <button type="button" class="pz-chip icon" data-pz-sheet aria-label="Settings and wallets">${pzI('gear',20)}</button></div>`;
+}
+
+function pzTodayHtml(D){
+  const {g,day,last,risk,ready,dayE}=D;
+  const riskCol=risk.used==null?PZ_COL.none:risk.used>=1?PZ_COL.low:risk.used>=0.8?PZ_COL.mid:PZ_COL.risk;
+  const rings=[
+    {k:'readiness',label:'Readiness',v:ready,shown:ready==null?'—':ready,pct:(ready||0)/100,col:PZ_COL[pzBand(ready)]},
+    {k:'discipline',label:'Discipline',v:day?day.score:null,shown:day?day.score:'—',pct:day?day.score/100:0,col:PZ_COL[pzBand(day&&day.score)]},
+    {k:'risk',label:'Risk used',v:risk.used,shown:risk.used==null?'—':Math.round(risk.used*100)+'%',pct:risk.used||0,col:riskCol}];
+  const sel=pzS.ring;
+  const ringsHtml=`<div class="pz-rings pz-span" role="group" aria-label="Today’s scores">${rings.map(r=>`<button type="button" class="pz-ringbtn" data-pz-ring="${r.k}" aria-pressed="${r.k===sel}" aria-label="${r.label} ${r.shown}">${pzRing(r.shown,r.pct,r.col)}<span class="pz-rl">${r.label}</span></button>`).join('')}</div>`;
+  let det;
+  if(sel==='readiness'){
+    const col=PZ_COL[pzBand(ready)];
+    if(ready==null) det={lbl:'Readiness',col:PZ_COL.good,href:'#checkin',link:'Check in',head:'No check-in yet today',
+      sub:'Thirty seconds: how you slept, how calm you feel and how focused you are. It sets today’s readiness.',rows:[]};
+    else { const b=pzBand(ready);
+      det={lbl:'Readiness · '+ready,col,href:'#checkin',link:'Redo check-in',
+        head:b==='good'?'Ready to trade your plan':b==='mid'?'Steady, not sharp':'Running low',
+        sub:b==='good'?'You’re set up well. Normal size, same rules.':b==='mid'?'Start at half size until your first good setup works.':'A rest day or paper trades is a winning move today.',
+        rows:[['sleep','Sleep',v=>v],['stress','Calm',v=>6-v],['focus','Focus',v=>v]].filter(([k])=>+dayE[k]>=1).map(([k,l,f])=>({label:l,value:f(+dayE[k])+' / 5',pct:f(+dayE[k])/5}))}; }
+  } else if(sel==='risk'){
+    if(risk.used==null) det={lbl:'Risk used',col:PZ_COL.risk,href:'#checkin',link:'Set limits',head:'No limits set for today',
+      sub:'Set a trade cap and a daily loss limit in the check-in and this dial keeps count for you.',rows:[]};
+    else { const u=risk.used;
+      det={lbl:'Risk used · '+Math.round(u*100)+'%',col:riskCol,href:'#checkin',link:'Adjust limits',
+        head:u>=1?'Limit reached — you’re done for today':u>=0.8?'Nearly at your limit':u>=0.5?'Past halfway — only A+ setups':'Room to trade, carefully',
+        sub:`You’ve used ${Math.round(u*100)}% of today’s risk budget.`,
+        rows:[risk.cap>0?{label:'Trades',value:`${risk.trades} of ${risk.cap} cap`,pct:risk.trades/risk.cap}:null,
+          risk.limit>0?{label:'Loss so far',value:`${usdPlain(risk.loss)} of ${usdPlain(risk.limit)}`,pct:risk.loss/risk.limit}:null,
+          risk.sizeX!=null?{label:'Size vs your usual',value:risk.sizeX.toFixed(1)+'×',pct:risk.sizeX/2}:null].filter(Boolean)}; }
+  } else {
+    if(day){ const b=pzBand(day.score), ps=Object.keys(day.parts);
+      const kept=ps.filter(p=>day.parts[p]>=0.999).length;
+      det={lbl:'Discipline · '+day.score,col:PZ_COL[b],href:'#discipline',link:'Breakdown',
+        head:b==='good'?'On process':b==='mid'?'Partly on process':'Off process today',
+        sub:`${kept} of ${ps.length} habits fully kept today${day.n?` across ${day.n} closed trade${day.n===1?'':'s'}`:''}. Scored on what you control — not on profit.`,
+        rows:ps.sort((a,b2)=>PROCESS_W[b2]*(1-day.parts[b2])-PROCESS_W[a]*(1-day.parts[a])).slice(0,4)
+          .map(p=>({label:PZ_PART[p],value:Math.round(PROCESS_W[p]*day.parts[p])+' / '+PROCESS_W[p],pct:day.parts[p]}))}; }
+    else det={lbl:'Discipline',col:PZ_COL.good,href:'#discipline',link:'Breakdown',head:'No closed trades yet today',
+      sub:(last?`Your last trading day (${dayLabel(last.key)}) scored ${last.score}. `:'')+(pzHasPlan(dayE)?'Your plan is in — you’re set up for the full plan points.':'Write your plan before the first trade for the full plan points.'),rows:[]};
+  }
+  const detail=`<section class="pz-card pz-detail" aria-live="polite"><div class="pz-dh"><span class="pz-lbl" style="color:${det.col}">${esc(det.lbl)}</span><a class="pz-link" href="${det.href}">${esc(det.link)}${pzI('chev',16)}</a></div>
+    <div><div class="pz-big">${esc(det.head)}</div><p class="pz-sub" style="margin-top:4px">${esc(det.sub)}</p></div>${pzRows(det.rows,det.col)}</section>`;
+  const nx=pzNextStep(day,dayE,D.todayTrades,journal);
+  const next=nx?`<a class="pz-next" href="${nx.href}"><span>${esc(nx.text)}</span>${pzI('arrow',18)}</a>`:'';
+  const ch=g.current;
+  const chHtml=ch?(()=>{ const kept=ch.res.filter(r=>r.kept).length, n=ch.res.length;
+      return `<a class="pz-card pz-cardlink" href="#progress"><span class="pz-ico" style="background:#2A2340;color:${PZ_COL.xp}">${pzI('bolt',22)}</span>
+      <span style="flex:1;display:flex;flex-direction:column;gap:6px;min-width:0"><span style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><b style="font-size:15px">${esc(ch.ch.spec.then?ch.ch.spec.then.charAt(0).toUpperCase()+ch.ch.spec.then.slice(1):habitSentence(ch.ch.spec))}</b><span style="font-size:12px;font-weight:700;color:${PZ_COL.xp};white-space:nowrap">+150 XP</span></span>
+      ${pzBar(n?kept/Math.max(n,5):0,PZ_COL.xp)}<span style="font-size:12px;color:var(--pz-muted)">Weekly challenge · ${n?`${kept} of ${n} trading day${n===1?'':'s'} kept`:'starts with your next trading day'}${ch.status==='missed'?' · missed once':''}</span></span></a>`; })()
+    :`<div class="pz-card pz-cardlink"><span class="pz-ico" style="background:#2A2340;color:${PZ_COL.xp}">${pzI('bolt',22)}</span><span class="pz-sub">A weekly challenge is picked from your biggest leak once you have a few trades.</span></div>`;
+  const inboxN=D.inbox.length;
+  const inboxHtml=inboxN?`<a class="pz-card pz-cardlink" href="#journal"><span class="pz-ico" style="background:#1B2330;color:${PZ_COL.risk}">${pzI('pen',20)}</span><span style="flex:1"><b style="font-size:15px">${inboxN} trade${inboxN===1?'':'s'} to journal</b><br><span class="pz-sub" style="font-size:13px">A rating and one line each — it’s 20 of your 100 points.</span></span>${pzI('chev',18)}</a>`:'';
+  const coach=`<section class="pz-card pz-coach"><span class="pz-ico">${pzI('chat',18)}</span><p>${esc(pzCoachLine(risk,D.ctx.findings))}</p></section>`;
+  return `${pzHead(dayLabel(D.todayK).replace(', ',' · '),'Today',pzChips(g))}
+    <div class="pz-wide">${ringsHtml}<div class="pz-col">${detail}${next}</div><div class="pz-col">${chHtml}${inboxHtml}${coach}</div></div>`;
+}
+
+function pzDisciplineHtml(D){
+  const {g,day,last,dayE}=D, d=day||last;
+  const back=`<a class="pz-back" href="#today">${pzI('back',20)}Today</a>`;
+  if(!d)return `${back}${pzHead('Discipline','No trading days yet')}<p class="pz-sub">Your score appears after your first closed trade. It grades what you control: a plan, your rules, stops, the loss limit and journaling.</p>`;
+  const b=pzBand(d.score), isToday=d===day;
+  const notes={plan:v=>v>=1?'Written before your first entry':v>0?'Written after your first entry':'No plan today',
+    rules:v=>v>=1?'No rule broken':`${Math.round((1-v)*d.n)} of ${d.n} trades broke a rule`,
+    planned:v=>`${Math.round(v*d.n)} of ${d.n} trades had a stop written while open`,
+    stops:v=>v>=1?'Every planned stop honored':`${Math.round(v*100)}% of planned stops honored`,
+    limit:v=>v>=1?(d.breached?'Hit the limit and stopped there':'Stayed under your limit'):'Kept trading after the limit',
+    journal:v=>`${Math.round(v*d.n)} of ${d.n} trades journaled`};
+  const parts=Object.keys(PROCESS_W).filter(p=>d.parts[p]!=null).map(p=>{ const v=d.parts[p], full=v>=0.999;
+    return `<div class="pz-part"><span class="pz-pc ${full?'full':v>0?'part':'miss'}">${pzI(full?'check':v>0?'minus':'x',15,3)}</span>
+      <span class="pz-pt"><b>${esc(PZ_PART[p])}</b><span>${esc(notes[p](v))}</span></span><span class="pz-pp" style="color:${full?'var(--pz-text)':v>0?PZ_COL.mid:PZ_COL.low}">${Math.round(PROCESS_W[p]*v)}/${PROCESS_W[p]}</span></div>`; }).join('');
+  const recent=g.ctx.days.slice(-14);
+  const bars=recent.map(x=>`<i style="height:${Math.max(4,Math.round(x.score*0.96))}px;background:${PZ_COL[pzBand(x.score)]}" title="${esc(dayLabel(x.key))}: ${x.score}"></i>`).join('');
+  const nx=isToday?pzNextStep(day,dayE,D.todayTrades,journal):null;
+  return `${back}${pzHead(isToday?'Today':dayLabel(d.key),'Discipline')}
+  <div class="pz-wide">
+    <div class="pz-col"><section style="display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">${pzRing(d.score,d.score/100,PZ_COL[b],{size:188,cap:'Discipline'})}
+      <div class="pz-big">${b==='good'?'On process':b==='mid'?'Partly on process':'Off process'}${isToday?'':' — your last trading day'}</div>
+      <p class="pz-sub">Scored out of the habits that applied that day — never on profit.</p></section>
+      ${nx?`<a class="pz-next" href="${nx.href}"><span>${esc(nx.text)}</span>${pzI('arrow',18)}</a>`:''}</div>
+    <div class="pz-col"><section class="pz-card pz-parts" aria-label="What made the score">${parts}</section>
+      <section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><b style="font-size:15px">Last ${recent.length} trading days</b><span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--pz-streak)">${pzI('flame',16)}${g.streak.current}-day streak</span></div>
+        <div class="pz-chart" style="--h:96px;--gap:5px"><span class="pz-thr" style="bottom:${Math.round(70*0.96)}px"></span>${bars}</div>
+        <p class="pz-sub" style="font-size:12px">Dashed line is 70 — a good-process day. ${g.streak.shields?`You hold ${g.streak.shields} shield${g.streak.shields===1?'':'s'}: each one covers an off day without breaking the streak.`:'A perfect week (every trading day 70+) earns a shield that covers one off day.'}</p></section></div>
+  </div>`;
+}
+
+function pzTrendsHtml(D){
+  const {g}=D, ctx=g.ctx, R=pzS.range;
+  const fromKey=dayKey(Date.now()-(R-1)*86400000);
+  const st=pzTrendStats(ctx.days,ctx.byDay,fromKey), bc=pzBars(st.days);
+  const seg=`<div class="pz-seg" role="group" aria-label="Range">${[7,30,90].map(n=>`<button type="button" data-pz-range="${n}" aria-pressed="${n===R}">${n}D</button>`).join('')}</div>`;
+  const chart=st.days.length?`<div class="pz-chart" style="--h:110px;--gap:${bc.bars.length>20?'3px':'8px'}"><span class="pz-thr" style="bottom:${Math.round(70*1.1)}px"></span>${bc.bars.map(b=>`<i style="height:${Math.max(4,Math.round(b.v*1.1))}px;background:${PZ_COL[pzBand(b.v)]}" title="${esc(b.tip)}"></i>`).join('')}</div>`
+    :`<p class="pz-sub">No trading days in the last ${R} days.</p>`;
+  const money=v=>v==null?'—':signedPlain(v), pct=v=>v==null?'—':Math.round(v*100)+'%';
+  const tile=(cls,lbl,x)=>`<div class="pz-tile ${cls}"><span class="pz-lbl" style="font-size:11px">${lbl} · ${x.n} day${x.n===1?'':'s'}</span><span class="pz-n">${esc(money(x.avgNet))}</span><span class="pz-t">avg day · ${pct(x.winRate)} win rate</span></div>`;
+  const rl=pzReadinessLink(st.days,journal);
+  const F=(ctx.findings||[]).slice(0,3);
+  const ins=F.length?F.map(f=>`<div class="pz-ins"><span class="pz-tag ${esc(f.tone)}">${esc(TONE_TAG[f.tone]||'Note')}</span><span><b>${esc(f.title)}</b><span>${esc(f.action||f.body||'')}</span></span></div>`).join('')
+    :'<p class="pz-sub" style="padding:12px 0">Patterns show up here after about five closed trades.</p>';
+  return `${pzHead('Last '+R+' days','Trends',seg)}
+  <div class="pz-wide">
+    <section class="pz-card pz-span" style="display:flex;flex-direction:column;gap:12px"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px"><span><span class="pz-lbl" style="color:${PZ_COL.good}">Discipline</span><br><span class="pz-sub" style="font-size:13px">${bc.unit}</span></span><span style="display:flex;align-items:baseline;gap:6px"><span class="pz-sub" style="font-size:12px">avg</span><span style="font-family:var(--pz-num);font-size:40px;font-weight:600;line-height:1">${st.avg==null?'—':st.avg}</span></span></div>
+      ${chart}<div class="pz-legend"><span><i style="background:${PZ_COL.good}"></i>70+</span><span><i style="background:${PZ_COL.mid}"></i>40–69</span><span><i style="background:${PZ_COL.low}"></i>Under 40</span></div></section>
+    <div class="pz-col"><section style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Does process pay?</b><div class="pz-grid2">${tile('good','Days 70+',st.hi)}${tile('hot','Under 70',st.lo)}</div>
+      ${rl?`<div class="pz-tile cool"><span class="pz-t" style="font-size:13px;line-height:1.45">On days you checked in at readiness 70+, your discipline averaged <b>${rl.hi}</b>; on the other check-in days, <b>${rl.lo}</b>.</span></div>`:''}</section></div>
+    <div class="pz-col"><section class="pz-card" style="padding:6px 16px"><b style="display:block;font-size:15px;margin:10px 0 2px">What moves your score</b>${ins}</section></div>
+  </div>`;
+}
+
+function pzCheckinInit(D){
+  if(pzS.ck&&pzS.ck.key===D.todayK)return pzS.ck;
+  const e=D.dayE||{}, R=nfRules();
+  pzS.ck={key:D.todayK,sleep:+e.sleep||null,calm:+e.stress?6-e.stress:null,focus:+e.focus||null,
+    maxTrades:+e.maxTrades||+R.maxPerDay||null,maxLoss:e.maxLoss>0?e.maxLoss:'',plan:e.plan||''};
+  return pzS.ck;
+}
+function pzCkReady(ck){ return pzReadiness({sleep:ck.sleep,stress:ck.calm?6-ck.calm:null,focus:ck.focus}); }
+function pzCheckinHtml(D){
+  const ck=pzCheckinInit(D), r=pzCkReady(ck), b=pzBand(r);
+  const opened=D.risk.trades>0;
+  const Q=[['sleep','How did you sleep?','Badly','Great'],['calm','How calm do you feel?','Wired','Calm'],['focus','How focused are you?','Scattered','Locked in']];
+  const q=Q.map(([k,t,lo,hi])=>`<div role="radiogroup" aria-labelledby="pzq_${k}"><p class="pz-q" id="pzq_${k}">${t}</p><div class="pz-pills">${[1,2,3,4,5].map(n=>`<button type="button" role="radio" class="pz-pill" data-pz-ck="${k}" data-n="${n}" aria-checked="${ck[k]===n}" aria-label="${n} of 5">${n}</button>`).join('')}</div><div class="pz-ends"><span>${lo}</span><span>${hi}</span></div></div>`).join('');
+  return `<a class="pz-back" href="#today">${pzI('back',20)}Today</a>${pzHead(dayLabel(D.todayK),'Check-in')}
+  <p class="pz-sub" style="margin-top:-6px">Thirty seconds. It sets your readiness and today’s limits.</p>
+  <div class="pz-wide">
+    <div class="pz-col"><section class="pz-card" id="pzCkPrev" style="display:flex;align-items:center;gap:16px" aria-live="polite">${pzCkPrevHtml(r,b)}</section>${q}</div>
+    <div class="pz-col">
+      <section class="pz-card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 10px 10px 16px"><span><b style="font-size:15px">Trade cap today</b><br><span class="pz-sub" style="font-size:12px">The risk dial counts against it</span></span>
+        <span class="pz-step"><button type="button" data-pz-cap="-1" aria-label="One fewer trade">${pzI('minus',18,2.4)}</button><output id="pzCap" aria-live="polite">${ck.maxTrades||'—'}</output><button type="button" data-pz-cap="1" aria-label="One more trade">${pzI('plus',18,2.4)}</button></span></section>
+      <div class="pz-field"><label for="pzLoss">Stop for the day at a loss of ($)</label><input type="number" id="pzLoss" inputmode="decimal" min="0" step="any" value="${ck.maxLoss?esc(ck.maxLoss):''}" placeholder="${nfRules().dailyLossLimit>0?'standing limit '+usdPlain(nfRules().dailyLossLimit):'e.g. 400'}"></div>
+      <div class="pz-field"><label for="pzPlan">One-line plan</label><textarea id="pzPlan" rows="2" placeholder="Only A+ setups at the open. Stop after two losses.">${esc(ck.plan)}</textarea></div>
+      <button type="button" class="pz-cta" id="pzCkSave">Lock in my day${opened?'':' <span class="pz-xpb">+20 XP</span>'}</button>
+      <p class="pz-fine">${opened?'You’ve already traded today, so a plan now earns half the plan points — tomorrow, check in first.':'A plan or loss limit saved before your first trade earns the full 20 plan points.'}</p>
+    </div>
+  </div>`;
+}
+function pzCkPrevHtml(r,b){
+  const txt=r==null?'Tap how you slept, how calm you feel and how focused you are.':b==='good'?'You’re set up well. Normal size, same rules.':b==='mid'?'Start at half size until your first good setup works.':'Low tank. A rest day or paper trades is a winning move.';
+  return `${pzRing(r==null?'—':r,(r||0)/100,PZ_COL[b],{size:88})}<span style="display:flex;flex-direction:column;gap:4px"><span class="pz-lbl" style="color:${r==null?'var(--pz-muted)':PZ_COL[b]}">Readiness${r==null?'':' · '+(b==='good'?'Ready':b==='mid'?'Steady':'Low')}</span><span style="font-size:14px;line-height:1.4;color:var(--pz-soft)">${txt}</span></span>`;
+}
+async function pzSaveCheckin(){
+  const ck=pzS.ck; if(!ck)return;
+  const k='day:'+ck.key, prev=journal[k]||{};
+  const loss=parseFloat(ck.maxLoss);
+  const e={...prev, sleep:ck.sleep||null, stress:ck.calm?6-ck.calm:null, focus:ck.focus||null,
+    plan:String(ck.plan||'').trim(), maxLoss:loss>0?loss:null, maxTrades:ck.maxTrades>0?ck.maxTrades:null};
+  delete e.updatedAt; delete e.plannedAt;
+  const nx=nextDayEntry(prev,e,Date.now());
+  if(!nx)delete journal[k]; else journal[k]=nx;
+  markJEdit(k); await Store.set(J_KEY,journal);
+  if(e.maxLoss>0)askNotifyPerm();
+  renderTripwire();
+  pzNote('Locked in. Go trade your plan.');
+  if(location.hash!=='#today')location.hash='#today'; else pzRender();
+}
+
+function pzJournalHtml(D){
+  const list=D.inbox.slice(0,6);
+  const back=`<a class="pz-back" href="#today">${pzI('back',20)}Today</a>`;
+  if(!list.length)return `${back}${pzHead('Journal','All caught up')}<p class="pz-sub">Every trade from the last 30 days has a note, a setup or a rating. That’s the habit — keep it going.</p>`;
+  const card=t=>{ const r=pzS.jr[t.id]||0, q=tradeQuestion(t,journal[t.id],_excM[t.id]).q;
+    const p=tzParts(t.closeTime);
+    return `<section class="pz-card pz-trade" data-pz-trade="${esc(t.id)}"><div class="pz-trade-h"><b>${esc(dispMarket(dcoin(t)))} ${esc(String(t.dir||'').toLowerCase())}</b><span style="font-family:var(--pz-num);font-size:20px;font-weight:600;color:${isBE(t.net)?'var(--pz-soft)':t.net>=0?PZ_COL.good:PZ_COL.low}">${isBE(t.net)?'B/E':signedPlain(t.net)}</span></div>
+      <span class="pz-sub" style="font-size:12px">${esc(dayLabel(dayKey(t.closeTime)))} · ${String(p.h).padStart(2,'0')}:${String(p.min).padStart(2,'0')}</span>
+      <div role="radiogroup" aria-label="How well did you execute it, 1 to 5"><div class="pz-stars">${[1,2,3,4,5].map(n=>`<button type="button" role="radio" data-pz-rate="${n}" aria-checked="${r===n}" aria-label="${n} of 5">${n}</button>`).join('')}</div></div>
+      <input type="text" id="pzSetup_${esc(t.id)}" aria-label="Setup" placeholder="Setup (breakout, fade, retest…)" autocomplete="off">
+      <textarea id="pzNoteT_${esc(t.id)}" rows="2" aria-label="${esc(q)}" placeholder="${esc(q)}"></textarea>
+      <button type="button" class="pz-ghost" data-pz-jsave>Save</button></section>`; };
+  return `${back}${pzHead(D.inbox.length+' to journal','Journal')}<p class="pz-sub" style="margin-top:-6px">Rate how well you executed each trade, not how it paid. One line is enough.</p>
+    <div class="pz-wide"><div class="pz-col">${list.filter((_,i)=>i%2===0).map(card).join('')}</div><div class="pz-col">${list.filter((_,i)=>i%2===1).map(card).join('')}</div></div>`;
+}
+async function pzSaveJournal(sec){
+  const id=sec.dataset.pzTrade, rating=pzS.jr[id]||0;
+  const setup=(sec.querySelector('input[type=text]')||{value:''}).value.trim(), note=(sec.querySelector('textarea')||{value:''}).value.trim();
+  if(!rating&&!setup&&!note){ pzNote('Pick a rating or write a line first.','err'); return; }
+  const t=allTrades.find(x=>x.id===id)||{};
+  const j=ensureJ(id); if(setup)j.setup=setup; if(rating)j.rating=rating;
+  if(note){ const q=tradeQuestion(t,j,_excM[id]).q; j.notes=(j.notes?j.notes+'\n\n':'')+q+'\n'+note; }
+  delete pzS.jr[id]; markJEdit(id); await Store.set(J_KEY,journal);
+  pzNote('Saved.'); pzRender();
+}
+
+function pzProgressHtml(D){
+  const {g}=D, L=g.level;
+  const ch=g.current;
+  const chHtml=ch?`<section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span class="pz-lbl" style="color:${PZ_COL.xp}">This week’s challenge</span><span style="font-size:12px;font-weight:700;color:${PZ_COL.xp}">+150 XP</span></div>
+      <b style="font-size:16px">${esc(habitSentence(ch.ch.spec))}</b>
+      ${ch.res.length?`<div class="pz-dots">${ch.res.slice(-7).map(r=>`<span><i class="${r.kept?'k':'m'}"></i>${esc(DOWN[new Date(r.key+'T00:00:00Z').getUTCDay()])}</span>`).join('')}</div>`:'<p class="pz-sub">Starts with your next trading day.</p>'}
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span class="pz-sub" style="font-size:12px">Kept on every trading day this week = done.</span><button type="button" class="pz-ghost pz-sm" id="pzSwap">Pick another</button></div></section>`
+    :`<section class="pz-card"><p class="pz-sub">A challenge is picked from your biggest leak once you have a few trades.</p></section>`;
+  const A=g.achievements, on=A.filter(a=>a.at).length;
+  const selA=A.find(a=>a.id===pzS.badge)||null;
+  const badges=A.map(a=>`<button type="button" class="pz-badge${a.at?' on':''}" data-pz-badge="${esc(a.id)}" aria-pressed="${!!selA&&selA.id===a.id}" aria-label="${esc(a.title)}${a.at?', unlocked':', '+a.n+' of '+a.of}"><span class="pz-bc">${pzI(a.at?'medal':'lock',a.at?20:18)}</span><span class="pz-bt">${esc(a.title)}</span>${!a.at&&a.of>1?`<span class="pz-bp">${a.n}/${a.of}</span>`:''}</button>`).join('');
+  const aInfo=selA?`${selA.title} — ${selA.at?'unlocked '+dayLabel(selA.at)+'. ':'locked. '}${selA.desc}${!selA.at&&selA.of>1?` You’re at ${selA.n} of ${selA.of}.`:''}`:'Tap a badge to see what it takes.';
+  const saved=g.saved.total>0?usdPlain(g.saved.total):'—';
+  return `${pzHead('Earned by process','Progress',pzChips(g))}
+  <div class="pz-wide">
+    <section class="pz-card" style="display:flex;align-items:center;gap:16px">${pzRing(L.level,L.into/L.need,PZ_COL.xp,{size:88,cap:'Level'})}
+      <span style="flex:1;display:flex;flex-direction:column;gap:6px;min-width:0"><b style="font-size:18px">${esc(L.title)}</b><span class="pz-sub" style="font-size:13px">${L.xp.toLocaleString()} XP · ${(L.need-L.into).toLocaleString()} to level ${L.level+1}${g.weekXp?` · +${g.weekXp.toLocaleString()} this week`:''}</span>
+      <div class="pz-xpbar" role="progressbar" aria-label="XP to next level" aria-valuemin="0" aria-valuemax="${L.need}" aria-valuenow="${L.into}"><i style="width:${Math.round(100*L.into/L.need)}%"></i></div></span></section>
+    <div class="pz-grid3">
+      <div class="pz-tile warm"><span style="color:var(--pz-streak)">${pzI('flame',20)}</span><span class="pz-n">${g.streak.current} day${g.streak.current===1?'':'s'}</span><span class="pz-t">Streak · best ${g.streak.best}</span></div>
+      <div class="pz-tile cool"><span style="color:${PZ_COL.risk}">${pzI('shield',20)}</span><span class="pz-n">${g.streak.shields} shield${g.streak.shields===1?'':'s'}</span><span class="pz-t">Cover an off day</span></div>
+      <div class="pz-tile good"><span style="color:${PZ_COL.good}">${pzI('saved',20)}</span><span class="pz-n">${esc(saved)}</span><span class="pz-t" title="Estimated from your own trades: what your rules and avoid-habits kept you out of.">Kept by your rules</span></div>
+    </div>
+    <div class="pz-span">${chHtml}</div>
+    <section class="pz-span" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-size:15px">Badges</b><span class="pz-sub" style="font-size:13px">${on} of ${A.length}</span></div>
+      <div class="pz-badges">${badges}</div><p class="pz-card pz-sub" aria-live="polite" style="padding:12px 14px;font-size:13px">${esc(aInfo)}</p></section>
+    <section class="pz-span" style="display:flex;flex-wrap:wrap;gap:8px"><button type="button" class="pz-ghost pz-sm" id="pzShare">Share this week</button><button type="button" class="pz-ghost pz-sm" id="pzReport">Monthly report card</button></section>
+    <div class="pz-span" id="gmOut"></div>
+  </div>`;
+}
+
+// ---- first run, loading, empty ----
+function pzConnectHtml(){
+  const synced=SRV.enabled&&(!SRV.needsAuth||(SRV.token&&!SRV.badAuth));
+  const tokenAsk=SRV.enabled&&SRV.needsAuth&&(!SRV.token||SRV.badAuth);
+  const busy=_loading;
+  const err=pzS.note&&pzS.note.kind==='err'?pzS.note.m:'';
+  return `<div class="pz-connect">${pzRing('',0.72,PZ_COL.good,{size:64})}
+    <h1>Pulse</h1><p class="pz-sub" style="font-size:16px">Three dials for your trading day — readiness, discipline and risk — built from your own Hyperliquid trades.</p>
+    ${settings.wallets.length&&!busy?`<p class="pz-sub">No closed trades found yet for ${settings.wallets.map(w=>esc(labelFor(w))).join(', ')}. Add another address, or look around with sample data.</p>`:''}
+    <div class="pz-field"><label for="pzAddr">Your Hyperliquid wallet address</label><input type="text" id="pzAddr" placeholder="0x…" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+    ${err?`<p class="pz-fine pz-err" role="alert">${esc(err)}</p>`:''}
+    <button type="button" class="pz-cta" id="pzConnect"${busy?' disabled':''}>${busy?'<span class="pz-spin"></span>Loading your trades…':'Connect'}</button>
+    <button type="button" class="pz-ghost" id="pzDemo">Try it with sample data</button>
+    <p class="pz-fine">Read-only: you paste a public address — no wallet connection, no signing, no keys. Your trades come straight from Hyperliquid’s public API${synced?' and your journal syncs to this server.':' and your journal stays in this browser.'}</p>
+    ${tokenAsk?`<details><summary class="pz-fine" style="cursor:pointer">Own this server? Sign in to sync</summary>${pzTokenHtml()}</details>`:''}
+    <p class="pz-fine"><a href="${esc(pzFullHref())}">Open the full journal instead</a></p></div>`;
+}
+function pzLoadingHtml(){
+  const m=pzS.note&&pzS.note.m||'Loading your trades…';
+  return `<div class="pz-connect" style="align-items:center;text-align:center">${pzRing('',0.3,PZ_COL.good,{size:88})}
+    <p class="pz-sub" role="status"><span class="pz-spin"></span>${esc(m)}</p><p class="pz-fine">The first load pulls your full history; after that only new fills are fetched.</p></div>`;
+}
+function pzTokenHtml(){
+  return `<div class="pz-field" style="margin-top:10px"><label for="pzTok">Access token</label><input type="password" id="pzTok" autocomplete="current-password" placeholder="the AUTH_TOKEN set on the server">
+    <button type="button" class="pz-ghost pz-sm" id="pzTokBtn">Connect</button>${SRV.badAuth&&SRV.token?'<p class="pz-fine pz-err">The server rejected that token.</p>':''}</div>`;
+}
+function pzSheetHtml(){
+  const tokenAsk=SRV.enabled&&SRV.needsAuth&&(!SRV.token||SRV.badAuth);
+  const where=!SRV.enabled?'Saved in this browser. Use the full journal’s Backup to move it to another device.'
+    :tokenAsk?'Saved in this browser only — this server is protected by an access token.'
+    :'Synced to this server — open Pulse on any device to pick up where you left off.';
+  return `<div class="pz-sheet-bg" data-pz-close><div class="pz-sheet" role="dialog" aria-modal="true" aria-labelledby="pzSheetT">
+    <div style="display:flex;justify-content:space-between;align-items:center"><b id="pzSheetT" style="font-size:18px">Settings</b><button type="button" class="pz-chip icon" data-pz-close aria-label="Close">${pzI('x',20)}</button></div>
+    <section><span class="pz-lbl" style="color:var(--pz-muted)">Wallets</span>
+      ${settings.wallets.map((w,i)=>`<div class="pz-wl"><span>${w.label?esc(w.label)+' · ':''}<code>${esc(walletShort(w.address))}</code></span><button type="button" class="pz-ghost pz-sm" data-pz-rmw="${i}" aria-label="Remove wallet ${esc(labelFor(w))}">Remove</button></div>`).join('')||'<p class="pz-sub">No wallets yet.</p>'}
+      <div class="pz-field" style="margin-top:10px"><label for="pzAddr2" style="font-size:13px">Add another address</label><input type="text" id="pzAddr2" placeholder="0x…" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <div style="display:flex;gap:8px"><button type="button" class="pz-ghost pz-sm" id="pzAdd2">Add &amp; load</button><button type="button" class="pz-ghost pz-sm" id="pzRefresh">Refresh now</button></div></div></section>
+    <section><span class="pz-lbl" style="color:var(--pz-muted)">Your data</span><p class="pz-sub" style="margin-top:6px">${where}</p>
+      ${SRV.enabled&&!SRV.needsAuth?'<p class="pz-warn" style="margin-top:10px">This server has no access token set, so everyone who opens this link shares one journal. The owner should set AUTH_TOKEN before sharing it.</p>':''}
+      ${tokenAsk?pzTokenHtml():''}</section>
+    <section style="display:flex;flex-direction:column;gap:8px">${_deferredInstall?'<button type="button" class="pz-ghost" id="pzInstall">Install Pulse as an app</button>':'<p class="pz-fine">To install: on iPhone tap Share → Add to Home Screen; on Android or desktop use the browser’s Install option.</p>'}
+      <a class="pz-ghost" href="${esc(pzFullHref())}">Open the full journal</a></section>
+  </div></div>`;
+}
+
+// ---- render + events ----
+function pzNote(m, kind){
+  pzS.note=m?{m,kind:kind||''}:null;
+  const el=$('pzNote'); if(!el)return;
+  el.className='pz-note'+(kind==='err'?' err':'');
+  el.innerHTML=m?(kind==='busy'?'<span class="pz-spin"></span>':'')+esc(m):'';
+  clearTimeout(pzNote._t); if(m&&kind!=='busy'&&kind!=='err')pzNote._t=setTimeout(()=>{ if(el.textContent===m){ el.textContent=''; pzS.note=null; } },5000);
+  // the first-run and loading screens show the message inline too
+  if(!allTrades.length&&$('pzView'))pzRender();
+}
+function pzRender(){
+  if(!PZ)return; const view=$('pzView'); if(!view)return;
+  // keep what's typed across re-renders (a background sync or auto-refresh can land mid-edit)
+  const keep={}; view.querySelectorAll('input[id],textarea[id]').forEach(el=>{ keep[el.id]=el.value; });
+  const act=document.activeElement, actId=act&&view.contains(act)?act.id:null;
+  const actSel=act&&act.dataset?(act.dataset.pzCk?`[data-pz-ck="${act.dataset.pzCk}"][data-n="${act.dataset.n}"]`:act.dataset.pzRing?`[data-pz-ring="${act.dataset.pzRing}"]`:act.dataset.pzRange?`[data-pz-range="${act.dataset.pzRange}"]`:act.dataset.pzBadge?`[data-pz-badge="${act.dataset.pzBadge}"]`:null):null;
+  let html;
+  if(!allTrades.length) html=_loading&&settings.wallets.length?pzLoadingHtml():pzConnectHtml();
+  else { const tab=pzTab(); let D;
+    try{ D=pzData(); }catch(e){ console.error(e); view.innerHTML=`<div class="pz-connect"><p class="pz-sub pz-err">Pulse hit an error reading your data (${esc(e.message)}).</p><a class="pz-ghost" href="${esc(pzFullHref())}">Open the full journal</a></div>`; return; }
+    ensureWeekChallenge(D.ctx).then(made=>{ if(made)pzRender(); }).catch(()=>{});
+    const body=tab==='trends'?pzTrendsHtml(D):tab==='checkin'?pzCheckinHtml(D):tab==='progress'?pzProgressHtml(D):tab==='discipline'?pzDisciplineHtml(D):tab==='journal'?pzJournalHtml(D):pzTodayHtml(D);
+    html=`${pzNav(tab)}<main class="pz-main" id="pzMain">${body}</main>`; }
+  view.innerHTML=html;
+  for(const id in keep){ const el=$(id); if(el&&view.contains(el)&&keep[id]&&!el.value)el.value=keep[id]; }
+  const sh=$('pzSheet'); if(sh)sh.innerHTML=pzS.sheet?pzSheetHtml():'';
+  const f=(actId&&$(actId))||(actSel&&view.querySelector(actSel)); if(f&&f.focus)f.focus({preventScroll:true});
+}
+async function pzConnect(inputId){
+  const el=$(inputId); const a=(el&&el.value||'').trim();
+  if(!/^0x[0-9a-fA-F]{40}$/.test(a)){ pzNote('That doesn’t look like a wallet address — it starts with 0x and is 42 characters long.','err'); if(el)el.focus(); return; }
+  $('walletAddr').value=a; if(el)el.value='';
+  pzS.sheet=false; pzNote('Loading your trades…','busy');
+  await loadAll();
+}
+async function pzToken(){
+  const tok=($('pzTok')||{value:''}).value.trim(); if(!tok)return;
+  try{ localStorage.setItem('srv_token',tok); }catch(e){}
+  SRV.token=tok; SRV.badAuth=false;
+  const d=await srvFetch('/api/data');
+  if(d.status===401){ SRV.badAuth=true; pzNote('The server rejected that token.','err'); pzRender(); return; }
+  pzNote('Connected — reloading…','busy'); location.reload();
+}
+function wirePulse(){
+  const root=$('pz'); if(!root)return;
+  root.addEventListener('click',async ev=>{
+    const t=ev.target.closest('button,a,[data-pz-close]'); if(!t||!root.contains(t))return;
+    const ds=t.dataset;
+    if(ds.pzRing){ pzS.ring=ds.pzRing; pzRender(); return; }
+    if(ds.pzRange){ pzS.range=+ds.pzRange; pzRender(); return; }
+    if(ds.pzBadge){ pzS.badge=pzS.badge===ds.pzBadge?null:ds.pzBadge; pzRender(); return; }
+    if(ds.pzCk&&pzS.ck){ const n=+ds.n; pzS.ck[ds.pzCk]=pzS.ck[ds.pzCk]===n?null:n;
+      t.closest('.pz-pills').querySelectorAll('button').forEach(b=>b.setAttribute('aria-checked',String(+b.dataset.n===pzS.ck[ds.pzCk])));
+      const r=pzCkReady(pzS.ck), p=$('pzCkPrev'); if(p)p.innerHTML=pzCkPrevHtml(r,pzBand(r)); return; }
+    if(ds.pzCap&&pzS.ck){ const cur=pzS.ck.maxTrades||0; pzS.ck.maxTrades=Math.max(0,Math.min(50,cur+(+ds.pzCap)))||null; const o=$('pzCap'); if(o)o.textContent=pzS.ck.maxTrades||'—'; return; }
+    if(ds.pzRate){ const sec=t.closest('[data-pz-trade]'); if(!sec)return; const id=sec.dataset.pzTrade, n=+ds.pzRate;
+      pzS.jr[id]=pzS.jr[id]===n?0:n; sec.querySelectorAll('[data-pz-rate]').forEach(b=>b.setAttribute('aria-checked',String(+b.dataset.pzRate===pzS.jr[id]))); return; }
+    if(ds.pzJsave!==undefined){ const sec=t.closest('[data-pz-trade]'); if(sec)await pzSaveJournal(sec); return; }
+    if(ds.pzSheet!==undefined){ pzS.sheet=true; pzRender(); const c=$('pzSheet').querySelector('[data-pz-close].pz-chip'); if(c)c.focus(); return; }
+    if(ds.pzClose!==undefined){ if(t.classList.contains('pz-sheet-bg')&&ev.target!==t)return; pzS.sheet=false; pzRender(); return; }
+    if(ds.pzRmw!==undefined){ await removeWallet(+ds.pzRmw); pzRender(); return; }
+    switch(t.id){
+      case 'pzConnect': return pzConnect('pzAddr');
+      case 'pzAdd2': return pzConnect('pzAddr2');
+      case 'pzDemo': pzNote('Generating sample data…','busy'); await loadDemo();
+        if(allTrades.length)pzNote('Sample trades come with no journal, so discipline starts low. Do a check-in and journal a couple to watch the dials move.');
+        return;
+      case 'pzRefresh': pzS.sheet=false; pzRender(); pzNote('Refreshing…','busy'); return loadAll();
+      case 'pzCkSave': return pzSaveCheckin();
+      case 'pzTokBtn': return pzToken();
+      case 'pzInstall': if(_deferredInstall){ _deferredInstall.prompt(); try{ await _deferredInstall.userChoice; }catch(e){} _deferredInstall=null; pzRender(); } return;
+      case 'pzShare': return showShareCard();
+      case 'pzReport': return showReportCard();
+      case 'pzSwap': { const g=gameContext(); const c=challengeCandidates(g.ctx.findings); const cur=weekChallenge(); if(!c.length)return;
+        const curKey=cur&&specKey(cur.spec); let i=(Math.max(0,c.findIndex(x=>specKey(x)===curKey))+1)%c.length;
+        for(let n=0;n<c.length&&specKey(c[i])===curKey;n++)i=(i+1)%c.length;
+        await setWeekChallenge(c[i],i); pzRender(); return; }
+    }
+  });
+  root.addEventListener('input',ev=>{ const t=ev.target; if(!pzS.ck)return;
+    if(t.id==='pzPlan')pzS.ck.plan=t.value; else if(t.id==='pzLoss')pzS.ck.maxLoss=t.value; });
+  root.addEventListener('keydown',ev=>{
+    if(ev.key==='Enter'&&(ev.target.id==='pzAddr'||ev.target.id==='pzAddr2')){ ev.preventDefault(); pzConnect(ev.target.id); }
+    else if(ev.key==='Enter'&&ev.target.id==='pzTok'){ ev.preventDefault(); pzToken(); }
+    else if(ev.key==='Escape'&&pzS.sheet){ pzS.sheet=false; pzRender(); } });
+  window.addEventListener('hashchange',()=>{ if(pzTab()==='checkin')pzS.ck=null; pzRender(); window.scrollTo(0,0); });
+  window.addEventListener('beforeinstallprompt',()=>{ if(pzS.sheet)pzRender(); });
+}
+if(PZ)wirePulse();
+
 /* ============================ boot ============================ */
 (async function(){
   // Ask the browser to exempt our storage from automatic eviction — the fill cache is the
@@ -8543,6 +9238,7 @@ async function showReportCard(){
   // app refreshes without a manual "Load all". Incremental and _loading-guarded; the 3-minute
   // interval keeps it current from here. Errors surface the same way an auto-tick would.
   if(settings.wallets.length) loadAll({auto:true});
+  if(PZ)pzRender();
 })();
 </script>
 </body>
