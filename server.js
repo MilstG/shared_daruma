@@ -97,6 +97,8 @@ const ENGINE_FNS = [
   'fetchLedgerUpdates', 'capitalFlows', 'capitalModel', 'xirrFromFlows',
   // goals (Telegram /goals + future endpoints)
   'monthlyGoalModel',
+  // the end-of-day nudge counts unjournaled trades with the app's own definition
+  'isJournaled',
   // Hyperliquid client (retry/backoff/pagination identical to the browser's)
   'hlPost', 'fetchAllFills', 'fetchFunding', 'fetchSpotMaps', 'fetchSpotState', 'fetchPortfolio',
 ];
@@ -270,13 +272,16 @@ function telegramReply(cmd, st) {
 /* ---------------- end-of-day journaling nudge (pure parts) ---------------- */
 // Calendar day + hour of `ms` in an IANA time zone — the nudge fires by the trader's clock,
 // and the day key must match the app's 'day:YYYY-MM-DD' journal entries.
+const _zoneFmt = new Map(); // building an Intl.DateTimeFormat is costly; one per zone is plenty
 function zonedDayHour(ms, tz) {
+  tz = tz || 'UTC';
+  let f = _zoneFmt.get(tz);
+  if (!f) { f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit',
+    day: '2-digit', hour: '2-digit', hourCycle: 'h23' }); _zoneFmt.set(tz, f); }
   const parts = {};
-  for (const p of new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UTC', year: 'numeric', month: '2-digit',
-    day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms))) parts[p.type] = p.value;
+  for (const p of f.formatToParts(new Date(ms))) parts[p.type] = p.value;
   return { day: parts.year + '-' + parts.month + '-' + parts.day, hour: parseInt(parts.hour, 10) % 24 };
 }
-const isJournaledEntry = j => !!(j && (j.notes || j.setup || (j.tags && j.tags.length) || j.rating));
 // (state, cfg) -> {key, text} | null. Fires once per day, at or after cfg.hour, only when
 // something is actually missing: trades closed today with nothing journaled, or no review.
 function nudgeFrom(st, cfg) {
@@ -356,7 +361,9 @@ async function postWebhook(url, text) {
   else if (/hooks\.slack\.com/.test(url)) body = JSON.stringify({ text });
   else if (/ntfy\.sh/.test(url)) { body = text; headers = { 'Content-Type': 'text/plain' }; }
   else body = JSON.stringify({ text });
-  const res = await fetch(url, { method: 'POST', headers, body });
+  // a receiver that accepts the connection and never answers must not stall alerts, nudges
+  // and the digest behind it: every outbound call gets a deadline
+  const res = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error('webhook HTTP ' + res.status);
 }
 
@@ -801,10 +808,21 @@ function createApp(opts) {
   // NUDGE_HOUR (0–23, unset = off) + NUDGE_TZ (IANA, default UTC): once a day after that hour,
   // if trades closed today are unjournaled or the day has no end-of-day review, say so on the
   // same channels as alerts. Read-only like everything else here — it only counts.
+  // The zone used for "today" and for NUDGE_HOUR follows the app's own day-journal calendar
+  // (settings.tz 'utc' -> UTC; 'local' -> the browser zone the app records as settings.tzZone),
+  // so the review the nudge looks for is keyed to the same date the trader wrote it under.
+  // NUDGE_TZ is the fallback when the app hasn't reported a zone yet.
   const nudgeCfg = Object.assign({
     hour: process.env.NUDGE_HOUR != null && process.env.NUDGE_HOUR !== '' ? parseInt(process.env.NUDGE_HOUR, 10) : null,
     tz: process.env.NUDGE_TZ || 'UTC',
   }, opts.nudge || {});
+  const validZone = z => { try { zonedDayHour(0, z); return true; } catch (e) { return false; } };
+  function nudgeZone(settings) {
+    const st = settings || {};
+    if (st.tz === 'utc') return 'UTC';
+    if (typeof st.tzZone === 'string' && validZone(st.tzZone)) return st.tzZone;
+    return nudgeCfg.tz;
+  }
   try { zonedDayHour(Date.now(), nudgeCfg.tz); }
   catch (e) { console.warn('[ledger] NUDGE_TZ "' + nudgeCfg.tz + '" is not a valid IANA time zone — using UTC'); nudgeCfg.tz = 'UTC'; }
 
@@ -854,7 +872,7 @@ function createApp(opts) {
   async function tgSend(chatId, text) {
     const res = await fetch(tgApi('sendMessage'), { method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: String(text).slice(0, 4000) }) });
+      body: JSON.stringify({ chat_id: chatId, text: String(text).slice(0, 4000) }), signal: AbortSignal.timeout(15000) });
     if (!res.ok) throw new Error('telegram HTTP ' + res.status);
   }
   async function tgBroadcast(text) {
@@ -1008,12 +1026,15 @@ function createApp(opts) {
     const snap = currentSnapshot();
     setEngineState({});
     const { trades } = ensureTrades();
-    const z = zonedDayHour(now, nudgeCfg.tz);
+    const zone = nudgeZone(snap.settings);
+    const z = zonedDayHour(now, zone);
     const J = (snap.journal && typeof snap.journal === 'object') ? snap.journal : {};
-    const today = trades.filter(t => !t.isOpen && t.closeTime && zonedDayHour(t.closeTime, nudgeCfg.tz).day === z.day);
+    // only trades from the last ~day can be "today": skip formatting the whole history
+    const today = trades.filter(t => !t.isOpen && t.closeTime && t.closeTime > now - 36 * 3600e3
+      && zonedDayHour(t.closeTime, zone).day === z.day);
     const de = J['day:' + z.day];
     return { dayKey: z.day, hour: z.hour, tradesToday: today.length,
-      unjournaled: today.filter(t => !isJournaledEntry(J[t.id])).length,
+      unjournaled: today.filter(t => !E.isJournaled(J[t.id])).length,
       hasReview: !!(de && de.review && String(de.review).trim()) };
   }
   async function maybeNudge() {
@@ -1129,7 +1150,7 @@ function createApp(opts) {
     if (boot.unref) boot.unref();
     console.log('[ledger] scheduled refresh every ' + refreshEveryMin + ' min (first run ~30s after boot)'
       + (hasDelivery() ? ' with alert delivery' : ' (no ALERT_WEBHOOK / TELEGRAM_BOT_TOKEN set — refresh only)')
-      + (nudgeCfg.hour != null && hasDelivery() ? '; journaling nudge after ' + nudgeCfg.hour + ':00 ' + nudgeCfg.tz : ''));
+      + (nudgeCfg.hour != null && hasDelivery() ? '; journaling nudge after ' + nudgeCfg.hour + ':00 (app time zone, fallback ' + nudgeCfg.tz + ')' : ''));
   } else if (nudgeCfg.hour != null) {
     console.warn('[ledger] NUDGE_HOUR is set but REFRESH_INTERVAL_MIN is not — the nudge runs on the refresh schedule, so it will never fire');
   }

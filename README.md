@@ -541,13 +541,14 @@ All opt-in via environment variables, still zero dependencies:
   Messages from chats outside the allowlist are ignored silently; the bot can
   never write journal data. Get a token from @BotFather; your chat id from
   e.g. @userinfobot.
-- `NUDGE_HOUR=18` + `NUDGE_TZ=Europe/Berlin` — an **end-of-day journaling
-  nudge**: once a day, on the first scheduled run after that hour in that IANA
-  zone, if trades closed today have nothing journaled or the day has no
+- `NUDGE_HOUR=18` — an **end-of-day journaling nudge**: once a day, on the
+  first scheduled run after that hour — in the app's own day-journal time zone
+  (UTC when the app's clock toggle is on UTC, otherwise the browser zone the app
+  reports; `NUDGE_TZ`, e.g. `Europe/Berlin`, is the fallback until it has) — if trades closed today have nothing journaled or the day has no
   end-of-day review, one message goes to the delivery channels ("3 of 4 trades
   not journaled, no end-of-day review yet"). Deduped per day across restarts;
-  needs `REFRESH_INTERVAL_MIN`. Set `NUDGE_TZ` to the zone your app's day
-  journal uses so "today" matches.
+  needs `REFRESH_INTERVAL_MIN`. "Today" is the same calendar day the day
+  journal uses, so a review you wrote is always found.
 - `COACH_AI=1` + `ANTHROPIC_API_KEY` — the **coach's weekly letter** (see
   The coach). Uses the official `@anthropic-ai/sdk`, installed as an *optional*
   dependency: without `COACH_AI` the server never loads it and stays

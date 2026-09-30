@@ -135,6 +135,14 @@ t('process score: "rules kept" only counts once rules exist', () => {
   eq(off.score, 0, 'an unjournaled day with no rules is not a good-process day');
 });
 
+t('a plan with only a stop still counts; entry falls back to the trade average', () => {
+  eq(ctx.nfPlan({ plan: { entry: '', stop: 95, target: '' } }), { entry: null, stop: 95, target: null });
+  eq(ctx.nfPlan({ plan: { entry: 100, stop: '' } }), null, 'no stop, no plan');
+  const tr = mk('so', 0, 50, { avgEntry: 100, avgExit: 105 });
+  const pa = ctx.planAdherence([tr], { so: { plan: { entry: '', stop: 97, at: tr.openTime + 1 } } }, {});
+  eq(pa.n, 1); eq(pa.items[0].stopHonored, true); near(pa.items[0].realizedR, 50 / (3 * 5));
+});
+
 console.log('\nAfter-trade questions');
 t('the question fits what happened', () => {
   const tr = mk('q', 0, 50, { avgEntry: 100, avgExit: 105 });

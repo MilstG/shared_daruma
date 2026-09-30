@@ -852,10 +852,10 @@ async function unpackFillCache(c){
 }
 function snapshot(){ return {app:'ledger',version:8,exportedAt:new Date().toISOString(),
   wallets:settings.wallets, settings:{riskDefault:settings.riskDefault,view:settings.view,dexView:settings.dexView,rBasis:settings.rBasis,pageSize:settings.pageSize,beThreshold:settings.beThreshold,theme:settings.theme,anaBasis:settings.anaBasis,tz:settings.tz,assumedLev:settings.assumedLev,rules:settings.rules,attribBasis:settings.attribBasis,goals:settings.goals,
-    pins:settings.pins}, journal}; } // pins are the long-horizon forward tracker — losing them on a restore defeated the feature
+    pins:settings.pins, habits:settings.habits}, journal}; } // pins are the long-horizon forward tracker — losing them on a restore defeated the feature
 async function applySnapshot(data){ if(!data)return false; _applying=true;
   try{
-    if(data.journal && typeof data.journal==='object') journal=data.journal;
+    if(data.journal && typeof data.journal==='object'){ journal=data.journal; _jrev++; }
     if(Array.isArray(data.wallets)) settings.wallets=data.wallets;
     if(data.settings){ if(data.settings.riskDefault!=null)settings.riskDefault=data.settings.riskDefault;
       if(data.settings.view)settings.view=data.settings.view; if(data.settings.dexView)settings.dexView=data.settings.dexView; if(data.settings.rBasis)settings.rBasis=data.settings.rBasis; if(data.settings.pageSize)settings.pageSize=data.settings.pageSize; if(data.settings.beThreshold!=null)settings.beThreshold=data.settings.beThreshold; if(data.settings.theme)settings.theme=data.settings.theme; if(data.settings.anaBasis)settings.anaBasis=data.settings.anaBasis; if(data.settings.tz)settings.tz=data.settings.tz; if(data.settings.assumedLev>0)settings.assumedLev=data.settings.assumedLev; if(data.settings.rules&&typeof data.settings.rules==='object')settings.rules=data.settings.rules; if(data.settings.attribBasis)settings.attribBasis=data.settings.attribBasis; if(Array.isArray(data.settings.pins))settings.pins=data.settings.pins; if(Array.isArray(data.settings.habits))settings.habits=data.settings.habits; if(data.settings.goals&&typeof data.settings.goals==='object')settings.goals=data.settings.goals; }
@@ -905,7 +905,7 @@ function markJEdit(id){ _dirtyJ.set(id,(_dirtyJ.get(id)||0)+1); _jrev++; }
 // bouncing back. Wallets are deliberately excluded (list merges are ambiguous; last write
 // wins there, as before).
 let _lastSyncedS=null;
-const _SYNC_S_FIELDS=['riskDefault','view','dexView','rBasis','pageSize','beThreshold','theme','anaBasis','tz','assumedLev','rules','attribBasis','goals','pins','habits'];
+const _SYNC_S_FIELDS=['riskDefault','view','dexView','rBasis','pageSize','beThreshold','theme','anaBasis','tz','assumedLev','rules','attribBasis','goals','pins','habits','tzZone'];
 function _snapS(){ const o={}; for(const k of _SYNC_S_FIELDS)o[k]=settings[k]; return JSON.parse(JSON.stringify(o)); }
 function schedulePersist(){ scheduleLinkedWrite(); scheduleServerWrite(); }
 function scheduleServerWrite(){ if(!SRV.enabled||_applying)return; clearTimeout(_srvTimer); _srvTimer=setTimeout(writeServer,800); }
@@ -2404,7 +2404,7 @@ function renderCalendar(trades){
   const map={}; trades.forEach(t=>{ const k=dayKey(t.closeTime); (map[k]=map[k]||{net:0,n:0}); map[k].net+=t.net; map[k].n++; });
   // process mode: same cells, colored by the day's process score instead of its PnL
   const proc=settings.calMode==='process'?{}:null;
-  if(proc){ try{ for(const d of processContext(trades).days)proc[d.key]=d; }catch(e){} }
+  if(proc){ try{ for(const d of coachContext().days)proc[d.key]=d; }catch(e){} } // colored only where this period has trades
   const mb=$('calModeBtn'); if(mb)mb.textContent=proc?'Process':'PnL';
   const hint=$('calHint'); if(hint)hint.textContent=proc?'green = disciplined day (70+), red = process broke (<50) · click a day to journal it':'green = up day, red = down day · click a day to journal it';
   const WEEKS=settings.calWeeks===52?52:26; const DOWN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -6008,7 +6008,7 @@ $('modalLoad').onclick=async()=>{
       const nc=data.fillCaches?Object.keys(data.fillCaches).length:0;
       setStatus('Backup restored: '+settings.wallets.length+' wallet(s), '+Object.keys(journal).length+' journal entries'+(nc?', fill cache for '+nc+' wallet'+(nc===1?'':'s'):'')+'. Hit Load all to refresh trades.'); return;
     }
-    journal=data; await Store.set(J_KEY,journal); if(allTrades.length)render();
+    journal=data; _jrev++; await Store.set(J_KEY,journal); if(allTrades.length)render();
     setStatus('Journal restored ('+Object.keys(journal).length+' entries).'); return;
   }
   const fills=Array.isArray(data)?data:(data.fills||[]);
@@ -6553,7 +6553,7 @@ function weeklyReviewSectionHtml(){
 }
 // Last week's focus habit, how often it was kept, and a one-click carry-over to this week.
 function lastWeekFocusHtml(from){
-  const e=journal[isoWeekKey(from+3.5*86400000)]; const h=e&&e.focus&&habitById(e.focus); if(!h)return '';
+  const e=journal[isoWeekKey(from+3.5*86400000)]; const h=e&&e.focus&&habitById(e.focus); if(!h||h.retired)return '';
   let p={total:0,kept:0,res:[]}; try{ const ctx=coachContext(); const all=habitProgress(h,ctx,from);
     const toK=dayKey(lastCompletedWeekRange().to); p.res=all.res.filter(r=>r.key<toK); Object.assign(p,habitSummary(p.res)); }catch(err){}
   const cur=weekFocus();
@@ -6869,10 +6869,12 @@ function renderTripwire(){
 }
 
 /* ======================= 5 · TRADE-PLAN ADHERENCE ======================= */
+// The stop is what makes it a plan; entry is optional (it comes from the fills anyway), and
+// callers fall back to the trade's average entry when it's blank.
 function nfPlan(j){ const p=j&&j.plan; if(!p)return null;
   const e=parseFloat(p.entry), s=parseFloat(p.stop), tg=parseFloat(p.target);
-  if(!(e>0)||!(s>0))return null;
-  return {entry:e, stop:s, target:isFinite(tg)&&tg>0?tg:null}; }
+  if(!(s>0))return null;
+  return {entry:e>0?e:null, stop:s, target:isFinite(tg)&&tg>0?tg:null}; }
 // Did you honor the plan you wrote down? Uses avg entry/exit from reconstruction vs planned
 // stop/target. Stop-honored = you did NOT let price close beyond your stop. With excursion
 // data (excM) it also catches the quieter break: price traded THROUGH the stop and you held
@@ -6881,8 +6883,9 @@ function nfPlan(j){ const p=j&&j.plan; if(!p)return null;
 // a plan written after the close is hindsight, and scored separately.
 function planAdherence(closed, journalObj, excM){
   const items=[];
-  for(const t of closed){ const j=journalObj[t.id]; const p=nfPlan(j); if(!p)continue;
+  for(const t of closed){ const j=journalObj[t.id]; const p0=nfPlan(j); if(!p0)continue;
     if(!(t.avgExit>0)||!(t.avgEntry>0))continue;
+    const p=p0.entry?p0:{...p0,entry:t.avgEntry};
     const short=t.dir==='Short';
     const riskPer=Math.abs(p.entry-p.stop); if(!(riskPer>0))continue;
     const exitOk = short ? (t.avgExit<=p.stop) : (t.avgExit>=p.stop);
@@ -7285,7 +7288,7 @@ function wireInbox(){
   };
 }
 function processSectionHtml(){
-  const {days}=processContext(allTrades.filter(viewFilter));
+  const {days}=coachContext();
   if(days.length<3)return '';
   const tr=processTrend(days,20);
   const recent=days.slice(-60), q=processQuadrants(recent,70);
@@ -7298,7 +7301,7 @@ function processSectionHtml(){
   const cell=(title,b,tip,tone)=>`<div style="padding:10px 12px;border:1px solid var(--line);border-left:3px solid var(--${tone})" data-tip="${esc(tip)}"><div style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em">${title}</div><div style="font-size:18px;font-weight:600;margin:2px 0">${b.n} day${b.n===1?'':'s'}</div><div class="${cls(b.net)}" style="font-size:12px">${fmtUsd(b.net)}</div></div>`;
   return `<div class="diag-section"><h2>Process <span style="font-size:11px;color:var(--faint);font-weight:400">how you traded, not what the market paid</span></h2>
     <div class="diag-grid">
-      <div class="diag-card"><h3 data-tip="0–100 per trading day. Weights (shown after each part) are fixed; parts that don't apply that day — no plans written, no loss limit set — drop out of the weighting instead of counting against you.">Process score · ${esc(last.key)} ${sc(last.score)}</h3>
+      <div class="diag-card"><h3 data-tip="0–100 per trading day. Weights (shown after each part) are fixed; parts that don't apply that day — no plans written, no loss limit set — drop out of the weighting instead of counting against you.">Process score · ${esc(dayLabel(last.key))} ${sc(last.score)}</h3>
         ${partRows}
         <div style="margin-top:8px;border-top:1px solid var(--line);padding-top:6px">
         ${mrow('Last '+Math.min(20,days.length)+' trading days',tr.avg!=null?sc(tr.avg)+(tr.prevAvg!=null?` <span style="color:var(--faint)">vs ${Math.round(tr.prevAvg)} the ${Math.min(20,days.length-20)} before</span>`:''):'—')}
@@ -7423,8 +7426,9 @@ async function adoptHabit(spec){
   if(!weekFocus())await setWeekFocus(h.id); // the first habit adopted becomes this week's focus
   return h;
 }
-async function retireHabit(id){ const h=habitById(id); if(!h)return; h.retired=true;
-  if(weekFocus()===id){ const e=journal[isoWeekKey(Date.now())]; if(e){ delete e.focus; markJEdit(isoWeekKey(Date.now())); Store.set(J_KEY,journal); } }
+async function retireHabit(id){ const h=habitById(id); if(!h)return;
+  if(weekFocus()===id)await setWeekFocus(null); // before retiring: weekFocus() ignores retired habits
+  h.retired=true;
   await Store.set(S_KEY,settings); }
 // This week's single focus habit lives on the current ISO-week journal entry, so it syncs,
 // merges and backs up like the weekly review it sits beside.
@@ -7604,7 +7608,7 @@ function buildFindings(closed, s, ext){
 const TONE_TAG={leak:'Leak',edge:'Edge',caution:'Watch',info:'Note',win:'Good'};
 function findingCardHtml(f, i){
   const habit=f.habit?resolveHabitSpec(f.habit):null;
-  const adopted=habit&&(Array.isArray(settings.habits)?settings.habits:[]).some(h=>h&&!h.retired&&((habit.tpl&&h.tpl===habit.tpl)||(habit.pid&&h.pid===habit.pid)));
+  const adopted=habitAdopted(habit);
   const btn=!habit?'':adopted?'<span class="fnd-adopted">✓ in your habits</span>'
     :`<button class="btn ghost fnd-adopt" data-fi="${i}" data-tip="${esc(habitSentence(habit))} — adds it to Review → Habits, tracked day by day.">Adopt as habit</button>`;
   return `<article class="fnd ${f.tone}">
@@ -7622,6 +7626,7 @@ function resolveHabitSpec(hint){
   const spec=Object.assign({},base||{},hint);
   return spec.kind&&spec.when&&spec.then?spec:null;
 }
+function habitAdopted(spec){ return !!spec&&habitsList().some(h=>(spec.tpl&&h.tpl===spec.tpl)||(spec.pid&&h.pid===spec.pid&&h.kind===spec.kind)); }
 function wireFindingCards(root, findings){
   (root||document).querySelectorAll('.fnd-adopt').forEach(b=>{ b.onclick=async()=>{
     const f=findings[+b.dataset.fi]; const spec=f&&resolveHabitSpec(f.habit); if(!spec)return;
@@ -7634,7 +7639,7 @@ let _coachMemo={key:null,ctx:null};
 function coachContext(){
   const trades=allTrades.filter(viewFilter);
   let closedN=0, lastClose=0, net=0; for(const t of trades){ if(!t.isOpen&&t.closeTime){ closedN++; if(t.closeTime>lastClose)lastClose=t.closeTime; net+=t.net; } }
-  const key=[view,trades.length,closedN,lastClose,net.toFixed(2),_jrev,dayKey(Date.now()),Object.keys(_excM||{}).length,
+  const key=[view,settings.tz,trades.length,closedN,lastClose,net.toFixed(2),_jrev,dayKey(Date.now()),Object.keys(_excM||{}).length,
     JSON.stringify(settings.rules||{}),JSON.stringify(settings.habits||[]),_be].join('|');
   if(_coachMemo.key===key)return _coachMemo.ctx;
   const closed=trades.filter(t=>!t.isOpen&&t.closeTime);
@@ -7650,7 +7655,8 @@ function coachContext(){
     const chron=[...closed].sort((a,b)=>a.closeTime-b.closeTime), nets=chron.map(t=>t.net);
     findings=buildFindings(closed,s,{scan:diagScan(closed),cdd:currentDD(nets),uw:underwaterStats(chron),skew:_skew(nets),acf1:_autocorr1(nets),esig:edgeSignificance(nets)});
   }catch(e){ console.warn('coach findings failed',e); } }
-  const ctx={trades,closed,days:pc.days,byDay,preds,findings};
+  let rulePreds=[]; try{ rulePreds=customRules().length?customRulePreds(trades,customRules()):[]; }catch(e){}
+  const ctx={trades,closed,days:pc.days,byDay,preds,findings,rulePreds};
   _coachMemo={key,ctx}; return ctx;
 }
 function habitProgress(h, ctx, fromMs){
@@ -7677,7 +7683,7 @@ function coachWins(ctx){
   const last=days.filter(d=>d.key<today).slice(-1)[0];
   if(last&&last.score>=70&&last.net<0)W.push(`Good loss on ${dayLabel(last.key)}: you followed your process and the market said no`);
   if(tr.avg!=null&&tr.prevAvg!=null&&tr.avg>=tr.prevAvg+5)W.push(`Process score up ${Math.round(tr.avg-tr.prevAvg)} points on the previous 20 days`);
-  try{ const rules=customRules(); if(rules.length){ const P=customRulePreds(ctx.trades,rules);
+  try{ const P=ctx.rulePreds||[]; if(P.length){
     P.forEach(x=>{ if(x.pred&&ruleFollowThrough(ctx.closed,x.pred,x.rule.createdAt).status==='working')W.push(`You’re breaking “${x.rule.name.replace(/^Avoid: /,'')}” far less since you made it a rule`); }); } }catch(e){}
   return W.slice(0,4);
 }
@@ -7739,7 +7745,8 @@ function renderCoach(){
   else if(recent){ const q=tradeQuestion(recent,journal[recent.id],_excM[recent.id]);
     today={v:`Your ${esc(dispMarket(dcoin(recent)))} ${recent.dir.toLowerCase()} (<span class="${cls(recent.net)}">${signedPlain(recent.net)}</span>) closed ${fmtDur(Date.now()-recent.closeTime)} ago. ${esc(q.q)}`,act:'<button class="btn ghost coach-go" data-go="inbox">Answer →</button>'}; }
   else { const top=ctx.findings.find(f=>f.tone==='leak'||f.tone==='caution');
-    if(top)today={v:`<b>${esc(top.title)}.</b> ${esc(top.action)}`,act:top.habit&&resolveHabitSpec(top.habit)&&!habitsList().some(h=>h.tpl&&h.tpl===resolveHabitSpec(top.habit).tpl)?'<button class="btn ghost coach-adopt">Adopt as habit</button>':''}; }
+    if(top){ const spec=resolveHabitSpec(top.habit);
+      today={v:`<b>${esc(top.title)}.</b> ${esc(top.action)}`,act:spec&&!habitAdopted(spec)?'<button class="btn ghost coach-adopt">Adopt as habit</button>':''}; } }
   if(today)rows.push({k:'Today',...today});
   const fid=weekFocus(), fh=fid&&habitById(fid);
   if(fh){ const p=habitProgress(fh,ctx,lastCompletedWeekRange().to);
@@ -7828,7 +7835,7 @@ function coachLetterFacts(){
     const w=Object.keys(avg).sort((a,b)=>avg[a]-avg[b])[0]; if(w!=null&&avg[w]<0.999)weakest=PART_MISS[w]; }
   const q=processQuadrants(ctx.days.slice(-60),70);
   const prog=h=>{ const r=habitProgress(h,ctx,from).res.filter(x=>x.key<toK); const s=habitSummary(r); return {habit:habitSentence(h),kept:s.kept,total:s.total}; };
-  const we=journal[wkKey]||{}; const fh=we.focus&&habitById(we.focus);
+  const we=journal[wkKey]||{}; const fh0=we.focus&&habitById(we.focus), fh=fh0&&!fh0.retired?fh0:null;
   const lessons=Object.keys(journal).filter(k=>k.startsWith('week:')&&journal[k]&&journal[k].lesson).sort().reverse().slice(0,2).map(k=>journal[k].lesson);
   return {
     week:wkKey.slice(5), trades:inWk.length, net:sum(inWk), winRate:dec.length?+(dec.filter(t=>isWin(t.net)).length/dec.length).toFixed(2):null,
@@ -7843,14 +7850,16 @@ function coachLetterFacts(){
     wins:coachWins(ctx), lessons,
   };
 }
-let _coachStatus=null;
-async function loadCoachLetter(){
+let _coachStatus=null, _letterCache={wk:null,letter:null};
+async function loadCoachLetter(force){
   const box=$('coachLetter'); if(!box)return;
   if(!SRV.enabled){ box.innerHTML=''; return; }
   try{ if(!_coachStatus){ const r=await srvFetch('/api/coach/status'); _coachStatus=r.ok?await r.json():{enabled:false}; } }catch(e){ _coachStatus={enabled:false}; }
   const wk=isoWeekKey(lastCompletedWeekRange().from+3.5*86400000).slice(5);
   let letter=null;
-  try{ const r=await srvFetch('/api/coach/letter/'+wk); if(r.ok)letter=await r.json(); }catch(e){}
+  if(!force&&_letterCache.wk===wk)letter=_letterCache.letter;
+  else{ try{ const r=await srvFetch('/api/coach/letter/'+wk); if(r.ok)letter=await r.json(); }catch(e){}
+    _letterCache={wk,letter}; }
   if(!$('coachLetter'))return; // Review re-rendered meanwhile
   if(!_coachStatus.enabled&&!letter){ box.innerHTML=''; return; }
   const head=`<h3 data-tip="Written by Claude on your companion server from the summary below \u2014 aggregate numbers, your habits and your own lessons only. Switched on by COACH_AI=1 on the server.">Coach\u2019s letter \u00b7 ${esc(wk)}</h3>`;
@@ -7870,7 +7879,7 @@ async function loadCoachLetter(){
     try{ const r=await srvFetch('/api/coach/letter/'+wk,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({facts:coachLetterFacts()})});
       const d=await r.json().catch(()=>({}));
       if(!r.ok)throw new Error(d.error||('HTTP '+r.status));
-      loadCoachLetter();
+      loadCoachLetter(true);
     }catch(e){ go.disabled=false; go.textContent='Try again'; setErr('Coach letter: '+e.message); }
   };
 }
@@ -7898,6 +7907,9 @@ async function loadCoachLetter(){
     await Store.set(S_KEY,settings);
   }
   if(!Array.isArray(settings.wallets))settings.wallets=[];
+  // the browser's IANA zone rides along with settings so the server's end-of-day nudge reads
+  // 'today' on the same calendar as the day journal's 'local' dates
+  try{ const z=Intl.DateTimeFormat().resolvedOptions().timeZone; if(z&&settings.tzZone!==z){ settings.tzZone=z; await Store.set(S_KEY,settings); } }catch(e){}
   view=settings.view||'perp'; dexView=settings.dexView||'all';
   document.querySelectorAll('#viewtog button').forEach(x=>x.classList.toggle('on',x.dataset.v===view));
   settings.rBasis=settings.rBasis||'avgloss';
