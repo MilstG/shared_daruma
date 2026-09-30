@@ -153,6 +153,19 @@ t('the question fits what happened', () => {
   ok(/see again/.test(ctx.tradeQuestion(mk('q5', 0, 300), {}, null).q));
 });
 
+console.log('\nCoach mode switch');
+t('coach mode defaults on and only an explicit false turns it off', () => {
+  const coachOn = (settings) => (0, eval)('(function(settings){ return (' + grabFn('coachOn') + ')(); })')(settings);
+  eq(coachOn({}), true); eq(coachOn({ coachMode: true }), true); eq(coachOn({ coachMode: false }), false);
+});
+t('every coaching surface checks the switch; sync and backups carry it', () => {
+  for (const fn of ['renderCoach', 'habitsSectionHtml', 'processSectionHtml', 'lastWeekFocusHtml', 'loadCoachLetter', 'findingCardHtml'])
+    ok(grabFn(fn).includes('coachOn()'), fn + ' ignores coach mode');
+  ok(html.includes("'calWeeks','coachMode'];"), 'synced settings field');
+  ok(html.includes('coachMode:settings.coachMode}'), 'in backups');
+  ok(html.includes("typeof data.settings.coachMode==='boolean'"), 'restored from backups/sync');
+});
+
 console.log('\nCoach letter (server)');
 t('the facts allowlist drops anything that is not an aggregate', () => {
   const f = server.sanitizeCoachFacts({ week: '2026-W39', trades: 12, net: -114.271, wallet: '0xabc', notes: 'secret',
@@ -184,7 +197,7 @@ await t('POST writes the letter through the client, stores it, GET returns it; o
   const b = await listen(app);
   try {
     eq((await fetch(b + '/api/coach/status')).status, 401, 'needs the token');
-    eq(await (await fetch(b + '/api/coach/status', { headers: H })).json(), { enabled: true, model: 'claude-opus-5-5' });
+    eq(await (await fetch(b + '/api/coach/status', { headers: H })).json(), { enabled: true, model: 'claude-opus-5-5', share: false });
     eq((await fetch(b + '/api/coach/letter/2026-W39', { headers: H })).status, 404);
     const r = await fetch(b + '/api/coach/letter/2026-W39', { method: 'POST', headers: H, body: JSON.stringify({ facts: { trades: 3, net: 10, wallet: '0xabc' } }) });
     eq(r.status, 200); eq((await r.json()).text, 'A steady week.');

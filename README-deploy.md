@@ -78,6 +78,7 @@ tests/          test suites (`npm test`; CI runs them on every push)
 | `TELEGRAM_CHAT_ID`     | *(unset)*                        | Comma-separated chat-id allowlist; other chats are ignored silently |
 | `NUDGE_HOUR`           | *(unset = off)*                  | End-of-day journaling nudge after this hour (0–23); needs `REFRESH_INTERVAL_MIN` and a delivery channel |
 | `NUDGE_TZ`             | `UTC`                            | Fallback IANA zone for `NUDGE_HOUR` and "today" until the app reports its own (it follows the app's clock setting) |
+| `TELEGRAM_SHARE_CHAT_ID` | *(unset)*                     | Accountability partner/group chat(s) for Review → Progress → "Send to partner" (needs `TELEGRAM_BOT_TOKEN`) |
 | `COACH_AI`             | *(unset = off)*                  | `1` enables the AI weekly letter in Review (needs `ANTHROPIC_API_KEY`; Railway's `npm install` pulls the optional SDK) |
 | `ANTHROPIC_API_KEY`    | *(unset)*                        | Claude API key, only read when `COACH_AI=1` |
 | `COACH_AI_MODEL`       | `claude-opus-5-5`                | Model for the weekly letter |
