@@ -72,8 +72,10 @@ t('candles now carry close AND open; midpoint fallback lives in candleOpen', () 
   ok(html.includes('function candleOpen(candles,i)'));
 });
 t('replay button, container, delegate, and toggle-off present', () => {
-  ok(html.includes('data-replay="${t.id}"'));
-  ok(html.includes('<div id="replay-${t.id}"></div>'));
+  // trade ids are escaped wherever they enter markup (pasted coin names are untrusted)
+  ok(html.includes('data-replay="${esc(t.id)}"'));
+  ok(html.includes('<div id="replay-${esc(t.id)}"></div>'));
+  ok(!/data-(id|save|att|replay)="\$\{t\.id\}"/.test(html), 'no unescaped trade id in an attribute');
   ok(html.includes("openReplay(rp.dataset.replay,rp)"));
   ok(html.includes('if(_replayFor===id&&_replayChart){'));
 });

@@ -174,6 +174,13 @@ await t('filters: market/coin/outcome/status/tag/q', async () => {
   eq((await jget('/api/v1/trades?from=' + (T0 + 2 * H) + '&status=closed')).body.total, 1);
   eq((await jget('/api/v1/trades?market=nope')).status, 400);
 });
+await t('date filters: a bare to= date includes that whole day; seconds epochs work', async () => {
+  const all = (await jget('/api/v1/trades?tz=utc')).body.total;
+  eq((await jget('/api/v1/trades?tz=utc&to=' + dayOf(Date.now()))).body.total, all, 'to=today includes today');
+  eq((await jget('/api/v1/trades?tz=utc&to=' + dayOf(BASE - DAY))).body.total, 0, 'to=before everything');
+  const ms = (await jget('/api/v1/trades?from=' + (T0 + 2 * H) + '&status=closed')).body.total;
+  eq((await jget('/api/v1/trades?from=' + Math.floor((T0 + 2 * H) / 1000) + '&status=closed')).body.total, ms, 'seconds = milliseconds');
+});
 await t('pagination + events flag', async () => {
   const p = (await jget('/api/v1/trades?limit=2&offset=2&sort=openTime&order=asc')).body;
   eq(p.trades.length, 2); eq(p.total, 4);
