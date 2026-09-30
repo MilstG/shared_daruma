@@ -90,6 +90,47 @@ correctly split into a closing leg and an opening leg. Perp and spot are
 reconstructed separately — use the **Perp / Spot / Combined** market toggle to
 choose what every view shows.
 
+## The coach
+
+Everything Ledger measures is also said in plain words. At the top of the
+dashboard a **coach card** gives four lines, computed in the browser from your
+own trades and journal:
+
+- **Last session** — the last trading day's result and process score, read the
+  way a coach would: "A good loss: you did your part and the market said no",
+  or "Green for the wrong reasons — no plan before the first trade".
+- **Today** — the single next action, in priority order: write today's plan if
+  it's missing; answer the question about a trade that closed in the last 24
+  hours; otherwise the top leak from your numbers, with one click to adopt it
+  as a habit.
+- **This week** — your focus habit and a dot per trading day (kept / missed).
+- **Remember** — one of your own weekly lessons, matched to the focus habit
+  when one mentions it.
+
+Below it, **wins** — "5 good-process days in a row", "every planned stop
+honored this week", "good loss on Tue", "you're breaking your rule far less
+since you made it". Reinforcement, not only correction.
+
+**Habits** (Review) are when-then plans — "When I close a losing trade, I wait
+an hour before the next entry" — tracked day by day from your data: the
+library covers planning, stops, journaling, the loss limit, cool-offs, two
+strikes, not chasing a red day, size caps and trade caps, and you can write your
+own (tracked by the day journal's "I followed the plan"). **One habit is this
+week's focus**; the coach, the weekly review ("last week's focus: kept 4 of 5
+days — keep it?") and the optional AI letter all follow it.
+
+**After every trade, one question** chosen for what happened — held through
+the stop, gave back a big gain, added to a loser, a clean winner — shown above
+the notes and in the journal inbox, where a one-line answer saves to the notes.
+
+**Coach's letter (optional AI).** With `COACH_AI=1` and an Anthropic API key on
+the companion server, the weekly review gets a "Write my letter" button: Claude
+writes a short plain-language note on the week (what went well, the one thing
+to work on, tied to your focus habit). Only an aggregate summary is sent —
+counts, averages, habit sentences, finding headlines and your own one-line
+lessons — and the button shows exactly that summary before anything is sent.
+No fills, wallet addresses, trade notes or screenshots leave the server.
+
 ## The Trades view
 
 The main dashboard:
@@ -242,7 +283,14 @@ The statistician's view of your trading. Sections top to bottom:
   into a dollar number. (Hindsight removal is the optimistic bound, and the
   panel says so.)
 - **Drawdown recovery & streak depth**, **Risk & discipline**,
-  **Recommendations**, and the two on-demand engines below.
+  **What your numbers say**, and the two on-demand engines below.
+- **What your numbers say** — the recommendations as plain-language cards:
+  what's happening ("You trade worse right after a loss"), one thing to do
+  about it, and how sure the numbers are in words ("Very likely real",
+  "Probably real", "Early signal — keep watching", from permutation, FDR and
+  Welch tests underneath). The statistics fold away under "The numbers"; cards
+  are ranked by money at stake × confidence, and many carry **Adopt as habit**.
+  The dashboard coach uses the same cards.
 - **Export report / Export PDF** (top right) — snapshot this entire view,
   including any miner/excursion results on screen, as a self-contained HTML
   file or a print-grade PDF with charts embedded as images. For archiving
@@ -326,9 +374,9 @@ It also carries the habit loops:
   every trade is journaled (today never breaks it while it's still being traded).
 - **Process** — a 0–100 **process score** per trading day, graded on how you
   traded rather than what the market paid: plan filed before the first entry
-  (20), trades breaking no rule (30), trades with a live plan (15), planned
+  (20), trades breaking no rule (20), trades with a live plan (15), planned
   stops honored (15), no entries after the day's loss limit broke (10), trades
-  journaled (10). Parts that don't apply that day drop out of the weighting,
+  journaled (20). Parts that don't apply that day drop out of the weighting,
   and the two planning parts only count from the first day each habit was
   used, so older history isn't graded against habits that didn't exist yet.
   Alongside it, **process vs outcome** sorts the last 60 trading days into
@@ -500,6 +548,13 @@ All opt-in via environment variables, still zero dependencies:
   not journaled, no end-of-day review yet"). Deduped per day across restarts;
   needs `REFRESH_INTERVAL_MIN`. Set `NUDGE_TZ` to the zone your app's day
   journal uses so "today" matches.
+- `COACH_AI=1` + `ANTHROPIC_API_KEY` — the **coach's weekly letter** (see
+  The coach). Uses the official `@anthropic-ai/sdk`, installed as an *optional*
+  dependency: without `COACH_AI` the server never loads it and stays
+  dependency-free. Model `COACH_AI_MODEL` (default `claude-opus-5-5`), medium
+  effort, with the API's default refusal fallback. `POST /api/coach/letter/<week>`
+  (full token) takes `{facts}` — re-filtered through a server-side allowlist —
+  and stores the letter in `DATA_DIR/reports/letter-<week>.json`.
 
 ## The analytics API (`/api/v1`)
 
@@ -647,7 +702,7 @@ curl -H "Authorization: Bearer $READ_TOKEN" -o trades.csv 'https://your.app/api/
 npm test         # or: node tests/run-all.mjs
 ```
 
-379 tests across nineteen suites cover reconstruction (flips, funding
+397 tests across twenty suites cover reconstruction (flips, funding
 windows, spot/perp separation, partial-history flagging), the Web Worker
 dispatcher end-to-end with byte-parity against the synchronous fallback,
 excursion math and the retention/ratchet behavior, miner families and

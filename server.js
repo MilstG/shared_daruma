@@ -288,6 +288,67 @@ function nudgeFrom(st, cfg) {
   return { key: 'nudge:' + st.dayKey,
     text: '📝 End of day: ' + missing.join(', ') + '. Five minutes now — a setup, a rating, one line of review — is what the pattern miner and your process score run on.' };
 }
+/* ---------------- coach's weekly letter (optional AI, opt-in) ---------------- */
+// COACH_AI=1 lets the Review tab ask Claude for a short plain-language weekly letter. Only an
+// aggregate summary the app builds and shows the user first is ever sent (counts, averages,
+// habit sentences, finding headlines, their own one-line lessons) — never fills, wallet
+// addresses, trade notes or screenshots. sanitizeCoachFacts is the allowlist that enforces it.
+const COACH_SYSTEM = [
+  'You are a calm, experienced trading coach writing a short weekly letter to one trader.',
+  'You get a JSON summary of their week built by their journal app: results, a process score',
+  '(0-100, how well they followed their own process, independent of profit), their habits and',
+  'how often they kept them, findings from their own statistics, their wins, and lessons they wrote.',
+  '',
+  'Write 150-220 words in plain, warm, direct language, second person. No jargon: never say',
+  'p-value, expectancy, Sharpe, drawdown percentile or similar; say what it means instead.',
+  'Structure: one or two sentences on how the week went, putting process before profit; what went',
+  'well; the one thing to work on next week, tied to their focus habit when they have one; one',
+  'sentence of encouragement. Use only numbers present in the summary and never invent any.',
+  'Do not predict markets or suggest specific trades, entries, coins or position sizes.',
+  'Plain text only: no headings, no bullet lists, no markdown.',
+].join('\n');
+function sanitizeCoachFacts(f) {
+  if (!f || typeof f !== 'object' || Array.isArray(f)) return null;
+  const str = (v, n) => (typeof v === 'string' ? v.slice(0, n || 200) : undefined);
+  const num = v => (typeof v === 'number' && isFinite(v) ? Math.round(v * 100) / 100 : undefined);
+  const arr = (v, n, fn) => (Array.isArray(v) ? v.slice(0, n).map(fn).filter(x => x != null) : undefined);
+  const habit = h => (h && typeof h === 'object' ? { habit: str(h.habit, 200), kept: num(h.kept), total: num(h.total) } : null);
+  const out = {
+    week: str(f.week, 20), trades: num(f.trades), net: num(f.net), winRate: num(f.winRate),
+    prevWeek: f.prevWeek && typeof f.prevWeek === 'object' ? { trades: num(f.prevWeek.trades), net: num(f.prevWeek.net) } : undefined,
+    process: f.process && typeof f.process === 'object' ? { thisWeek: num(f.process.thisWeek), last20: num(f.process.last20), prev20: num(f.process.prev20),
+      goodDays: num(f.process.goodDays), days: num(f.process.days), weakestPart: str(f.process.weakestPart, 80) } : undefined,
+    quadrants60: f.quadrants60 && typeof f.quadrants60 === 'object' ? { goodGreen: num(f.quadrants60.goodGreen), goodRed: num(f.quadrants60.goodRed),
+      poorGreen: num(f.quadrants60.poorGreen), poorRed: num(f.quadrants60.poorRed) } : undefined,
+    focus: habit(f.focus) || undefined,
+    habits: arr(f.habits, 8, habit),
+    journaled: f.journaled && typeof f.journaled === 'object' ? { n: num(f.journaled.n), of: num(f.journaled.of) } : undefined,
+    findings: arr(f.findings, 5, x => (x && typeof x === 'object' ? { title: str(x.title, 160), action: str(x.action, 220), confidence: str(x.confidence, 60) } : null)),
+    wins: arr(f.wins, 5, x => str(x, 160)),
+    lessons: arr(f.lessons, 3, x => str(x, 200)),
+  };
+  if (JSON.stringify(out).length > 12000) return null;
+  return out;
+}
+function coachLetterRequest(facts, model) {
+  return {
+    model: model || 'claude-opus-5-5',
+    max_tokens: 16000,
+    output_config: { effort: 'medium' },
+    // on a safety decline, retry on Anthropic's recommended model instead of returning nothing
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    system: COACH_SYSTEM,
+    messages: [{ role: 'user', content: 'This week\'s summary from my journal:\n\n' + JSON.stringify(facts, null, 1) }],
+  };
+}
+// -> {text} or {error}. Refusals and empty answers become a readable error, never a blank letter.
+function coachLetterText(msg) {
+  if (!msg) return { error: 'no response' };
+  if (msg.stop_reason === 'refusal') return { error: 'the model declined to write this letter' };
+  const text = (msg.content || []).filter(b => b && b.type === 'text').map(b => b.text).join('\n').trim();
+  return text ? { text } : { error: 'the model returned no text' };
+}
 // Best-effort webhook post; shapes the body for the common receivers.
 async function postWebhook(url, text) {
   let body, headers = { 'Content-Type': 'application/json' };
@@ -746,6 +807,38 @@ function createApp(opts) {
   }, opts.nudge || {});
   try { zonedDayHour(Date.now(), nudgeCfg.tz); }
   catch (e) { console.warn('[ledger] NUDGE_TZ "' + nudgeCfg.tz + '" is not a valid IANA time zone — using UTC'); nudgeCfg.tz = 'UTC'; }
+
+  const coachCfg = Object.assign({
+    enabled: /^(1|on|true|yes)$/i.test(process.env.COACH_AI || ''),
+    model: process.env.COACH_AI_MODEL || 'claude-opus-5-5',
+    client: null, // tests inject a stub with beta.messages.create
+  }, opts.coach || {});
+  let _coachClient = null;
+  function coachClient() {
+    if (coachCfg.client) return coachCfg.client;
+    if (_coachClient) return _coachClient;
+    let SDK;
+    try { SDK = require('@anthropic-ai/sdk'); }
+    catch (e) { throw { code: 503, msg: 'COACH_AI is on but @anthropic-ai/sdk is not installed — run npm install' }; }
+    const Anthropic = SDK.default || SDK;
+    _coachClient = new Anthropic(); // credentials: ANTHROPIC_API_KEY (or any source the SDK resolves)
+    return _coachClient;
+  }
+  async function writeCoachLetter(facts) {
+    const client = coachClient();
+    let msg;
+    try { msg = await client.beta.messages.create(coachLetterRequest(facts, coachCfg.model)); }
+    catch (e) {
+      const SDK = (() => { try { const m = require('@anthropic-ai/sdk'); return m.default || m; } catch (e2) { return null; } })();
+      if (SDK && e instanceof SDK.AuthenticationError) throw { code: 502, msg: 'Claude API rejected the key — check ANTHROPIC_API_KEY' };
+      if (SDK && e instanceof SDK.RateLimitError) throw { code: 429, msg: 'Claude API rate limit — try again in a minute' };
+      if (SDK && e instanceof SDK.APIError) throw { code: 502, msg: 'Claude API error ' + (e.status || '') + ': ' + e.message };
+      throw { code: 502, msg: 'Claude API unreachable: ' + ((e && e.message) || e) };
+    }
+    const r = coachLetterText(msg);
+    if (r.error) throw { code: 502, msg: r.error };
+    return r.text;
+  }
 
   /* ---------------- Telegram bot: delivery channel + read-only commands ---------------- */
   // TELEGRAM_BOT_TOKEN (from @BotFather) + TELEGRAM_CHAT_ID (comma-separated chat-id
@@ -1724,6 +1817,36 @@ function createApp(opts) {
       } catch (e) {}
       return json(res, 200, { backups: out });
     }
+    // --- coach's weekly letter (opt-in AI): everything here needs the full token ---
+    if (url === '/api/coach/status') {
+      if (!authOk(req)) return json(res, 401, { error: 'unauthorized' });
+      return json(res, 200, { enabled: !!coachCfg.enabled, model: coachCfg.enabled ? coachCfg.model : null });
+    }
+    const letM = url.match(/^\/api\/coach\/letter\/(\d{4}-W\d{2})$/);
+    if (letM) {
+      if (!authOk(req)) return json(res, 401, { error: 'unauthorized' });
+      const file = path.join(reportsDir, 'letter-' + letM[1] + '.json');
+      if (req.method === 'GET') {
+        try { return json(res, 200, JSON.parse(fs.readFileSync(file, 'utf8'))); }
+        catch (e) { return json(res, 404, { error: 'no letter for ' + letM[1] }); }
+      }
+      if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
+      if (!coachCfg.enabled) return json(res, 404, { error: 'the AI coach letter is off (set COACH_AI=1 on the server)' });
+      (async () => {
+        let body;
+        try { body = JSON.parse(await readBody(req)); } catch (e) { return json(res, 400, { error: 'invalid JSON' }); }
+        const facts = sanitizeCoachFacts(body && body.facts);
+        if (!facts) return json(res, 400, { error: 'expected {facts: {...}} (aggregate summary, under 12KB)' });
+        facts.week = letM[1];
+        try {
+          const text = await writeCoachLetter(facts);
+          const rec = { week: letM[1], text, model: coachCfg.model, writtenAt: Date.now() };
+          try { const tmp = file + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(rec, null, 2)); fs.renameSync(tmp, file); } catch (e) {}
+          return json(res, 200, rec);
+        } catch (e) { return json(res, e.code || 500, { error: e.msg || e.message || String(e) }); }
+      })();
+      return;
+    }
     const bkM = url.match(/^\/api\/backups\/(backup-[A-Za-z0-9-]+\.json\.gz)$/);
     if (bkM) {
       if (!authOk(req)) return json(res, 401, { error: 'unauthorized' });
@@ -1854,4 +1977,5 @@ if (require.main === module) {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-module.exports = { createApp, buildEngine, ENGINE_FNS, alertsFrom, postWebhook, telegramReply, nudgeFrom, zonedDayHour };
+module.exports = { createApp, buildEngine, ENGINE_FNS, alertsFrom, postWebhook, telegramReply, nudgeFrom, zonedDayHour,
+  sanitizeCoachFacts, coachLetterRequest, coachLetterText };

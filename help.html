@@ -85,6 +85,7 @@ html{scroll-behavior:smooth}
   <a href="#loading">Loading your data</a>
   <a href="#trades">Trades view</a>
   <a href="#journal">Journaling</a>
+  <a href="#coach">The coach</a>
   <a href="#diagnostic">Diagnostic view</a>
   <a href="#excursions">Price excursions</a>
   <a href="#review">Review view</a>
@@ -166,6 +167,18 @@ html{scroll-behavior:smooth}
   <p>Three questions about the last completed week, with your best and worst trades prefilled: what worked, what changes, and a <b>one-line lesson</b>. Lessons collect into a browsable <b>lessons library</b> with the latest surfaced on top — the cheapest edge available is rereading your own lessons before the session.</p>
 </section>
 
+<section id="coach">
+  <p class="kicker">04b</p>
+  <h2>The coach</h2>
+  <p>The card at the top of the dashboard turns everything Ledger measures into four plain lines: <b>Last session</b> (your last trading day, process before profit), <b>Today</b> (the one next action — write your plan, answer the question about a trade that just closed, or the top leak from your numbers), <b>This week</b> (your focus habit, a dot per trading day) and <b>Remember</b> (one of your own lessons). Below it, <b>wins</b>: good-process streaks, stops honored, good losses, rules you now break less.</p>
+  <h3>Habits and the weekly focus (Review tab)</h3>
+  <p>A habit is a when-then plan: <em>"When I close a losing trade, I wait an hour before the next entry."</em> Pick one from the library or from any finding (<b>Adopt as habit</b>), or write your own. Library habits are scored automatically from your trades and journal; your own habits follow the day journal's "I followed the plan" check. One habit is <b>this week's focus</b> — the coach tracks it, and next week's review asks whether to keep it.</p>
+  <h3>One question after each trade</h3>
+  <p>Closed trades show a question chosen for what happened — you held through your stop, gave back a big gain, added to a loser, or had a clean win. Answer it in the notes, or in one line in the journal inbox.</p>
+  <h3>Coach's letter (optional)</h3>
+  <p>If your server runs with <code>COACH_AI=1</code> and an Anthropic API key, the weekly review offers <b>Write my letter</b>: a short note from Claude on last week — what went well and the one thing to work on. Open <b>Exactly what gets sent</b> first: it's an aggregate summary (counts, averages, habits, finding headlines, your lessons). No fills, wallet addresses, trade notes or screenshots are sent.</p>
+</section>
+
 <section id="diagnostic">
   <p class="kicker">05</p>
   <h2>The Diagnostic view</h2>
@@ -174,6 +187,7 @@ html{scroll-behavior:smooth}
     <li><b>Headline stats</b> — net, win rate, expectancy, profit factor, payoff, drawdown, Sharpe/Sortino, streaks, hold times, fees and funding, green days.</li>
     <li><b>Edge significance</b> — is your expectancy statistically distinguishable from zero, with honest confidence bands and a Monte-Carlo drawdown expectation for your own return stream.</li>
     <li><b>Breakdowns</b> — by coin, direction, weekday × hour heatmap, tag, setup, wallet — each with its contribution to the bottom line.</li>
+    <li><b>What your numbers say</b> — every recommendation as a plain-language card: what's happening, one thing to do, and how sure the numbers are ("Very likely real", "Probably real", "Early signal"). The statistics are one click away under <b>The numbers</b>.</li>
     <li><b>Pattern miner</b> — searches your journaled conditions (tags, setups, hours, sizes, and pairs of them) for the highest- and lowest-expectancy pockets, with multiple-testing correction so it doesn't sell you noise.</li>
     <li><b>Discipline &amp; rules</b> — define personal rules (max trades/day, cooldown after a loss, daily loss limit, no adds to losers) and see how often you broke each one and what it cost.</li>
     <li><b>Rules from findings</b> — any leak in the pattern miner has a <b>+ rule</b> button, and a <b>What if I stopped doing X</b> replay that would have made money offers <b>Make this a rule</b>. Each rule is scored like the built-in ones (breaks and their dollar cost) and answers <em>did the rule work?</em>: the share of trades breaking it before you made it vs since, with a significance test. Rules known at entry (market, direction, size, streak state, setup, tag, check-in) also put a warning chip on the dashboard when an open position breaks them.</li>
@@ -204,7 +218,7 @@ html{scroll-behavior:smooth}
     <li><b>Costs &amp; variance</b> —
       your current <b>Hyperliquid fee tier</b> from your exact trailing-14-day volume, the distance to the next tier, and what last month's taker flow would have cost one tier up or executed as maker (verify rates against app.hyperliquid.xyz/fees);
       and <b>variance expectations</b> — simulated from your own win rate and distribution: the odds of a 4-, 5-, 6-loss streak in your next 200 trades, and your <b>1-in-20 bad month</b> at current sizing. Decide now what normal-bad looks like, so a live drawdown reads as variance instead of falsification.</li>
-    <li><b>Process</b> — a 0–100 <b>process score</b> for each trading day, graded on how you traded rather than what the market paid: plan filed before the first entry (20), trades breaking no rule (30), trades with a live plan (15), planned stops honored (15), no new entries after the day's loss limit broke (10), trades journaled (10). Parts that don't apply that day drop out of the weighting, and the two planning habits are only graded from the first day you used them. Next to it, <b>process vs outcome</b> splits your last 60 trading days into good process on green and red days, and poor process on green and red days. Many "poor process, green" days means the market is carrying you. The dashboard's Daily PnL calendar can switch to this score with its <b>PnL / Process</b> button.</li>
+    <li><b>Process</b> — a 0–100 <b>process score</b> for each trading day, graded on how you traded rather than what the market paid: plan filed before the first entry (20), trades breaking no rule (20), trades with a live plan (15), planned stops honored (15), no new entries after the day's loss limit broke (10), trades journaled (20). Parts that don't apply that day drop out of the weighting, and the two planning habits are only graded from the first day you used them. Next to it, <b>process vs outcome</b> splits your last 60 trading days into good process on green and red days, and poor process on green and red days. Many "poor process, green" days means the market is carrying you. The dashboard's Daily PnL calendar can switch to this score with its <b>PnL / Process</b> button.</li>
     <li><b>Focus for next week</b> — a short list of concrete things your own numbers say to do differently.</li>
   </ul>
 </section>
@@ -295,6 +309,7 @@ html{scroll-behavior:smooth}
     <tr><td><code>ALERT_LIQ_PCT</code></td><td>Alert when a position is within this % of liquidation (default 10).</td></tr>
     <tr><td><code>ALERT_DAILY_LOSS</code></td><td>$ daily-loss alert; falls back to your saved in-app rule.</td></tr>
     <tr><td><code>ALERT_FUNDING_24H</code></td><td>Alert when funding paid per 24h exceeds this $.</td></tr>
+    <tr><td><code>COACH_AI</code> + <code>ANTHROPIC_API_KEY</code></td><td>Turns on the coach's weekly letter in Review (see The coach). Only an aggregate summary is sent. <code>COACH_AI_MODEL</code> picks the model (default <code>claude-opus-5-5</code>).</td></tr>
     <tr><td><code>NUDGE_HOUR</code> + <code>NUDGE_TZ</code></td><td>End-of-day journaling nudge: once a day after this hour (0–23) in this IANA time zone (default <code>UTC</code>), if trades closed today are unjournaled or the day has no end-of-day review, a reminder goes out on the alert channels. Runs on the refresh schedule, so it needs <code>REFRESH_INTERVAL_MIN</code>. Set <code>NUDGE_TZ</code> to your own zone so "today" matches your day journal.</td></tr>
   </table></div>
   <p>Alerts also fire on a drawdown deeper than the 95th percentile expectation for your own return stream — statistically unusual, not routine variance. Everything dedupes with a cooldown, and once a week a <b>weekly digest</b> (trades, net, win rate, expectancy, fees, best/worst, prior-week comparison) is written and delivered.</p>
