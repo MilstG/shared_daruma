@@ -9,6 +9,9 @@
 //   - Money numbers (30-day return, drawdown, P&L) are NEVER taken from the client: the
 //     server reads them from Hyperliquid's public portfolio endpoint for the member's
 //     address, and only when the member opted in to showing them.
+//   - The Discipline score on boards and in discipline competitions is NOT taken from the client:
+//     with "verify" on, the server recomputes it from the member's public fills (behaviorFor,
+//     the same pzBehaviorDays the app runs) and only those verified days count there.
 //   - A member proves nothing about owning the address they give (no wallet signature in
 //     v0.1), so the address is hidden by default and the owner can remove anyone.
 //   - A member is identified by a random key kept in their browser (header X-Pulse-Key);
@@ -32,8 +35,8 @@ const STREAK_MARKS = [7, 14, 21, 30, 50, 75, 100, 150, 200, 365];
 const COMP_TYPES = ['discipline', 'survivor', 'journal', 'return'];
 const DEFAULT_CONFIG = { open: true, inviteCode: '', unlocksOn: true,
   unlocks: { trends: 2, share: 3, compete: 4 }, themes: { ember: 3, aurora: 5, gold: 8 } };
-const SHARE_KEYS = ['profile', 'boards', 'feed', 'habits', 'ret', 'usd', 'addr'];
-const DEFAULT_SHARE = { profile: true, boards: true, feed: true, habits: true, ret: false, usd: false, addr: false };
+const SHARE_KEYS = ['profile', 'boards', 'feed', 'habits', 'verify', 'ret', 'usd', 'addr'];
+const DEFAULT_SHARE = { profile: true, boards: true, feed: true, habits: true, verify: true, ret: false, usd: false, addr: false };
 
 const sha = s => crypto.createHash('sha256').update(String(s)).digest('hex');
 const clampNum = (v, lo, hi) => { const n = +v; return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : null; };
@@ -61,11 +64,14 @@ function sanitizeStats(b) {
     week: WEEK_RE.test(b.week) ? b.week : null, weekXp: clampNum(b.weekXp, 0, 1e6) || 0,
     streak: clampNum(b.streak, 0, 10000) || 0, best: clampNum(b.best, 0, 10000) || 0, shields: clampNum(b.shields, 0, 2) || 0,
     challengesDone: clampNum(b.challengesDone, 0, 10000) || 0, lastChallenge: cleanText(b.lastChallenge, 140),
+    tz: typeof b.tz === 'string' && /^[A-Za-z_+\-/0-9]{1,40}$/.test(b.tz) ? b.tz : 'UTC',
     badges, badgeN: clampNum(b.badgeN, 0, 100) || badges.length, habits, days,
   };
 }
 function sanitizeShare(s, prev) {
-  const out = Object.assign({}, DEFAULT_SHARE, prev || {});
+  // a new member gets the defaults; an existing one keeps what they had, and a key added later
+  // (like verify) stays OFF until they switch it on themselves
+  const out = prev ? Object.assign({}, DEFAULT_SHARE, { verify: false }, prev) : Object.assign({}, DEFAULT_SHARE);
   for (const k of SHARE_KEYS) if (s && typeof s[k] === 'boolean') out[k] = s[k];
   return out;
 }
@@ -132,7 +138,7 @@ function leagueRollover(members, week) {
 // ---- leaderboards ----
 const BOARDS = {
   xp: { label: 'Weekly XP', scope: 'league', needs: 'boards' },
-  discipline: { label: 'Discipline', needs: 'boards' },
+  discipline: { label: 'Discipline', needs: 'boards', verified: true },
   streak: { label: 'Streak', needs: 'boards' },
   level: { label: 'All-time XP', needs: 'boards' },
   riskadj: { label: 'Return / drawdown', needs: 'ret' },
@@ -145,7 +151,8 @@ function boardRows(members, board, opts) {
   const todayK = opts.todayKey || utcDayKey(Date.now());
   const week = opts.week || isoWeekOfKey(todayK);
   // process boards read posted stats; money boards read only what the server fetched from the chain
-  let pool = members.filter(m => !m.banned && m.share && m.share[B.needs] && (B.needs !== 'boards' || m.stats));
+  let pool = members.filter(m => !m.banned && m.share && m.share[B.needs] && (B.needs !== 'boards' || m.stats)
+    && (!B.verified || (m.share.verify && Array.isArray(m.vdays))));
   if (B.scope === 'league' && opts.tier != null) pool = pool.filter(m => (m.tier || 0) === opts.tier);
   const rows = [];
   for (const m of pool) {
@@ -153,7 +160,7 @@ function boardRows(members, board, opts) {
     if (board === 'xp') { v = (m.weekXp && m.weekXp[week]) || 0; sub = 'Level ' + m.stats.level; }
     else if (board === 'level') { v = m.stats.xp; sub = 'Level ' + m.stats.level; }
     else if (board === 'streak') { v = m.stats.streak; sub = 'Best ' + m.stats.best; }
-    else if (board === 'discipline') { const d = disciplineOver(m.stats.days, addDaysKey(todayK, -6), todayK, 3); if (d.avg == null) continue; v = Math.round(d.avg); sub = d.n + ' trading days'; }
+    else if (board === 'discipline') { const d = disciplineOver(m.vdays, addDaysKey(todayK, -6), todayK, 3); if (d.avg == null) continue; v = Math.round(d.avg); sub = 'verified · ' + d.n + ' trading days'; }
     else {
       const mo = m.money; if (!mo || mo.ret == null) continue;
       if (board === 'ret') { if (mo.dd > 0.25) continue; v = mo.ret; sub = 'DD ' + (mo.dd * 100).toFixed(1) + '%'; }
@@ -177,7 +184,11 @@ function compStandings(c, members, todayKey) {
     const days = ((m.stats && m.stats.days) || []).filter(d => d.k >= c.start && d.k <= c.end && d.k <= todayKey);
     let score = null, note = '', out = false;
     if (c.type === 'discipline') {
-      const d = disciplineOver(days, c.start, c.end, c.minDays || 3);
+      // verified days only: recomputed by the server from the member's own fills
+      const vd = m.share && m.share.verify && Array.isArray(m.vdays) ? m.vdays.filter(d => d.k >= c.start && d.k <= c.end && d.k <= todayKey) : null;
+      if (!vd) { rows.push({ id, handle: m.handle, score: null, out: false,
+        note: !(m.share && m.share.verify) ? 'Needs verification: switch on “Verify my discipline”' : !m.address ? 'Needs a wallet to verify' : 'Verifying from fills…' }); continue; }
+      const d = disciplineOver(vd, c.start, c.end, c.minDays || 3);
       if (d.avg == null) note = d.n + ' of ' + (c.minDays || 3) + ' trading days so far'; else { score = Math.round(d.avg); note = d.n + ' trading days'; }
     } else if (c.type === 'survivor') {
       const hit = days.find(d => d.b);
@@ -237,7 +248,9 @@ function createSocial(opts) {
   const visible = (e, viewer) => { if (!e.member) return true; const a = own(S.members, e.member) ? S.members[e.member] : null;
     if (!a || a.banned) return false; if (viewer && a.id === viewer.id) return true;
     return !!a.share.feed && (e.type !== 'habit' || !!a.share.habits); };
-  const dropMember = (id) => { delete S.members[id]; delete S.follows[id];
+  const dropMember = (id) => { const gone = own(S.members, id) ? S.members[id].address : null;
+    delete S.members[id]; delete S.follows[id];
+    if (gone && opts.forgetAddress && !members().some(o => o.address === gone)) opts.forgetAddress(gone);
     for (const k in S.follows) S.follows[k] = S.follows[k].filter(x => x !== id);
     S.events = S.events.filter(e => e.member !== id); for (const e of S.events) e.kudos = e.kudos.filter(x => x !== id);
     for (const c of Object.values(S.comps)) { delete c.entrants[id]; if (c.money) delete c.money[id]; } };
@@ -255,14 +268,16 @@ function createSocial(opts) {
   const moneyBusy = new Set();
   const refreshMoney = async (m, force) => {
     if (!m.address || !(m.share.ret || m.share.usd) || moneyBusy.has(m.id)) return;
+    const addr = m.address;
     if (!force && m.money && now() - m.money.at < 30 * 60000) return;
     if (m.moneyFailAt && now() - m.moneyFailAt < 10 * 60000) return; // Hyperliquid erroring: don't hammer it
     moneyBusy.add(m.id);
     try {
       const r = await fetchImpl('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'portfolio', user: m.address }) });
+        body: JSON.stringify({ type: 'portfolio', user: addr }) });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const res = await r.json();
+      if (!own(S.members, m.id) || S.members[m.id].address !== addr) return; // wallet changed meanwhile
       const st = portfolioStats(res, 'month');
       m.money = st ? { ret: st.ret, dd: st.dd, usd: st.usd, at: now() } : { ret: null, dd: null, usd: null, at: now() };
       for (const c of Object.values(S.comps)) if (c.type === 'return' && c.entrants[m.id]) {
@@ -276,6 +291,27 @@ function createSocial(opts) {
     } catch (e) { m.moneyFailAt = now(); /* retried after the backoff; boards show what they have */ }
     finally { moneyBusy.delete(m.id); }
   };
+  // verified Discipline: recomputed from the member's public fills, at most every 30 minutes each
+  const behaviorBusy = new Set();
+  const canVerify = !!opts.behaviorFor && opts.verifyAvailable !== false;
+  const refreshBehavior = async (m, force) => {
+    if (!canVerify || !m.address || !m.share.verify || behaviorBusy.has(m.id)) return;
+    if (behaviorBusy.size >= 2) return; // two fetches at a time; the rest catch up on later requests
+    if (!force && m.vAt && now() - m.vAt < 30 * 60000) return;
+    if (m.vFailAt && now() - m.vFailAt < 10 * 60000) return;
+    const addr = m.address, tz = (m.stats && m.stats.tz) || 'UTC';
+    behaviorBusy.add(m.id);
+    try {
+      const days = await opts.behaviorFor(addr, tz);
+      if (!Array.isArray(days)) throw new Error('no data');
+      // the member may have changed wallet (or left) while this was running
+      const live = own(S.members, m.id) ? S.members[m.id] : null; if (!live || !live.share.verify || live.address !== addr) return;
+      live.vdays = days.filter(d => d && DAY_RE.test(d.k)).slice(-60).map(d => ({ k: d.k, s: clampNum(d.s, 0, 100) || 0, n: clampNum(d.n, 0, 1e5) || 0 }));
+      live.vAt = now(); live.vFailAt = 0; save();
+    } catch (e) { m.vFailAt = now(); }
+    finally { behaviorBusy.delete(m.id); }
+  };
+  const refreshAll = m => { refreshMoney(m); refreshBehavior(m); };
   const tierOf = m => ({ tier: m.tier || 0, tierName: TIERS[m.tier || 0] });
   const publicMember = (m, viewer) => {
     const st = m.stats || {};
@@ -283,8 +319,9 @@ function createSocial(opts) {
       followers: members().filter(x => (S.follows[x.id] || []).includes(m.id)).length,
       following: (S.follows[m.id] || []).length, isFollowing: !!viewer && (S.follows[viewer.id] || []).includes(m.id), isMe: !!viewer && viewer.id === m.id };
     if (!m.share.profile && !out.isMe) return Object.assign(out, { private: true });
-    const d30 = disciplineOver(st.days, addDaysKey(todayKey(), -29), todayKey(), 3);
-    Object.assign(out, { xp: st.xp || 0, streak: st.streak || 0, best: st.best || 0, discipline30: d30.avg == null ? null : Math.round(d30.avg),
+    const ver = m.share.verify && Array.isArray(m.vdays);
+    const d30 = disciplineOver(ver ? m.vdays : st.days, addDaysKey(todayKey(), -29), todayKey(), 3);
+    Object.assign(out, { xp: st.xp || 0, streak: st.streak || 0, best: st.best || 0, discipline30: d30.avg == null ? null : Math.round(d30.avg), verified: ver,
       badges: (st.badges || []).map(b => b.t || b.id), badgeN: st.badgeN || 0 });
     if (m.share.habits || out.isMe) out.habits = st.habits || [];
     if ((m.share.ret || out.isMe) && m.money && m.money.ret != null) { out.ret = m.money.ret; out.dd = m.money.dd; }
@@ -341,7 +378,7 @@ function createSocial(opts) {
       if (sub === 'members' && M === 'GET' && !parts[2])
         return json(res, 200, { members: members().sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0)).map(m => ({ id: m.id, handle: m.handle,
           tier: m.tier || 0, level: (m.stats && m.stats.level) || 1, xp: (m.stats && m.stats.xp) || 0, streak: (m.stats && m.stats.streak) || 0,
-          address: m.address || null, share: m.share, banned: !!m.banned, createdAt: m.createdAt, lastSeen: m.lastSeen || null,
+          address: m.address || null, share: m.share, banned: !!m.banned, verified: !!(m.share.verify && Array.isArray(m.vdays)), createdAt: m.createdAt, lastSeen: m.lastSeen || null,
           money: m.money && m.money.ret != null ? { ret: m.money.ret, dd: m.money.dd } : null })) });
       if (sub === 'members' && parts[2] && M === 'POST') {
         const m = own(S.members, parts[2]) ? S.members[parts[2]] : null; if (!m) return json(res, 404, { error: 'no such member' });
@@ -406,7 +443,7 @@ function createSocial(opts) {
       S.members[id] = m; S.follows[id] = [];
       recent.push(now()); joinTimes.set(ip, recent);
       if (m.share.feed) pushEvent(m, { type: 'join', text: 'joined the league' });
-      save(); refreshMoney(m, true);
+      save(); refreshMoney(m, true); refreshBehavior(m, true);
       return json(res, 200, { key, me: publicMember(m, m), share: m.share });
     }
 
@@ -422,11 +459,15 @@ function createSocial(opts) {
         if (!HANDLE_RE.test(h)) return json(res, 400, { error: 'Pick a name of 3–20 letters, numbers or underscores.' });
         const other = byHandle(h); if (other && other.id !== me.id) return json(res, 409, { error: 'That name is taken.' }); me.handle = h; }
       if (body.share) me.share = sanitizeShare(body.share, me.share);
-      const prevAddr = me.address;
+      const prevAddr = me.address, prevVerify = !!me.share.verify, prevMoney = !!(me.share.ret || me.share.usd);
       if (body.address !== undefined) me.address = typeof body.address === 'string' && /^0x[0-9a-fA-F]{40}$/.test(body.address) ? body.address.toLowerCase() : null;
       if (!(me.share.ret || me.share.usd)) me.money = null;
+      if (!me.share.verify || me.address !== prevAddr) { me.vdays = null; me.vAt = 0; }
       if (!me.share.ret) for (const c of Object.values(S.comps)) if (c.money) delete c.money[me.id]; // opting out hides past results too
-      save(); refreshMoney(me, me.address !== prevAddr);
+      save();
+      refreshMoney(me, me.address !== prevAddr || (!prevMoney && !!(me.share.ret || me.share.usd)));
+      refreshBehavior(me, me.address !== prevAddr || (!prevVerify && !!me.share.verify));
+      if (prevAddr && prevAddr !== me.address && opts.forgetAddress && !members().some(o => o.address === prevAddr)) opts.forgetAddress(prevAddr);
       return json(res, 200, { me: publicMember(me, me), share: me.share });
     }
     if (head === 'me' && M === 'DELETE') {
@@ -443,7 +484,7 @@ function createSocial(opts) {
       me.stats = next; me.statsAt = now();
       if (next.week) { me.weekXp = me.weekXp || {}; me.weekXp[next.week] = next.weekXp;
         const keep = Object.keys(me.weekXp).sort().slice(-8); for (const k of Object.keys(me.weekXp)) if (!keep.includes(k)) delete me.weekXp[k]; }
-      save(); refreshMoney(me);
+      save(); refreshAll(me);
       return json(res, 200, { ok: true, tier: me.tier || 0 });
     }
     if (head === 'league' && M === 'GET') {
@@ -454,18 +495,20 @@ function createSocial(opts) {
     }
     if (head === 'leaderboard' && M === 'GET') {
       const board = BOARDS[query.board] ? query.board : 'discipline';
-      for (const m of members()) refreshMoney(m); // background; boards show what's cached
+      for (const m of members()) refreshAll(m); // background; boards show what's cached
       const rows = boardRows(members(), board, { tier: me.tier || 0, week: S.league.week });
       const mine = rows.find(r => r.id === me.id) || null;
       return json(res, 200, { board, label: BOARDS[board].label, rows: rows.slice(0, 50).map(r => ({ rank: r.rank, handle: r.handle, tier: r.tier, value: r.value, sub: r.sub, me: r.id === me.id })),
-        me: mine, total: rows.length, optedIn: !!me.share[BOARDS[board].needs] });
+        me: mine, total: rows.length, optedIn: !!me.share[BOARDS[board].needs] && (!BOARDS[board].verified || !!me.share.verify),
+        need: !me.share[BOARDS[board].needs] ? BOARDS[board].needs : BOARDS[board].verified && !me.share.verify ? 'verify' : null,
+        verifyState: !BOARDS[board].verified || !me.share.verify ? null : !canVerify ? 'unavailable' : !me.address ? 'no-wallet' : !Array.isArray(me.vdays) ? 'pending' : 'ok' });
     }
     if (head === 'feed' && M === 'GET') {
       const scope = query.scope === 'discover' ? 'discover' : 'following';
       const fol = new Set([...(S.follows[me.id] || []), me.id]);
       const list = S.events.filter(e => visible(e, me) && (scope === 'discover' || !e.member || fol.has(e.member))).slice(-60).reverse();
       const suggest = scope === 'discover' ? members().filter(m => m.id !== me.id && !m.banned && m.share.profile && !fol.has(m.id) && m.stats)
-        .map(m => ({ m, d: disciplineOver(m.stats.days, addDaysKey(todayKey(), -29), todayKey(), 3).avg }))
+        .map(m => ({ m, d: disciplineOver(m.share.verify && Array.isArray(m.vdays) ? m.vdays : m.stats.days, addDaysKey(todayKey(), -29), todayKey(), 3).avg }))
         .sort((a, b) => (b.d || 0) - (a.d || 0)).slice(0, 3)
         .map(({ m, d }) => ({ handle: m.handle, tierName: TIERS[m.tier || 0], why: 'Level ' + m.stats.level + (d != null ? ' · discipline ' + Math.round(d) : '') })) : [];
       return json(res, 200, { scope, events: list.map(e => eventOut(e, me)), suggest });
@@ -488,7 +531,7 @@ function createSocial(opts) {
       save(); return json(res, 200, { following: M === 'POST' });
     }
     if (head === 'competitions' && M === 'GET' && !parts[1]) {
-      for (const c of Object.values(S.comps)) if (c.type === 'return' && c.entrants[me.id]) refreshMoney(me);
+      for (const c of Object.values(S.comps)) if (c.entrants[me.id]) { if (c.type === 'return') refreshMoney(me); if (c.type === 'discipline') refreshBehavior(me); }
       return json(res, 200, { competitions: Object.values(S.comps).sort((a, b) => a.start < b.start ? 1 : -1).map(c => compOut(c, me, false)) });
     }
     if (head === 'competitions' && parts[1] && M === 'GET') {
