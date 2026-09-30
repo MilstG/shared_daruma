@@ -64,6 +64,9 @@ tests/          test suites (`npm test`; CI runs them on every push)
   `DATA_DIR/social.json` on the same volume, plus 50 days of each verifying
   member's public fills in `DATA_DIR/social-fills/`. The owner's panel is at `/admin`
   and needs `AUTH_TOKEN` (without it the admin API refuses every request).
+  Members' encrypted journals (ciphertext only; the server can't read them) live in
+  `DATA_DIR/vault/`. Wallet claims need `vendor/eth-sig.js` deployed next to
+  `social.js` — it's in the repo, with no install step.
 - **Standalone still works:** the same `ledger.html` opened from disk or any
   static host simply skips server sync (the boot probe gets no answer) and
   falls back to the linked-data-file / browser storage modes.
@@ -76,6 +79,8 @@ tests/          test suites (`npm test`; CI runs them on every push)
 | `AUTH_TOKEN`           | *(empty = API open — don't)*     | Bearer token — everything |
 | `READ_TOKEN`           | *(unset)*                        | Optional second token: `GET /api/v1/*` only. Safe for scripts/dashboards |
 | `CORS_ORIGIN`          | *(unset)*                        | Exact origin allowed to call `/api/*` from a browser app |
+| `PUBLIC_ORIGIN`        | *(unset)*                        | The address people open Pulse at (e.g. `https://pulse.example.com`; comma-separate several). Wallet sign-in messages name only this site, so a look-alike site can't collect a valid signature. Not needed on Railway, whose edge only passes the service's own domains (custom ones included); set it when self-hosting |
+| `TRUST_PROXY`          | on when on Railway               | Read the visitor's address from `X-Forwarded-For` (the last entry) for rate limits. Only turn on behind a proxy that sets it |
 | `DATA_DIR`             | `/data` if present, else `./data`| Where the journal, caches, reports, and backups live |
 | `REFRESH_INTERVAL_MIN` | *(unset = off)*                  | Refresh server caches from Hyperliquid on a timer (first run ~30s after boot) |
 | `ALERT_WEBHOOK`        | *(unset)*                        | Discord/Slack/ntfy/JSON endpoint for alerts + weekly digests |
