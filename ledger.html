@@ -697,6 +697,7 @@ body.pz-mode .wrap,body.pz-mode #appfoot{display:none!important}
 .pz-xpbar{height:8px;border-radius:4px!important;background:var(--pz-track);overflow:hidden}
 .pz-xpbar i{display:block;height:100%;background:var(--pz-xp);border-radius:4px!important}
 .pz-trade{display:flex;flex-direction:column;gap:10px}
+.pz-jgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start}
 .pz-trade-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .pz-trade-h b{font-size:16px}
 .pz-stars{display:flex;gap:6px}
@@ -741,6 +742,7 @@ body.pz-mode .wrap,body.pz-mode #appfoot{display:none!important}
   .pz-rings{gap:16px}
   .pz-ringbtn{--sz:132px;padding:18px 8px}
   .pz-badges{grid-template-columns:repeat(7,minmax(0,1fr))}
+  .pz-jgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .pz-sheet-bg{align-items:center}
   .pz-sheet{border-radius:24px!important}
   .pz-note{bottom:24px;left:calc(50% + 116px)}
@@ -1705,7 +1707,7 @@ function setStatus(m,busy){ const s=$('status'); s.className='';
   s.textContent=m;
   if(busy){ const d=document.createElement('span'); d.className='dot'; s.prepend(d); }
   clearTimeout(_stTimer); if(!busy&&m) _stTimer=setTimeout(()=>{ if(s.className==='')s.textContent=''; },8000);
-  if(PZ)pzNote(m,busy?'busy':''); }
+  if(PZ&&!_pzQuiet)pzNote(m,busy?'busy':''); }
 function setErr(m){ const s=$('status'); s.className='err'; s.textContent=m; if(PZ)pzNote(m,'err'); }
 // One download path for every export. The object URL is revoked after a grace period —
 // before this, every export leaked its blob for the life of the tab.
@@ -5368,6 +5370,8 @@ function restoreDrafts(list){
 }
 function render(){
   if(PZ){ // Pulse draws only its own view; the hidden full dashboard isn't rebuilt
+    // spot-only history under the default perps view would show empty dials: widen it (not saved)
+    if(view==='perp'&&allTrades.length&&!allTrades.some(t=>t.market==='perp'))view='combined';
     _be=(settings.beThreshold!=null?settings.beThreshold:50); _oneR=computeOneR(periodTrades());
     try{ renderTripwire(); }catch(e){} // still arms the loss-limit notification
     pzRender(); return; }
@@ -5862,7 +5866,7 @@ async function removeWallet(i){
   setStatus('Removed '+labelFor(w)+(settings.wallets.length?'':' · list empty'));
 }
 async function loadAll(opts){ opts=opts||{}; const fresh=!!opts.fresh, auto=!!opts.auto;
-  if(_loading)return; _loading=true; try{
+  if(_loading)return; _loading=true; _pzQuiet=auto&&allTrades.length>0; try{
   if($('walletAddr').value.trim()){ if(!await addWalletFromInput()) return; }
   if(!settings.wallets.length){ setErr('Add at least one wallet address first.'); return; }
   $('loadAll').disabled=true;
@@ -5949,7 +5953,7 @@ async function loadAll(opts){ opts=opts||{}; const fresh=!!opts.fresh, auto=!!op
     else setErr('Couldn\u2019t reach Hyperliquid from the browser ('+e.message+'). Use “Paste data” instead.'); }
   finally{ $('loadAll').disabled=false; }
 
-  } finally { _loading=false; if(PZ)pzRender(); }
+  } finally { _loading=false; _pzQuiet=false; if(PZ)pzRender(); }
   autoRatchet();
 }
 /* ============================ generic CSV fill import ============================ */
@@ -8771,6 +8775,7 @@ function pzCoachLine(risk, findings){
 
 // ---- UI state (never stored) ----
 const PZ_TABS=['today','trends','checkin','progress','discipline','journal'];
+var _pzQuiet=false; // a background refresh of data Pulse already shows: no status toasts
 var pzS={ring:'discipline',range:30,badge:null,ck:null,sheet:false,jr:{},note:null};
 function pzTab(){ const h=(location.hash||'').slice(1); return PZ_TABS.includes(h)?h:'today'; }
 const PZI={
@@ -8996,7 +9001,7 @@ function pzJournalHtml(D){
       <textarea id="pzNoteT_${esc(t.id)}" rows="2" aria-label="${esc(q)}" placeholder="${esc(q)}"></textarea>
       <button type="button" class="pz-ghost" data-pz-jsave>Save</button></section>`; };
   return `${back}${pzHead(D.inbox.length+' to journal','Journal')}<p class="pz-sub" style="margin-top:-6px">Rate how well you executed each trade, not how it paid. One line is enough.</p>
-    <div class="pz-wide"><div class="pz-col">${list.filter((_,i)=>i%2===0).map(card).join('')}</div><div class="pz-col">${list.filter((_,i)=>i%2===1).map(card).join('')}</div></div>`;
+    <div class="pz-jgrid">${list.map(card).join('')}</div>`;
 }
 async function pzSaveJournal(sec){
   const id=sec.dataset.pzTrade, rating=pzS.jr[id]||0;
@@ -9064,6 +9069,7 @@ function pzLoadingHtml(){
 }
 function pzTokenHtml(){
   return `<div class="pz-field" style="margin-top:10px"><label for="pzTok">Access token</label><input type="password" id="pzTok" autocomplete="current-password" placeholder="the AUTH_TOKEN set on the server">
+    <p class="pz-fine">Signing in loads this server’s journal. Anything saved only in this browser is replaced.</p>
     <button type="button" class="pz-ghost pz-sm" id="pzTokBtn">Connect</button>${SRV.badAuth&&SRV.token?'<p class="pz-fine pz-err">The server rejected that token.</p>':''}</div>`;
 }
 function pzSheetHtml(){
@@ -9098,8 +9104,8 @@ function pzNote(m, kind){
 function pzRender(){
   if(!PZ)return; const view=$('pzView'); if(!view)return;
   // keep what's typed across re-renders (a background sync or auto-refresh can land mid-edit)
-  const keep={}; view.querySelectorAll('input[id],textarea[id]').forEach(el=>{ keep[el.id]=el.value; });
-  const act=document.activeElement, actId=act&&view.contains(act)?act.id:null;
+  const root=$('pz'), keep={}; root.querySelectorAll('input[id],textarea[id]').forEach(el=>{ keep[el.id]=el.value; });
+  const act=document.activeElement, actId=act&&root.contains(act)?act.id:null;
   const actSel=act&&act.dataset?(act.dataset.pzCk?`[data-pz-ck="${act.dataset.pzCk}"][data-n="${act.dataset.n}"]`:act.dataset.pzRing?`[data-pz-ring="${act.dataset.pzRing}"]`:act.dataset.pzRange?`[data-pz-range="${act.dataset.pzRange}"]`:act.dataset.pzBadge?`[data-pz-badge="${act.dataset.pzBadge}"]`:null):null;
   let html;
   if(!allTrades.length) html=_loading&&settings.wallets.length?pzLoadingHtml():pzConnectHtml();
@@ -9109,15 +9115,16 @@ function pzRender(){
     const body=tab==='trends'?pzTrendsHtml(D):tab==='checkin'?pzCheckinHtml(D):tab==='progress'?pzProgressHtml(D):tab==='discipline'?pzDisciplineHtml(D):tab==='journal'?pzJournalHtml(D):pzTodayHtml(D);
     html=`${pzNav(tab)}<main class="pz-main" id="pzMain">${body}</main>`; }
   view.innerHTML=html;
-  for(const id in keep){ const el=$(id); if(el&&view.contains(el)&&keep[id]&&!el.value)el.value=keep[id]; }
   const sh=$('pzSheet'); if(sh)sh.innerHTML=pzS.sheet?pzSheetHtml():'';
-  const f=(actId&&$(actId))||(actSel&&view.querySelector(actSel)); if(f&&f.focus)f.focus({preventScroll:true});
+  for(const id in keep){ const el=$(id); if(el&&root.contains(el)&&keep[id]&&!el.value)el.value=keep[id]; }
+  const f=(actId&&$(actId))||(actSel&&root.querySelector(actSel)); if(f&&f.focus)f.focus({preventScroll:true});
 }
 async function pzConnect(inputId){
   const el=$(inputId); const a=(el&&el.value||'').trim();
-  if(!/^0x[0-9a-fA-F]{40}$/.test(a)){ pzNote('That doesn’t look like a wallet address — it starts with 0x and is 42 characters long.','err'); if(el)el.focus(); return; }
-  $('walletAddr').value=a; if(el)el.value='';
-  pzS.sheet=false; pzNote('Loading your trades…','busy');
+  if(!/^0x[0-9a-fA-F]{40}$/.test(a)){ pzNote('That doesn’t look like a wallet address — it starts with 0x and is 42 characters long.','err'); const f=$(inputId); if(f)f.focus(); return; }
+  if(el)el.value=''; pzS.sheet=false; pzNote('Loading your trades…','busy');
+  for(let i=0;_loading&&i<240;i++)await sleep(250); // a background refresh is running: let it finish, then load
+  $('walletAddr').value=a;
   await loadAll();
 }
 async function pzToken(){
@@ -9169,7 +9176,7 @@ function wirePulse(){
   root.addEventListener('keydown',ev=>{
     if(ev.key==='Enter'&&(ev.target.id==='pzAddr'||ev.target.id==='pzAddr2')){ ev.preventDefault(); pzConnect(ev.target.id); }
     else if(ev.key==='Enter'&&ev.target.id==='pzTok'){ ev.preventDefault(); pzToken(); }
-    else if(ev.key==='Escape'&&pzS.sheet){ pzS.sheet=false; pzRender(); } });
+    else if(ev.key==='Escape'&&pzS.sheet){ pzS.sheet=false; pzRender(); const g=document.querySelector('[data-pz-sheet]'); if(g)g.focus(); } });
   window.addEventListener('hashchange',()=>{ if(pzTab()==='checkin')pzS.ck=null; pzRender(); window.scrollTo(0,0); });
   window.addEventListener('beforeinstallprompt',()=>{ if(pzS.sheet)pzRender(); });
 }

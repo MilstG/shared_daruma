@@ -125,6 +125,11 @@ t('Pulse forces the coach layer on and redraws only its own view', () => {
   ok(grabFn('render').includes('if(PZ){') && grabFn('render').includes('pzRender(); return;'));
   ok(grabFn('setStatus').includes('pzNote(') && grabFn('setErr').includes('pzNote('));
 });
+t('re-renders keep typed input and focus in the settings sheet too, and journal cards stay in date order', () => {
+  const r = grabFn('pzRender'); ok(r.includes("root.querySelectorAll('input[id],textarea[id]')") && r.includes('root.contains(act)'));
+  ok(grabFn('pzJournalHtml').includes('<div class="pz-jgrid">${list.map(card)'));
+  ok(grabFn('pzConnect').includes('_loading&&i<240'), 'waits out a background refresh');
+});
 t('a trade cap set in Pulse survives a save from the full app’s day journal', () => {
   ok(grabFn('wireDayJournal').includes('maxTrades:prevE.maxTrades||null'));
   ok(grabFn('nextDayEntry').includes("'maxTrades'"));
