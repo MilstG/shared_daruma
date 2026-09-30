@@ -722,6 +722,7 @@ body.pz-mode .wrap,body.pz-mode #appfoot{display:none!important}
 .pz-sheet{width:100%;max-width:520px;max-height:88vh;overflow:auto;background:#101318;border:1px solid var(--pz-line);border-radius:24px 24px 0 0!important;padding:18px 18px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px}
 .pz-wl{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:48px;border-bottom:1px solid var(--pz-line)}
 .pz-wl code{font-size:13px;color:var(--pz-soft)}
+.pz-code{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:14px!important;background:#10171D;border:1px dashed #33414D}
 .pz-warn{padding:12px 14px;border-radius:14px!important;background:#2B2413;border:1px solid #4A3C18;color:#F9DC8E;font-size:13px;line-height:1.45}
 #pz #gmOut .diag-card{background:var(--pz-card);border:1px solid var(--pz-line);border-radius:18px!important;padding:14px}
 #pz #gmOut .gm-img{max-width:100%;border-radius:12px!important}
@@ -1065,6 +1066,7 @@ const Store = {
     const s=JSON.stringify(val);
     if(window.storage){ try{ await window.storage.set(key,s); }catch(e){ try{localStorage.setItem(key,s);}catch(_){} } }
     else { try{ localStorage.setItem(key,s); }catch(e){} }
+    if(key===S_KEY)vaultMark(null); // a member's encrypted journal sync keeps this device's newer settings in a merge
     schedulePersist();
   }
 };
@@ -1141,14 +1143,14 @@ async function unpackFillCache(c){
 }
 function snapshot(){ return {app:'ledger',version:8,exportedAt:new Date().toISOString(),
   wallets:settings.wallets, settings:{riskDefault:settings.riskDefault,view:settings.view,dexView:settings.dexView,rBasis:settings.rBasis,pageSize:settings.pageSize,beThreshold:settings.beThreshold,theme:settings.theme,anaBasis:settings.anaBasis,tz:settings.tz,assumedLev:settings.assumedLev,rules:settings.rules,attribBasis:settings.attribBasis,goals:settings.goals,
-    pins:settings.pins, habits:settings.habits, tzZone:settings.tzZone, calMode:settings.calMode, calWeeks:settings.calWeeks, coachMode:settings.coachMode}, journal}; } // pins are the long-horizon forward tracker — losing them on a restore defeated the feature
+    pins:settings.pins, habits:settings.habits, tzZone:settings.tzZone, calMode:settings.calMode, calWeeks:settings.calWeeks, coachMode:settings.coachMode, pzTheme:settings.pzTheme}, journal}; } // pins are the long-horizon forward tracker — losing them on a restore defeated the feature
 async function applySnapshot(data){ if(!data)return false; _applying=true;
   try{
     if(data.journal && typeof data.journal==='object'){ journal=data.journal; _jrev++; }
     if(Array.isArray(data.wallets)) settings.wallets=data.wallets;
     // 'in', not !=null: a cleared risk default (null) must propagate, or another device resurrects it
     if(data.settings){ if('riskDefault' in data.settings)settings.riskDefault=data.settings.riskDefault;
-      if(data.settings.view)settings.view=data.settings.view; if(data.settings.dexView)settings.dexView=data.settings.dexView; if(data.settings.rBasis)settings.rBasis=data.settings.rBasis; if(data.settings.pageSize)settings.pageSize=data.settings.pageSize; if(data.settings.beThreshold!=null)settings.beThreshold=data.settings.beThreshold; if(data.settings.theme)settings.theme=data.settings.theme; if(data.settings.anaBasis)settings.anaBasis=data.settings.anaBasis; if(data.settings.tz)settings.tz=data.settings.tz; if(data.settings.assumedLev>0)settings.assumedLev=data.settings.assumedLev; if(data.settings.rules&&typeof data.settings.rules==='object')settings.rules=data.settings.rules; if(data.settings.attribBasis)settings.attribBasis=data.settings.attribBasis; if(Array.isArray(data.settings.pins))settings.pins=data.settings.pins.filter(p=>p&&typeof p.pid==='string'); if(Array.isArray(data.settings.habits))settings.habits=data.settings.habits.filter(h=>h&&typeof h.id==='string'&&typeof h.kind==='string'); if(typeof data.settings.tzZone==='string')settings.tzZone=data.settings.tzZone; if(data.settings.calMode==='pnl'||data.settings.calMode==='process')settings.calMode=data.settings.calMode; if(data.settings.calWeeks===26||data.settings.calWeeks===52)settings.calWeeks=data.settings.calWeeks; if(typeof data.settings.coachMode==='boolean')settings.coachMode=data.settings.coachMode; if(data.settings.goals&&typeof data.settings.goals==='object')settings.goals=data.settings.goals; }
+      if(data.settings.view)settings.view=data.settings.view; if(data.settings.dexView)settings.dexView=data.settings.dexView; if(data.settings.rBasis)settings.rBasis=data.settings.rBasis; if(data.settings.pageSize)settings.pageSize=data.settings.pageSize; if(data.settings.beThreshold!=null)settings.beThreshold=data.settings.beThreshold; if(data.settings.theme)settings.theme=data.settings.theme; if(data.settings.anaBasis)settings.anaBasis=data.settings.anaBasis; if(data.settings.tz)settings.tz=data.settings.tz; if(data.settings.assumedLev>0)settings.assumedLev=data.settings.assumedLev; if(data.settings.rules&&typeof data.settings.rules==='object')settings.rules=data.settings.rules; if(data.settings.attribBasis)settings.attribBasis=data.settings.attribBasis; if(Array.isArray(data.settings.pins))settings.pins=data.settings.pins.filter(p=>p&&typeof p.pid==='string'); if(Array.isArray(data.settings.habits))settings.habits=data.settings.habits.filter(h=>h&&typeof h.id==='string'&&typeof h.kind==='string'); if(typeof data.settings.tzZone==='string')settings.tzZone=data.settings.tzZone; if(data.settings.calMode==='pnl'||data.settings.calMode==='process')settings.calMode=data.settings.calMode; if(data.settings.calWeeks===26||data.settings.calWeeks===52)settings.calWeeks=data.settings.calWeeks; if(typeof data.settings.coachMode==='boolean')settings.coachMode=data.settings.coachMode; if(typeof data.settings.pzTheme==='string')settings.pzTheme=data.settings.pzTheme; if(data.settings.goals&&typeof data.settings.goals==='object')settings.goals=data.settings.goals; }
     await rawSet(J_KEY,journal); await rawSet(S_KEY,settings);
     // v9+ backups may carry per-wallet fill caches (see backupAll) — restore the valid ones.
     if(data.fillCaches && typeof data.fillCaches==='object'){
@@ -1189,7 +1191,7 @@ let _srvWriting=false,_srvAgain=false;
 // Journal edit counter — part of the miner cache key, since tags/setups/mistakes/ratings
 // change miner inputs without changing the trade count.
 let _jrev=0;
-function markJEdit(id){ _dirtyJ.set(id,(_dirtyJ.get(id)||0)+1); _jrev++; }
+function markJEdit(id){ _dirtyJ.set(id,(_dirtyJ.get(id)||0)+1); _jrev++; vaultMark(id); }
 // Settings as of the last successful sync — powers a field-level 409 merge: a goal/rule/tz
 // edit made here since the last sync wins over the incoming snapshot instead of silently
 // bouncing back. Wallets are deliberately excluded (list merges are ambiguous; last write
@@ -1197,7 +1199,7 @@ function markJEdit(id){ _dirtyJ.set(id,(_dirtyJ.get(id)||0)+1); _jrev++; }
 let _lastSyncedS=null;
 const _SYNC_S_FIELDS=['riskDefault','view','dexView','rBasis','pageSize','beThreshold','theme','anaBasis','tz','assumedLev','rules','attribBasis','goals','pins','habits','tzZone','calMode','calWeeks','coachMode','pzTheme'];
 function _snapS(){ const o={}; for(const k of _SYNC_S_FIELDS)o[k]=settings[k]; return JSON.parse(JSON.stringify(o)); }
-function schedulePersist(){ scheduleLinkedWrite(); scheduleServerWrite(); }
+function schedulePersist(){ scheduleLinkedWrite(); scheduleServerWrite(); vaultSchedule(); }
 // A failed write keeps the edits dirty, shows the error, and retries with backoff (5s → 2min).
 function syncFailed(msg){
   SRV.err=msg; SRV.retryMs=Math.min(120000,(SRV.retryMs||2500)*2);
@@ -9251,6 +9253,8 @@ function pzConnectHtml(){
   const tokenAsk=SRV.enabled&&SRV.needsAuth&&(!SRV.token||SRV.badAuth);
   const busy=_loading;
   const err=pzS.note&&pzS.note.kind==='err'?pzS.note.m:'';
+  if(pzS.unlock&&SOC.me)return `<div class="pz-connect">${pzRing('',0.72,PZ_COL.good,{size:64})}<h1>Pulse</h1>${acctConnectHtml()}
+    ${err?`<p class="pz-fine pz-err" role="alert">${esc(err)}</p>`:''}</div>`;
   return `<div class="pz-connect">${pzRing('',0.72,PZ_COL.good,{size:64})}
     <h1>Pulse</h1><p class="pz-sub" style="font-size:16px">Three dials for your trading day — readiness, discipline and risk — built from your own Hyperliquid trades.</p>
     ${settings.wallets.length&&!busy?`<p class="pz-sub">No closed trades found yet for ${settings.wallets.map(w=>esc(labelFor(w))).join(', ')}. Add another address, or look around with sample data.</p>`:''}
@@ -9258,7 +9262,8 @@ function pzConnectHtml(){
     ${err?`<p class="pz-fine pz-err" role="alert">${esc(err)}</p>`:''}
     <button type="button" class="pz-cta" id="pzConnect"${busy?' disabled':''}>${busy?'<span class="pz-spin"></span>Loading your trades…':'Connect'}</button>
     <button type="button" class="pz-ghost" id="pzDemo">Try it with sample data</button>
-    <p class="pz-fine">Read-only: you paste a public address — no wallet connection, no signing, no keys. Your trades come straight from Hyperliquid’s public API${synced?' and your journal syncs to this server.':' and your journal stays in this browser.'}</p>
+    <p class="pz-fine">Read-only: you paste a public address — no wallet connection or keys needed to see your trades. Your trades come straight from Hyperliquid’s public API${synced?' and your journal syncs to this server.':' and your journal stays in this browser.'}</p>
+    ${acctConnectHtml()}
     ${tokenAsk?`<details><summary class="pz-fine" style="cursor:pointer">Own this server? Sign in to sync</summary>${pzTokenHtml()}</details>`:''}
     <p class="pz-fine"><a href="${esc(pzFullHref())}">Open the full journal instead</a></p></div>`;
 }
@@ -9308,7 +9313,7 @@ function pzRender(){
   const act=document.activeElement, actId=act&&root.contains(act)?act.id:null;
   const actSel=act&&act.dataset?(act.dataset.pzCk?`[data-pz-ck="${act.dataset.pzCk}"][data-n="${act.dataset.n}"]`:act.dataset.pzRing?`[data-pz-ring="${act.dataset.pzRing}"]`:act.dataset.pzRange?`[data-pz-range="${act.dataset.pzRange}"]`:act.dataset.pzBadge?`[data-pz-badge="${act.dataset.pzBadge}"]`:null):null;
   let html;
-  if(!allTrades.length) html=_loading&&settings.wallets.length?pzLoadingHtml():pzConnectHtml();
+  if(!allTrades.length){ socBoot(); html=_loading&&settings.wallets.length?pzLoadingHtml():pzConnectHtml(); }
   else { const tab=pzTab(); let D;
     try{ D=pzData(); }catch(e){ console.error(e); view.innerHTML=`<div class="pz-connect"><p class="pz-sub pz-err">Pulse hit an error reading your data (${esc(e.message)}).</p><a class="pz-ghost" href="${esc(pzFullHref())}">Open the full journal</a></div>`; return; }
     ensureWeekChallenge(D.ctx).then(made=>{ if(made)pzRender(); }).catch(()=>{});
@@ -9383,6 +9388,8 @@ function wirePulse(){
     if(ev.key==='Enter'&&(ev.target.id==='pzAddr'||ev.target.id==='pzAddr2')){ ev.preventDefault(); pzConnect(ev.target.id); }
     else if(ev.key==='Enter'&&ev.target.id==='pzTok'){ ev.preventDefault(); pzToken(); }
     else if(ev.key==='Enter'&&ev.target.id==='socHandle'){ ev.preventDefault(); const b=$('socJoin'); if(b)b.click(); }
+    else if(ev.key==='Enter'&&(ev.target.id==='socLinkIn'||ev.target.id==='vaultPass'||ev.target.id==='vaultPass2')){ ev.preventDefault();
+      const b=$(ev.target.id==='socLinkIn'?'socLinkGo':$('vaultUnlock')?'vaultUnlock':'vaultOn'); if(b)b.click(); }
     else if(ev.key==='Escape'&&pzS.sheet){ pzS.sheet=false; pzRender(); const g=document.querySelector('[data-pz-sheet]'); if(g)g.focus(); } });
   window.addEventListener('hashchange',()=>{ const tb=pzTab(); if(tb==='checkin')pzS.ck=null; if(tb==='sharing')SOC.draft=null; pzRender(); window.scrollTo(0,0); });
   window.addEventListener('beforeinstallprompt',()=>{ if(pzS.sheet)pzRender(); });
@@ -9638,13 +9645,10 @@ function socSharingHtml(D){
   <div class="pz-wide"><div class="pz-col">
     <div class="pz-field"><label for="socHandle2">Public name</label><input type="text" id="socHandle2" maxlength="20" value="${esc(SOC.draftHandle!=null?SOC.draftHandle:SOC.me.handle)}" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
     <section class="pz-card" style="padding:4px 16px">${socToggles(SOC.draft,'data-soc-draft')}</section>
-    <p class="pz-fine">${w?`Returns are read on chain from your first wallet (${esc(walletShort(w.address))}) when “Show % return” or “Show dollar P&L” is on. The server owner can see that address.`:'Add a wallet to take part in return boards and competitions.'}</p>
+    <p class="pz-fine">${SOC.me.claimed?`Returns and verified Discipline are read on chain from your claimed wallet (${esc(walletShort(SOC.me.claimedAddress||''))}).`:w?`Returns are read on chain from your first wallet (${esc(walletShort(w.address))}) when “Show % return” or “Show dollar P&L” is on. The server owner can see that address.`:'Add a wallet to take part in return boards and competitions.'}</p>
     <button type="button" class="pz-cta" id="socSaveShare">Save</button></div>
   <div class="pz-col">
-    <section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Use Pulse on another device</b>
-      <p class="pz-sub" style="font-size:13px">Your profile is tied to a private key kept in this browser. Copy it to sign in elsewhere, and keep it secret — anyone with it can post as you.</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="pz-ghost pz-sm" id="socCopyKey">Copy my key</button></div>
-      <div class="pz-field"><label for="socKeyIn" style="font-size:13px">Have a key from another device?</label><input type="password" id="socKeyIn" autocomplete="off" placeholder="paste it here"><button type="button" class="pz-ghost pz-sm" id="socUseKey">Use this key</button></div></section>
+    ${socClaimCardHtml()}${socDevicesCardHtml()}${(SRV.token&&!SRV.badAuth)?'':socVaultCardHtml()}
     <section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Leave the league</b><p class="pz-sub" style="font-size:13px">Deletes your profile, posts and competition entries from this server. Your journal isn’t touched.</p><button type="button" class="pz-ghost pz-sm" id="socLeave" style="color:#FFB39E;border-color:#6A2E20">Leave and delete my profile</button></section>
   </div></div>`;
 }
@@ -9682,6 +9686,7 @@ async function socAction(t){
     if(ds.socLeave){ if(!confirm('Leave this competition?'))return true; await socFetch('/competitions/'+encodeURIComponent(ds.socLeave)+'/join',{method:'DELETE'}); done('You left the competition.'); return true; }
     if(ds.socAdopt){ await adoptHabit(socHabitSpec(ds.socAdopt)); done('Added to your habits. It’s tracked by the day journal’s “I followed the plan”.'); return true; }
     if(ds.pzTheme){ settings.pzTheme=ds.pzTheme; await Store.set(S_KEY,settings); pzRender(); return true; }
+    if(t.id&&await acctAction(t))return true;
     switch(t.id){
       case 'socJoin': { const h=($('socHandle')||{value:''}).value.trim(), inv=($('socInvite')||{value:''}).value.trim();
         const share=SOC.draft||SOC_DEFAULT_SHARE;
@@ -9691,20 +9696,255 @@ async function socAction(t){
       case 'socSaveShare': { const h=($('socHandle2')||{value:''}).value.trim(), share=SOC.draft||SOC.share;
         const r=await socFetch('/me',{method:'PUT',body:JSON.stringify({handle:h,share,address:socAddressFor(share)})});
         SOC.me=r.me; SOC.share=r.share; SOC.draft=null; SOC.draftHandle=null; SOC.lastSent=''; done('Saved.'); return true; }
-      case 'socCopyKey': try{ await navigator.clipboard.writeText(SOC.key||''); pzNote('Key copied. Keep it somewhere private.'); }catch(e){ pzNote('Couldn’t copy — your browser blocked the clipboard.','err'); } return true;
-      case 'socUseKey': { const k=($('socKeyIn')||{value:''}).value.trim(); if(!k)return true;
-        const prev=SOC.key; SOC.key=k;
-        try{ const d=await socFetch('/me'); SOC.me=d.me; SOC.share=d.share; SOC.cache={}; try{ localStorage.setItem(SOC_KEY_STORE,k); }catch(e){} SOC.lastSent=''; done('Signed in as @'+d.me.handle+'.'); }
-        catch(e){ SOC.key=prev; pzNote('That key didn’t work.','err'); }
-        return true; }
       case 'socLeave': { if(!confirm('Leave the league and delete your profile, posts and competition entries? Your journal isn’t touched.'))return true;
-        await socFetch('/me',{method:'DELETE'}); SOC.key=null; SOC.me=null; SOC.share=null; SOC.cache={}; try{ localStorage.removeItem(SOC_KEY_STORE); }catch(e){}
+        await socFetch('/me',{method:'DELETE'}); SOC.key=null; SOC.me=null; SOC.share=null; SOC.cache={}; vaultForget(); try{ localStorage.removeItem(SOC_KEY_STORE); }catch(e){}
         location.hash='#social'; done('You left the league.'); return true; }
     }
   }catch(e){ pzNote(e.message,'err'); return true; }
   return false;
 }
 
+
+/* ======================= 11c · PULSE ACCOUNTS: wallet claims, sign-in on any device, encrypted journal sync ======================= */
+// A wallet signature (Sign-In with Ethereum) claims a wallet for a profile and signs in on another
+// device — no password, no transaction. A one-time code from a signed-in device works too, for
+// phones without a wallet app. The journal can follow a member between devices as an encrypted
+// copy: encrypted in this browser with a key stretched from a sync passphrase (PBKDF2 → AES-GCM),
+// so the server, and its owner, only ever hold ciphertext. There's no reset: lose the passphrase
+// and the synced copy can't be opened. The owner (signed in with AUTH_TOKEN) already syncs the
+// whole journal to the server, so none of this applies to them.
+const VAULT_STORE='pz_vault', VAULT_ITER=310000;
+// dirty: journal ids edited here since the last push (with an edit counter, like _dirtyJ);
+// sGen/sSent: settings edits made here, so a merge keeps this device's settings when it has newer ones
+var VAULT={key:null,salt:null,rev:0,dirty:new Map(),sGen:0,sSent:0,timer:null,busy:false,again:false,err:null};
+const vb64=buf=>{ let s=''; const a=buf instanceof Uint8Array?buf:new Uint8Array(buf); for(let i=0;i<a.length;i+=0x8000)s+=String.fromCharCode.apply(null,a.subarray(i,i+0x8000)); return btoa(s); };
+const unvb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+function utf8Hex(s){ return '0x'+Array.from(new TextEncoder().encode(s),b=>b.toString(16).padStart(2,'0')).join(''); }
+
+// Ask the browser's wallet to sign the server's message. purpose: 'claim' | 'login'.
+async function socWalletSign(purpose){
+  const eth=window.ethereum;
+  if(!eth||typeof eth.request!=='function')throw new Error('No wallet in this browser. Use a browser with MetaMask or Rabby, or your wallet app’s built-in browser — or sign in with a code from a device you’re already signed in on.');
+  const accts=((await eth.request({method:'eth_requestAccounts'}))||[]).map(a=>String(a).toLowerCase());
+  const acct=accts[0]; if(!/^0x[0-9a-f]{40}$/.test(acct||''))throw new Error('Your wallet didn’t share an account.');
+  const st=await socFetch('/'+purpose+'/start',{method:'POST',body:JSON.stringify({address:acct})});
+  let signature;
+  try{ signature=await eth.request({method:'personal_sign',params:[utf8Hex(st.message),acct]}); }
+  catch(e){ throw new Error(e&&e.code===4001?'You cancelled the signature.':'Your wallet couldn’t sign: '+(e&&e.message||e)); }
+  return Object.assign(await socFetch('/'+purpose+'/finish',{method:'POST',body:JSON.stringify({nonce:st.nonce,signature})}),{address:acct});
+}
+function socSignedIn(r){
+  SOC.key=r.key; try{ localStorage.setItem(SOC_KEY_STORE,r.key); }catch(e){}
+  SOC.me=r.me; SOC.share=r.share; SOC.draft=null; SOC.cache={}; SOC.lastSent='';
+}
+// After signing in on a device: offer the synced journal if there is one, else read the claimed wallet.
+async function acctAfterSignIn(){
+  let v=null; try{ v=await socFetch('/vault'); }catch(e){}
+  if(v&&v.blob&&!VAULT.key){ pzS.unlock=true; pzRender(); return; }
+  await acctUseClaimedWallet();
+}
+async function acctUseClaimedWallet(){
+  pzS.unlock=false;
+  const a=SOC.me&&SOC.me.claimedAddress;
+  if(a&&!settings.wallets.some(w=>String(w.address).toLowerCase()===a)){ pzNote('Loading your trades…','busy'); $('walletAddr').value=a; await loadAll(); }
+  else pzRender();
+}
+
+// ---- the encrypted journal ----
+async function vaultLoadLocal(){
+  try{ const v=JSON.parse(localStorage.getItem(VAULT_STORE)||'null');
+    if(v&&v.k&&v.salt){ VAULT.key=await crypto.subtle.importKey('raw',unvb64(v.k),{name:'AES-GCM'},true,['encrypt','decrypt']);
+      VAULT.salt=v.salt; VAULT.rev=+v.rev||0; VAULT.dirty=new Map((v.dirty||[]).map(id=>[id,1])); VAULT.sGen=v.sDirty?1:0; VAULT.sSent=0; } }catch(e){}
+}
+async function vaultSaveLocal(){ if(!VAULT.key)return;
+  try{ localStorage.setItem(VAULT_STORE,JSON.stringify({k:vb64(await crypto.subtle.exportKey('raw',VAULT.key)),salt:VAULT.salt,rev:VAULT.rev,
+    dirty:[...VAULT.dirty.keys()].slice(-5000),sDirty:VAULT.sGen!==VAULT.sSent})); }catch(e){} }
+function vaultForget(){ clearTimeout(VAULT.timer); VAULT.key=null; VAULT.salt=null; VAULT.rev=0; VAULT.dirty=new Map(); VAULT.sGen=VAULT.sSent=0; VAULT.err=null;
+  try{ localStorage.removeItem(VAULT_STORE); }catch(e){} }
+async function vaultDerive(pass, saltB64, iter){
+  const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(pass),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt:unvb64(saltB64),iterations:iter||VAULT_ITER,hash:'SHA-256'},base,{name:'AES-GCM',length:256},true,['encrypt','decrypt']);
+}
+async function vaultSeal(key, salt, obj){
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(JSON.stringify(obj)));
+  return {v:1,iter:VAULT_ITER,salt,iv:vb64(iv),ct:vb64(ct)};
+}
+async function vaultOpen(key, blob){
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:unvb64(blob.iv)},key,unvb64(blob.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+// what travels: the same snapshot backups and the owner's server sync use (wallets, settings, journal)
+function vaultPayload(){ return snapshot(); }
+function vaultActive(){ return !!(VAULT.key&&SOC.key&&socAvailable()&&!(SRV.token&&!SRV.badAuth)); }
+function vaultDirty(){ return VAULT.dirty.size>0||VAULT.sGen!==VAULT.sSent; }
+// called on every local save (Store.set / markJEdit)
+function vaultMark(id){ if(!VAULT.key||_applying)return; if(id==null)VAULT.sGen++; else VAULT.dirty.set(id,(VAULT.dirty.get(id)||0)+1); }
+function vaultSchedule(){ if(!vaultActive()||_applying)return; clearTimeout(VAULT.timer); VAULT.timer=setTimeout(()=>vaultPush(),3000); vaultSaveLocal(); }
+// Another device's copy, merged: theirs wins, except journal entries and settings edited here since the last push.
+async function vaultMerge(d){
+  let theirs; try{ theirs=await vaultOpen(VAULT.key,d.blob); }
+  catch(e){ vaultForget(); throw new Error('Your sync passphrase was changed on another device. Enter the new one under Profile & privacy to keep syncing.'); }
+  const mineJ=journal, mineS=_snapS(), mineW=settings.wallets, keepS=VAULT.sGen!==VAULT.sSent, ids=[...VAULT.dirty.keys()];
+  const wBefore=JSON.stringify(settings.wallets);
+  await applySnapshot(theirs);
+  for(const id of ids){ if(mineJ[id]!==undefined)journal[id]=mineJ[id]; else delete journal[id]; }
+  if(keepS){ for(const k of _SYNC_S_FIELDS)settings[k]=mineS[k]; settings.wallets=mineW; }
+  await rawSet(J_KEY,journal); await rawSet(S_KEY,settings);
+  VAULT.rev=d.rev; await vaultSaveLocal();
+  try{ renderWallets(); }catch(e){}
+  return JSON.stringify(settings.wallets)!==wBefore;
+}
+async function vaultPush(){
+  if(!vaultActive())return;
+  if(VAULT.busy){ VAULT.again=true; return; } VAULT.busy=true;
+  try{
+    const sentIds=[...VAULT.dirty.entries()], sentS=VAULT.sGen;
+    const blob=await vaultSeal(VAULT.key,VAULT.salt,vaultPayload());
+    if(blob.ct.length>6*1024*1024)throw new Error('Your journal is too large to sync ('+(blob.ct.length/1048576).toFixed(1)+' MB; the limit is 6 MB).');
+    const r=await fetch('/api/social/vault',{method:'PUT',headers:{'Content-Type':'application/json','X-Pulse-Key':SOC.key},body:JSON.stringify({rev:VAULT.rev,blob})});
+    const d=await r.json().catch(()=>({}));
+    if(r.status===409){ // another device saved first: merge its copy, then push again at its revision
+      const walletsChanged=await vaultMerge(d); VAULT.again=true;
+      if(walletsChanged&&settings.wallets.length)loadAll({auto:true}); else if(PZ)pzRender(); else render();
+      return; }
+    if(!r.ok)throw new Error(d.error||'HTTP '+r.status);
+    VAULT.rev=d.rev; VAULT.err=null;
+    for(const [id,c] of sentIds)if(VAULT.dirty.get(id)===c)VAULT.dirty.delete(id);
+    VAULT.sSent=sentS; await vaultSaveLocal();
+    if(SOC.me&&SOC.me.vault!==undefined)SOC.me.vault={rev:d.rev,size:blob.ct.length,at:d.at};
+  }catch(e){ VAULT.err=e.message; if(PZ&&pzTab()==='sharing')pzRender(); }
+  finally{ VAULT.busy=false; if(VAULT.again&&VAULT.key){ VAULT.again=false; clearTimeout(VAULT.timer); VAULT.timer=setTimeout(()=>vaultPush(),500); } }
+}
+// On open: take a newer copy from another device (merging anything unsent from here), else push what's unsent.
+async function vaultSyncOnOpen(){
+  if(!vaultActive())return false;
+  try{ const d=await socFetch('/vault');
+    let walletsChanged=false;
+    if(d.blob&&d.rev!==VAULT.rev)walletsChanged=await vaultMerge(d);
+    else if(!d.blob&&VAULT.rev>0){ vaultForget(); VAULT.err=null; pzNote('Your synced journal was deleted from another device, so this one stopped syncing.'); return false; }
+    else if(!d.blob)VAULT.sGen++; // turned on here but never sent: send it now
+    if(vaultDirty())vaultSchedule();
+    return walletsChanged;
+  }catch(e){ VAULT.err=e.message; if(e.status===401)vaultForget(); return false; }
+}
+async function vaultBoot(){
+  await vaultLoadLocal();
+  if(!vaultActive())return false;
+  return Promise.race([vaultSyncOnOpen(),new Promise(r=>setTimeout(()=>r(false),5000))]);
+}
+async function vaultEnable(pass){
+  const salt=vb64(crypto.getRandomValues(new Uint8Array(16)));
+  const key=await vaultDerive(pass,salt);
+  const d=await socFetch('/vault');
+  const blob=await vaultSeal(key,salt,vaultPayload());
+  const r=await socFetch('/vault',{method:'PUT',body:JSON.stringify({rev:d.rev||0,blob})});
+  VAULT.key=key; VAULT.salt=salt; VAULT.rev=r.rev; VAULT.dirty=new Map(); VAULT.sGen=VAULT.sSent=0; VAULT.err=null; await vaultSaveLocal();
+  if(SOC.me)SOC.me.vault={rev:r.rev,size:blob.ct.length,at:r.at};
+}
+// Open the synced copy here. Anything only on this device is kept alongside it (theirs wins per entry).
+async function vaultUnlock(pass){
+  const d=await socFetch('/vault'); if(!d.blob)throw new Error('There’s no synced journal for this profile yet.');
+  const key=await vaultDerive(pass,d.blob.salt,d.blob.iter);
+  let data; try{ data=await vaultOpen(key,d.blob); }catch(e){ throw new Error('That passphrase doesn’t open your synced journal.'); }
+  const mineJ=journal||{}, mineW=settings.wallets||[];
+  await applySnapshot(data);
+  VAULT.key=key; VAULT.salt=d.blob.salt; VAULT.rev=d.rev; VAULT.dirty=new Map(); VAULT.sGen=VAULT.sSent=0; VAULT.err=null;
+  for(const id in mineJ)if(!(id in journal)){ journal[id]=mineJ[id]; VAULT.dirty.set(id,1); }
+  for(const w of mineW)if(!settings.wallets.some(x=>String(x.address).toLowerCase()===String(w.address).toLowerCase())){ settings.wallets.push(w); VAULT.sGen++; }
+  await rawSet(J_KEY,journal); await rawSet(S_KEY,settings); await vaultSaveLocal();
+  if(vaultDirty())vaultSchedule();
+  pzS.unlock=false; renderWallets();
+  if(settings.wallets.length)await loadAll(); else await acctUseClaimedWallet();
+}
+
+// ---- screens ----
+// On the first-run screen: already a member elsewhere? Sign in, or open your synced journal.
+function acctConnectHtml(){
+  if(!socAvailable()||!SOC.cfg||!SOC.cfg.enabled||(SRV.token&&!SRV.badAuth))return '';
+  if(pzS.unlock&&SOC.me)return `<section class="pz-card" style="display:flex;flex-direction:column;gap:10px;text-align:left"><b style="font-size:15px">Welcome back, @${esc(SOC.me.handle)}</b>
+    <p class="pz-sub" style="font-size:13px">Your journal is synced. Enter your sync passphrase to open it on this device.</p>
+    <div class="pz-field"><label for="vaultPass" style="font-size:13px">Sync passphrase</label><input type="password" id="vaultPass" autocomplete="current-password"></div>
+    <button type="button" class="pz-cta" id="vaultUnlock">Open my journal</button><button type="button" class="pz-ghost pz-sm" id="vaultSkip">Skip — start without it</button></section>`;
+  if(SOC.me)return `<p class="pz-fine">Signed in as @${esc(SOC.me.handle)}.${SOC.me.claimedAddress?'':' Add your wallet address above to load your trades.'}</p>`;
+  return `<details class="pz-acct"${pzS.acctOpen?' open':''}><summary class="pz-fine" style="cursor:pointer">Already use Pulse on another device? Sign in</summary>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+    ${SOC.cfg.claims?'<button type="button" class="pz-ghost" id="socWalletLogin">Sign in with my wallet</button><p class="pz-fine">Works once you’ve claimed your wallet. It’s a signature, not a transaction — nothing moves.</p>':''}
+    <div class="pz-field"><label for="socLinkIn" style="font-size:13px">Or enter a code from a signed-in device</label><input type="text" id="socLinkIn" maxlength="14" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="e.g. K7Q2M9XW4P">
+      <button type="button" class="pz-ghost pz-sm" id="socLinkGo">Sign in with code</button></div>
+    <p class="pz-fine">Get a code on your other device under Social → Profile &amp; privacy → Add a device.</p></div></details>`;
+}
+function socClaimCardHtml(){
+  if(!SOC.cfg||!SOC.cfg.claims)return '';
+  const me=SOC.me;
+  if(me.claimed)return `<section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px;display:flex;align-items:center;gap:8px">${pzI('shield',18)}Wallet claimed</b>
+    <p class="pz-sub" style="font-size:13px"><code>${esc(walletShort(me.claimedAddress||''))}</code> is locked to @${esc(me.handle)}. Nobody else can use it here, your boards show a ✓, and you can sign in with it on any device. Only a signature from this wallet can move it.</p>
+    <button type="button" class="pz-ghost pz-sm" id="socUnclaim">Release this wallet</button></section>`;
+  return `<section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px;display:flex;align-items:center;gap:8px">${pzI('shield',18)}Claim your wallet</b>
+    <p class="pz-sub" style="font-size:13px">Prove a wallet is yours by signing a short message with it. It’s a signature, not a transaction: no gas, nothing moves. A claimed wallet is locked to your profile, gets a ✓ on the boards${me.requireClaim?' (this league only counts claimed wallets for verified Discipline and returns)':''}, and lets you sign in on any device. The server owner can see the address.</p>
+    <button type="button" class="pz-cta" id="socClaim">Claim with my wallet</button>
+    <p class="pz-fine">Signs with the account selected in your browser wallet (MetaMask, Rabby…). On a phone, open this page in your wallet app’s browser.</p></section>`;
+}
+function socDevicesCardHtml(){
+  const me=SOC.me, L=SOC.link&&SOC.link.exp>Date.now()?SOC.link:null;
+  return `<section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Your devices</b>
+    <p class="pz-sub" style="font-size:13px">Signed in on ${me.devices||1} device${(me.devices||1)===1?'':'s'}.${me.claimed?' On a new device, sign in with your wallet —':' On a new device,'} or use a one-time code from here.</p>
+    ${L?`<div class="pz-code" aria-live="polite"><b style="font-family:var(--pz-num);font-size:26px;letter-spacing:.12em">${esc(L.code.slice(0,5)+' '+L.code.slice(5))}</b><span class="pz-fine">On the other device open Pulse, choose “Already use Pulse on another device?” and enter this code. It works once, for 10 minutes.</span></div>`
+      :'<button type="button" class="pz-ghost pz-sm" id="socLinkNew">Add a device</button>'}
+    ${(me.devices||1)>1?'<button type="button" class="pz-ghost pz-sm" id="socSignOutOthers">Sign out other devices</button>':''}</section>`;
+}
+function socVaultCardHtml(){
+  const me=SOC.me;
+  if(!me.vaultOn&&!VAULT.key)return '';
+  if(VAULT.key)return `<section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px;display:flex;align-items:center;gap:8px">${pzI('check',16)}Journal sync is on</b>
+    <p class="pz-sub" style="font-size:13px">Your journal, wallets and settings are encrypted on this device before they’re sent, so the server stores only scrambled data. On another device, sign in and enter your sync passphrase.</p>
+    ${VAULT.err?`<p class="pz-fine pz-err" role="alert">Last sync failed: ${esc(VAULT.err)}</p>`:me.vault&&me.vault.at?`<p class="pz-fine">Last synced ${socAgo(me.vault.at)}${me.vault.at>Date.now()-60000?'':' ago'}.</p>`:''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="pz-ghost pz-sm" id="vaultOff">Stop syncing on this device</button><button type="button" class="pz-ghost pz-sm" id="vaultDelete" style="color:#FFB39E;border-color:#6A2E20">Delete the synced copy</button></div></section>`;
+  const has=!!(me.vault&&me.vault.rev);
+  return `<section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Your journal on every device</b>
+    <p class="pz-sub" style="font-size:13px">${has?'This profile has a synced journal. Enter its passphrase to open it here — anything only on this device is kept too.'
+      :'Choose a sync passphrase. Your journal, wallets and settings are encrypted on this device before they leave it: the server, and its owner, can’t read them. There’s no reset — lose the passphrase and the synced copy can’t be opened.'}</p>
+    <div class="pz-field"><label for="vaultPass" style="font-size:13px">Sync passphrase</label><input type="password" id="vaultPass" autocomplete="${has?'current-password':'new-password'}" placeholder="${has?'':'at least 10 characters'}"></div>
+    ${has?'<button type="button" class="pz-cta" id="vaultUnlock">Open my synced journal</button><button type="button" class="pz-ghost pz-sm" id="vaultReplace">Replace it with this device’s journal (new passphrase)</button>'
+      :'<div class="pz-field"><label for="vaultPass2" style="font-size:13px">Type it again</label><input type="password" id="vaultPass2" autocomplete="new-password"></div><button type="button" class="pz-cta" id="vaultOn">Turn on journal sync</button>'}</section>`;
+}
+
+// ---- actions (from socAction) ----
+async function acctAction(t){
+  const done=(m,kind)=>{ if(m)pzNote(m,kind); socStale(); pzRender(); };
+  const pass=()=>{ const el=$('vaultPass'), v=el?el.value:''; return v; };
+  const clearPass=()=>{ for(const id of ['vaultPass','vaultPass2']){ const el=$(id); if(el)el.value=''; } };
+  switch(t.id){
+    case 'socClaim': { pzNote('Waiting for your wallet…','busy'); const r=await socWalletSign('claim'); SOC.me=r.me; SOC.share=r.share; SOC.draft=null;
+      const known=settings.wallets.some(w=>String(w.address).toLowerCase()===r.address);
+      done('Claimed '+walletShort(r.address)+'. It’s locked to your profile.'+(known?'':' It isn’t one of the wallets Pulse reads — add it in Settings to see its trades.')); return true; }
+    case 'socUnclaim': { if(!confirm('Release this wallet? Anyone could name it again, and you’d lose wallet sign-in until you claim it again.'))return true;
+      const r=await socFetch('/claim/release',{method:'POST'}); SOC.me=r.me; done('Wallet released.'); return true; }
+    case 'socWalletLogin': { pzS.acctOpen=true; pzNote('Waiting for your wallet…','busy'); const r=await socWalletSign('login'); socSignedIn(r);
+      pzNote('Signed in as @'+r.me.handle+'.'); await acctAfterSignIn(); return true; }
+    case 'socLinkGo': { pzS.acctOpen=true; const c=($('socLinkIn')||{value:''}).value.trim(); if(!c)return true;
+      const r=await socFetch('/link/finish',{method:'POST',body:JSON.stringify({code:c})}); socSignedIn(r); $('socLinkIn').value='';
+      pzNote('Signed in as @'+r.me.handle+'.'); await acctAfterSignIn(); return true; }
+    case 'socLinkNew': { const r=await socFetch('/link/start',{method:'POST'}); SOC.link={code:r.code,exp:r.expiresAt};
+      setTimeout(()=>{ if(SOC.link&&SOC.link.code===r.code){ SOC.link=null; if(pzTab()==='sharing')pzRender(); } },10*60000); pzRender(); return true; }
+    case 'socSignOutOthers': { if(!confirm('Sign out every other device? They’ll need your wallet or a new code to sign back in.'))return true;
+      const r=await socFetch('/devices',{method:'DELETE'}); SOC.me=r.me; SOC.link=null; done('Other devices are signed out.'); return true; }
+    case 'vaultOn': { const p=pass(), p2=($('vaultPass2')||{value:''}).value;
+      if(p.length<10){ pzNote('Use at least 10 characters — a few words you’ll remember works well.','err'); return true; }
+      if(p!==p2){ pzNote('The two passphrases don’t match.','err'); return true; }
+      pzNote('Encrypting your journal…','busy'); await vaultEnable(p); clearPass(); done('Journal sync is on. Keep your passphrase safe: there’s no reset.'); return true; }
+    case 'vaultReplace': { const p=pass(); if(p.length<10){ pzNote('Type a new passphrase of at least 10 characters first.','err'); return true; }
+      if(!confirm('Replace the synced journal with this device’s journal, under this new passphrase? Other devices will need the new passphrase.'))return true;
+      pzNote('Encrypting your journal…','busy'); await vaultEnable(p); clearPass(); done('Synced journal replaced.'); return true; }
+    case 'vaultUnlock': { const p=pass(); if(!p)return true; pzNote('Opening your journal…','busy');
+      await vaultUnlock(p); clearPass(); pzNote('Your journal is open on this device and syncs from here on.'); socStale(); pzRender(); return true; }
+    case 'vaultSkip': await acctUseClaimedWallet(); return true;
+    case 'vaultOff': vaultForget(); done('This device stopped syncing. The synced copy is still on the server.'); return true;
+    case 'vaultDelete': { if(!confirm('Delete the synced copy from the server? This device keeps its journal; other devices stop syncing.'))return true;
+      await socFetch('/vault',{method:'DELETE'}); vaultForget(); if(SOC.me)SOC.me.vault=null; done('Synced copy deleted.'); return true; }
+  }
+  return false;
+}
 
 /* ============================ boot ============================ */
 (async function(){
@@ -9768,6 +10008,8 @@ async function socAction(t){
   // auto-load on boot: rebuild from the cached fills and pull anything new, so reopening the
   // app refreshes without a manual "Load all". Incremental and _loading-guarded; the 3-minute
   // interval keeps it current from here. Errors surface the same way an auto-tick would.
+  // a member's encrypted journal: take a newer copy from their other devices before the first load
+  try{ if(await vaultBoot())renderWallets(); }catch(e){}
   if(settings.wallets.length) loadAll({auto:true});
   if(PZ)pzRender();
 })();

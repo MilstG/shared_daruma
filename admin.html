@@ -72,6 +72,10 @@ td button{min-height:32px;padding:4px 10px;font-size:12px}
         <label><input type="checkbox" id="cOpen">Open for new members</label>
         <label for="cInvite">Invite code (leave empty for anyone with the link)</label>
         <input id="cInvite" maxlength="40" autocomplete="off">
+        <label><input type="checkbox" id="cClaim">Only count claimed wallets</label>
+        <p class="muted" style="margin:2px 0 8px;font-size:13px">Verified Discipline, returns and return competitions then only use wallets a member proved are theirs by signing with them. Anyone can type an address; only the owner of the wallet can claim it.</p>
+        <label><input type="checkbox" id="cVault">Encrypted journal sync for members</label>
+        <p class="muted" style="margin:2px 0 8px;font-size:13px">Members’ journals are encrypted in their browser with their own passphrase. This server stores ciphertext only — you can’t read them.</p>
         <label><input type="checkbox" id="cUnlocks">Unlock Pulse features with XP</label>
         <div class="row">
           <div><label for="uTrends">Deeper insights at level</label><input id="uTrends" type="number" min="1" max="100"></div>
@@ -117,7 +121,7 @@ td button{min-height:32px;padding:4px 10px;font-size:12px}
     <section class="card">
       <div class="row" style="justify-content:space-between"><h2 style="margin:0;flex:0 0 auto">Members</h2><input id="q" placeholder="Search by name or address" aria-label="Search members" style="max-width:320px"></div>
       <p class="muted" style="margin:8px 0 0">Addresses are visible to you as the owner. Members see them only if the member chose to show theirs.</p>
-      <div class="scroll"><table><thead><tr><th>Name</th><th>League</th><th>Level</th><th>Streak</th><th>30d return</th><th>Address</th><th>Last seen</th><th></th></tr></thead><tbody id="members"></tbody></table></div>
+      <div class="scroll"><table><thead><tr><th>Name</th><th>League</th><th>Level</th><th>Streak</th><th>30d return</th><th>Address</th><th>Devices</th><th>Last seen</th><th></th></tr></thead><tbody id="members"></tbody></table></div>
     </section>
 
     <div class="two">
@@ -152,21 +156,23 @@ td button{min-height:32px;padding:4px 10px;font-size:12px}
     const q=$('q').value.trim().toLowerCase();
     const list=MEMBERS.filter(m=>!q||m.handle.toLowerCase().includes(q)||(m.address||'').includes(q));
     $('members').innerHTML=list.map(m=>`<tr>
-      <td><b>@${esc(m.handle)}</b>${m.verified?' <span class="pill">verified</span>':''}${m.banned?' <span class="pill ban">removed from boards</span>':''}</td>
+      <td><b>@${esc(m.handle)}</b>${m.claimed?' <span class="pill">claimed ✓</span>':''}${m.verified?' <span class="pill">verified</span>':''}${m.banned?' <span class="pill ban">removed from boards</span>':''}</td>
       <td><select data-tier="${esc(m.id)}" aria-label="League for ${esc(m.handle)}">${TIERS.map((t,i)=>`<option value="${i}"${i===m.tier?' selected':''}>${t}</option>`).join('')}</select></td>
       <td>${m.level}</td><td>${m.streak}</td>
       <td>${m.money?(m.money.ret>=0?'+':'')+(m.money.ret*100).toFixed(1)+'% · DD '+(m.money.dd*100).toFixed(1)+'%':'<span class="muted">—</span>'}</td>
-      <td>${m.address?`<code>${esc(m.address.slice(0,6)+'…'+m.address.slice(-4))}</code>`:'<span class="muted">—</span>'}</td>
+      <td>${m.address?`<code>${esc(m.address.slice(0,6)+'…'+m.address.slice(-4))}</code>${m.claimed&&m.claimed===m.address?'':' <span class="muted">unproven</span>'}`:'<span class="muted">—</span>'}</td>
+      <td>${m.devices||1}${m.vault?` <span class="muted">· sync ${m.vault>1048576?(m.vault/1048576).toFixed(1)+' MB':Math.max(1,Math.round(m.vault/1024))+' KB'}</span>`:''}</td>
       <td>${esc(ago(m.lastSeen))}</td>
       <td><div class="acts"><button data-act="${m.banned?'unban':'ban'}" data-id="${esc(m.id)}">${m.banned?'Restore':'Suspend'}</button><button class="danger" data-act="remove" data-id="${esc(m.id)}" data-h="${esc(m.handle)}">Delete</button></div></td></tr>`).join('')
-      ||'<tr><td colspan="8" class="muted">No members yet. Share your /pulse link and people join from the Social tab.</td></tr>';
+      ||'<tr><td colspan="9" class="muted">No members yet. Share your /pulse link and people join from the Social tab.</td></tr>';
   }
   async function load(){
     const ov=await api('/overview');
     $('login').classList.add('hide'); $('app').classList.remove('hide'); $('signout').classList.remove('hide');
-    $('tiles').innerHTML=[['Members',ov.members],['Active this week',ov.active7],['Competitions',ov.comps],['Feed posts',ov.events],['League week',ov.week?ov.week.slice(-3):'—']]
+    $('tiles').innerHTML=[['Members',ov.members],['Active this week',ov.active7],['Competitions',ov.comps],['Feed posts',ov.events],['Claimed wallets',ov.claimed||0],['Synced journals',ov.vaults?ov.vaults+' · '+(ov.vaultBytes/1048576).toFixed(1)+' MB':0],['League week',ov.week?ov.week.slice(-3):'—']]
       .concat(ov.tiers.map(t=>[t.tier+' league',t.n])).map(([l,v])=>`<div class="tile"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('');
     const c=ov.config; $('cOpen').checked=c.open; $('cInvite').value=c.inviteCode||''; $('cUnlocks').checked=c.unlocksOn;
+    $('cClaim').checked=!!c.requireClaim; $('cClaim').disabled=!ov.claims; $('cVault').checked=c.vaultOn!==false;
     $('uTrends').value=c.unlocks.trends; $('uShare').value=c.unlocks.share; $('uCompete').value=c.unlocks.compete;
     $('tEmber').value=c.themes.ember; $('tAurora').value=c.themes.aurora; $('tGold').value=c.themes.gold;
     const [ms,cs,ev]=await Promise.all([api('/members'),api('/competitions'),api('/events')]);
@@ -188,7 +194,7 @@ td button{min-height:32px;padding:4px 10px;font-size:12px}
   $('signout').onclick=()=>{ try{ localStorage.removeItem('srv_token'); }catch(e){} location.reload(); };
   $('q').addEventListener('input',drawMembers);
   $('saveCfg').onclick=async()=>{ try{
-    await api('/config',{method:'PUT',body:JSON.stringify({open:$('cOpen').checked,inviteCode:$('cInvite').value.trim(),unlocksOn:$('cUnlocks').checked,
+    await api('/config',{method:'PUT',body:JSON.stringify({open:$('cOpen').checked,inviteCode:$('cInvite').value.trim(),unlocksOn:$('cUnlocks').checked,requireClaim:$('cClaim').checked,vaultOn:$('cVault').checked,
       unlocks:{trends:+$('uTrends').value,share:+$('uShare').value,compete:+$('uCompete').value},themes:{ember:+$('tEmber').value,aurora:+$('tAurora').value,gold:+$('tGold').value}})});
     note('Settings saved.'); load(); }catch(e){ note(e.message,true); } };
   const today=new Date(), iso=d=>d.toISOString().slice(0,10);

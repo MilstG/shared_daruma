@@ -1,0 +1,17 @@
+[
+ {
+  "address": "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+  "message": "localhost wants you to sign in with your Ethereum account:\n0x19E7E376E7C213B7E7E7e46cc70A5dD086DAff2A\n\nClaim this wallet for @alpha on Pulse.\n\nURI: https://localhost\nVersion: 1\nChain ID: 1\nNonce: 3f9a8b7c6d5e4f30\nIssued At: 2026-09-30T21:00:00.000Z",
+  "signature": "0x57e15c499975c02e5e3b1735300da185623b3e5f79d35ec5484f970fadf428f232ee19ea726934b50bad76547ff2fcc7467549940479369f2f191332e3dfb5071b"
+ },
+ {
+  "address": "0x1563915e194D8CfBA1943570603F7606A3115508",
+  "message": "Hello Pulse",
+  "signature": "0x2d9028d70a9a4a41a35a96c83bf44e13fd0cf16c88ab136faff40750c2152e7f32ef5e8f2f47bc7fa3b90d573b24b11acec0ff94da0f35ef2f79cf69ada841a11c"
+ },
+ {
+  "address": "0x2c7536E3605D9C16a7a3D7b1898e529396a65c23",
+  "message": "Some data ✓ ünïcode",
+  "signature": "0x508297da0af356920361270a0b33d00ad8f4e8e6e8ec5371d28e983483e68d7467ee668c4a3a89a8b4ff1b525f899262f3133950b62196613b1e7ffed61ce36b1b"
+ }
+]

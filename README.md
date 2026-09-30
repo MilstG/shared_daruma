@@ -240,11 +240,38 @@ send your `/pulse` link to join *your* league.
 
 **Trust model.** Process numbers are computed by each member's browser and are
 self-reported. Money numbers are never taken from the browser: the server reads
-them from Hyperliquid's public `portfolio` endpoint for the member's first wallet,
-and only when they opted in. v0.1 has no wallet signature, so a member could name an
-address that isn't theirs; addresses stay hidden by default and the owner can remove
-anyone. A member is a random key kept in their browser (only its hash is stored);
-Pulse shows how to copy it to another device.
+them from Hyperliquid's public `portfolio` endpoint for the member's wallet, and only
+when they opted in. Naming an address proves nothing; *claiming* it does (below).
+Addresses stay hidden by default and the owner can remove anyone.
+
+**Claiming a wallet.** Under Social → Profile & privacy, **Claim with my wallet**
+asks the browser wallet (MetaMask, Rabby, or a wallet app's built-in browser) to sign
+a Sign-In with Ethereum message (EIP-4361). It's a signature, not a transaction: no
+gas, nothing moves. The server writes the message and keeps it by a single-use nonce
+for 10 minutes, then recovers the signer itself (`vendor/eth-sig.js`, the audited
+noble libraries bundled in — nothing to install). A claimed wallet is locked to one
+profile: nobody else can name it, anyone who had typed it loses it, others see a ✓,
+and only another signature from that wallet moves it. The owner can switch on
+**Only count claimed wallets**, after which verified Discipline, returns and return
+competitions only use claimed wallets. Smart-contract wallets (which can't produce a
+plain signature) and email-login wallets without an exportable key can't claim yet.
+
+**Your profile on every device.** Each device holds its own random key (only hashes
+are stored; up to 10 per member). A new device signs in with the claimed wallet, or
+with a one-time 10-character code from a signed-in device (**Add a device**; single
+use, 10 minutes) — the way in for a phone without a wallet app. **Sign out other
+devices** revokes every key but the current one.
+
+**Encrypted journal sync.** Members can turn on **Your journal on every device**
+with a sync passphrase. The browser stretches it (PBKDF2-SHA-256, 310,000 rounds) into
+an AES-256-GCM key and encrypts the journal, wallets and settings before sending;
+the server stores only ciphertext (`DATA_DIR/vault/`, 6 MB per member, 1 GB in all),
+with a revision number so a stale write gets the newer copy back to merge — edits
+made on this device since its last sync win per journal entry. There is no reset:
+lose the passphrase and the synced copy can't be opened. The key is kept in the
+browser so you don't retype it; **Stop syncing on this device** forgets it. The owner
+already syncs the whole journal with `AUTH_TOKEN`, so this is for members only, and
+the owner can switch it off.
 
 **Unlocks.** Pulse features unlock with level — by default deeper Stats insights at level 2, share
 cards at 3 and joining competitions at 4 — plus colour themes (Ember 3, Aurora 5,
@@ -253,7 +280,8 @@ change the levels or switch unlocks off. Sample data shows everything. The full
 journal at `/` is never locked.
 
 **Admin panel (`/admin`).** Sign in with `AUTH_TOKEN` to see members (with
-addresses, which only you see), move someone's league, suspend or delete a member,
+addresses, which only you see, marked claimed or unproven, plus their device count and
+synced-journal size), require claimed wallets, switch journal sync on or off, move someone's league, suspend or delete a member,
 open or close the league, set an invite code, change unlock levels, create and delete
 competitions, post announcements, and remove feed posts. Without `AUTH_TOKEN` the
 admin API refuses every request instead of opening to everyone.
