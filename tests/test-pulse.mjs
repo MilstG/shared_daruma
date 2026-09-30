@@ -19,11 +19,11 @@ const ctx = { Math, Object, Array, String, JSON, isFinite, journal: {} };
 Object.assign(ctx, {
   _be: 50, isWin: n => n > 50, isLoss: n => n < -50, isJournaled: j => !!(j && (j.notes || j.setup || j.rating)),
   _avg: a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0,
-  dispMarket: x => x, dcoin: t => t.coin, dayLabel: k => k, isoWeekOfKey: k => k.slice(0, 7),
+  dispMarket: x => x, dcoin: t => t.coin, dayLabel: k => k, isoWeekOfKey: k => k.slice(0, 7), usdPlain: v => '$' + Math.abs(v),
 });
 vm.createContext(ctx);
 vm.runInContext(grabConst('PROCESS_W') + '\n' + ['nfMedian', 'pzReadiness', 'pzScoreOf', 'pzRisk', 'pzTrendStats',
-  'pzReadinessLink', 'pzBars', 'pzHasPlan', 'pzNextStep', 'pzCoachLine'].map(grabFn).join('\n'), ctx);
+  'pzReadinessLink', 'pzBars', 'pzHasPlan', 'pzBonusItems', 'pzCoachLine'].map(grabFn).join('\n'), ctx);
 
 const DAY = 86400000, T0 = Date.UTC(2026, 8, 30, 12);
 const dayOf = ms => new Date(ms).toISOString().slice(0, 10);
@@ -90,21 +90,28 @@ t('long ranges switch to weekly bars', () => {
   const b = ctx.pzBars(many); eq(b.unit, 'Weekly average'); ok(b.bars.length < 45);
 });
 
-console.log('\nNext step and coach line');
-t('the next step asks for a check-in first, then the unjournaled trade, with the score it would reach', () => {
-  eq(ctx.pzNextStep(null, null, [], {}).href, '#checkin');
-  const day = { parts: { plan: 1, journal: 0.5 }, n: 2 };
-  const tr = [mk('a', 0, 10, { coin: 'ETH', dir: 'Short' }), mk('b', 0, 10)];
-  const n = ctx.pzNextStep(day, { plan: 'x', sleep: 3 }, tr, { b: { setup: 'x' } });
-  eq(n.href, '#journal'); eq(n.text, 'Journal your ETH short → 100');
-  eq(ctx.pzNextStep({ parts: { plan: 1, journal: 1 }, n: 1 }, { plan: 'x' }, tr, {}), null);
-  eq(ctx.pzNextStep(null, { sleep: 4 }, [], {}).text, 'Write today’s plan before your next trade');
+console.log('\nBonus XP card and coach line');
+t('the bonus card offers what’s left today and marks what’s earned; nothing is required', () => {
+  const trades = [mk('a', 0, 10), mk('b', 0, 10)];
+  ctx.journal = { a: { setup: 'x' } };
+  const D = { dayE: null, todayTrades: trades, risk: { trades: 2, limit: 0 }, day: { bonus: { parts: {} } } };
+  const items = ctx.pzBonusItems(D);
+  eq(items.map(x => x.k), ['checkin', 'plan', 'journal']);
+  eq(items.find(x => x.k === 'journal').partial, true); eq(items.find(x => x.k === 'journal').hint, '1 of 2 journaled');
+  const D2 = { dayE: { sleep: 4, plan: 'p', plannedAt: 1 }, todayTrades: [], risk: { trades: 0, limit: 400 }, day: null };
+  const i2 = ctx.pzBonusItems(D2);
+  eq(i2.find(x => x.k === 'checkin').done, true); eq(i2.find(x => x.k === 'plan').done, true, 'a plan before any trade counts');
+  eq(i2.find(x => x.k === 'limit').hint, '$400 today');
+  ctx.journal = {};
 });
-t('the coach line puts the loss limit and a losing streak ahead of the findings', () => {
-  const base = { limit: 0, loss: 0, closed: [] };
-  ok(/loss limit/.test(ctx.pzCoachLine({ ...base, limit: 100, loss: 120 }, [])));
-  ok(/Two losses in a row/.test(ctx.pzCoachLine({ ...base, closed: [mk('a', 0, -60), mk('b', 0.01, -70)] }, [])));
-  eq(ctx.pzCoachLine(base, [{ tone: 'edge', title: 'A', action: 'B' }, { tone: 'leak', title: 'Leak', action: 'Fix it.' }]), 'Leak. Fix it.');
+t('the coach line: limit hit, then today’s slips from fills, then load and form, then findings', () => {
+  const D = (over) => Object.assign({ risk: { limit: 0, loss: 0, closed: [] }, day: null, load: null, form: null, ctx: { findings: [] } }, over);
+  ok(/loss limit/.test(ctx.pzCoachLine(D({ risk: { limit: 100, loss: 120, closed: [] } }))));
+  ok(/fifteen minutes of a loss/.test(ctx.pzCoachLine(D({ day: { behavior: { flags: { revenge: 1 } } } }))));
+  ok(/after two losses/.test(ctx.pzCoachLine(D({ day: { behavior: { flags: { afterTwo: 1, revenge: 1 } } } }))), 'tilt outranks revenge');
+  ok(/2\.0× your usual/.test(ctx.pzCoachLine(D({ load: { ratio: 2 } }))));
+  ok(/trails your usual/.test(ctx.pzCoachLine(D({ form: { score: 20 } }))));
+  eq(ctx.pzCoachLine(D({ ctx: { findings: [{ tone: 'edge', title: 'A', action: 'B' }, { tone: 'leak', title: 'Leak', action: 'Fix it.' }] } })), 'Leak. Fix it.');
 });
 
 console.log('\nPath switch and wiring');

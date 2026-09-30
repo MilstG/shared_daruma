@@ -175,19 +175,28 @@ No fills, wallet addresses, trade notes or screenshots leave the server.
 ## Pulse: the simple view (`/pulse`)
 
 Open `https://your-server/pulse` for a phone-first, gamified view of the same
-data: three dials and one next step, instead of the full terminal.
+data. It's useful with zero effort — everything on the Today screen is read from
+your fills — and gets sharper the more you log.
 
-- **Readiness** (0–100) comes from the morning check-in: sleep, calm and focus
-  on 1–5 scales (sleep and focus weigh 40% each, calm 20%).
-- **Discipline** is today's process score, the same one the Review tab grades,
-  with a breakdown of every habit and the one action that would lift it most
-  ("Journal your ETH short → 93").
-- **Risk used** is the larger of trades opened today vs your trade cap and
-  realized loss vs your loss limit. The check-in sets both for the day; the
-  standing rules apply otherwise.
+- **Form** (0–100, 50 = your usual): your recent trading against your own earlier
+  trading — average trade, win rate, and distance from your 30-day high. "Recent"
+  is the last 7 days when they hold 5+ trades, else your last 5 trades.
+- **Discipline** (0–100): the share of a day's trades with none of six slips, all
+  read from fills — re-entering within 15 minutes of a loss, trading on after two
+  losses in a row, sizing up right after a loss, adding to a losing position, more
+  trades than your usual day, and holding a loser over 3× your usual winner hold.
+  A loss here is a fixed "more than $1", so the server can verify the same score.
+- **Load** (50 = your usual day, 100 = twice it): trades opened and size traded
+  today against your median day. Set a trade cap or loss limit in the check-in and
+  Load also tracks them.
+- **Bonus XP** for what you choose to log, never a penalty for skipping it:
+  check-in +10, plan before your first trade +15, trades journaled +15, stops
+  written +10, loss limit respected +10. A day's XP is its Discipline score plus
+  that bonus.
 
-Four tabs: **Today**, **Trends** (7/30/90 days of discipline, "does process
-pay?" and what moves your score), **Check-in** (readiness, today's trade cap,
+Five tabs: **Today**, **Stats** (P&L, win rate, average trade, profit factor,
+fees, daily P&L, best and worst markets and hours; deeper insights unlock with
+level), **Check-in** (readiness, today's trade cap,
 loss limit and plan) and **Progress** (level, XP, streak and shields, the
 weekly challenge, badges, share cards). A quick journal screen rates and notes
 unjournaled trades. On a wide screen the tabs become a sidebar.
@@ -215,7 +224,8 @@ send your `/pulse` link to join *your* league.
   ranked by the XP they earned that week; the top quarter (up to 5) move up and the
   bottom quarter move down, once at least four traders are in the tier.
 - **Leaderboards.** Weekly XP (your league), discipline (7-day average, minimum 3
-  trading days), streak, all-time XP, and — only for traders who opt in — return /
+  trading days, **verified**: the server recomputes each member's Discipline from
+  their public fills with the app's own code, so it can't be typed in), streak, all-time XP, and — only for traders who opt in — return /
   drawdown, % return (dropped over 25% drawdown) and dollar P&L, all over 30 days.
 - **Competitions**, created by the owner: *Discipline* (best average process score),
   *Survivor* (never hit your daily loss limit), *Journal streak*, and *Return under a
@@ -236,7 +246,7 @@ address that isn't theirs; addresses stay hidden by default and the owner can re
 anyone. A member is a random key kept in their browser (only its hash is stored);
 Pulse shows how to copy it to another device.
 
-**Unlocks.** Pulse features unlock with level — by default Trends at level 2, share
+**Unlocks.** Pulse features unlock with level — by default deeper Stats insights at level 2, share
 cards at 3 and joining competitions at 4 — plus colour themes (Ember 3, Aurora 5,
 Gold 8). XP only comes from process, so unlocking rewards good habits. The owner can
 change the levels or switch unlocks off. Sample data shows everything. The full

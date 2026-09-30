@@ -61,7 +61,8 @@ tests/          test suites (`npm test`; CI runs them on every push)
   own browser and never write to the server; set `AUTH_TOKEN` before sharing
   the link, or everyone who opens it shares your journal.
 - **Social + admin:** Pulse's leagues, competitions and feed live in
-  `DATA_DIR/social.json` on the same volume. The owner's panel is at `/admin`
+  `DATA_DIR/social.json` on the same volume, plus 50 days of each verifying
+  member's public fills in `DATA_DIR/social-fills/`. The owner's panel is at `/admin`
   and needs `AUTH_TOKEN` (without it the admin API refuses every request).
 - **Standalone still works:** the same `ledger.html` opened from disk or any
   static host simply skips server sync (the boot probe gets no answer) and
