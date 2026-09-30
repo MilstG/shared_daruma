@@ -76,6 +76,8 @@ tests/          test suites (`npm test`; CI runs them on every push)
 | `ALERT_FUNDING_24H`    | *(unset = off)*                  | Alert when funding paid per 24h exceeds this $ |
 | `TELEGRAM_BOT_TOKEN`   | *(unset)*                        | Telegram bot (from @BotFather): alert/digest delivery + read-only commands |
 | `TELEGRAM_CHAT_ID`     | *(unset)*                        | Comma-separated chat-id allowlist; other chats are ignored silently |
+| `NUDGE_HOUR`           | *(unset = off)*                  | End-of-day journaling nudge after this hour (0–23); needs `REFRESH_INTERVAL_MIN` and a delivery channel |
+| `NUDGE_TZ`             | `UTC`                            | IANA zone for `NUDGE_HOUR` and "today" (e.g. `America/New_York`) |
 
 The analytics API, scheduled refresh, alerts, and weekly digests are documented
 in the main [README](README.md).

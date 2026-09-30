@@ -294,13 +294,14 @@ html{scroll-behavior:smooth}
 <section id="testing">
   <p class="kicker">15</p>
   <h2>Testing</h2>
-  <p><code>npm test</code> runs 18 suites (~360 tests) via <code>tests/run-all.mjs</code>. The harness (<code>tests/harness.mjs</code>) provides <code>makeExtractor(html)</code>: <code>evalModule(names, exports, prelude)</code> brace-matches the named functions out of <code>ledger.html</code>, prepends a prelude of one-line consts, and imports the bundle as a data-URL ES module — the tests run the shipped source, not a copy.</p>
+  <p><code>npm test</code> runs 19 suites (~380 tests) via <code>tests/run-all.mjs</code>. The harness (<code>tests/harness.mjs</code>) provides <code>makeExtractor(html)</code>: <code>evalModule(names, exports, prelude)</code> brace-matches the named functions out of <code>ledger.html</code>, prepends a prelude of one-line consts, and imports the bundle as a data-URL ES module — the tests run the shipped source, not a copy.</p>
   <div class="tblwrap"><table class="mono">
     <tr><th>Suite</th><th>Covers</th></tr>
     <tr><td>test-syntax</td><td>Every script block parses (vm.Script) — catches template-literal and escaping regressions whole-file.</td></tr>
     <tr><td>test-newfeatures · features2-5</td><td>Reconstruction edge cases, capital/XIRR, scorecards, CSV import, clusters, shock, goals, fee tiers, ISO weeks, variance, risk creep, demo fills.</td></tr>
     <tr><td>test-api · test-server</td><td>The server over real HTTP with a mocked exchange: auth scopes, 409 merges, refresh pipeline, capital, backups, metrics, engine-failure softness.</td></tr>
     <tr><td>test-alerts</td><td>alertsFrom thresholds, webhook body shaping, telegramReply wording.</td></tr>
+    <tr><td>test-habits</td><td>Rules from findings (live vs after-close, entry-state predicates on open trades, before/after follow-through test), live plan stamping and the held-through-stop check, check-in miner conditions, journal inbox and streak, the process score and its quadrants, replay extremes, and the server's end-of-day nudge.</td></tr>
     <tr><td>test-replay-auto · test-walkforward-panel</td><td>Source assertions for render-layer logic that can't be extracted.</td></tr>
     <tr><td>test-projection · decay · edge-map · attribution · dexfilter · improvements</td><td>Seeded MC determinism, tz math, statistics against hand-computed and reference values.</td></tr>
   </table></div>

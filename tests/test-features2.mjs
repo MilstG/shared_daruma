@@ -31,6 +31,11 @@ globalThis.Store = { set: async () => {} };
 globalThis.S_KEY = 'test_settings';
 globalThis._maxSplitT = evalFn('_maxSplitT') || null;
 globalThis.addedToLoser = evalFn('addedToLoser'); // exec:atl family needs the real detector
+// session check-in family (day-journal entries keyed 'day:YYYY-MM-DD')
+globalThis.dayJKey = t2 => 'day:' + new Date(t2).toISOString().slice(0, 10);
+globalThis.CHECKIN_CONDS = (0, eval)('(' + html.split('\n').slice(html.split('\n').findIndex(l => l.startsWith('const CHECKIN_CONDS=')))
+  .join('\n').match(/^const CHECKIN_CONDS=(\[[\s\S]*?\]\]);/)[1] + ')');
+globalThis.checkinPred = evalFn('checkinPred');
 
 globalThis.tradeStates = evalFn('tradeStates');
 globalThis.minerFams   = evalFn('minerFams');

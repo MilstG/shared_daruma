@@ -267,6 +267,27 @@ function telegramReply(cmd, st) {
       return 'Ledger bot — read-only.\n/today — realized PnL today + limit\n/risk — open book + liquidation distances\n/stats — last 30 days\n/goals — month vs plan\n/digest — latest weekly digest';
   }
 }
+/* ---------------- end-of-day journaling nudge (pure parts) ---------------- */
+// Calendar day + hour of `ms` in an IANA time zone — the nudge fires by the trader's clock,
+// and the day key must match the app's 'day:YYYY-MM-DD' journal entries.
+function zonedDayHour(ms, tz) {
+  const parts = {};
+  for (const p of new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UTC', year: 'numeric', month: '2-digit',
+    day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms))) parts[p.type] = p.value;
+  return { day: parts.year + '-' + parts.month + '-' + parts.day, hour: parseInt(parts.hour, 10) % 24 };
+}
+const isJournaledEntry = j => !!(j && (j.notes || j.setup || (j.tags && j.tags.length) || j.rating));
+// (state, cfg) -> {key, text} | null. Fires once per day, at or after cfg.hour, only when
+// something is actually missing: trades closed today with nothing journaled, or no review.
+function nudgeFrom(st, cfg) {
+  if (!cfg || !Number.isInteger(cfg.hour) || cfg.hour < 0 || cfg.hour > 23 || !st || st.hour < cfg.hour || !st.tradesToday) return null;
+  const missing = [];
+  if (st.unjournaled) missing.push(st.unjournaled + ' of ' + st.tradesToday + ' trade' + (st.tradesToday === 1 ? '' : 's') + ' not journaled');
+  if (!st.hasReview) missing.push('no end-of-day review yet');
+  if (!missing.length) return null;
+  return { key: 'nudge:' + st.dayKey,
+    text: '📝 End of day: ' + missing.join(', ') + '. Five minutes now — a setup, a rating, one line of review — is what the pattern miner and your process score run on.' };
+}
 // Best-effort webhook post; shapes the body for the common receivers.
 async function postWebhook(url, text) {
   let body, headers = { 'Content-Type': 'application/json' };
@@ -716,6 +737,16 @@ function createApp(opts) {
     cooldownMs: 6 * 3600e3,
   }, opts.alerts || {});
 
+  // NUDGE_HOUR (0–23, unset = off) + NUDGE_TZ (IANA, default UTC): once a day after that hour,
+  // if trades closed today are unjournaled or the day has no end-of-day review, say so on the
+  // same channels as alerts. Read-only like everything else here — it only counts.
+  const nudgeCfg = Object.assign({
+    hour: process.env.NUDGE_HOUR != null && process.env.NUDGE_HOUR !== '' ? parseInt(process.env.NUDGE_HOUR, 10) : null,
+    tz: process.env.NUDGE_TZ || 'UTC',
+  }, opts.nudge || {});
+  try { zonedDayHour(Date.now(), nudgeCfg.tz); }
+  catch (e) { console.warn('[ledger] NUDGE_TZ "' + nudgeCfg.tz + '" is not a valid IANA time zone — using UTC'); nudgeCfg.tz = 'UTC'; }
+
   /* ---------------- Telegram bot: delivery channel + read-only commands ---------------- */
   // TELEGRAM_BOT_TOKEN (from @BotFather) + TELEGRAM_CHAT_ID (comma-separated chat-id
   // allowlist) turn on two things: alert/digest delivery to those chats, and a long-polling
@@ -879,6 +910,30 @@ function createApp(opts) {
       saveAlertState();
     } finally { _alertBusy = false; }
   }
+  function gatherNudgeState(now) {
+    if (!engine.ok) return null;
+    const snap = currentSnapshot();
+    setEngineState({});
+    const { trades } = ensureTrades();
+    const z = zonedDayHour(now, nudgeCfg.tz);
+    const J = (snap.journal && typeof snap.journal === 'object') ? snap.journal : {};
+    const today = trades.filter(t => !t.isOpen && t.closeTime && zonedDayHour(t.closeTime, nudgeCfg.tz).day === z.day);
+    const de = J['day:' + z.day];
+    return { dayKey: z.day, hour: z.hour, tradesToday: today.length,
+      unjournaled: today.filter(t => !isJournaledEntry(J[t.id])).length,
+      hasReview: !!(de && de.review && String(de.review).trim()) };
+  }
+  async function maybeNudge() {
+    if (!hasDelivery() || nudgeCfg.hour == null) return;
+    const now = Date.now();
+    let n;
+    try { n = nudgeFrom(gatherNudgeState(now), nudgeCfg); }
+    catch (e) { console.warn('[ledger] nudge state failed: ' + ((e && (e.msg || e.message)) || e)); return; }
+    if (!n || _alertSent.has(n.key)) return;
+    _alertSent.set(n.key, now); saveAlertState(); // once per day, across restarts too
+    try { await deliver(n.text); }
+    catch (e) { _alertSent.delete(n.key); saveAlertState(); console.warn('[ledger] nudge delivery failed: ' + e.message); }
+  }
   async function runScheduledRefresh() {
     if (_refreshing) return;
     _refreshing = true;
@@ -895,7 +950,8 @@ function createApp(opts) {
     }
     catch (e) { console.warn('[ledger] scheduled refresh failed: ' + ((e && (e.msg || e.message)) || e)); }
     finally { clearTimeout(watchdog); _refreshing = false; }
-    maybeAlert();
+    await maybeAlert();
+    await maybeNudge();
   }
   /* ---------------- weekly digest ---------------- */
   // Once per ISO week (first scheduled run after Monday 00:00 UTC) a digest of the PREVIOUS
@@ -979,7 +1035,10 @@ function createApp(opts) {
     const boot = setTimeout(() => { runScheduledRefresh().then(maybeDigest); }, 30000);
     if (boot.unref) boot.unref();
     console.log('[ledger] scheduled refresh every ' + refreshEveryMin + ' min (first run ~30s after boot)'
-      + (hasDelivery() ? ' with alert delivery' : ' (no ALERT_WEBHOOK / TELEGRAM_BOT_TOKEN set — refresh only)'));
+      + (hasDelivery() ? ' with alert delivery' : ' (no ALERT_WEBHOOK / TELEGRAM_BOT_TOKEN set — refresh only)')
+      + (nudgeCfg.hour != null && hasDelivery() ? '; journaling nudge after ' + nudgeCfg.hour + ':00 ' + nudgeCfg.tz : ''));
+  } else if (nudgeCfg.hour != null) {
+    console.warn('[ledger] NUDGE_HOUR is set but REFRESH_INTERVAL_MIN is not — the nudge runs on the refresh schedule, so it will never fire');
   }
 
   /* ---------------- v1 endpoint docs (served at GET /api/v1) ---------------- */
@@ -1795,4 +1854,4 @@ if (require.main === module) {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-module.exports = { createApp, buildEngine, ENGINE_FNS, alertsFrom, postWebhook, telegramReply };
+module.exports = { createApp, buildEngine, ENGINE_FNS, alertsFrom, postWebhook, telegramReply, nudgeFrom, zonedDayHour };

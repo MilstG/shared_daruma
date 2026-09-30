@@ -543,7 +543,7 @@ tr.trow:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
 
     <div class="calrow">
     <div class="card">
-      <h3>Daily PnL <span class="hint" id="calHint">green = up day, red = down day · click a day to journal it</span> <button class="gear" id="calWeeksBtn" data-tip="Toggle the heatmap window between 26 and 52 weeks.">26w</button></h3>
+      <h3>Daily PnL <span class="hint" id="calHint">green = up day, red = down day · click a day to journal it</span> <button class="gear" id="calModeBtn" data-tip="Color days by net PnL, or by process score (0\u2013100: plan filed, rules kept, stops honored, journaled \u2014 see Review \u2192 Process).">PnL</button> <button class="gear" id="calWeeksBtn" data-tip="Toggle the heatmap window between 26 and 52 weeks.">26w</button></h3>
       <div class="cal-wrap"><div class="cal" id="cal"></div></div>
       <div class="cal-legend"><span>loss</span><span class="sw" style="background:rgba(244,88,106,.85)"></span><span class="sw" style="background:rgba(240,97,109,.4)"></span><span class="sw" style="background:var(--panel2)"></span><span class="sw" style="background:rgba(63,207,142,.4)"></span><span class="sw" style="background:rgba(47,208,140,.85)"></span><span>profit</span></div>
     </div>
@@ -1892,6 +1892,18 @@ function decayAssess(fwdNets, disc, opts){
 // Mines single conditions AND pairwise interactions over trade features (+journal metadata),
 // tests each with a permutation test, controls false discoveries with Benjamini–Hochberg (FDR 10%),
 // then prunes diluted marginals, complements, and overlapping echoes.
+// Check-in conditions: [display name, stable id]. The id alone rebuilds the predicate
+// (checkinPred), so pinned patterns and rules made from them never go unresolvable.
+const CHECKIN_CONDS=[['slept badly (sleep \u22642/5)','ck:sleepLo'],['high stress (\u22654/5)','ck:stressHi'],
+  ['low focus (\u22642/5)','ck:focusLo'],['sharp focus (\u22654/5)','ck:focusHi']];
+function checkinPred(id){
+  const day=t=>journal[dayJKey(t.openTime)]||{};
+  if(id==='ck:sleepLo')return t=>{ const v=+day(t).sleep; return v>=1&&v<=2; };
+  if(id==='ck:stressHi')return t=>{ const v=+day(t).stress; return v>=4; };
+  if(id==='ck:focusLo')return t=>{ const v=+day(t).focus; return v>=1&&v<=2; };
+  if(id==='ck:focusHi')return t=>{ const v=+day(t).focus; return v>=4; };
+  return null;
+}
 function minerFams(closed,ST,fz){
   // fz = frozen thresholds from the moment a pattern was pinned; without it thresholds
   // are recomputed from `closed`. Ids (3rd tuple element) are stable, name-independent
@@ -1931,6 +1943,10 @@ function minerFams(closed,ST,fz){
   if(tags.length)fams.tag=tags.map(tg=>['tag: '+tg,t=>((journal[t.id]||{}).tags||[]).includes(tg),'tag:'+tg]);
   if(closed.some(t=>{const j=journal[t.id]||{};return j.mistakes&&j.mistakes.length;}))
     fams.flag=[['mistake-flagged',t=>{const j=journal[t.id]||{};return !!(j.mistakes&&j.mistakes.length);},'flag:any']];
+  // session check-in (day journal, 1–5): judged on the entry day — known before the trade
+  { const ck=CHECKIN_CONDS.map(([nm,id])=>[nm,checkinPred(id),id]);
+    const withCk=closed.filter(t=>{ const d=journal[dayJKey(t.openTime)]; return !!(d&&(d.sleep||d.stress||d.focus)); }).length;
+    if(fz.ck||withCk>=10)fams.mood=ck; }
   if(closed.some(t=>(journal[t.id]||{}).rating))
     fams.rating=[['rated ≤2★ execution',t=>{const r=(journal[t.id]||{}).rating;return !!r&&r<=2;},'rate:lo'],
                  ['rated 4–5★ execution',t=>{const r=(journal[t.id]||{}).rating;return !!r&&r>=4;},'rate:hi']];
@@ -1955,7 +1971,7 @@ function minerFams(closed,ST,fz){
               ['peaked in profit but closed red (MFE \u2265 median)',t=>{const e=EX(t);return !!e&&e.mfePct!=null&&e.mfePct>=mfMed&&t.net<=0;},'exc:giveback']];
   }
   // frozen-threshold capture for pinning (non-enumerable: for..in over families must not see it)
-  Object.defineProperty(fams,'__params',{value:{nq3:isFinite(nq3)?nq3:null,nq1,hq3:isFinite(hq3)?hq3:null,hq1,dq3:_dq3,maq3:_maq3,maq1:_maq1,mfMed:_mfMed},enumerable:false});
+  Object.defineProperty(fams,'__params',{value:{nq3:isFinite(nq3)?nq3:null,nq1,hq3:isFinite(hq3)?hq3:null,hq1,dq3:_dq3,maq3:_maq3,maq1:_maq1,mfMed:_mfMed,ck:!!fams.mood||undefined},enumerable:false});
   return fams;
 }
 function mineInsights(closed,V){ V=V||(t=>t.net);
@@ -2297,6 +2313,11 @@ function renderStats(s){
 /* ============================ calendar heatmap ============================ */
 function renderCalendar(trades){
   const map={}; trades.forEach(t=>{ const k=dayKey(t.closeTime); (map[k]=map[k]||{net:0,n:0}); map[k].net+=t.net; map[k].n++; });
+  // process mode: same cells, colored by the day's process score instead of its PnL
+  const proc=settings.calMode==='process'?{}:null;
+  if(proc){ try{ for(const d of processContext(trades).days)proc[d.key]=d; }catch(e){} }
+  const mb=$('calModeBtn'); if(mb)mb.textContent=proc?'Process':'PnL';
+  const hint=$('calHint'); if(hint)hint.textContent=proc?'green = disciplined day (70+), red = process broke (<50) · click a day to journal it':'green = up day, red = down day · click a day to journal it';
   const WEEKS=settings.calWeeks===52?52:26; const DOWN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const today=tzMidnight(Date.now());
   const end=addDays(today, 6-tzDow(today));        // saturday of this week, in the active tz
@@ -2310,7 +2331,10 @@ function renderCalendar(trades){
     for(let i=0;i<7;i++){ const k=dayKey(d); const o=map[k]; const p=tzParts(d);
       const dateStr=DOWN[p.dow]+', '+MONTHS[p.mo]+' '+p.day+', '+p.y;
       const isFuture=d>today; let bg='var(--panel2)', tip=dateStr+' · no trades';
-      if(o!==undefined){ const inten=0.28+0.6*Math.min(1,Math.abs(o.net)/scale);
+      if(o!==undefined&&proc&&proc[k]){ const sc=proc[k].score;
+        bg=sc>=70?`rgba(47,208,140,${0.3+0.55*(sc-70)/30})`:sc>=50?'rgba(201,168,92,.55)':`rgba(244,88,106,${0.35+0.5*(50-sc)/50})`;
+        tip=`${dateStr} · process ${sc}/100 · ${fmtUsd(o.net)} · ${o.n} trade${o.n===1?'':'s'}`; }
+      else if(o!==undefined){ const inten=0.28+0.6*Math.min(1,Math.abs(o.net)/scale);
         bg=o.net>=0?`rgba(47,208,140,${inten})`:`rgba(244,88,106,${inten})`;
         tip=`${dateStr} · ${fmtUsd(o.net)} · ${o.n} trade${o.n===1?'':'s'}`; }
       else if(isFuture){ bg='transparent'; }
@@ -2876,12 +2900,12 @@ function wireWhatIf(closed){
   if(closed.length<10){ sel.parentElement.classList.add('hide'); box.innerHTML='<p class="lead">Needs \u226510 completed trades.</p>'; return; }
   const chron=[...closed].sort((a,b)=>a.closeTime-b.closeTime);
   let fams={}; try{ fams=minerFams(chron,tradeStates(chron)); }catch(e){}
-  _wiFns=[]; const opts=[];
-  for(const f in fams) for(const [name,fn] of fams[f]){
+  _wiFns=[]; const opts=[]; const fp=fams.__params||{};
+  for(const f in fams) for(const [name,fn,cid] of fams[f]){
     let n=0; try{ n=chron.filter(fn).length; }catch(e){ continue; }
     if(n<3 || n>chron.length-3) continue; // nothing to learn from removing ~nothing or ~everything
     opts.push(`<option value="${_wiFns.length}">${esc(name)} \u00b7 ${n} trades</option>`);
-    _wiFns.push({name,fn});
+    _wiFns.push({name,fn,cid,params:fp});
   }
   if(!opts.length){ box.innerHTML='<p class="lead">No condition matches between 3 trades and all-but-3 \u2014 more history needed.</p>'; btn.disabled=true; return; }
   btn.disabled=false;
@@ -2889,9 +2913,9 @@ function wireWhatIf(closed){
   sel.innerHTML=opts.join(''); sel.value=String(_wiSel);
   sel.onchange=()=>{ _wiSel=+sel.value; };
   btn.onclick=()=>{ const c=_wiFns[+sel.value]; if(!c)return;
-    try{ renderWhatIf(chron,c.name,c.fn); }catch(e){ setErr('Replay failed: '+e.message); } };
+    try{ renderWhatIf(chron,c.name,c.fn,c); }catch(e){ setErr('Replay failed: '+e.message); } };
 }
-function renderWhatIf(chron,name,pred){
+function renderWhatIf(chron,name,pred,cond){
   const box=$('wiBox'); if(!box)return;
   const m=whatIfModel(chron,pred);
   if(!m.removed.n){ box.innerHTML='<p class="lead">No trades in this view match that condition.</p>'; return; }
@@ -2908,13 +2932,20 @@ function renderWhatIf(chron,name,pred){
   </div>`;
   const dNet=m.kept.net-m.all.net, dDD=m.kept.maxDD-m.all.maxDD;
   const verdict=`<p class="lead" style="font-size:13px;margin:0 0 12px;border-left:2px solid var(--${dNet>=0?'profit':'loss'});padding-left:10px">Skipping <b>${esc(name)}</b> (${m.removed.n} trades) would have ${dNet>=0?'added':'cost'} <b>${fmtUsd(Math.abs(dNet))}</b> of net PnL${Math.abs(dDD)>1?` and made your worst drawdown ${dDD>0?'<b>'+fmtUsd(Math.abs(dDD))+'</b> shallower':'<b>'+fmtUsd(Math.abs(dDD))+'</b> deeper'}`:''}. ${dNet>0?'A hard rule (no-trade window, cooldown, filter) beats willpower here.':'These trades are pulling their weight \u2014 keep them.'}</p>`;
-  box.innerHTML=`${verdict}
+  const ruleBtn=(cond&&cond.cid&&dNet>0)
+    ? (customRules().some(r=>r.pid===cond.cid)
+      ? '<p class="mini-note" style="margin:-4px 0 12px">Already one of your rules \u2014 tracked under Discipline &amp; rules.</p>'
+      : '<p style="margin:-4px 0 12px"><button class="btn ghost" id="wiRule" data-tip="Adds \u201cAvoid: '+esc(name)+'\u201d to your rules: past and future breaks get counted and priced, and the rules card shows whether you break it less from today on.">Make this a rule</button></p>')
+    : '';
+  box.innerHTML=`${verdict}${ruleBtn}
     <div class="diag-grid">
       ${statCard('As traded',m.all,'Your actual chronological closed-trade sequence in this view.')}
       ${statCard('Without \u201c'+esc(name)+'\u201d',m.kept,'The identical sequence with the matching trades removed \u2014 the equity curve you would have printed. Max drawdown is recomputed on the counterfactual curve, not scaled.')}
     </div>
     <div class="diag-card" style="margin-top:14px"><div style="height:240px"><canvas id="wiChart"></canvas></div>
       <p class="mini-note">Cumulative net PnL, trade by trade: solid = as traded; dashed = without \u201c${esc(name)}\u201d. Where the lines separate is exactly where the condition made or lost you money.</p></div>`;
+  const rb=$('wiRule'); if(rb)rb.onclick=async()=>{ rb.disabled=true; rb.textContent='Rule added \u2713';
+    await addCustomRule({pid:cond.cid,name:'Avoid: '+name,params:cond.params||{}}); renderGuardrails(); };
   if(_wiChart){ try{_wiChart.destroy();}catch(e){} _wiChart=null; }
   const labels=m.series.labels.map(t=>fmtDate(t));
   _wiChart=new Chart($('wiChart'),{type:'line',data:{labels,datasets:[
@@ -2938,6 +2969,7 @@ function resolvePinPred(pin,closed,ST){
     if(map[id])return map[id];
     // value-carrying conditions can drop out of the top-N family slices as data shifts;
     // rebuild them directly from the id so old pins never go unresolvable.
+    if(/^ck:/.test(id))return checkinPred(id);
     const m=id.match(/^(mkt|setup|tag):([\s\S]*)$/);
     if(m){ const val=m[2];
       if(m[1]==='mkt')return t=>(t.symbol||dcoin(t))===val;
@@ -3725,8 +3757,9 @@ const _WORKER_LIB=()=>({_srand,_avg,_std,_erf,_normCdf,_lgamma,_ibetaReg,_tCdf,_
   mcMaxDD,fwdMaxDD,edgeSignificance,
   tzParts,tzHour,tzDow,tzLabel,tzMidnight,isWin,isLoss,isPerp,newTrade,tallyFill,
   reconstructTrades,attributeFunding,bootstrapMeanCI,tradeStates,stateDefs,stateAnalysis,
-  changePoint,sizeDependence,probabilityScan,partitionConditions,minerFams,mineInsights,deepScan});
-const _WORKER_PRELUDE="let settings={tz:'local'}, journal={}, _excM={}, spotMaps={nameByCoin:{}}, _be=50, _rng=Math.random, _progress=null;";
+  changePoint,sizeDependence,probabilityScan,partitionConditions,dayJKey,checkinPred,minerFams,mineInsights,deepScan});
+const _WORKER_PRELUDE="let settings={tz:'local'}, journal={}, _excM={}, spotMaps={nameByCoin:{}}, _be=50, _rng=Math.random, _progress=null;"+
+  "const CHECKIN_CONDS="+JSON.stringify(CHECKIN_CONDS)+";";
 const _WORKER_DISPATCH="onmessage=function(e){var d=e.data;"+
  "try{var out;"+
  "if(d.kind==='miner'){settings=d.payload.settings||settings;journal=d.payload.journal||{};_excM=d.payload.excursions||{};if(d.payload.be!=null)_be=d.payload.be;"+
@@ -3785,7 +3818,9 @@ function runInWorker(kind,payload,onProgress){
     try{ w.postMessage({id,kind,payload}); }catch(e){ clearTimeout(timer); _wPending.delete(id); reject(e); } });
 }
 // journal subset for the pool only — keeps the message small and ships no unrelated entries
-function _journalSubset(trades){ const j={}; for(const t of trades)if(journal[t.id])j[t.id]=journal[t.id]; return j; }
+// (plus the day entries those trades were opened on — the check-in conditions read them)
+function _journalSubset(trades){ const j={}; for(const t of trades){ if(journal[t.id])j[t.id]=journal[t.id];
+  const dk=dayJKey(t.openTime); if(journal[dk]&&!j[dk])j[dk]=journal[dk]; } return j; }
 function _excSubset(trades){ const m={}; for(const t of trades){ const e=_excM[t.id]; if(e&&e.maePct!=null)m[t.id]={maePct:e.maePct,mfePct:e.mfePct}; } return m; }
 async function minerScan(pool,basis,seed,onProgress){
   try{
@@ -4184,6 +4219,20 @@ async function ensureTradeCandles(t){
   }
   return null;
 }
+// The adverse and favorable extremes between entry and exit (or now, for an open trade),
+// located on the candle that printed them — the MAE/MFE made visible. Pure.
+function replayExtremes(t,candles,ms){
+  const e=t.avgEntry; if(!(e>0)||!candles||!candles.length)return null;
+  const a=t.openTime, b=t.isOpen?Infinity:t.closeTime, short=t.dir==='Short';
+  let hi=null, lo=null;
+  for(const c of candles){ if(c[0]+ms<=a||c[0]>=b)continue;
+    if(isFinite(c[1])&&(!hi||c[1]>hi.y))hi={x:c[0],y:c[1]};
+    if(isFinite(c[2])&&(!lo||c[2]<lo.y))lo={x:c[0],y:c[2]}; }
+  if(!hi||!lo)return null;
+  const w=short?hi:lo, bst=short?lo:hi;
+  const pct=y=>(short?(e-y):(y-e))/e*100;
+  return {worst:pct(w.y)<0?{...w,kind:'worst',pct:pct(w.y)}:null, best:pct(bst.y)>0?{...bst,kind:'best',pct:pct(bst.y)}:null};
+}
 async function openReplay(id,btn){
   const box=document.getElementById('replay-'+id); if(!box)return;
   if(_replayFor===id&&_replayChart){ _replayChart.destroy(); _replayChart=null; _replayFor=null; box.innerHTML=''; return; }
@@ -4208,6 +4257,10 @@ async function openReplay(id,btn){
   for(const k of candles){ if(isFinite(k[2])&&k[2]<plo)plo=k[2]; if(isFinite(k[1])&&k[1]>phi)phi=k[1]; }
   if(isFinite(t.avgEntry)&&t.avgEntry>0){ plo=Math.min(plo,t.avgEntry); phi=Math.max(phi,t.avgEntry); }
   if(!t.isOpen&&t.avgExit>0){ plo=Math.min(plo,t.avgExit); phi=Math.max(phi,t.avgExit); }
+  // the written plan (stop / target) and the trade's own worst / best prices while it was on
+  const plan=nfPlan(journal[t.id]);
+  const ex=replayExtremes(t,candles,itv.ms);
+  if(plan){ for(const v of [plan.stop,plan.target]) if(v>0){ plo=Math.min(plo,v); phi=Math.max(phi,v); } }
   // fill markers: every entry/add (gold triangle up) and every partial/final close (green triangle
   // down). Drawn as flags UNDER (entry/add) or OVER (close) the candle that holds the fill — never
   // at the raw fill price, which buries the marker inside the candle body. Several fills on the
@@ -4236,13 +4289,22 @@ async function openReplay(id,btn){
     hline(t.avgEntry,'rgba(230,180,80,.8)',[4,3]),
   ];
   if(!t.isOpen&&t.avgExit>0)dsets.push(hline(t.avgExit,'rgba(47,208,140,.8)',[4,3]));
+  if(plan&&plan.stop>0)dsets.push(hline(plan.stop,'rgba(244,88,106,.9)',[2,3]));
+  if(plan&&plan.target>0)dsets.push(hline(plan.target,'rgba(47,208,140,.95)',[2,3]));
+  const EDS=ex?dsets.length:-1;
+  if(ex)dsets.push({type:'scatter',order:2,data:[ex.worst,ex.best].filter(Boolean),
+    pointStyle:'crossRot',pointRadius:7,pointHoverRadius:8,borderWidth:2,
+    borderColor:[ex.worst,ex.best].filter(Boolean).map(p=>p.kind==='worst'?'rgba(244,88,106,1)':'rgba(47,208,140,1)')});
   const MDS=dsets.length;
   if(marks.length)dsets.push({type:'scatter',data:marks,order:1,
     pointStyle:'triangle',rotation:marks.map(m=>m.k>0?0:180),
     pointRadius:6,pointHoverRadius:7,borderColor:'rgba(10,14,24,.9)',borderWidth:1,
     backgroundColor:marks.map(m=>m.k>0?'rgba(230,180,80,.95)':'rgba(47,208,140,.95)')});
   box.innerHTML='<div class="chart-box" style="height:260px;margin:8px 0"><canvas id="rp-'+id.replace(/[^a-zA-Z0-9_-]/g,'_')+'"></canvas></div>'
-    +'<p class="lead" style="font-size:11.5px;color:var(--faint);margin:2px 0 8px">'+itv.name+' candles · \u25b2 = entry / add fill · \u25bc = close fill · gold dash = avg entry'+(!t.isOpen&&t.avgExit>0?' · green dash = avg exit':'')+' · hover a candle for OHLC, a marker for the fill</p>';
+    +'<p class="lead" style="font-size:11.5px;color:var(--faint);margin:2px 0 8px">'+itv.name+' candles · \u25b2 = entry / add fill · \u25bc = close fill · gold dash = avg entry'+(!t.isOpen&&t.avgExit>0?' · green dash = avg exit':'')
+    +(plan&&plan.stop>0?' · red dots = planned stop':'')+(plan&&plan.target>0?' · green dots = planned target':'')
+    +(ex?' · \u2715 = worst / best price while the trade was on':'')+' · hover a candle for OHLC, a marker for the fill</p>'
+    +(ex&&plan&&plan.stop>0&&ex.worst&&(t.dir==='Short'?ex.worst.y>plan.stop:ex.worst.y<plan.stop)?'<p class="lead" style="font-size:12px;margin:0 0 8px;border-left:2px solid var(--loss);padding-left:8px">Price traded through your planned stop (worst '+ex.worst.y.toLocaleString(undefined,{maximumFractionDigits:6})+' vs stop '+plan.stop.toLocaleString(undefined,{maximumFractionDigits:6})+') and the position stayed open.</p>':'');
   const cv=box.querySelector('canvas');
   if(_replayChart)_replayChart.destroy();
   _replayFor=id;
@@ -4250,8 +4312,10 @@ async function openReplay(id,btn){
   const szf=v=>v.toLocaleString(undefined,{maximumFractionDigits:6});
   _replayChart=new Chart(cv,{data:{datasets:dsets},options:{responsive:true,maintainAspectRatio:false,
     plugins:{legend:{display:false},tooltip:{
-      filter:i=>i.datasetIndex===1||(marks.length&&i.datasetIndex===MDS),
+      filter:i=>i.datasetIndex===1||(marks.length&&i.datasetIndex===MDS)||i.datasetIndex===EDS,
       callbacks:{title:()=>'',label:c=>{
+        if(c.datasetIndex===EDS){ const p=c.raw;
+          return ' '+(p.kind==='worst'?'worst':'best')+' price while on: '+fpx(p.y)+' ('+(p.pct>=0?'+':'')+p.pct.toFixed(2)+'% vs avg entry) · '+new Date(p.x).toLocaleString(); }
         if(marks.length&&c.datasetIndex===MDS){ const m=c.raw;
           return ' '+m.lbl+' · '+szf(m.sz)+' @ '+fpx(m.px)+' · '+new Date(m.x).toLocaleString(); }
         const i=c.dataIndex,k=candles[i],m=meta[i];
@@ -4382,8 +4446,11 @@ function renderMinerResults(r,deep,basis){ basis=basis||'usd';
       : `${v.n} trades averaging <b>${fmtA(v.exp)}</b> each, vs ${fmtA(r.mAll)} across all your trades — this pattern cost you roughly <b>${lossTxt}</b> ${basis==='pct'?'of cumulative return':''} vs trading at your baseline.`;
     const stats=`<span style="color:var(--faint);font-size:11px" data-tip="p is the chance of a gap this large appearing by pure luck (permutation test) — lower means more likely real. The CI is the plausible range for the true per-trade average.">p=${v.p<0.001?'<0.001':v.p.toFixed(3)}${ciTag(v)}</span>`;
     return li(good?'good':'bad',good?'▲':'▼',
-      `<b>${esc(v.name)}</b>${oosTag(v)}${pinCtl(v)}<br>${sent}<br>${stats}`); };
+      `<b>${esc(v.name)}</b>${oosTag(v)}${pinCtl(v)}${ruleCtl(v)}<br>${sent}<br>${stats}`); };
   const byPid={};
+  const ruleCtl=v=>{ if(!v.pid||v.uplift>=0)return'';
+    return customRules().some(r=>r.pid===v.pid)?' <span class="sr-note" style="margin-left:6px">rule \u2713</span>'
+      :` <button class="btn ghost rulebtn" data-pid="${esc(v.pid)}" data-tip="Turn this leak into a personal rule: every trade that matches it is counted as a break with its dollar cost, open positions that match get a warning chip (when the condition is known at entry), and the rules card tracks whether you break it less from today on." style="font-size:10px;padding:1px 7px;margin-left:6px">+ rule</button>`; };
   const pinCtl=v=>{ if(!v.pid)return''; byPid[v.pid]=v;
     const already=pinsList().some(p=>p.pid===v.pid&&p.basis===basis);
     return already?' <span class="sr-note" style="margin-left:6px">tracking \u2713</span>'
@@ -4481,6 +4548,10 @@ function renderMinerResults(r,deep,basis){ basis=basis||'usd';
     b.disabled=true; b.textContent='pinned \u2713';
     await addPin(v,basis,r.famParams||null);
     renderDiagnostic(periodTrades(),periodTradesAll()); }; });
+  box.querySelectorAll('.rulebtn').forEach(b=>{ b.onclick=async()=>{ const v=byPid[b.dataset.pid]; if(!v)return;
+    b.disabled=true; b.textContent='rule \u2713';
+    await addCustomRule({pid:v.pid,name:'Avoid: '+v.name,params:r.famParams||{}});
+    renderGuardrails(); renderDiagnostic(periodTrades(),periodTradesAll()); }; });
   // rolling-expectancy sparkline with the change-point marked
   if(charts.regime){ try{charts.regime.destroy();}catch(e){} charts.regime=null; }
   if(deep&&deep.cp&&deep.cp.series&&$('regimeSpark')){
@@ -4568,6 +4639,20 @@ function guardrailSignals(){
   const up=unplannedToday(allTrades,journal);
   if(up.unplanned)
     out.push({type:'unplanned',txt:`<b>${up.n}</b> trades today with no plan filed. The end-of-day review will ask why — write the bias, plan, and max loss in <b>Review → Day journal</b> before the next entry.`});
+  // open positions breaking one of your rules-from-findings (entry-knowable conditions only)
+  const open=allTrades.filter(t=>t.isOpen);
+  if(open.length&&customRules().length){
+    try{ const hits=liveRuleHits(open,customRulePreds(allTrades,customRules()));
+      for(const h of hits.slice(0,3))
+        out.push({type:'cooldown',txt:`Open <b>${esc(dispMarket(dcoin(h.t)))} ${h.t.dir}</b> breaks your rule <b>${esc(h.rule.name)}</b> (made ${fmtDate(h.rule.createdAt)}). Diagnostic \u2192 Discipline &amp; rules shows what these trades have cost you.`});
+    }catch(e){}
+  }
+  // open positions with no written stop — the plan only counts as a commitment while it's live
+  // (perps opened in the last 7 days: long-held spot bags and ancient positions would make it wallpaper)
+  { const unplanned=open.filter(t=>t.market!=='spot'&&t.openTime>=Date.now()-7*86400000&&!nfPlan(journal[t.id]));
+    if(unplanned.length)
+      out.push({type:'unplanned',txt:`<b>${unplanned.length}</b> open position${unplanned.length===1?' has':'s have'} no written stop (${unplanned.slice(0,3).map(t=>esc(dispMarket(dcoin(t))))
+        .join(', ')}${unplanned.length>3?', \u2026':''}). Open the trade row and fill <b>entry / stop / target</b> now \u2014 a plan written while the trade is live counts; one written after the close is hindsight.`}); }
   const closed=allTrades.filter(t=>!t.isOpen&&t.closeTime).sort((a,b)=>b.closeTime-a.closeTime);
   if(closed.length<20)return out;
   const now=Date.now();
@@ -4784,6 +4869,12 @@ function excLine(t){
   const ap=e.coarse?'≈':'';
   return `<br><span data-tip="Max adverse / favorable excursion from exchange candles — how far this trade ran against you and in your favor between entry and exit.${e.coarse?' ≈ = approximate: exchange candle retention forced coarse candles for this older trade, so these are upper bounds from candle extremes.':''} Computed in Diagnostic → Price excursions.">MAE <span class="neg-t">${ap}${e.maePct.toFixed(2)}%</span>${r(e.maeR)} · MFE <span class="pos-t">${ap}${e.mfePct.toFixed(2)}%</span>${r(e.mfeR)}</span>`;
 }
+// "written live" vs "written after close" — the difference between a plan and a story.
+function planTimingBadge(t,j){
+  const at=j&&j.plan&&+j.plan.at; if(!(at>0))return t.isOpen?' <span class="sr-note" style="margin-left:6px">write it now, while it’s live</span>':'';
+  if(t.isOpen||!(t.closeTime>0)||at<t.closeTime)return ' <span class="badge ok" style="margin-left:6px" data-tip="Saved while the position was open — a real commitment, scored in the live bucket.">written live</span>';
+  return ' <span class="badge mid" style="margin-left:6px" data-tip="Last changed after the trade closed — hindsight. Scored separately from live plans so it can’t flatter your stop discipline.">written after close</span>';
+}
 function journalRow(t,j,R){
   return `<tr class="jrow"><td colspan="12"><div class="journal">
     <div>
@@ -4795,7 +4886,7 @@ function journalRow(t,j,R){
         <input type="text" data-j="tags" data-id="${t.id}" value="${esc((j.tags||[]).join(', '))}" placeholder="a-setup, trend, scalp"></div>
       <div class="field"><label>Planned risk ($) — for this trade's R-multiple</label>
         <input type="number" data-j="risk" data-id="${t.id}" value="${j.risk!=null?esc(j.risk):''}" placeholder="${settings.riskDefault?('default '+settings.riskDefault):'e.g. 100'}" min="0" step="any"></div>
-      <div class="field"><label>Trade plan — entry / stop / target <span style="color:var(--faint);font-weight:400;text-transform:none;letter-spacing:0">— scored under Diagnostic → Plan adherence</span></label>
+      <div class="field"><label>Trade plan — entry / stop / target <span style="color:var(--faint);font-weight:400;text-transform:none;letter-spacing:0">— scored under Diagnostic → Plan adherence</span>${planTimingBadge(t,j)}</label>
         <div style="display:flex;gap:6px">
           <input type="number" data-j="plan_entry" data-id="${t.id}" value="${(j.plan&&j.plan.entry)?esc(j.plan.entry):''}" placeholder="entry px" step="any" style="flex:1">
           <input type="number" data-j="plan_stop" data-id="${t.id}" value="${(j.plan&&j.plan.stop)?esc(j.plan.stop):''}" placeholder="stop px" step="any" style="flex:1">
@@ -4863,6 +4954,16 @@ async function addAttachments(id,files){ const box=document.getElementById('att-
   await idbSet('att:'+id,arr); loadAttachments(id); syncAttUp(id); }
 async function removeAttachment(id,idx){ let arr=(await idbGet('att:'+id))||[]; arr.splice(idx,1);
   if(arr.length)await idbSet('att:'+id,arr); else await idbDel('att:'+id); loadAttachments(id); syncAttUp(id); }
+// The plan's `at` stamps when its numbers last changed — a plan saved while the trade is
+// open is a commitment, one edited after the close is hindsight (Plan adherence splits them).
+// Re-saving the journal with the same numbers keeps the original stamp.
+function nextPlan(prev,e,s,tg,now){
+  if(!(e>0||s>0||tg>0))return null;
+  const p={entry:e>0?e:'',stop:s>0?s:'',target:tg>0?tg:''};
+  const same=prev&&String(prev.entry)===String(p.entry)&&String(prev.stop)===String(p.stop)&&String(prev.target)===String(p.target);
+  if(!same)p.at=now; else if(prev.at)p.at=prev.at; // unchanged legacy plans stay unstamped (unknown), never "hindsight"
+  return p;
+}
 function ensureJ(id){ if(!journal[id])journal[id]={notes:'',tags:[],setup:'',rating:0,mistakes:[],risk:null,plan:null}; return journal[id]; }
 async function saveJournal(id){
   const j=ensureJ(id); markJEdit(id);
@@ -4873,7 +4974,7 @@ async function saveJournal(id){
   if(g('risk')){ const v=parseFloat(g('risk').value); j.risk=v>0?v:null; }
   { const pe=g('plan_entry'), ps=g('plan_stop'), pt=g('plan_target');
     if(pe||ps||pt){ const e=parseFloat(pe&&pe.value), s=parseFloat(ps&&ps.value), tg=parseFloat(pt&&pt.value);
-      if(e>0||s>0||tg>0) j.plan={entry:e>0?e:'',stop:s>0?s:'',target:tg>0?tg:''}; else j.plan=null; } }
+      j.plan=nextPlan(j.plan,e,s,tg,Date.now()); } }
   await Store.set(J_KEY,journal);
   const tag=$('saved-'+id); if(tag){tag.classList.add('show');setTimeout(()=>tag.classList.remove('show'),1400);}
   render();
@@ -4939,6 +5040,7 @@ function renderReview(){
   const el=$('reviewView'); if(!el)return;
   const closed=allTrades.filter(t=>!t.isOpen&&t.closeTime&&viewFilter(t));
   if(!closed.length){ el.innerHTML=dayJournalSectionHtml()+goalsSectionHtml()+'<div class="diag-section"><p class="lead">No closed trades in this view yet.</p></div>'; wireDayJournal(); wireGoals(); return; }
+  let procHtml=''; try{ procHtml=processSectionHtml(); }catch(e){ console.warn('process score failed',e); }
   const now=Date.now(), DAY=86400000;
   const win=(from,to)=>closed.filter(t=>t.closeTime>=from&&t.closeTime<to);
   const wk=win(now-7*DAY,now+1), pwk=win(now-14*DAY,now-7*DAY);
@@ -5005,9 +5107,11 @@ function renderReview(){
 
   el.innerHTML=`<div class="diag-section"><h2>Review · ${view}</h2><p class="lead">Rolling digest for the ${view} view. Windows are trailing 7 / 30 days; "vs prior" compares the immediately preceding window of equal length.</p></div>
    ${dayJournalSectionHtml()}
+   ${inboxSectionHtml()}
    ${weeklyReviewSectionHtml()}
    ${goalsSectionHtml()}
    <div class="diag-section"><h2>This week</h2><div class="diag-grid">${windowCard('Last 7 days',wk,pwk)}${windowCard('Last 30 days',mo,pmo)}</div></div>
+   ${procHtml}
    ${costVar}
    <div class="diag-section"><h2>Highlights · last 30 days</h2><div class="diag-grid">
      <div class="diag-card"><h3>Best &amp; worst</h3>
@@ -5022,7 +5126,7 @@ function renderReview(){
    </div></div>
    <div class="diag-section"><h2>Focus for next week</h2><ol class="recs">${focus.map(f=>`<li>${f}</li>`).join('')}</ol></div>
    ${nfLeaderboardHtml(periodTrades().filter(t=>!t.isOpen))}`;
-  wireDayJournal(); wireWeeklyReview(); wireGoals();
+  wireDayJournal(); wireInbox(); wireWeeklyReview(); wireGoals();
 }
 /* ============================ monthly goals ============================ */
 // This-month progress vs self-set goals: realized net vs target (with straight-line pace
@@ -5115,6 +5219,8 @@ function dayJournalSectionHtml(){
         <div class="field"><label>Bias / market read</label><input type="text" id="djBias" value="${esc(e.bias||'')}" placeholder="e.g. chop until CPI, long bias above break"></div>
         <div class="field"><label>Plan</label><textarea id="djPlan" placeholder="What will you trade today — and what will you NOT do?">${esc(e.plan||'')}</textarea></div>
         <div class="field"><label>Committed max loss ($)</label><input type="number" id="djMaxLoss" min="0" step="any" value="${e.maxLoss>0?esc(e.maxLoss):''}" placeholder="stop trading for the day at −$…"></div>
+        <div class="field"><label data-tip="Ten seconds before the session. The pattern miner tests these like any other condition (&quot;low focus&quot;, &quot;slept badly&quot;) once about ten trades carry a check-in — so how you felt becomes a measured edge or leak, not a guess.">Check-in — 1 low · 5 high</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">${CHECKIN_FIELDS.map(([k,l])=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;text-transform:none;letter-spacing:0">${l}<select id="djCk_${k}" aria-label="${l} (1 to 5)"><option value="">—</option>${[1,2,3,4,5].map(n=>`<option value="${n}"${+e[k]===n?' selected':''}>${n}</option>`).join('')}</select></label>`).join('')}</div></div>
         <div class="field"><label>End-of-day review</label><textarea id="djReview" placeholder="What actually happened? What would you repeat or change?">${esc(e.review||'')}</textarea></div>
         <label class="dchk" style="display:inline-flex;margin-bottom:10px"><input type="checkbox" id="djAdh" ${e.adherence?'checked':''}> I followed the plan</label>
         <div><button class="btn ghost" id="djSave">Save day</button> <span id="djSaved" style="color:var(--faint);font-size:11px"></span></div>
@@ -5123,6 +5229,19 @@ function dayJournalSectionHtml(){
         ${recent.length?recent.map(([rk,d])=>chip(rk,d)).join(''):'<p class="lead">No day entries yet. The plan you write before the session is the one the review can hold you to.</p>'}
       </div>
     </div></div>`;
+}
+// Session check-in scales, stored on the day entry (1 = low … 5 = high).
+const CHECKIN_FIELDS=[['sleep','Sleep'],['stress','Stress'],['focus','Focus']];
+// Merge a day-journal save: keeps `plannedAt` — when a plan (bias / plan / max loss) first
+// existed for the day — so the process score can tell "planned before the first trade"
+// from "wrote it up afterwards". Pure; null = nothing left worth keeping.
+function nextDayEntry(prev,e,now){
+  const has=['bias','plan','review','maxLoss','adherence','sleep','stress','focus'].some(k=>e[k]);
+  if(!has)return null;
+  const planned=!!(e.bias||e.plan||e.maxLoss>0);
+  const out={...e,updatedAt:now};
+  if(planned)out.plannedAt=(prev&&prev.plannedAt)||now;
+  return out;
 }
 function wireDayJournal(){
   const tb=$('djToday'); if(tb)tb.onclick=()=>{ _dayJEditKey=null; _dayJEditSetOn=null; renderReview(); };
@@ -5133,8 +5252,9 @@ function wireDayJournal(){
     const e={bias:$('djBias').value.trim(), plan:$('djPlan').value.trim(),
       maxLoss:num>0?num:null, review:$('djReview').value.trim(),
       adherence:$('djAdh').checked||null};
-    if(!(e.bias||e.plan||e.review||e.maxLoss||e.adherence)) delete journal[k];
-    else journal[k]={...e,updatedAt:Date.now()};
+    for(const [f] of CHECKIN_FIELDS){ const v=parseInt(($('djCk_'+f)||{}).value); e[f]=v>=1&&v<=5?v:null; }
+    const nx=nextDayEntry(journal[k],e,Date.now());
+    if(!nx) delete journal[k]; else journal[k]=nx;
     markJEdit(k); Store.set(J_KEY,journal);
     if(e.maxLoss>0)askNotifyPerm(); // committed max loss + save gesture — offer desktop notifications
     const s=$('djSaved'); if(s){ s.textContent='saved'; setTimeout(()=>{ s.textContent=''; },1400); }
@@ -5612,6 +5732,8 @@ $('cal').addEventListener('click',e=>{ const c=e.target.closest('[data-day]'); i
   setTimeout(()=>{ const f=$('djBias'); if(f){ f.scrollIntoView({behavior:'smooth',block:'center'}); f.focus(); } },60);
 });
 $('calWeeksBtn').addEventListener('click',async()=>{ settings.calWeeks=settings.calWeeks===52?26:52;
+  await Store.set(S_KEY,settings); if(allTrades.length)render(); });
+$('calModeBtn').addEventListener('click',async()=>{ settings.calMode=settings.calMode==='process'?'pnl':'process';
   await Store.set(S_KEY,settings); if(allTrades.length)render(); });
 $('walletsBtn').addEventListener('click',()=>$('setupPanel').classList.toggle('hide'));
 $('hdrsum').addEventListener('click',()=>$('setupPanel').classList.toggle('hide'));
@@ -6591,7 +6713,7 @@ function evaluateRules(closed, rules){
     const byDay={}; for(const t of byClose){ const k=nfDayKey(t.openTime); (byDay[k]=byDay[k]||[]).push(t); }
     const viol=[]; for(const k in byDay){ const arr=byDay[k].sort((a,b)=>a.openTime-b.openTime);
       for(let i=R.maxPerDay;i<arr.length;i++)viol.push(arr[i]); }
-    out.push({rule:'Max '+R.maxPerDay+' trades/day', n:viol.length, cost:viol.reduce((s,t)=>s+t.net,0)}); }
+    out.push({rule:'Max '+R.maxPerDay+' trades/day', n:viol.length, cost:viol.reduce((s,t)=>s+t.net,0), ids:viol.map(t=>t.id)}); }
   if(R.cooldownMin>0){
     const win=R.cooldownMin*60000; const viol=[];
     // Prior closes must be scanned in close-time order — byClose is open-time-ordered, and
@@ -6604,19 +6726,19 @@ function evaluateRules(closed, rules){
       while(lo<=hi){ const m=(lo+hi)>>1; if(ct[m]<=t.openTime){idx=m;lo=m+1;}else hi=m-1; }
       for(let j=idx;j>=0;j--){ const p=closes[j]; if(t.openTime-p.closeTime>win)break;
         if(p.id!==t.id&&isLoss(p.net)){ viol.push(t); break; } } }
-    out.push({rule:R.cooldownMin+'-min cooldown after a loss', n:viol.length, cost:viol.reduce((s,t)=>s+t.net,0)}); }
+    out.push({rule:R.cooldownMin+'-min cooldown after a loss', n:viol.length, cost:viol.reduce((s,t)=>s+t.net,0), ids:viol.map(t=>t.id)}); }
   if(R.noAddToLosers){
     // real detection from per-fill events (an add while underwater vs the running average
     // entry), not the old entry-drift proxy that also flagged planned scale-ins. Every
     // violation counts, winners included — the rule was broken either way.
     const viol=closed.filter(t=>addedToLoser(t));
-    out.push({rule:'No adding to losers', n:viol.length, cost:viol.reduce((s,t)=>s+t.net,0)}); }
+    out.push({rule:'No adding to losers', n:viol.length, cost:viol.reduce((s,t)=>s+t.net,0), ids:viol.map(t=>t.id)}); }
   if(R.dailyLossLimit>0){
     const byDay={}; for(const t of byClose){ const k=nfDayKey(t.closeTime); (byDay[k]=byDay[k]||[]).push(t); }
-    let days=0, cost=0; for(const k in byDay){ const arr=byDay[k].sort((a,b)=>a.closeTime-b.closeTime);
-      let cum=0, tripped=false; for(const t of arr){ cum+=t.net; if(tripped)cost+=t.net; if(cum<=-R.dailyLossLimit&&!tripped)tripped=true; }
+    let days=0, cost=0; const ids=[]; for(const k in byDay){ const arr=byDay[k].sort((a,b)=>a.closeTime-b.closeTime);
+      let cum=0, tripped=false; for(const t of arr){ cum+=t.net; if(tripped){ cost+=t.net; ids.push(t.id); } if(cum<=-R.dailyLossLimit&&!tripped)tripped=true; }
       if(tripped)days++; }
-    out.push({rule:'Daily loss limit '+fmtUsd(R.dailyLossLimit), n:days, cost, unit:'days breached, PnL after breach'}); }
+    out.push({rule:'Daily loss limit '+fmtUsd(R.dailyLossLimit), n:days, cost, unit:'days breached, PnL after breach', ids, kind:'dll'}); }
   return out;
 }
 // Today's realized net across ALL closed trades (tz-toggle day) — powers the live tripwire banner.
@@ -6662,20 +6784,32 @@ function nfPlan(j){ const p=j&&j.plan; if(!p)return null;
   if(!(e>0)||!(s>0))return null;
   return {entry:e, stop:s, target:isFinite(tg)&&tg>0?tg:null}; }
 // Did you honor the plan you wrote down? Uses avg entry/exit from reconstruction vs planned
-// stop/target. Stop-honored = you did NOT let price close beyond your stop.
-function planAdherence(closed, journalObj){
+// stop/target. Stop-honored = you did NOT let price close beyond your stop. With excursion
+// data (excM) it also catches the quieter break: price traded THROUGH the stop and you held
+// anyway (heldThrough) — an exit back above the stop hides that from avg-exit alone.
+// live = the plan was last written while the trade was still open (plan.at < closeTime);
+// a plan written after the close is hindsight, and scored separately.
+function planAdherence(closed, journalObj, excM){
   const items=[];
   for(const t of closed){ const j=journalObj[t.id]; const p=nfPlan(j); if(!p)continue;
     if(!(t.avgExit>0)||!(t.avgEntry>0))continue;
     const short=t.dir==='Short';
     const riskPer=Math.abs(p.entry-p.stop); if(!(riskPer>0))continue;
-    const stopHonored = short ? (t.avgExit<=p.stop) : (t.avgExit>=p.stop);
+    const exitOk = short ? (t.avgExit<=p.stop) : (t.avgExit>=p.stop);
+    const e=excM&&excM[t.id];
+    const stopDistPct=(short?(p.stop-t.avgEntry):(t.avgEntry-p.stop))/t.avgEntry*100;
+    const heldThrough = !!(exitOk&&e&&e.maePct!=null&&!e.coarse&&stopDistPct>0&&e.maePct>stopDistPct*1.001);
+    const stopHonored = exitOk&&!heldThrough;
+    const at=+((j.plan&&j.plan.at)||0);
+    const live = at>0&&t.closeTime>0 ? at<t.closeTime : null;
     const targetHit = p.target!=null ? (short ? t.avgExit<=p.target : t.avgExit>=p.target) : null;
     const plannedRR = p.target!=null ? Math.abs(p.target-p.entry)/riskPer : null;
     const plannedRisk$ = riskPer*(t.maxSize||0);
     const realizedR = plannedRisk$>0 ? t.net/plannedRisk$ : null;
-    items.push({id:t.id, coin:dcoin(t), stopHonored, targetHit, plannedRR, realizedR, net:t.net}); }
+    items.push({id:t.id, coin:dcoin(t), stopHonored, heldThrough, live, targetHit, plannedRR, realizedR, net:t.net}); }
   const n=items.length;
+  const liveArr=items.filter(x=>x.live===true), hindArr=items.filter(x=>x.live===false);
+  const rate=a=>a.length?a.filter(x=>x.stopHonored).length/a.length:null;
   const honored=items.filter(x=>x.stopHonored).length;
   const tHitArr=items.filter(x=>x.targetHit!=null);
   const tHit=tHitArr.filter(x=>x.targetHit).length;
@@ -6683,7 +6817,9 @@ function planAdherence(closed, journalObj){
   const rrReal=nfMedian(items.map(x=>x.realizedR).filter(x=>x!=null));
   return {n, items, stopHonoredRate:n?honored/n:null,
     targetHitRate:tHitArr.length?tHit/tHitArr.length:null, medPlannedRR:rrPlan, medRealizedR:rrReal,
-    brokeStopCost:items.filter(x=>!x.stopHonored).reduce((s,x)=>s+x.net,0)};
+    brokeStopCost:items.filter(x=>!x.stopHonored).reduce((s,x)=>s+x.net,0),
+    heldThroughN:items.filter(x=>x.heldThrough).length,
+    liveN:liveArr.length, hindsightN:hindArr.length, liveHonoredRate:rate(liveArr), hindsightHonoredRate:rate(hindArr)};
 }
 
 /* ======================= 6 · WALLET / SETUP LEADERBOARD ======================= */
@@ -6751,14 +6887,16 @@ function nfDiagExtra(closed){
       ${mrow('Median survivable leverage',ls.medMaxLev!=null?ls.medMaxLev.toFixed(1)+'x':'\u2014','Half your trades could have withstood at least this much leverage before their worst excursion wiped the margin.')}
       ${worst?'<div style="margin-top:8px;border-top:1px solid var(--line);padding-top:6px"><div class="mini-note" style="margin:0 0 4px">Thinnest-margin trades:</div>'+worst+'</div>':''}</div>`; }
   // 5 plan adherence
-  const pa=planAdherence(closed,journal);
+  const pa=planAdherence(closed,journal,_excM);
   let paHtml;
   if(!pa.n){ paHtml=`<div class="diag-card"><h3 data-tip="Fill in a plan (entry / stop / target) on a trade\u2019s journal row to score it.">Plan adherence</h3><p class="lead">No trade plans logged yet. Add <b>entry / stop / target</b> in a trade\u2019s journal to start scoring discipline.</p></div>`; }
   else { paHtml=`<div class="diag-card"><h3 data-tip="Scores the plans you wrote down (entry/stop/target) against where you actually got out. Stop-honored = price didn\u2019t close beyond your stop.">Plan adherence <span style="font-size:11px;color:var(--faint);font-weight:400">${pa.n} planned</span></h3>
     ${mrow('Stop-honored rate','<span class="'+((pa.stopHonoredRate||0)>=0.8?'pos-t':'neg-t')+'">'+nfPct(pa.stopHonoredRate)+'</span>','Share of planned trades where you did not let price close past your stop.')}
     ${pa.targetHitRate!=null?mrow('Target-hit rate',nfPct(pa.targetHitRate),'Share of planned trades (with a target) that reached it.'):''}
     ${mrow('Planned vs realized R','med '+(pa.medPlannedRR!=null?pa.medPlannedRR.toFixed(2)+'R':'\u2014')+' \u2192 '+(pa.medRealizedR!=null?(pa.medRealizedR>=0?'+':'')+pa.medRealizedR.toFixed(2)+'R':'\u2014'),'Median planned reward:risk vs the R you actually realized against that plan\u2019s risk.')}
-    ${mrow('Cost of blowing stops',pa.brokeStopCost<0?('<span class="loss">'+fmtUsd(pa.brokeStopCost)+'</span>'):fmtUsd(pa.brokeStopCost),'Total net PnL on the planned trades where you held past your stop.')}</div>`; }
+    ${mrow('Cost of blowing stops',pa.brokeStopCost<0?('<span class="loss">'+fmtUsd(pa.brokeStopCost)+'</span>'):fmtUsd(pa.brokeStopCost),'Total net PnL on the planned trades where you held past your stop.')}
+    ${pa.heldThroughN?mrow('Held through the stop','<span class="neg-t">'+pa.heldThroughN+'</span>','Price traded past your planned stop (from candle excursions) and you stayed in anyway — even if the exit later recovered. Counted as a broken stop above. Run Price excursions to measure more trades.'):''}
+    ${(pa.liveN||pa.hindsightN)?mrow('Written live vs after',pa.liveN+' live ('+nfPct(pa.liveHonoredRate,0)+' honored) · '+pa.hindsightN+' after close ('+nfPct(pa.hindsightHonoredRate,0)+')','A plan saved while the position was still open is a commitment; one written after the close is hindsight, and usually flatters you. Plans saved before this was tracked are in neither bucket.'):''}</div>`; }
   // 4 rules
   const R=nfRules(); const rc=evaluateRules(closed,R);
   const ruleInputs=`<div class="calc-row" style="flex-wrap:wrap;gap:10px;margin-bottom:8px">
@@ -6767,7 +6905,8 @@ function nfDiagExtra(closed){
      <label>Daily loss limit $ <input type="number" id="nfRuleDLL" value="${R.dailyLossLimit||''}" min="0" step="any" style="width:80px" placeholder="off"></label>
      <label class="chk ${R.noAddToLosers?'on':''}" style="display:inline-flex"><input type="checkbox" id="nfRuleNAL" ${R.noAddToLosers?'checked':''}>No adds to losers</label></div>`;
   const rcRows=rc.length?rc.map(r=>mrow(esc(r.rule),(r.n?('<span class="'+(r.cost<0?'loss':'pos-t')+'">'+r.n+(r.unit?' '+esc(r.unit.split(',')[0]):'')+' \u00b7 '+fmtUsd(r.cost)+'</span>'):'<span class="pos-t">0 \u2014 clean</span>'),r.unit||'Count of violating trades and their net PnL.')).join(''):'<p class="lead">Set a threshold above to score a rule.</p>';
-  const rulesHtml=`<div class="diag-card"><h3 data-tip="Define personal rules; the app scores how often you broke each one and what it cost. A broken rule with a price is easier to fix than a vague resolution. Also drives the live daily-loss banner.">Discipline &amp; rules</h3>${ruleInputs}${rcRows}</div>`;
+  let crHtml=''; try{ crHtml=customRulesHtml(closed); }catch(e){ console.warn('custom rules failed',e); }
+  const rulesHtml=`<div class="diag-card"><h3 data-tip="Define personal rules; the app scores how often you broke each one and what it cost. A broken rule with a price is easier to fix than a vague resolution. Also drives the live daily-loss banner.">Discipline &amp; rules</h3>${ruleInputs}${rcRows}${crHtml}</div>`;
   return `<div class="diag-section"><h2>Discipline, carry &amp; leverage</h2>
      <div class="diag-grid">${rulesHtml}${paHtml}</div>
      <div class="diag-grid" style="margin-top:14px">${fcHtml}${levHtml}</div></div>`;
@@ -6782,6 +6921,7 @@ function nfWireDiag(closed){
     await Store.set(S_KEY,settings); renderTripwire(); };
   ['nfRuleMax','nfRuleCool','nfRuleDLL'].forEach(id=>{ const e=$(id); if(e)e.onchange=saveRules; });
   const nal=$('nfRuleNAL'); if(nal)nal.onchange=saveRules;
+  wireCustomRules();
   // leverage survivability recompute on assumed-leverage change (persist)
   const lev=$('nfLev'); if(lev)lev.onchange=async()=>{ const v=parseFloat(lev.value); settings.assumedLev=v>0?v:5;
     await Store.set(S_KEY,settings); if(activeTab==='diag')renderDiagnostic(periodTrades(),periodTradesAll()); };
@@ -6848,6 +6988,264 @@ function nfLeaderboardHtml(closed){
   return `<div class="diag-section"><h2>Leaderboard <span style="font-size:11px;color:var(--faint);font-weight:400">${view} \u00b7 current period</span></h2>
     <p class="lead">Which wallet and which setup is actually carrying the account. Ranked by net; Sharpe is of daily net PnL, Max DD on cumulative PnL.</p>
     <div class="diag-grid">${walletTbl}${setupTbl}</div></div>`;
+}
+
+/* ======================= 8 · HABITS: rules from findings · journal inbox · process score ======================= */
+// Rules made from miner / what-if conditions live in settings.rules.custom — {pid, name,
+// params, createdAt} — so they sync, merge and back up with the built-in rules. A rule is a
+// pinned condition turned into a "don't": the same stable pid + frozen thresholds the forward
+// tracker uses, resolved with resolvePinPred, so its name and its test never drift apart.
+function customRules(){ const r=settings.rules; return r&&Array.isArray(r.custom)?r.custom:[]; }
+// Entry-knowable conditions can be judged the moment a position opens, so they get a live
+// warning chip. Hold time, excursion shape, close-hour sessions and ratings only exist once
+// the trade is closed (or journaled) — those rules are scored after the fact only.
+function ruleIsLive(pid){
+  const LIVE=['dir:','mkt:','st:','size:','setup:','tag:','ck:'];
+  return String(pid||'').split('&').every(p=>LIVE.some(x=>p.startsWith(x)));
+}
+async function addCustomRule(c){
+  if(!c||!c.pid)return false;
+  const r=settings.rules||(settings.rules={});
+  if(!Array.isArray(r.custom))r.custom=[];
+  if(r.custom.some(x=>x.pid===c.pid))return false;
+  r.custom.push({pid:c.pid,name:c.name,params:c.params||{},createdAt:Date.now()});
+  await Store.set(S_KEY,settings); return true;
+}
+async function removeCustomRule(pid){
+  const r=settings.rules; if(!r||!Array.isArray(r.custom))return;
+  r.custom=r.custom.filter(x=>x.pid!==pid);
+  await Store.set(S_KEY,settings);
+}
+// One predicate per rule over closed AND open trades. Open trades join the state model with
+// closeTime=Infinity so entry-time states (streaks, day PnL, re-entry gaps) see exactly the
+// closes that preceded them; thresholds come from the rule's frozen params.
+function customRulePreds(trades, rules){
+  const pool=(trades||[]).map(t=>(t.isOpen||!t.closeTime)?Object.assign({},t,{closeTime:Infinity}):t);
+  const chron=pool.slice().sort((a,b)=>a.openTime-b.openTime);
+  const ST=tradeStates(chron);
+  const closed=chron.filter(t=>isFinite(t.closeTime));
+  return (rules||[]).map(r=>{ let pred=null; try{ pred=resolvePinPred(r,closed,ST); }catch(e){}
+    const safe=pred?(t=>{ try{ return !!pred(t); }catch(e){ return false; } }):null;
+    return {rule:r, pred:safe, live:ruleIsLive(r.pid)}; });
+}
+// Did making the rule change what you do? Share of trades (by entry time) breaking it before
+// vs after the rule existed, one-sided two-proportion z-test for "fewer breaks after".
+function ruleFollowThrough(closed, pred, createdAt){
+  let nB=0,vB=0,netB=0,nA=0,vA=0,netA=0;
+  for(const t of (closed||[])){ const v=!!pred(t);
+    if(t.openTime<createdAt){ nB++; if(v){ vB++; netB+=t.net; } }
+    else { nA++; if(v){ vA++; netA+=t.net; } } }
+  const rB=nB?vB/nB:null, rA=nA?vA/nA:null;
+  let p=null;
+  if(nB>=5&&nA>=5){ const pp=(vB+vA)/(nB+nA), se=Math.sqrt(pp*(1-pp)*(1/nB+1/nA));
+    p=se>0?1-_normCdf((rB-rA)/se):(rA<rB?0:1); }
+  const status = nA<10?'collecting'
+    : !vB&&!vA?'clean'
+    : !nB?'no baseline'
+    : (rA<rB&&p!=null&&p<0.10)?'working'
+    : rA<rB?'improving':'not yet';
+  return {before:{n:nB,v:vB,rate:rB,net:netB}, after:{n:nA,v:vA,rate:rA,net:netA}, p, status};
+}
+// Open positions breaking a live rule right now.
+function liveRuleHits(openTrades, preds){
+  const out=[];
+  for(const x of (preds||[])){ if(!x.live||!x.pred)continue;
+    for(const t of (openTrades||[])) if(x.pred(t))out.push({rule:x.rule,t}); }
+  return out;
+}
+
+// ---- journal inbox + streak ----
+function isJournaled(j){ return !!(j&&(j.notes||j.setup||(j.tags&&j.tags.length)||j.rating)); }
+// Closed trades from the last `days` days with nothing journaled, newest first.
+function journalInbox(trades, journalObj, now, days){
+  const cut=(now||Date.now())-(days||30)*86400000;
+  return (trades||[]).filter(t=>!t.isOpen&&t.closeTime>=cut&&!isJournaled((journalObj||{})[t.id]))
+    .sort((a,b)=>b.closeTime-a.closeTime);
+}
+// Consecutive trading days (by close day, newest first) on which every trade is journaled.
+// Today doesn't break the streak while it's still being traded — it only adds once complete.
+function journalStreak(trades, journalObj, dayOf, todayK){
+  const by={};
+  for(const t of (trades||[])){ if(t.isOpen||!t.closeTime)continue; const k=dayOf(t.closeTime); (by[k]=by[k]||[]).push(t); }
+  const keys=Object.keys(by).sort().reverse();
+  const full=k=>by[k].every(t=>isJournaled((journalObj||{})[t.id]));
+  let cur=0, i=0;
+  if(keys[0]===todayK&&!full(keys[0]))i=1;
+  for(;i<keys.length;i++){ if(full(keys[i]))cur++; else break; }
+  let best=0, run=0;
+  for(const k of keys.slice().reverse()){ if(full(k)){ run++; if(run>best)best=run; } else run=0; }
+  return {current:cur, best, days:keys.length};
+}
+
+// ---- process score ----
+// A daily grade for HOW you traded, independent of what the market paid. Parts (0–1 each,
+// weights fixed and shown): plan filed before the first entry · trades breaking no rule ·
+// trades with a plan written live · planned stops honored · no entries after the day's loss
+// limit broke · trades journaled. Parts that don't apply that day drop out of the weighting —
+// and the two planning habits only apply from the first day you ever used them, so history
+// from before the habit existed isn't graded against it.
+const PROCESS_W={plan:20,rules:30,planned:15,stops:15,limit:10,journal:10};
+function processDays(closed, journalObj, opts){
+  opts=opts||{}; const J=journalObj||{};
+  const viol=opts.violIds||new Set(), dayOf=opts.dayOf;
+  const pa=planAdherence(closed,J,opts.excM);
+  const paBy=new Map(pa.items.map(x=>[x.id,x]));
+  const by={};
+  for(const t of closed){ if(t.isOpen||!t.closeTime)continue; const k=dayOf(t.closeTime); (by[k]=by[k]||[]).push(t); }
+  const out=[];
+  const hasDayPlan=d=>!!(d&&(d.plan||d.bias||d.maxLoss>0));
+  const planDays=Object.keys(J).filter(k=>k.startsWith('day:')&&hasDayPlan(J[k])).map(k=>k.slice(4)).sort();
+  const firstDayPlan=planDays.length?planDays[0]:null;
+  let firstTradePlan=null;
+  for(const t of closed) if(paBy.has(t.id)){ const k=dayOf(t.closeTime); if(!firstTradePlan||k<firstTradePlan)firstTradePlan=k; }
+  for(const k of Object.keys(by).sort()){
+    const arr=by[k].sort((a,b)=>a.closeTime-b.closeTime), n=arr.length;
+    const de=J['day:'+k]||null, parts={};
+    const opened=arr.filter(t=>dayOf(t.openTime)===k);
+    if(opened.length&&firstDayPlan&&k>=firstDayPlan){
+      const first=Math.min(...opened.map(t=>t.openTime));
+      const has=hasDayPlan(de);
+      // entries saved before plannedAt existed get the benefit of the doubt; a plan written
+      // after the first entry of the day earns half
+      parts.plan=!has?0:(de.plannedAt?(de.plannedAt<=first?1:0.5):1);
+    }
+    parts.rules=1-arr.filter(t=>viol.has(t.id)).length/n;
+    const pl=arr.map(t=>paBy.get(t.id)).filter(Boolean);
+    if(firstTradePlan&&k>=firstTradePlan)parts.planned=pl.filter(x=>x.live!==false).length/n;
+    if(pl.length)parts.stops=pl.filter(x=>x.stopHonored).length/pl.length;
+    const lim=(de&&de.maxLoss>0)?de.maxLoss:(opts.dllLimit||0);
+    if(lim>0){ let cum=0, breachAt=null;
+      for(const t of arr){ cum+=t.net; if(breachAt==null&&cum<=-lim)breachAt=t.closeTime; }
+      parts.limit=(breachAt!=null&&arr.some(t=>t.openTime>breachAt))?0:1; }
+    parts.journal=arr.filter(t=>isJournaled(J[t.id])).length/n;
+    let sw=0, sv=0; for(const p in parts){ sw+=PROCESS_W[p]; sv+=PROCESS_W[p]*parts[p]; }
+    out.push({key:k, score:Math.round(100*sv/sw), parts, n, net:arr.reduce((s,t)=>s+t.net,0)});
+  }
+  return out;
+}
+// Process vs outcome: good process = score ≥ thr. "Earned" and "good loss" are the days to
+// repeat; "lucky" green days are the dangerous ones — they teach the wrong lesson.
+function processQuadrants(days, thr){
+  thr=thr==null?70:thr;
+  const q={earned:{n:0,net:0},goodLoss:{n:0,net:0},lucky:{n:0,net:0},deserved:{n:0,net:0}};
+  for(const d of (days||[])){ const g=d.score>=thr, up=d.net>=0;
+    const b=g?(up?q.earned:q.goodLoss):(up?q.lucky:q.deserved); b.n++; b.net+=d.net; }
+  return q;
+}
+function processTrend(days, win){
+  win=win||20; const s=(days||[]).map(d=>d.score);
+  const last=s.slice(-win), prev=s.slice(-2*win,-win);
+  let streak=0; for(let i=s.length-1;i>=0&&s[i]>=70;i--)streak++;
+  return {avg:last.length?_avg(last):null, prevAvg:prev.length?_avg(prev):null, streak, n:s.length};
+}
+// Everything the process score needs from the rule engine, for one trade set.
+function processContext(trades){
+  const closed=trades.filter(t=>!t.isOpen&&t.closeTime);
+  const viol=new Set();
+  for(const r of evaluateRules(closed,nfRules())) if(r.kind!=='dll') for(const id of (r.ids||[])) viol.add(id);
+  for(const x of customRulePreds(trades,customRules())) if(x.pred) for(const t of closed) if(x.pred(t)) viol.add(t.id);
+  return {closed, days:processDays(closed,journal,{violIds:viol,dayOf:dayKey,excM:_excM,dllLimit:nfRules().dailyLossLimit})};
+}
+
+// ---- Review UI: journal inbox, process ----
+let _inboxSkip=new Set();
+function inboxSectionHtml(){
+  const inbox=journalInbox(allTrades.filter(viewFilter),journal).filter(t=>!_inboxSkip.has(t.id));
+  const st=journalStreak(allTrades.filter(viewFilter),journal,dayKey,dayKey(Date.now()));
+  const streakTxt=`<span class="sr-note" data-tip="Consecutive trading days on which every closed trade has a setup, tag, rating or note. Today only counts once it's complete — it never breaks the streak while you're still trading.">streak ${st.current} day${st.current===1?'':'s'} · best ${st.best}</span>`;
+  if(!inbox.length) return `<div class="diag-section"><h2>Journal inbox <span style="font-size:11px;color:var(--faint);font-weight:400">last 30 days</span> ${streakTxt}</h2>
+    <p class="lead">Nothing waiting — every trade from the last 30 days carries at least a setup, tag, rating or note.</p></div>`;
+  const t=inbox[0];
+  const setups=[...new Set(Object.values(journal).map(j=>j&&j.setup).filter(Boolean))].sort();
+  return `<div class="diag-section"><h2>Journal inbox <span style="font-size:11px;color:var(--faint);font-weight:400">${inbox.length} trade${inbox.length===1?'':'s'} waiting · last 30 days</span> ${streakTxt}</h2>
+    <div class="diag-card" id="inboxCard" data-id="${esc(t.id)}">
+      <p class="lead" style="margin:0 0 10px"><b>${esc(dispMarket(dcoin(t)))}</b> ${t.dir} · <span class="${cls(t.net)}">${fmtUsd(t.net)}</span> · closed ${fmtDate(t.closeTime)} · held ${fmtDur(t.durationMs)}</p>
+      <div class="field"><label>Setup</label><input type="text" id="ibSetup" list="ibSetups" placeholder="what was this trade?"><datalist id="ibSetups">${setups.map(x=>`<option value="${esc(x)}">`).join('')}</datalist></div>
+      <div class="field"><label>Execution — keys 1–5</label><div class="rating" id="ibRating" role="radiogroup" aria-label="Execution rating">${[1,2,3,4,5].map(n=>`<span class="star" data-r="${n}" role="radio" tabindex="0" aria-label="${n} star${n>1?'s':''}" aria-checked="false">★</span>`).join('')}</div></div>
+      <div class="field"><label>Mistakes</label><div class="mistakes" id="ibMistakes">${MISTAKES.map(m=>`<label class="chk"><input type="checkbox" data-m="${esc(m)}">${m}</label>`).join('')}</div></div>
+      <div><button class="btn" id="ibSave">Save &amp; next</button> <button class="btn ghost" id="ibSkip">Skip</button> <span class="mini-note" style="display:inline">Enter saves · 1–5 rate (outside the text box)</span></div>
+    </div></div>`;
+}
+function wireInbox(){
+  const card=$('inboxCard'); if(!card)return;
+  const id=card.dataset.id; let rating=0;
+  const stars=[...card.querySelectorAll('#ibRating .star')];
+  const setR=n=>{ rating=n; stars.forEach(s=>{ const on=+s.dataset.r<=n; s.classList.toggle('on',on); s.setAttribute('aria-checked',+s.dataset.r===n?'true':'false'); }); };
+  stars.forEach(s=>{ s.onclick=()=>setR(+s.dataset.r); s.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); setR(+s.dataset.r); } }; });
+  card.querySelectorAll('#ibMistakes .chk input').forEach(c=>c.onchange=()=>c.parentElement.classList.toggle('on',c.checked));
+  const save=()=>{
+    const setup=$('ibSetup').value.trim();
+    const mistakes=[...card.querySelectorAll('#ibMistakes input:checked')].map(c=>c.dataset.m);
+    if(!setup&&!rating&&!mistakes.length){ $('ibSetup').focus(); return; }
+    const j=ensureJ(id); if(setup)j.setup=setup; if(rating)j.rating=rating;
+    if(mistakes.length)j.mistakes=[...new Set([...(j.mistakes||[]),...mistakes])];
+    markJEdit(id); Store.set(J_KEY,journal); renderReview();
+    const next=$('ibSetup'); if(next)next.focus();
+  };
+  $('ibSave').onclick=save;
+  $('ibSkip').onclick=()=>{ _inboxSkip.add(id); renderReview(); const n=$('ibSetup'); if(n)n.focus(); };
+  card.onkeydown=e=>{
+    if(e.key==='Enter'&&e.target.tagName!=='TEXTAREA'&&e.target.tagName!=='BUTTON'&&!e.target.classList.contains('star')){ e.preventDefault(); save(); return; }
+    if(e.target.id!=='ibSetup'&&/^[1-5]$/.test(e.key)){ e.preventDefault(); setR(+e.key); }
+  };
+}
+function processSectionHtml(){
+  const {days}=processContext(allTrades.filter(viewFilter));
+  if(days.length<3)return '';
+  const tr=processTrend(days,20);
+  const recent=days.slice(-60), q=processQuadrants(recent,70);
+  const last=days[days.length-1];
+  const PN={plan:'Plan filed before first entry',rules:'Trades breaking no rule',planned:'Trades with a live plan',stops:'Planned stops honored',limit:'Stopped at the loss limit',journal:'Trades journaled'};
+  const bar=v=>`<span style="display:inline-block;width:70px;height:6px;border-radius:3px;background:var(--panel2);vertical-align:middle;margin-right:6px"><span style="display:block;height:6px;border-radius:3px;width:${Math.round(v*100)}%;background:${v>=0.7?'var(--profit)':v>=0.4?'var(--gold)':'var(--loss)'}"></span></span>`;
+  const mrow=(l,v,tip)=>`<div class="metric-row"${tip?` data-tip="${esc(tip)}"`:''}><span class="ml">${l}</span><span class="mv">${v}</span></div>`;
+  const partRows=Object.keys(PROCESS_W).map(p=>last.parts[p]==null?'':mrow(PN[p]+` <span style="color:var(--faint)">· ${PROCESS_W[p]}</span>`,bar(last.parts[p])+Math.round(last.parts[p]*100)+'%')).join('');
+  const sc=v=>`<b style="color:${v>=70?'var(--profit)':v>=50?'var(--gold)':'var(--loss)'}">${Math.round(v)}</b>`;
+  const cell=(title,b,tip,tone)=>`<div style="padding:10px;border:1px solid var(--line);border-radius:8px;border-left:3px solid var(--${tone})" data-tip="${esc(tip)}"><div style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em">${title}</div><div style="font-size:18px;font-weight:600;margin:2px 0">${b.n} day${b.n===1?'':'s'}</div><div class="${cls(b.net)}" style="font-size:12px">${fmtUsd(b.net)}</div></div>`;
+  return `<div class="diag-section"><h2>Process <span style="font-size:11px;color:var(--faint);font-weight:400">how you traded, not what the market paid</span></h2>
+    <div class="diag-grid">
+      <div class="diag-card"><h3 data-tip="0–100 per trading day. Weights (shown after each part) are fixed; parts that don't apply that day — no plans written, no loss limit set — drop out of the weighting instead of counting against you.">Process score · ${esc(last.key)} ${sc(last.score)}</h3>
+        ${partRows}
+        <div style="margin-top:8px;border-top:1px solid var(--line);padding-top:6px">
+        ${mrow('Last '+Math.min(20,days.length)+' trading days',tr.avg!=null?sc(tr.avg)+(tr.prevAvg!=null?` <span style="color:var(--faint)">vs ${Math.round(tr.prevAvg)} the ${Math.min(20,days.length-20)} before</span>`:''):'—')}
+        ${mrow('Good-process streak',tr.streak+' day'+(tr.streak===1?'':'s'),'Consecutive trading days scoring 70 or more.')}</div>
+        <p class="mini-note">The Daily PnL calendar on the dashboard can switch to this score (PnL / Process button).</p></div>
+      <div class="diag-card"><h3 data-tip="Last ${recent.length} trading days split by process score (70+ = good) and whether the day was green. Good process on a red day is still a good day; a green day with poor process is the dangerous one — it rewards the habit you are trying to break.">Process vs outcome · last ${recent.length} days</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          ${cell('Good process · green',q.earned,'Earned days: the process worked and paid.','profit')}
+          ${cell('Good process · red',q.goodLoss,'Good losses: you did it right and the market said no. Keep doing exactly this.','gold')}
+          ${cell('Poor process · green',q.lucky,'Lucky days: paid despite the process. These teach the wrong lesson — review them like losses.','gold')}
+          ${cell('Poor process · red',q.deserved,'Deserved losses: the process broke and it cost money. The cheapest fixes live here.','loss')}
+        </div>
+        <p class="mini-note">If most of your green days are "lucky", the edge is in the market's mood, not your process.</p></div>
+    </div></div>`;
+}
+
+// ---- Diagnostic: rules made from findings ----
+function customRulesHtml(closed){
+  const rules=customRules();
+  const hint='<p class="mini-note" style="margin-top:8px">Make a rule from any leak in the <b>Pattern miner</b> (“+ rule”) or from a <b>What if I stopped doing X</b> replay.</p>';
+  if(!rules.length)return hint;
+  const preds=customRulePreds(closed,rules);
+  const rows=preds.map(({rule,pred,live})=>{
+    if(!pred)return `<div class="state-row"><div class="sr-top"><span class="sr-name">${esc(rule.name)}</span><span><span class="sr-note">unresolved</span> <button class="btn ghost rule-del" data-pid="${esc(rule.pid)}" style="font-size:10px;padding:1px 7px">remove</button></span></div></div>`;
+    const v=closed.filter(pred), cost=v.reduce((s,t)=>s+t.net,0);
+    const ft=ruleFollowThrough(closed,pred,rule.createdAt);
+    const pc=x=>x==null?'—':Math.round(x*100)+'%';
+    const badge={working:'<span class="badge ok" data-tip="Since you made the rule you break it significantly less often (one-sided two-proportion test, p < 0.10).">working</span>',
+      improving:'<span class="badge mid" data-tip="Breaking it less often than before, but not yet distinguishable from chance.">improving</span>',
+      'not yet':'<span class="badge no" data-tip="Breaking it as often as before the rule existed — the rule is written down, not yet followed.">not followed yet</span>',
+      collecting:'<span class="sr-note">collecting — verdict after 10 trades</span>',
+      clean:'<span class="badge ok">never broken</span>',
+      'no baseline':'<span class="sr-note">no trades before the rule</span>'}[ft.status]||'';
+    const liveB=live?' <span class="badge ok" data-tip="Known at entry: an open position that breaks this rule shows a warning chip on the dashboard.">live</span>':' <span class="sr-note" data-tip="Depends on how the trade ended (hold time, excursion, close hour…), so it is scored after the close only.">after close</span>';
+    return `<div class="state-row"><div class="sr-top"><span class="sr-name">${esc(rule.name)}${liveB}</span><span style="white-space:nowrap">${badge} <button class="btn ghost rule-del" data-pid="${esc(rule.pid)}" style="font-size:10px;padding:1px 7px">remove</button></span></div>
+      <div class="sr-sub" style="font-size:11.5px;color:var(--muted)">${v.length} breaking trade${v.length===1?'':'s'} · <span class="${cls(cost)}">${fmtUsd(cost)}</span> · ${ft.before.n?`broken on ${pc(ft.before.rate)} of trades before ${esc(dayKey(rule.createdAt))}`:`made ${esc(dayKey(rule.createdAt))}`} · ${ft.after.n?`${pc(ft.after.rate)} of the ${ft.after.n} trade${ft.after.n===1?'':'s'} since`:'no trades since yet'}</div></div>`;
+  }).join('');
+  return `<div style="margin-top:10px;border-top:1px solid var(--line);padding-top:8px"><div class="mini-note" style="margin:0 0 4px">Your rules from findings — breaks, cost, and whether the rule changed anything:</div>${rows}</div>${hint}`;
+}
+function wireCustomRules(){
+  document.querySelectorAll('.rule-del').forEach(b=>{ b.onclick=async()=>{ await removeCustomRule(b.dataset.pid);
+    renderGuardrails(); if(activeTab==='diag')renderDiagnostic(periodTrades(),periodTradesAll()); }; });
 }
 
 /* ============================ boot ============================ */

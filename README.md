@@ -116,8 +116,20 @@ Every trade row expands into a journal entry:
 - **Mistake flags** — chased, oversized, no-stop, revenge, fomo, early-exit…
 - **Planned risk ($)** — what 1R was for this trade. Powers R-multiples
   everywhere; if unset, a fallback 1R (configurable basis, see Settings) is used.
+- **Trade plan** — entry / stop / target. Open positions have journal rows
+  too: a plan saved while the position is open is badged **written live**, one
+  last changed after the close **written after close**, and the two are scored
+  separately under Plan adherence (hindsight plans flatter stop discipline).
+  Perp positions opened in the last 7 days with no written stop get a
+  dashboard nudge.
 - **Notes** — free text.
 - **Attachments** — paste or drop screenshots; stored in this browser.
+
+**Price chart** on the expanded row draws the trade on real candles: every
+entry/add and close fill, average entry/exit, your planned stop and target as
+dotted lines, and ✕ marks at the worst and best prices while the trade was on.
+When price traded through your planned stop and the position stayed open, the
+chart says so.
 
 Everything you journal becomes analytical fuel: tags, setups, ratings, and
 mistake flags are all mined as pattern-miner families, and the Review view
@@ -137,6 +149,13 @@ close (open gains never license more risk). Day entries sync and back up
 with the trade journal, and **clicking any day in the calendar heatmap**
 opens that date's entry (the heatmap scales its colors over the visible
 window and toggles between 26 and 52 weeks).
+
+The day journal also carries a **session check-in** — sleep, stress and
+focus, 1–5. Once about ten trades carry one, the pattern miner tests them as
+conditions (`slept badly`, `high stress`, `low focus`, `sharp focus`), so how
+you felt becomes a measured edge or leak. Day entries record `plannedAt`, when
+a plan first existed for the day, so the process score can tell a plan written
+before the first entry from one written afterwards.
 
 **Monthly goals** (also Review) hold the month to three optional commitments:
 a net target (with straight-line projection and needed daily pace), a max
@@ -198,6 +217,24 @@ The statistician's view of your trading. Sections top to bottom:
   etc., each tested for significance.
 - **Edge breakdown** — a dimension selector (coin, hour, weekday, setup, tag…)
   showing exactly where your edge is and isn't, with reliability shading.
+- **Rules from findings** (in Discipline & rules) — any leak in the pattern
+  miner has a **+ rule** button, and a what-if replay that would have made
+  money offers **Make this a rule**. A rule stores the condition's stable id
+  and frozen thresholds (the same mechanism as pinned patterns) in
+  `settings.rules.custom`, so it syncs and backs up with the built-in rules. Each
+  one shows its breaks and their dollar cost, and answers **did the rule
+  work?**: the share of trades breaking it before it was made vs since,
+  one-sided two-proportion test (`working` at p < 0.10, `improving`, `not
+  followed yet`, or `collecting` until 10 trades exist since). Conditions known
+  at entry (market, direction, size, streak state, setup, tag, check-in) are
+  **live**: an open position that breaks one shows a warning chip on the
+  dashboard. Hold time, excursion shape and close-hour conditions are scored
+  after the close only.
+- **Plan adherence** — stop-honored rate, target-hit rate, planned vs realized
+  R, the cost of blown stops. With excursions measured, a trade where price
+  went *through* the stop and you held on counts as a broken stop even if the
+  exit recovered (approximate ≈ measurements never convict). Plans written
+  live and after the close are reported separately.
 - **What if I stopped doing X** — pick any condition the miner knows about and
   deterministically replay your actual trade sequence *without* those trades:
   side-by-side net, expectancy, win rate, drawdown, and an
@@ -274,7 +311,7 @@ the toolbar — clearing candles never touches saved measurements).
 
 ## The Review view
 
-A structured self-review: **This week** and **Highlights · last 30 days**
+A structured self-review: **Journal inbox**, **Process**, **This week** and **Highlights · last 30 days**
 summaries, best & worst trades, journaling completeness (how much of your
 recent activity is actually tagged/rated/noted), highest- and
 lowest-probability conditions pulled from your data, actionable ideas, and
@@ -282,6 +319,22 @@ lowest-probability conditions pulled from your data, actionable ideas, and
 to do differently.
 
 It also carries the habit loops:
+
+- **Journal inbox** — closed trades from the last 30 days with nothing
+  journaled, one at a time: type the setup, press 1–5 to rate, tick mistakes,
+  Enter saves and moves on. A **streak** counts consecutive trading days where
+  every trade is journaled (today never breaks it while it's still being traded).
+- **Process** — a 0–100 **process score** per trading day, graded on how you
+  traded rather than what the market paid: plan filed before the first entry
+  (20), trades breaking no rule (30), trades with a live plan (15), planned
+  stops honored (15), no entries after the day's loss limit broke (10), trades
+  journaled (10). Parts that don't apply that day drop out of the weighting,
+  and the two planning parts only count from the first day each habit was
+  used, so older history isn't graded against habits that didn't exist yet.
+  Alongside it, **process vs outcome** sorts the last 60 trading days into
+  good process on green and red days, and poor process on green and red days;
+  many "poor process, green" days means the market is carrying you.
+  The dashboard's Daily PnL calendar toggles to process scores (**PnL / Process**).
 
 - **Day journal** — pre-market plan (bias, plan, committed max loss) and
   end-of-day review. A committed max loss becomes today's tripwire threshold.
@@ -302,7 +355,9 @@ It also carries the habit loops:
 Two guardrail chips watch the dashboard alongside the tripwire: **unplanned
 trading** (2+ trades today with no day-journal plan filed) and **risk creep**
 (median entry notional of the last 20 trades outrunning your actual capital
-growth). If notifications were granted (asked only when you save a loss limit),
+growth), plus **rule broken** (an open position breaking one of your live
+rules from findings) and **no stop written** (a recent perp position with no
+trade plan). If notifications were granted (asked only when you save a loss limit),
 the tripwire also fires a desktop notification when the tab is backgrounded.
 
 ## The Project view
@@ -438,6 +493,13 @@ All opt-in via environment variables, still zero dependencies:
   Messages from chats outside the allowlist are ignored silently; the bot can
   never write journal data. Get a token from @BotFather; your chat id from
   e.g. @userinfobot.
+- `NUDGE_HOUR=18` + `NUDGE_TZ=Europe/Berlin` — an **end-of-day journaling
+  nudge**: once a day, on the first scheduled run after that hour in that IANA
+  zone, if trades closed today have nothing journaled or the day has no
+  end-of-day review, one message goes to the delivery channels ("3 of 4 trades
+  not journaled, no end-of-day review yet"). Deduped per day across restarts;
+  needs `REFRESH_INTERVAL_MIN`. Set `NUDGE_TZ` to the zone your app's day
+  journal uses so "today" matches.
 
 ## The analytics API (`/api/v1`)
 
@@ -585,7 +647,7 @@ curl -H "Authorization: Bearer $READ_TOKEN" -o trades.csv 'https://your.app/api/
 npm test         # or: node tests/run-all.mjs
 ```
 
-358 tests across eighteen suites cover reconstruction (flips, funding
+379 tests across nineteen suites cover reconstruction (flips, funding
 windows, spot/perp separation, partial-history flagging), the Web Worker
 dispatcher end-to-end with byte-parity against the synchronous fallback,
 excursion math and the retention/ratchet behavior, miner families and
@@ -593,7 +655,10 @@ determinism, capital-flow classification and the time-weighted return model,
 webhook alert thresholds and the Telegram command router, CSV import
 (quoting, alias mapping, average-cost derivation), correlation clustering and
 scenario shock, monthly goals, add-to-loser detection, the fee-tier model,
-ISO-week boundaries, variance expectations and risk-creep thresholds, demo-fill
+ISO-week boundaries, variance expectations and risk-creep thresholds, rules
+from findings and their follow-through test, live plans and the
+held-through-stop check, check-in conditions, the journal inbox and streak, the
+process score, the end-of-day nudge, demo-fill
 generation through real reconstruction, the Student-t CDF against reference
 values, a whole-file parse check of every script block, and the server over
 real HTTP (auth, revision conflicts, restart survival, the capital endpoint,
