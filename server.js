@@ -1754,7 +1754,13 @@ function createApp(opts) {
     }
 
     // --- static: the app itself ---
-    if (req.method === 'GET' && (url === '/' || url === '/index.html' || url === '/ledger.html')) {
+    // /pulse is the same app opened in its simple dial view (the page switches on its own path);
+    // /pulse/ redirects so the page's relative links (help, sw.js, api/v1) resolve from the root.
+    if (req.method === 'GET' && url === '/pulse/') {
+      res.writeHead(302, { Location: '/pulse' + (qs ? '?' + qs : '') });
+      return res.end();
+    }
+    if (req.method === 'GET' && (url === '/' || url === '/index.html' || url === '/ledger.html' || url === '/pulse')) {
       fs.readFile(htmlPath, (err, buf) => {
         if (err) return json(res, 500, { error: 'app HTML not found on server' });
         res.writeHead(200, {
@@ -1793,13 +1799,15 @@ function createApp(opts) {
       // network-first for the app shell so updates land immediately; cached copy = offline fallback.
       // API and exchange calls are never intercepted.
       return res.end(
-        "const C='ledger-v1';" +
+        // Only the app shell is cached: '/' and '/pulse' serve the same file, so either one
+        // refreshes the copy; other pages (help, docs) pass through and never overwrite it.
+        "const C='ledger-v2',S=['/','/index.html','/ledger.html','/pulse'];" +
         "self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.add('/')))});" +
-        "self.addEventListener('activate',e=>{e.waitUntil(clients.claim())});" +
+        "self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C).map(x=>caches.delete(x)))).then(()=>clients.claim()))});" +
         "self.addEventListener('fetch',e=>{const u=new URL(e.request.url);" +
-        "if(u.origin!==location.origin||u.pathname.startsWith('/api/'))return;" +
-        "if(e.request.mode==='navigate'||u.pathname==='/'){e.respondWith(" +
-        "fetch(e.request).then(r=>{const cp=r.clone();caches.open(C).then(c=>c.put('/',cp));return r;})" +
+        "if(u.origin!==location.origin||u.pathname.startsWith('/api/')||e.request.method!=='GET')return;" +
+        "if(S.includes(u.pathname)){e.respondWith(" +
+        "fetch(e.request).then(r=>{if(r.ok){const cp=r.clone();caches.open(C).then(c=>c.put('/',cp));}return r;})" +
         ".catch(()=>caches.match('/')));}});");
     }
     if (req.method === 'GET' && url === '/manifest.webmanifest') {
@@ -1807,6 +1815,20 @@ function createApp(opts) {
       return res.end(JSON.stringify({ name: 'Ledger', short_name: 'Ledger',
         start_url: '/', display: 'standalone', background_color: '#0c0e14', theme_color: '#0c0e14',
         icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }] }));
+    }
+    if (req.method === 'GET' && url === '/pulse.webmanifest') {
+      res.writeHead(200, { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-cache' });
+      return res.end(JSON.stringify({ id: '/pulse', name: 'Pulse — Ledger', short_name: 'Pulse',
+        description: 'Readiness, discipline and risk for your trading day.',
+        start_url: '/pulse', scope: '/', display: 'standalone', background_color: '#0A0C0F', theme_color: '#0A0C0F',
+        icons: [{ src: '/pulse-icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }] }));
+    }
+    if (req.method === 'GET' && url === '/pulse-icon.svg') {
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'max-age=86400' });
+      return res.end('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">'
+        + '<rect width="180" height="180" rx="38" fill="#0A0C0F"/>'
+        + '<circle cx="90" cy="90" r="52" fill="none" stroke="#232830" stroke-width="18"/>'
+        + '<path d="M90 38a52 52 0 1 1-49.5 36" fill="none" stroke="#3FE0A0" stroke-width="18" stroke-linecap="round"/></svg>');
     }
     if (req.method === 'GET' && url === '/icon.svg') {
       res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'max-age=86400' });

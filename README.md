@@ -18,6 +18,7 @@ companion server and your journal persists across devices and reboots.
 2. [Loading your data](#loading-your-data)
 3. [The Trades view](#the-trades-view)
 4. [The journal](#the-journal)
+4. [Pulse: the simple view (`/pulse`)](#pulse-the-simple-view-pulse)
 5. [The Diagnostic view](#the-diagnostic-view)
 6. [The pattern miner](#the-pattern-miner)
 7. [Price excursions (MAE/MFE)](#price-excursions-maemfe)
@@ -169,6 +170,39 @@ to work on, tied to your focus habit). Only an aggregate summary is sent —
 counts, averages, habit sentences, finding headlines and your own one-line
 lessons — and the button shows exactly that summary before anything is sent.
 No fills, wallet addresses, trade notes or screenshots leave the server.
+
+## Pulse: the simple view (`/pulse`)
+
+Open `https://your-server/pulse` for a phone-first, gamified view of the same
+data: three dials and one next step, instead of the full terminal.
+
+- **Readiness** (0–100) comes from the morning check-in: sleep, calm and focus
+  on 1–5 scales (sleep and focus weigh 40% each, calm 20%).
+- **Discipline** is today's process score, the same one the Review tab grades,
+  with a breakdown of every habit and the one action that would lift it most
+  ("Journal your ETH short → 93").
+- **Risk used** is the larger of trades opened today vs your trade cap and
+  realized loss vs your loss limit. The check-in sets both for the day; the
+  standing rules apply otherwise.
+
+Four tabs: **Today**, **Trends** (7/30/90 days of discipline, "does process
+pay?" and what moves your score), **Check-in** (readiness, today's trade cap,
+loss limit and plan) and **Progress** (level, XP, streak and shields, the
+weekly challenge, badges, share cards). A quick journal screen rates and notes
+unjournaled trades. On a wide screen the tabs become a sidebar.
+
+Pulse is the same `ledger.html`: the page switches on its own path (or `?pulse`
+when opened from disk), so every loader, cache and sync path is shared. It
+always shows the coach and progress layers, whatever the full app's coach-mode
+switch says. It has its own install metadata (`/pulse.webmanifest`), so "Add to
+Home Screen" from `/pulse` installs a separate **Pulse** app.
+
+**Sharing the link.** A visitor pastes their own public address (read-only: no
+wallet connection, no signing) and their journal stays in their browser. On a
+server with `AUTH_TOKEN` set, nothing they do is sent to your server; the owner
+signs in once from Pulse's settings to sync. Without `AUTH_TOKEN`, everyone who
+opens the link shares one journal, so set it before sharing (Pulse's settings
+warn about this).
 
 ## The Trades view
 
