@@ -182,6 +182,8 @@ const ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
 const fillId = f => f.tid + '-' + f.oid + '-' + f.time;
 const parseTime = (v) => {
   if (v == null || v === '') return null;
+  // 9–10 digits is a Unix time in SECONDS (what most scripts send); longer is milliseconds
+  if (/^\d{9,10}$/.test(v)) return parseInt(v, 10) * 1000;
   if (/^\d+$/.test(v)) return parseInt(v, 10);
   const t = Date.parse(v);
   return isNaN(t) ? null : t;
@@ -335,17 +337,20 @@ function sanitizeCoachFacts(f) {
   if (JSON.stringify(out).length > 12000) return null;
   return out;
 }
+// Options are gated by model, so COACH_AI_MODEL can point anywhere: effort is rejected by
+// Haiku 4.5 and older Sonnet/Opus generations, and server-side fallbacks exist only for the
+// Claude 5-generation models (on a safety decline they retry on Anthropic's recommended model).
 function coachLetterRequest(facts, model) {
-  return {
-    model: model || 'claude-opus-5-5',
+  const m = model || 'claude-opus-5-5';
+  const req = {
+    model: m,
     max_tokens: 16000,
-    output_config: { effort: 'medium' },
-    // on a safety decline, retry on Anthropic's recommended model instead of returning nothing
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
     system: COACH_SYSTEM,
     messages: [{ role: 'user', content: 'This week\'s summary from my journal:\n\n' + JSON.stringify(facts, null, 1) }],
   };
+  if (!/haiku|claude-3|sonnet-4-[05]|opus-4-[015]\b|opus-4-0|sonnet-4-5/.test(m)) req.output_config = { effort: 'medium' };
+  if (/^claude-(opus-5|fable-5|mythos-5|sonnet-5-5)/.test(m)) { req.betas = ['server-side-fallback-2026-07-01']; req.fallbacks = 'default'; }
+  return req;
 }
 // -> {text} or {error}. Refusals and empty answers become a readable error, never a blank letter.
 function coachLetterText(msg) {
@@ -562,6 +567,7 @@ function createApp(opts) {
           const seen = new Set(cache.fills.map(fillId));
           fills = cache.fills.slice();
           for (const f of fr.fills) if (!seen.has(fillId(f))) { seen.add(fillId(f)); fills.push(f); res.newFills++; }
+          res.truncated = !!cache.truncated || !!fr.truncated; // a gap found once stays flagged
         } else { fills = fr.fills; res.newFills = fills.length; res.truncated = !!fr.truncated; }
         const last = fills.reduce((m, f) => f.time > m ? f.time : m, 0);
         fresh(); gzWrite(fillsFile(w.address), { v: 1, last, count: fills.length, savedAt: Date.now(), truncated: res.truncated, fills });
@@ -691,7 +697,16 @@ function createApp(opts) {
     const outcome = q.outcome || null;
     const tag = q.tag || null;
     const text = q.q ? String(q.q).toLowerCase() : null;
-    const from = parseTime(q.from), to = parseTime(q.to);
+    // A bare date is a whole calendar day on the requested clock (tz=utc|local): from= is its
+    // first millisecond and to= its LAST, so to=2026-09-01 includes Sept 1 (like the app's range).
+    const dayBound = (v, end) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v == null ? '' : v));
+      if (!m) return parseTime(v);
+      const y = +m[1], mo = +m[2] - 1, d = +m[3], utc = !(E.settings && E.settings.tz === 'local');
+      const at = dd => utc ? Date.UTC(y, mo, dd) : new Date(y, mo, dd).getTime();
+      return end ? at(d + 1) - 1 : at(d);
+    };
+    const from = dayBound(q.from, false), to = dayBound(q.to, true);
     return trades.filter(t => {
       if (market && t.market !== market) return false;
       if (wallet && (!t.wallet || t.wallet.address.toLowerCase() !== wallet)) return false;
@@ -813,7 +828,9 @@ function createApp(opts) {
   // so the review the nudge looks for is keyed to the same date the trader wrote it under.
   // NUDGE_TZ is the fallback when the app hasn't reported a zone yet.
   const nudgeCfg = Object.assign({
-    hour: process.env.NUDGE_HOUR != null && process.env.NUDGE_HOUR !== '' ? parseInt(process.env.NUDGE_HOUR, 10) : null,
+    // strict: parseInt('6pm') is 6 and parseInt('25') is 25 — anything but a bare 0-23 is refused below
+    hour: process.env.NUDGE_HOUR != null && process.env.NUDGE_HOUR !== ''
+      ? (/^\s*\d{1,2}\s*$/.test(process.env.NUDGE_HOUR) ? parseInt(process.env.NUDGE_HOUR, 10) : NaN) : null,
     tz: process.env.NUDGE_TZ || 'UTC',
   }, opts.nudge || {});
   const validZone = z => { try { zonedDayHour(0, z); return true; } catch (e) { return false; } };
@@ -825,6 +842,10 @@ function createApp(opts) {
   }
   try { zonedDayHour(Date.now(), nudgeCfg.tz); }
   catch (e) { console.warn('[ledger] NUDGE_TZ "' + nudgeCfg.tz + '" is not a valid IANA time zone — using UTC'); nudgeCfg.tz = 'UTC'; }
+  if (nudgeCfg.hour != null && !(Number.isInteger(nudgeCfg.hour) && nudgeCfg.hour >= 0 && nudgeCfg.hour <= 23)) {
+    console.warn('[ledger] NUDGE_HOUR "' + process.env.NUDGE_HOUR + '" is not an hour 0–23 — the journaling nudge is off');
+    nudgeCfg.hour = null;
+  }
 
   const coachCfg = Object.assign({
     enabled: /^(1|on|true|yes)$/i.test(process.env.COACH_AI || ''),
@@ -855,7 +876,7 @@ function createApp(opts) {
     }
     const r = coachLetterText(msg);
     if (r.error) throw { code: 502, msg: r.error };
-    return r.text;
+    return { text: r.text, model: (msg && msg.model) || coachCfg.model }; // a fallback may have served it
   }
 
   /* ---------------- Telegram bot: delivery channel + read-only commands ---------------- */
@@ -902,7 +923,9 @@ function createApp(opts) {
     setEngineState({});
     const { trades } = ensureTrades();
     const closed = trades.filter(t => !t.isOpen && t.closeTime).sort((a, b) => a.closeTime - b.closeTime);
-    const dayOf = (ms) => { const p = E.tzParts(ms); return p.y + '-' + (p.mo + 1) + '-' + p.day; };
+    // "today" on the trader's calendar (the app's clock setting), not the container's zone
+    const zone = nudgeZone(snap.settings);
+    const dayOf = (ms) => zonedDayHour(ms, zone).day;
     const todayKey = dayOf(Date.now());
     let todayNet = 0, todayN = 0;
     for (const t of closed) if (dayOf(t.closeTime) === todayKey) { todayNet += t.net; todayN++; }
@@ -967,7 +990,9 @@ function createApp(opts) {
     const closed = trades.filter(t => !t.isOpen && t.closeTime).sort((a, b) => a.closeTime - b.closeTime);
     const market = readMarket();
     const risk = market ? E.openRiskModel(market.positions || []) : null;
-    const dayOf = (ms) => { const p = E.tzParts(ms); return p.y + '-' + (p.mo + 1) + '-' + p.day; };
+    // "today" on the trader's calendar (the app's clock setting), not the container's zone
+    const zone = nudgeZone(snap.settings);
+    const dayOf = (ms) => zonedDayHour(ms, zone).day;
     const todayKey = dayOf(Date.now());
     let todayNet = 0; for (const t of closed) if (dayOf(t.closeTime) === todayKey) todayNet += t.net;
     // every cached wallet, not just saved ones — todayNet already covers all cached
@@ -1156,7 +1181,7 @@ function createApp(opts) {
   }
 
   /* ---------------- v1 endpoint docs (served at GET /api/v1) ---------------- */
-  const FILTER_DOC = 'market, wallet, coin, dir, status=open|closed|all, outcome=win|loss|be, tag, q, from, to (from/to compare closeTime, which for an open trade is its last fill — same semantics as the app), tz=utc|local';
+  const FILTER_DOC = 'market, wallet, coin, dir, status=open|closed|all, outcome=win|loss|be, tag, q, from, to (ms or seconds epoch, ISO time, or YYYY-MM-DD = that whole day on the tz clock, to inclusive; compared with closeTime, which for an open trade is its last fill — same semantics as the app), tz=utc|local';
   const V1_DOCS = [
     { method: 'GET',  path: '/api/v1', auth: 'none', desc: 'this index' },
     { method: 'POST', path: '/api/v1/refresh', auth: 'full', desc: 'fetch fills/funding/positions from Hyperliquid into server caches; body {wallets?,full?,force?}; min interval 15s unless force' },
@@ -1617,10 +1642,27 @@ function createApp(opts) {
           if (!ADDR_RE.test(query.wallet)) throw { code: 400, msg: 'invalid wallet address' };
           wallets = [{ address: query.wallet }];
         }
-        let fills = [];
-        for (const w of wallets) { const fc = readFillCache(w.address); if (fc) fills = fills.concat(fc.fills); }
-        const spotFills = fills.filter(f => !E.isPerp(f.coin)).sort((a, b) => a.time - b.time);
-        return send(200, { fills: spotFills.length, lots: E.spotFifoLots(spotFills, nameByCoin) });
+        // FIFO runs per wallet, exactly like the app's Spot-lots export: pooling wallets let one
+        // wallet's sale consume another wallet's cheaper lot, so the API and the CSV disagreed.
+        const merge = (a, b) => { // rows/open concat, per-year totals and counts summed
+          if (Array.isArray(a) && Array.isArray(b)) return a.concat(b);
+          if (typeof a === 'number' && typeof b === 'number') return a + b;
+          if (a && b && typeof a === 'object' && typeof b === 'object') {
+            const o = { ...a }; for (const k in b) o[k] = k in o ? merge(o[k], b[k]) : b[k]; return o; }
+          return b === undefined ? a : b;
+        };
+        let lots = null, n = 0;
+        for (const w of wallets) {
+          const fc = readFillCache(w.address); if (!fc) continue;
+          const sf = fc.fills.filter(f => !E.isPerp(f.coin)).sort((a, b) => a.time - b.time);
+          if (!sf.length) continue;
+          n += sf.length;
+          const L = E.spotFifoLots(sf, nameByCoin);
+          for (const r of (L.rows || [])) r.wallet = w.address;
+          for (const r of (L.open || [])) r.wallet = w.address;
+          lots = lots ? merge(lots, L) : L;
+        }
+        return send(200, { fills: n, lots: lots || E.spotFifoLots([], nameByCoin) });
       }
 
       if (url === '/api/v1/whatif') {
@@ -1860,8 +1902,8 @@ function createApp(opts) {
         if (!facts) return json(res, 400, { error: 'expected {facts: {...}} (aggregate summary, under 12KB)' });
         facts.week = letM[1];
         try {
-          const text = await writeCoachLetter(facts);
-          const rec = { week: letM[1], text, model: coachCfg.model, writtenAt: Date.now() };
+          const w = await writeCoachLetter(facts);
+          const rec = { week: letM[1], text: w.text, model: w.model, writtenAt: Date.now() };
           try { const tmp = file + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(rec, null, 2)); fs.renameSync(tmp, file); } catch (e) {}
           return json(res, 200, rec);
         } catch (e) { return json(res, e.code || 500, { error: e.msg || e.message || String(e) }); }

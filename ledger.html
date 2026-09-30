@@ -271,6 +271,7 @@ body.bb .badge.ok{border-color:#134D2E} body.bb .badge.no{border-color:#55201F} 
 .grp{display:flex;align-items:center;gap:7px}
 .grp label{font-family:var(--cond);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--lbl)}
 .tbl-wrap{border:1px solid var(--line);overflow-x:auto}
+.scroll-x{overflow-x:auto;max-width:100%}
 table{width:100%;border-collapse:collapse}
 th{font-family:var(--cond);font-weight:600;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--lbl);text-align:right;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
 th.l,td.l{text-align:left}
@@ -381,6 +382,13 @@ body.bb .tip{border-color:#3A3A32}
 }
 @media(max-width:640px){
   .charts{grid-template-columns:1fr}
+  /* nothing may push the page wider than the screen: grids shrink below their content,
+     wide tables scroll inside themselves, the tab bar scrolls instead of overflowing */
+  .diag-grid,.fnd-grid{grid-template-columns:minmax(0,1fr)}
+  .metric-row .mv{white-space:normal;min-width:0;overflow-wrap:anywhere}
+  .topnav{overflow-x:auto;scrollbar-width:none}
+  .topnav button{flex:0 0 auto;padding-left:14px;padding-right:14px}
+  select{max-width:100%}
   .wrap{padding:10px 12px 40px}
   .toolbar>*{padding:8px 10px}
 }
@@ -408,9 +416,9 @@ body.bb .coach{background:linear-gradient(90deg,rgba(255,176,32,.06),rgba(255,17
 .coach-habit{color:var(--text)}
 .coach-a .btn{font-size:10.5px;padding:4px 10px;white-space:nowrap}
 .wins{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.win{font-family:var(--prose);font-size:11.5px;line-height:1.4;color:var(--text);border:1px solid #17493A;background:rgba(47,208,140,.06);padding:4px 10px}
-.win::before{content:'\2713';color:var(--profit);margin-right:6px;font-weight:600}
-body.bb .win{border-color:#134D2E}
+.win-chip{font-family:var(--prose);font-size:11.5px;line-height:1.4;color:var(--text);border:1px solid #17493A;background:rgba(47,208,140,.06);padding:4px 10px}
+.win-chip::before{content:'\2713';color:var(--profit);margin-right:6px;font-weight:600}
+body.bb .win-chip{border-color:#134D2E}
 .hdots{display:inline-flex;gap:3px;vertical-align:middle;margin-right:6px}
 .hdots i{display:inline-block;width:9px;height:9px;border:1px solid var(--line)}
 .hdots i.k{background:var(--profit);border-color:var(--profit)}
@@ -456,7 +464,7 @@ body.bb .focus-card,body.bb .focus-recap{border-color:#5C4310;border-left-color:
 .hab-focus-tag{font-family:var(--cond);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);font-weight:600}
 .hab-add{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
 .hab-add label{font-family:var(--cond);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--lbl)}
-.hab-add select{max-width:420px;flex:1 1 260px}
+.hab-add select{max-width:min(420px,100%);min-width:0;flex:1 1 260px}
 .hab-add #habCustom{display:flex;gap:8px;flex:1 1 100%}
 .hab-add #habCustom.hide{display:none}
 .hab-add #habCustom input{flex:1}
@@ -671,7 +679,7 @@ tr.trow:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
         </select>
         <span class="edge-insight" id="edgeInsight"></span>
       </div>
-      <div id="edgeTable"></div>
+      <div id="edgeTable" class="scroll-x"></div>
     </div>
 
     <div class="filters">
@@ -852,13 +860,14 @@ async function unpackFillCache(c){
 }
 function snapshot(){ return {app:'ledger',version:8,exportedAt:new Date().toISOString(),
   wallets:settings.wallets, settings:{riskDefault:settings.riskDefault,view:settings.view,dexView:settings.dexView,rBasis:settings.rBasis,pageSize:settings.pageSize,beThreshold:settings.beThreshold,theme:settings.theme,anaBasis:settings.anaBasis,tz:settings.tz,assumedLev:settings.assumedLev,rules:settings.rules,attribBasis:settings.attribBasis,goals:settings.goals,
-    pins:settings.pins, habits:settings.habits}, journal}; } // pins are the long-horizon forward tracker — losing them on a restore defeated the feature
+    pins:settings.pins, habits:settings.habits, tzZone:settings.tzZone, calMode:settings.calMode, calWeeks:settings.calWeeks}, journal}; } // pins are the long-horizon forward tracker — losing them on a restore defeated the feature
 async function applySnapshot(data){ if(!data)return false; _applying=true;
   try{
     if(data.journal && typeof data.journal==='object'){ journal=data.journal; _jrev++; }
     if(Array.isArray(data.wallets)) settings.wallets=data.wallets;
-    if(data.settings){ if(data.settings.riskDefault!=null)settings.riskDefault=data.settings.riskDefault;
-      if(data.settings.view)settings.view=data.settings.view; if(data.settings.dexView)settings.dexView=data.settings.dexView; if(data.settings.rBasis)settings.rBasis=data.settings.rBasis; if(data.settings.pageSize)settings.pageSize=data.settings.pageSize; if(data.settings.beThreshold!=null)settings.beThreshold=data.settings.beThreshold; if(data.settings.theme)settings.theme=data.settings.theme; if(data.settings.anaBasis)settings.anaBasis=data.settings.anaBasis; if(data.settings.tz)settings.tz=data.settings.tz; if(data.settings.assumedLev>0)settings.assumedLev=data.settings.assumedLev; if(data.settings.rules&&typeof data.settings.rules==='object')settings.rules=data.settings.rules; if(data.settings.attribBasis)settings.attribBasis=data.settings.attribBasis; if(Array.isArray(data.settings.pins))settings.pins=data.settings.pins; if(Array.isArray(data.settings.habits))settings.habits=data.settings.habits; if(data.settings.goals&&typeof data.settings.goals==='object')settings.goals=data.settings.goals; }
+    // 'in', not !=null: a cleared risk default (null) must propagate, or another device resurrects it
+    if(data.settings){ if('riskDefault' in data.settings)settings.riskDefault=data.settings.riskDefault;
+      if(data.settings.view)settings.view=data.settings.view; if(data.settings.dexView)settings.dexView=data.settings.dexView; if(data.settings.rBasis)settings.rBasis=data.settings.rBasis; if(data.settings.pageSize)settings.pageSize=data.settings.pageSize; if(data.settings.beThreshold!=null)settings.beThreshold=data.settings.beThreshold; if(data.settings.theme)settings.theme=data.settings.theme; if(data.settings.anaBasis)settings.anaBasis=data.settings.anaBasis; if(data.settings.tz)settings.tz=data.settings.tz; if(data.settings.assumedLev>0)settings.assumedLev=data.settings.assumedLev; if(data.settings.rules&&typeof data.settings.rules==='object')settings.rules=data.settings.rules; if(data.settings.attribBasis)settings.attribBasis=data.settings.attribBasis; if(Array.isArray(data.settings.pins))settings.pins=data.settings.pins.filter(p=>p&&typeof p.pid==='string'); if(Array.isArray(data.settings.habits))settings.habits=data.settings.habits.filter(h=>h&&typeof h.id==='string'&&typeof h.kind==='string'); if(typeof data.settings.tzZone==='string')settings.tzZone=data.settings.tzZone; if(data.settings.calMode==='pnl'||data.settings.calMode==='process')settings.calMode=data.settings.calMode; if(data.settings.calWeeks===26||data.settings.calWeeks===52)settings.calWeeks=data.settings.calWeeks; if(data.settings.goals&&typeof data.settings.goals==='object')settings.goals=data.settings.goals; }
     await rawSet(J_KEY,journal); await rawSet(S_KEY,settings);
     // v9+ backups may carry per-wallet fill caches (see backupAll) — restore the valid ones.
     if(data.fillCaches && typeof data.fillCaches==='object'){
@@ -905,9 +914,15 @@ function markJEdit(id){ _dirtyJ.set(id,(_dirtyJ.get(id)||0)+1); _jrev++; }
 // bouncing back. Wallets are deliberately excluded (list merges are ambiguous; last write
 // wins there, as before).
 let _lastSyncedS=null;
-const _SYNC_S_FIELDS=['riskDefault','view','dexView','rBasis','pageSize','beThreshold','theme','anaBasis','tz','assumedLev','rules','attribBasis','goals','pins','habits','tzZone'];
+const _SYNC_S_FIELDS=['riskDefault','view','dexView','rBasis','pageSize','beThreshold','theme','anaBasis','tz','assumedLev','rules','attribBasis','goals','pins','habits','tzZone','calMode','calWeeks'];
 function _snapS(){ const o={}; for(const k of _SYNC_S_FIELDS)o[k]=settings[k]; return JSON.parse(JSON.stringify(o)); }
 function schedulePersist(){ scheduleLinkedWrite(); scheduleServerWrite(); }
+// A failed write keeps the edits dirty, shows the error, and retries with backoff (5s → 2min).
+function syncFailed(msg){
+  SRV.err=msg; SRV.retryMs=Math.min(120000,(SRV.retryMs||2500)*2);
+  renderDatafile('error');
+  clearTimeout(_srvTimer); _srvTimer=setTimeout(writeServer,SRV.retryMs);
+}
 function scheduleServerWrite(){ if(!SRV.enabled||_applying)return; clearTimeout(_srvTimer); _srvTimer=setTimeout(writeServer,800); }
 function srvFetch(p,o){ o=o||{}; o.headers=Object.assign({},o.headers);
   if(SRV.token)o.headers['Authorization']='Bearer '+SRV.token; return fetch(p,o); }
@@ -956,9 +971,12 @@ async function writeServer(){
     }
     if(r.ok){ const j=await r.json(); SRV.rev=j.rev||SRV.rev+1;
       for(const [id,rev] of sentDirty) if(_dirtyJ.get(id)===rev)_dirtyJ.delete(id); // only clear what was actually sent unchanged
-      _lastSyncedS=sentS;
+      _lastSyncedS=sentS; SRV.err=null; SRV.retryMs=0;
       renderDatafile('saved'); }
-  }catch(e){ /* transient network failure — next change retries */ }
+    else { // 413 / 5xx / proxy errors: say so — the indicator used to keep reading "saved"
+      let msg='HTTP '+r.status; try{ const j=await r.json(); if(j&&j.error)msg+=': '+j.error; }catch(e){}
+      syncFailed(msg); }
+  }catch(e){ syncFailed('server unreachable'); }
   finally{ _srvWriting=false; if(_srvAgain){ _srvAgain=false; writeServer(); } }
 }
 async function initServerSync(){
@@ -1067,7 +1085,8 @@ function renderDatafile(state){ const el=$('datafile'); if(!el)return;
     }
     el.className='datafile on';
     { const bs=$('backupSrv'); if(bs)bs.classList.remove('hide'); } // server present + authed — offer server-held backups
-    const tag=state==='saved'?'<span style="color:var(--profit)">saved</span>':'synced';
+    const tag=SRV.err?`<span style="color:var(--loss)" data-tip="Your edits are kept in this browser and retried automatically.">not saved — ${esc(SRV.err)} · retrying</span>`
+      :state==='saved'?'<span style="color:var(--profit)">saved</span>':'synced';
     el.innerHTML=`<span class="dot"></span><span data-tip="Journal, wallets, settings and MAE/MFE measurements auto-save to this server on every change and load on every visit — reboots and redeploys are covered as long as the server has a persistent volume. Journal image attachments sync too; candle caches stay in this browser (re-fetchable).">☁ Server sync · rev ${SRV.rev} · ${tag}</span>
       <span class="sp"></span><button class="df-btn" id="srvHist" data-tip="Rotating daily snapshots kept on the server (last 14 days). Restore any of them if a sync or edit went wrong.">History</button><button class="df-btn" id="srvSaveNow">Save now</button>`;
     $('srvSaveNow').onclick=writeServer;
@@ -1123,6 +1142,9 @@ async function fetchAllFills(addr, since=0){
     start=mx>start?mx:mx+1; pages++; await sleep(160);
     if(pages>=60) truncated=true; // hit the hard page cap with a full final batch — older history is missing
   }
+  // The exchange only serves the 10,000 most recent fills: a fetch that reaches that many
+  // (from zero, or a gap since the cached watermark) may be missing everything older.
+  if(all.length>=10000) truncated=true;
   // TWAP slice fills live in a separate endpoint and are NOT in userFills — merge them in so
   // TWAP-executed trades reconstruct correctly instead of silently going missing.
   try{ const tw=await hlPost({type:'userTwapSliceFills',user:addr});
@@ -1351,7 +1373,9 @@ function newTrade(coin,f,dir,openSz,openNotional,fills){
     closeSz:0,closeNotional:0,pnl:0,fees:0,fills:fills||0,maxSize:openSz||0,
     makerFills:0,takerFills:0,makerFee:0,takerFee:0,makerNotional:0,takerNotional:0,liquidated:false,firstEntryPx:parseFloat(f.px),
     events:[]}; }   // events: compact [time,px,sz,k] per fill (k=+1 open/add, -1 close) — powers the replay chart's fill markers
-function tallyFill(t,f,fee){ const notl=Math.abs(parseFloat(f.sz||0))*parseFloat(f.px||0);
+// portion: the part of the fill's size that belongs to THIS trade (a flip fill is split
+// between the trade it closes and the one it opens); defaults to the whole fill.
+function tallyFill(t,f,fee,portion){ const notl=(portion!=null?portion:Math.abs(parseFloat(f.sz||0)))*parseFloat(f.px||0);
   // crossed is tri-state: true=taker, false=maker, undefined=unknown (CSV imports carry
   // no execution style — fabricating either side would feed the miner a fake signal)
   if(f.crossed===true){ t.takerFills++; t.takerFee+=fee; t.takerNotional+=notl; }
@@ -1370,7 +1394,10 @@ function reconstructTrades(fills, addr, market){
     let t=open[coin];
     if(!t){ t=open[coin]=newTrade(coin,f,after>0?'Long':'Short',0,0,0); }
     const flipped=Math.abs(before)>EPS&&Math.abs(after)>EPS&&(before>0)!==(after>0);
-    t.fills++; t.fees+=fee; t.pnl+=pnl; t.closeTime=f.time; tallyFill(t,f,fee);
+    // a flip fill's notional and fee are split by size between the closing and opening trade —
+    // counting the whole fill on both inflated volume, taker share and the fee-tier model
+    const feeHere=flipped&&sz>0?fee*Math.abs(before)/sz:fee;
+    t.fills++; t.fees+=feeHere; t.pnl+=pnl; t.closeTime=f.time; tallyFill(t,f,feeHere,flipped?Math.abs(before):null);
     if(flipped){
       // one fill that closes the whole |before| position AND opens |after| the other way:
       // only the closing portion belongs to this trade; the opening portion seeds the next trade.
@@ -1388,7 +1415,7 @@ function reconstructTrades(fills, addr, market){
       t.durationMs=t.closeTime-t.openTime;
       trades.push(t); delete open[coin];
       if(Math.abs(after)>EPS){ const nt=newTrade(coin,f,after>0?'Long':'Short',Math.abs(after),Math.abs(after)*px,0);
-        nt.maxSize=Math.abs(after); nt.fills++; tallyFill(nt,f,0); nt.events.push([f.time,px,Math.abs(after),1]); open[coin]=nt; }
+        nt.maxSize=Math.abs(after); nt.fills++; nt.fees+=fee-feeHere; tallyFill(nt,f,fee-feeHere,Math.abs(after)); nt.events.push([f.time,px,Math.abs(after),1]); open[coin]=nt; }
     }
   }
   for(const c in open){ const t=open[c]; t.isOpen=true; if(!(t.openSz>0))t.partialHistory=true; t.avgEntry=t.openSz>0?t.openNotional/t.openSz:0;
@@ -1475,7 +1502,12 @@ function dateBound(v,end){
   const t0=settings.tz==='utc'?Date.UTC(y,mo,d):new Date(y,mo,d).getTime();
   return end?addDays(t0,1)-1:t0; // next-midnight−1, not +24h−1 — local DST days are 23/25h long
 }
-function addDays(ms,n){ if(settings.tz==='utc')return ms+n*86400000; const d=new Date(ms); d.setDate(d.getDate()+n); return d.getTime(); }
+// Local mode steps by CALENDAR date and keeps the offset into the day. setDate() on the Date
+// itself drifted where DST starts at midnight (Santiago, Asunción, Beirut…): that day begins at
+// 01:00, so every later step landed an hour past the day keys and the daily series read zeros.
+function addDays(ms,n){ if(settings.tz==='utc')return ms+n*86400000;
+  const p=tzParts(ms), off=ms-new Date(p.y,p.mo,p.day).getTime();
+  return new Date(p.y,p.mo,p.day+n).getTime()+off; }
 const tzLabel=()=>settings.tz==='utc'?'UTC':'local';
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function fmtDate(ms){ const p=tzParts(ms); let h=p.h,ap=h<12?'AM':'PM'; h=h%12; if(h===0)h=12;
@@ -1890,7 +1922,14 @@ function whatIfModel(closed,pred){
 // USDC(-equivalent) fees are added to basis on buys and subtracted from proceeds on sells.
 function spotFifoLots(fills, nameByCoin){
   nameByCoin=nameByCoin||{};
-  const DAYY=365*86400000, EPS=1e-12;
+  const EPS=1e-12;
+  // Long-term only when disposed AFTER the one-year anniversary date (UTC calendar dates, the
+  // dates the export prints): a sale on the anniversary itself is still short-term. A Feb 29
+  // acquisition's anniversary is Feb 28. A fixed 365-day span got both edges wrong.
+  const termOf=(acq,disp)=>{ const a=new Date(acq), d=new Date(disp);
+    const leap=a.getUTCMonth()===1&&a.getUTCDate()===29;
+    const ann=Date.UTC(a.getUTCFullYear()+1,a.getUTCMonth(),leap?28:a.getUTCDate());
+    return Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())>ann?'long':'short'; };
   const spot=(fills||[]).filter(f=>f&&typeof f.coin==='string'&&(f.coin.includes('/')||f.coin.startsWith('@')))
     .sort((a,b)=>a.time-b.time);
   const sym=c=>{ const base=c.includes('/')?c.split('/')[0]:c; return nameByCoin[c]||nameByCoin[base]||base; };
@@ -1917,7 +1956,7 @@ function spotFifoLots(fills, nameByCoin){
         rows.push({symbol:s, qty:take, acquired:lot.time, disposed:f.time,
           proceeds:take*px - take*feeUnit, basis:take*lot.unitCost,
           gain:take*(px-feeUnit-lot.unitCost),
-          term:lot.time==null?'unknown':((f.time-lot.time)>DAYY?'long':'short'),
+          term:lot.time==null?'unknown':termOf(lot.time,f.time),
           unknownBasis:!!lot.unknown});
         lot.qty-=take; rem-=take; if(lot.qty<=EPS)L.shift();
       }
@@ -2855,7 +2894,7 @@ function renderDistribution(closed){
   const xFor=v=>{ for(let i=0;i<H.edges.length-1;i++){ if(v>=H.edges[i]&&v<H.edges[i+1]) return i+(v-H.edges[i])/(H.edges[i+1]-H.edges[i])-0.5; } if(v>=H.edges[H.edges.length-1])return H.nb-0.5; return null; };
 
   const card=(k2,v2,c)=>`<div class="stat"><div class="k">${k2}</div><div class="v ${c||''}">${v2}</div></div>`;
-  $('distStats').style.gridTemplateColumns='repeat(4,1fr)';
+  $('distStats').style.gridTemplateColumns=''; // .stats' own responsive columns (4 → 2 → 1)
   $('distStats').innerHTML=card('Mean',fmtV(mean),cls(mean))+card('Median',fmtV(median),cls(median))+card('Std dev',pct?sd.toFixed(2)+'%':fmtUsd(sd))+card('Skew',(skew>=0?'+':'')+skew.toFixed(2),skew>0?'pos-t':skew<0?'neg-t':'');
   $('distLede').innerHTML=`Mean sits <b>${fmtV(Math.abs(mean-median)).replace('+','')} ${mean>=median?'above':'below'}</b> your median${grossProfit>0?` \u2014 top 10% of trades account for <b>${top10Share.toFixed(0)}%</b> of gross ${pct?'return':'profit'}`:''}. ${skew>1?'A right-skewed edge: a few big winners carry the average, so your typical trade is smaller than the mean suggests.':skew<-1?'A left-skewed profile: occasional large losses drag the tail.':'A fairly symmetric result profile.'}${pct?' Shown as % of position notional \u2014 size-neutral.':''}`;
 
@@ -3052,6 +3091,7 @@ function renderWhatIf(chron,name,pred,cond){
 // trades shift the live quartiles. Condition identity is the stable pid, not the display name.
 function pinsList(){ return Array.isArray(settings.pins)?settings.pins:[]; }
 function resolvePinPred(pin,closed,ST){
+  if(!pin||typeof pin.pid!=='string')return null;
   const fams=minerFams(closed,ST,pin.params||{});
   const map={}; for(const f in fams) for(const [nm,fn,cid] of fams[f]) if(cid)map[cid]=fn;
   const one=id=>{
@@ -3333,7 +3373,8 @@ function renderDiagnostic(closed, allv){
   // sample adequacy
   const adeq = N<30?['no','far too few — anecdotal only']:N<100?['mid','preliminary — directional only']:N<300?['mid','moderate — trends emerging']:['ok','reasonable for stable estimates'];
   const shRel = s.sharpe==null?'—':(s.sharpeLo>1?'distinguishable from 1.0 ✓':s.sharpeLo>0?'positive, but band too wide to distinguish from ~1':'band includes 0 — not distinguishable from no edge');
-  const {grossReal,costDragPct,big,small,bigExp,smallExp,oversizing,flagged,clean,flagExp,cleanExp,mistakeCost,ratingMono,mkts,topMkt,conc,avgWHold,avgLHold,disposition,priorClose,afterLoss,afterLossExp,tilt,dayArr,hiDays,loDays,hiExp,loExp,overtrading,topShare,netNoBest,fragile}=behaviorSignals(closed,s);
+  const _sig=behaviorSignals(closed,s);
+  const {grossReal,costDragPct,big,small,bigExp,smallExp,oversizing,flagged,clean,flagExp,cleanExp,mistakeCost,ratingMono,mkts,topMkt,conc,avgWHold,avgLHold,disposition,priorClose,afterLoss,afterLossExp,tilt,dayArr,hiDays,loDays,hiExp,loExp,overtrading,topShare,netNoBest,fragile}=_sig;
   // --- Kelly / optimal sizing (risk fraction per trade) ---
   const kelly=(s.payoff>0&&s.payoff!==Infinity&&s.winRate>0)?(s.winRate-(1-s.winRate)/s.payoff):null;
   // --- run-rate ---
@@ -3342,7 +3383,7 @@ function renderDiagnostic(closed, allv){
 
   // recommendations: plain-language finding cards (shared with the dashboard coach)
   let findings=[];
-  try{ findings=buildFindings(closed,s,{boot,esig,mcdd,cdd,uw,skew,acf1,scan:{strong,weak}}); }catch(e){ console.warn('findings failed',e); }
+  try{ findings=buildFindings(closed,s,{boot,esig,mcdd,cdd,uw,skew,acf1,scan:{strong,weak},sig:_sig}); }catch(e){ console.warn('findings failed',e); }
 
   // verdict
   const edgeSharpe=s.sharpeLo!=null&&s.sharpeLo>0;
@@ -4711,7 +4752,7 @@ function guardrailSignals(){
   // open positions breaking one of your rules-from-findings (entry-knowable conditions only)
   const open=allTrades.filter(t=>t.isOpen);
   if(open.length&&customRules().length){
-    try{ const hits=liveRuleHits(open,customRulePreds(allTrades,customRules()));
+    try{ const hits=liveRuleHits(open,liveRulePreds());
       for(const h of hits.slice(0,3))
         out.push({type:'cooldown',txt:`Open <b>${esc(dispMarket(dcoin(h.t)))} ${h.t.dir}</b> breaks your rule <b>${esc(h.rule.name)}</b> (made ${fmtDate(h.rule.createdAt)}). Diagnostic \u2192 Discipline &amp; rules shows what these trades have cost you.`});
     }catch(e){}
@@ -4893,7 +4934,7 @@ function renderTable(){
       j.notes?`<span class="tagchip">📝</span>`:''].join('');
     const liqBadge=t.liquidated?` <span class="pill short" data-tip="This trade contains at least one liquidation fill — the position was force-closed by the exchange.">⚠ LIQ</span>`:'';
     const side=(t.isOpen?`<span class="pill open" data-tip="Position still open in this reconstruction (or emptied via a transfer/withdrawal). Net shown is realized so far.">OPEN</span>`:(isBE(t.net)?`<span class="pill be" data-tip="Break-even scratch: net PnL within ±${esc(fmtUsd(_be))} of zero. Not counted as a win or a loss.">B/E</span> <span class="pill ${t.dir.toLowerCase()}" style="opacity:.7">${t.dir}</span>`:`<span class="pill ${t.dir.toLowerCase()}">${t.dir}</span>`))+liqBadge;
-    return `<tr class="trow ${expandedId===t.id?'expanded':''}" data-id="${t.id}" tabindex="0" role="button" aria-expanded="${expandedId===t.id?'true':'false'}" aria-label="${esc(dispMarket(dcoin(t)))} ${t.dir}${t.isOpen?' open':''}, net ${fmtUsd(t.net)}. Activate to ${expandedId===t.id?'collapse':'expand'} journal.">
+    return `<tr class="trow ${expandedId===t.id?'expanded':''}" data-id="${esc(t.id)}" tabindex="0" role="button" aria-expanded="${expandedId===t.id?'true':'false'}" aria-label="${esc(dispMarket(dcoin(t)))} ${t.dir}${t.isOpen?' open':''}, net ${fmtUsd(t.net)}. Activate to ${expandedId===t.id?'collapse':'expand'} journal.">
       <td class="l num">${fmtDate(t.openTime)}</td>
       <td class="l" style="font-weight:600">${esc(dispMarket(dcoin(t)))}${multi&&t.wallet?`<div style="margin-top:3px"><span class="tagchip">${esc(labelFor(t.wallet))}</span></div>`:''}</td><td class="l">${side}</td>
       <td class="num">${fmtNum(t.avgEntry)}</td><td class="num">${fmtNum(t.avgExit)}</td>
@@ -4949,24 +4990,24 @@ function journalRow(t,j,R){
     <div>
       <div class="field"><label>Notes — thesis, what happened, lesson</label>
         ${t.isOpen?'':`<div class="coach-q" data-tip="Chosen for what actually happened in this trade (stop, excursion, adds, outcome). Answer it in the notes.">${esc(tradeQuestion(t,j,_excM[t.id]).q)}</div>`}
-        <textarea data-j="notes" data-id="${t.id}" placeholder="${t.isOpen?'Why did you take it? Where are you wrong?':'Answer the question above \u2014 one honest line is enough.'}">${esc(j.notes||'')}</textarea></div>
+        <textarea data-j="notes" data-id="${esc(t.id)}" placeholder="${t.isOpen?'Why did you take it? Where are you wrong?':'Answer the question above \u2014 one honest line is enough.'}">${esc(j.notes||'')}</textarea></div>
       <div class="field"><label>Setup / strategy</label>
-        <input type="text" data-j="setup" data-id="${t.id}" value="${esc(j.setup||'')}" placeholder="e.g. breakout retest, funding fade"></div>
+        <input type="text" data-j="setup" data-id="${esc(t.id)}" value="${esc(j.setup||'')}" placeholder="e.g. breakout retest, funding fade"></div>
       <div class="field"><label>Tags — comma separated</label>
-        <input type="text" data-j="tags" data-id="${t.id}" value="${esc((j.tags||[]).join(', '))}" placeholder="a-setup, trend, scalp"></div>
+        <input type="text" data-j="tags" data-id="${esc(t.id)}" value="${esc((j.tags||[]).join(', '))}" placeholder="a-setup, trend, scalp"></div>
       <div class="field"><label>Planned risk ($) — for this trade's R-multiple</label>
-        <input type="number" data-j="risk" data-id="${t.id}" value="${j.risk!=null?esc(j.risk):''}" placeholder="${settings.riskDefault?('default '+settings.riskDefault):'e.g. 100'}" min="0" step="any"></div>
+        <input type="number" data-j="risk" data-id="${esc(t.id)}" value="${j.risk!=null?esc(j.risk):''}" placeholder="${settings.riskDefault?('default '+settings.riskDefault):'e.g. 100'}" min="0" step="any"></div>
       <div class="field"><label>Trade plan — entry / stop / target <span style="color:var(--faint);font-weight:400;text-transform:none;letter-spacing:0">— scored under Diagnostic → Plan adherence</span>${planTimingBadge(t,j)}</label>
         <div style="display:flex;gap:6px">
-          <input type="number" data-j="plan_entry" data-id="${t.id}" value="${(j.plan&&j.plan.entry)?esc(j.plan.entry):''}" placeholder="entry px" step="any" style="flex:1">
-          <input type="number" data-j="plan_stop" data-id="${t.id}" value="${(j.plan&&j.plan.stop)?esc(j.plan.stop):''}" placeholder="stop px" step="any" style="flex:1">
-          <input type="number" data-j="plan_target" data-id="${t.id}" value="${(j.plan&&j.plan.target)?esc(j.plan.target):''}" placeholder="target px" step="any" style="flex:1"></div></div>
+          <input type="number" data-j="plan_entry" data-id="${esc(t.id)}" value="${(j.plan&&j.plan.entry)?esc(j.plan.entry):''}" placeholder="entry px" step="any" style="flex:1">
+          <input type="number" data-j="plan_stop" data-id="${esc(t.id)}" value="${(j.plan&&j.plan.stop)?esc(j.plan.stop):''}" placeholder="stop px" step="any" style="flex:1">
+          <input type="number" data-j="plan_target" data-id="${esc(t.id)}" value="${(j.plan&&j.plan.target)?esc(j.plan.target):''}" placeholder="target px" step="any" style="flex:1"></div></div>
     </div>
     <div>
       <div class="field"><label>Execution rating</label>
-        <div class="rating" data-id="${t.id}" role="radiogroup" aria-label="Trade rating">${[1,2,3,4,5].map(n=>`<span class="star ${(j.rating||0)>=n?'on':''}" data-r="${n}" role="radio" tabindex="0" aria-label="${n} star${n>1?'s':''}" aria-checked="${(j.rating||0)===n?'true':'false'}">★</span>`).join('')}</div></div>
+        <div class="rating" data-id="${esc(t.id)}" role="radiogroup" aria-label="Trade rating">${[1,2,3,4,5].map(n=>`<span class="star ${(j.rating||0)>=n?'on':''}" data-r="${n}" role="radio" tabindex="0" aria-label="${n} star${n>1?'s':''}" aria-checked="${(j.rating||0)===n?'true':'false'}">★</span>`).join('')}</div></div>
       <div class="field"><label>Mistakes / flags</label>
-        <div class="mistakes" data-id="${t.id}">${MISTAKES.map(m=>`<label class="chk ${(j.mistakes||[]).includes(m)?'on':''}"><input type="checkbox" data-m="${esc(m)}" ${(j.mistakes||[]).includes(m)?'checked':''}>${m}</label>`).join('')}</div></div>
+        <div class="mistakes" data-id="${esc(t.id)}">${MISTAKES.map(m=>`<label class="chk ${(j.mistakes||[]).includes(m)?'on':''}"><input type="checkbox" data-m="${esc(m)}" ${(j.mistakes||[]).includes(m)?'checked':''}>${m}</label>`).join('')}</div></div>
       <div class="field"><label>Trade metrics</label>
         <div class="num" style="color:var(--muted);font-size:12.5px;line-height:1.9">
           Realized ${fmtUsd(t.pnl)} · fees ${fmtUsd(-t.fees)} · funding <span class="${cls(t.funding||0)}">${fmtUsd(t.funding||0)}</span><br>
@@ -4975,12 +5016,12 @@ function journalRow(t,j,R){
         </div></div>
     </div>
     <div class="field"><label>Screenshots / attachments <span style="color:var(--faint);font-weight:400;text-transform:none;letter-spacing:0">— stored in this browser (IndexedDB), not in the JSON backup</span></label>
-      <div class="attgrid" id="att-${t.id}"><span style="color:var(--faint);font-size:11.5px">Loading…</span></div>
-      <label class="btn ghost attbtn">+ Add image<input type="file" data-att="${t.id}" accept="image/*" multiple hidden></label>
-      <button class="btn ghost attbtn" data-replay="${t.id}" data-tip="Candlestick chart of this trade: real OHLC candles with every entry/add fill (▲) and close fill (▼) marked at its actual time and price, plus avg entry/exit lines. Uses the locally cached candles where possible.">📈 Price chart</button></div>
-    <div id="replay-${t.id}"></div>
-    <div class="jsave"><span class="saved-tag" id="saved-${t.id}">Saved ✓</span>
-      <button class="btn" data-save="${t.id}">Save journal</button></div>
+      <div class="attgrid" id="att-${esc(t.id)}"><span style="color:var(--faint);font-size:11.5px">Loading…</span></div>
+      <label class="btn ghost attbtn">+ Add image<input type="file" data-att="${esc(t.id)}" accept="image/*" multiple hidden></label>
+      <button class="btn ghost attbtn" data-replay="${esc(t.id)}" data-tip="Candlestick chart of this trade: real OHLC candles with every entry/add fill (▲) and close fill (▼) marked at its actual time and price, plus avg entry/exit lines. Uses the locally cached candles where possible.">📈 Price chart</button></div>
+    <div id="replay-${esc(t.id)}"></div>
+    <div class="jsave"><span class="saved-tag" id="saved-${esc(t.id)}">Saved ✓</span>
+      <button class="btn" data-save="${esc(t.id)}">Save journal</button></div>
   </div></td></tr>`;
 }
 function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -5002,8 +5043,11 @@ const _attKey=id=>btoa(unescape(encodeURIComponent(id))).replace(/\+/g,'-').repl
 const _attSrcOk=s=>typeof s==='string'&&/^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]*$/i.test(s);
 async function syncAttUp(id){ if(!SRV.enabled)return;
   try{ const arr=(await idbGet('att:'+id))||[];
-    if(arr.length)await srvFetch('/api/att/'+_attKey(id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(arr)});
-    else await srvFetch('/api/att/'+_attKey(id),{method:'DELETE'});
+    const r=arr.length?await srvFetch('/api/att/'+_attKey(id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(arr)})
+      :await srvFetch('/api/att/'+_attKey(id),{method:'DELETE'});
+    // 413 (too large) / 507 (attachment store full): the images stay in this browser only — say so
+    if(r&&!r.ok&&r.status!==404){ let m='HTTP '+r.status; try{ const j=await r.json(); if(j&&j.error)m=j.error; }catch(e){}
+      setErr('Screenshots saved in this browser but not on the server: '+m); }
   }catch(e){} }
 async function syncAttDown(id){ if(!SRV.enabled)return null;
   try{ const r=await srvFetch('/api/att/'+_attKey(id));
@@ -5015,7 +5059,7 @@ async function loadAttachments(id){ const box=document.getElementById('att-'+id)
   let arr=(await idbGet('att:'+id))||[];
   if(!arr.length&&SRV.enabled){ const dl=await syncAttDown(id); if(dl)arr=dl; } // images follow you across devices
   if(!arr.length){ box.innerHTML='<span style="color:var(--faint);font-size:11.5px">No attachments yet.</span>'; return; }
-  box.innerHTML=arr.map((src,i)=>_attSrcOk(src)?`<div class="attthumb"><img src="${src}" data-att-view="${id}:${i}" alt="attachment ${i+1}"><button class="att-del" data-att-del="${id}:${i}" title="Remove" aria-label="Remove attachment ${i+1}">×</button></div>`:'').join(''); }
+  box.innerHTML=arr.map((src,i)=>_attSrcOk(src)?`<div class="attthumb"><img src="${src}" data-att-view="${esc(id)}:${i}" alt="attachment ${i+1}"><button class="att-del" data-att-del="${esc(id)}:${i}" title="Remove" aria-label="Remove attachment ${i+1}">×</button></div>`:'').join(''); }
 async function addAttachments(id,files){ const box=document.getElementById('att-'+id);
   if(box)box.innerHTML='<span style="color:var(--faint);font-size:11.5px">Processing…</span>';
   let arr=(await idbGet('att:'+id))||[];
@@ -5037,7 +5081,7 @@ function nextPlan(prev,e,s,tg,now){
 function ensureJ(id){ if(!journal[id])journal[id]={notes:'',tags:[],setup:'',rating:0,mistakes:[],risk:null,plan:null}; return journal[id]; }
 async function saveJournal(id){
   const j=ensureJ(id); markJEdit(id);
-  const g=s=>document.querySelector(`[data-j="${s}"][data-id="${id}"]`);
+  const g=s=>document.querySelector(`[data-j="${s}"][data-id="${CSS.escape(id)}"]`);
   if(g('notes'))j.notes=g('notes').value;
   if(g('setup'))j.setup=g('setup').value;
   if(g('tags'))j.tags=g('tags').value.split(',').map(x=>x.trim()).filter(Boolean);
@@ -5056,7 +5100,38 @@ function refreshTagFilter(){
 }
 
 /* ============================ render all ============================ */
+// Unsaved text in journal fields survives re-renders — the 3-minute auto-refresh, a sync pull,
+// or a save elsewhere used to rebuild the rows from the saved journal and silently drop what
+// was being typed. A draft is only put back into the same field of the same trade/day/week.
+function _draftKey(el){
+  const sc=el.closest('[data-draft-scope]'), scope=sc?sc.dataset.draftScope:'';
+  if(el.dataset.j)return 'j|'+el.dataset.j+'|'+el.dataset.id;
+  return el.id?'#|'+el.id+'|'+scope:null;
+}
+function captureDrafts(){
+  const out=[], act=document.activeElement;
+  document.querySelectorAll('#dashView textarea[data-j],#dashView input[data-j],#reviewView textarea,#reviewView input[type=text],#reviewView input[type=number]').forEach(el=>{
+    if(el.value===el.defaultValue)return;
+    const key=_draftKey(el); if(!key)return;
+    let sel=null; try{ if(el===act&&el.selectionStart!=null)sel=[el.selectionStart,el.selectionEnd]; }catch(e){}
+    out.push({key,value:el.value,focus:el===act,sel});
+  });
+  return out;
+}
+function restoreDrafts(list){
+  if(!list||!list.length)return;
+  const byKey=new Map(list.map(d=>[d.key,d]));
+  document.querySelectorAll('#dashView textarea[data-j],#dashView input[data-j],#reviewView textarea,#reviewView input[type=text],#reviewView input[type=number]').forEach(el=>{
+    const d=byKey.get(_draftKey(el)); if(!d)return;
+    el.value=d.value;
+    if(d.focus){ try{ el.focus({preventScroll:true}); if(d.sel)el.setSelectionRange(d.sel[0],d.sel[1]); }catch(e){} }
+  });
+}
 function render(){
+  const _drafts=captureDrafts();
+  try{ renderInner(); } finally { restoreDrafts(_drafts); }
+}
+function renderInner(){
   syncDexTog();
   const pt=periodTrades(); const ptAll=periodTradesAll();
   _be=(settings.beThreshold!=null?settings.beThreshold:50);
@@ -5107,6 +5182,10 @@ function renderPulse(){
   el.innerHTML=spans.map(([k,v])=>`<div class="p-item" data-tip="Realized net PnL and trade count for this window (current market view — ignores the period selector below)."><span class="p-k">${k}</span><span class="p-v ${v.n?cls(v.net):''}">${v.n?fmtUsd(v.net):'—'}</span><span class="p-n">${v.n} trade${v.n===1?'':'s'}</span></div>`).join('');
 }
 function renderReview(){
+  const _drafts=captureDrafts();
+  try{ renderReviewInner(); } finally { restoreDrafts(_drafts); }
+}
+function renderReviewInner(){
   const el=$('reviewView'); if(!el)return;
   const closed=allTrades.filter(t=>!t.isOpen&&t.closeTime&&viewFilter(t));
   if(!closed.length){ el.innerHTML=dayJournalSectionHtml()+habitsSectionHtml()+goalsSectionHtml()+'<div class="diag-section"><p class="lead">No closed trades in this view yet.</p></div>'; wireDayJournal(); wireHabits(); wireGoals(); return; }
@@ -5137,7 +5216,7 @@ function renderReview(){
   const ms=[...mo].sort((a,b)=>b.net-a.net); const best=ms[0], worst=ms[ms.length-1];
   const tradeLine=t=>t?`<b>${esc(dispMarket(dcoin(t)))}</b> ${t.dir} · <span class="${cls(t.net)}">${fmtUsd(t.net)}</span> · ${fmtDate(t.closeTime)}`:'—';
   // journaling completeness (month)
-  const journaled=mo.filter(t=>{const j=journal[t.id]||{};return j.notes||j.setup||(j.tags&&j.tags.length)||j.rating;}).length;
+  const journaled=mo.filter(t=>isJournaled(journal[t.id])).length;
   const jpct=mo.length?journaled/mo.length:0;
   // focus points
   const focus=[];
@@ -5190,7 +5269,7 @@ function renderReview(){
        ${mrow('Worst trade',tradeLine(worst))}
        ${mrow('Month net','<span class="'+cls(sumNet(mo))+'">'+fmtUsd(sumNet(mo))+'</span>')}
      </div>
-     <div class="diag-card"><h3 data-tip="Share of this month's closed trades that have a note, setup, tag, or rating.">Journaling completeness</h3>
+     <div class="diag-card"><h3 data-tip="Share of this month's closed trades that have a note, setup, tag, rating or mistake flag.">Journaling completeness</h3>
        ${mrow('Journaled','<span class="'+(jpct>=.5?'pos-t':'neg-t')+'">'+Math.round(jpct*100)+'%</span> ('+journaled+'/'+mo.length+')')}
        <p class="mini-note">Well-journaled months make the Diagnostic's pattern miner and mistake analytics far sharper.</p>
      </div>
@@ -5287,7 +5366,7 @@ function dayJournalSectionHtml(){
   const chip=(rk,d)=>`<div class="metric-row"><span class="ml">${esc(rk.slice(4))}${d.bias?' · '+esc(d.bias):''}${d.adherence?' · <span class="pos-t">plan followed</span>':''}</span><span class="mv" style="max-width:58%;text-align:right;white-space:normal;font-weight:400">${esc(d.review||d.plan||'')}</span></div>`;
   return `<div class="diag-section"><h2>Day journal <span style="font-size:11px;color:var(--faint);font-weight:400">pre-market plan · end-of-day review</span></h2>
     <div class="diag-grid">
-      <div class="diag-card"><h3 data-tip="Write the plan BEFORE the session: bias, what you'll trade, and the loss at which you stop. A committed max loss becomes today's tripwire threshold on the dashboard — a number you chose calmly, enforced when you aren't.">${isToday?'Today':'Day'} — ${esc(k.slice(4))}${isToday?'':' <button class="linkish" id="djToday" style="margin-left:8px">back to today</button>'}</h3>
+      <div class="diag-card" data-draft-scope="${esc(k)}"><h3 data-tip="Write the plan BEFORE the session: bias, what you'll trade, and the loss at which you stop. A committed max loss becomes today's tripwire threshold on the dashboard — a number you chose calmly, enforced when you aren't.">${isToday?'Today':'Day'} — ${esc(k.slice(4))}${isToday?'':' <button class="linkish" id="djToday" style="margin-left:8px">back to today</button>'}</h3>
         <div class="field"><label>Bias / market read</label><input type="text" id="djBias" value="${esc(e.bias||'')}" placeholder="e.g. chop until CPI, long bias above break"></div>
         <div class="field"><label>Plan</label><textarea id="djPlan" placeholder="What will you trade today — and what will you NOT do?">${esc(e.plan||'')}</textarea></div>
         <div class="field"><label>Committed max loss ($)</label><input type="number" id="djMaxLoss" min="0" step="any" value="${e.maxLoss>0?esc(e.maxLoss):''}" placeholder="stop trading for the day at −$…"></div>
@@ -5756,11 +5835,17 @@ function parseFillsCsv(text){
     +(skipped?', '+skipped+' rows skipped':'')+')';
   return {fills, note, derived, skipped};
 }
-async function loadFromPaste(fills){
-  if(!fills.length){ setErr('No fills found in that data.'); return; }
+// Coin names become part of trade ids, which land in HTML attributes and selectors — pasted
+// or imported data is untrusted, so anything outside exchange-style symbols is refused.
+function safeCoin(c){ return typeof c==='string'&&/^[A-Za-z0-9@:\/._+-]{1,48}$/.test(c); }
+async function loadFromPaste(fills,opts){
+  opts=opts||{};
+  const nIn=fills.length; fills=fills.filter(f=>f&&safeCoin(f.coin));
+  const dropped=nIn-fills.length;
+  if(!fills.length){ setErr(dropped?`No usable fills: ${dropped} had coin names with characters a market symbol can't contain.`:'No fills found in that data.'); return; }
   // resolve @N spot indices to real token names — the paste path used to skip this,
-  // leaving pasted spot trades labeled "@210" forever
-  if(!Object.keys(spotMaps.nameByCoin).length){
+  // leaving pasted spot trades labeled "@210" forever (sample data has no @N coins: skip the fetch)
+  if(!opts.offline&&!Object.keys(spotMaps.nameByCoin).length){
     try{ setStatus('Fetching spot metadata…',true); spotMaps=await fetchSpotMaps(); }catch(e){}
   }
   const {perp:perpTr,spot:spotTr}=await reconstructCompute(fills,[],'paste');
@@ -5771,7 +5856,7 @@ async function loadFromPaste(fills){
   resetDerivedState(); // pasted world: old wallets' capital flows / clusters / caches must not leak into it
   fillsTruncated=[];
   $('empty').classList.add('hide'); $('app').classList.remove('hide'); render();
-  setStatus(`Loaded ${fills.length} pasted fills → ${perpTr.length} perp + ${spotTr.length} spot trades.`);
+  setStatus(`Loaded ${fills.length} pasted fills → ${perpTr.length} perp + ${spotTr.length} spot trades.`+(dropped?` Skipped ${dropped} with invalid coin names.`:''));
 }
 
 /* ============================ events ============================ */
@@ -5836,7 +5921,9 @@ $('themeBtn').addEventListener('click',async ()=>{ applyTheme(settings.theme==='
 function syncTzBtn(){ const b=$('tzBtn'); if(b)b.textContent=(settings.tz==='utc'?'🕓 UTC':'🕓 Local'); }
 $('tzBtn').addEventListener('click',async ()=>{ settings.tz=settings.tz==='utc'?'local':'utc'; syncTzBtn();
   _minerCache={key:null,res:null,deep:null}; // session/dow buckets changed → invalidate mined patterns
-  await Store.set(S_KEY,settings); if(allTrades.length)render(); });
+  await Store.set(S_KEY,settings);
+  // a custom date range is resolved on the active clock — re-resolve it, or its edges stay on the old one
+  if($('pFrom').value||$('pTo').value)applyRange(); else if(allTrades.length)render(); });
 $('gearBtn').addEventListener('click',e=>{ e.stopPropagation(); $('settingsPop').classList.toggle('hide'); });
 $('settingsPop').addEventListener('click',e=>e.stopPropagation());
 document.addEventListener('click',()=>{ const p=$('settingsPop'); if(p&&!p.classList.contains('hide'))p.classList.add('hide'); });
@@ -5916,7 +6003,8 @@ document.querySelectorAll('.trades th.sortable').forEach(th=>{
 });
 $('tbody').addEventListener('click',e=>{
   const save=e.target.closest('[data-save]'); if(save){ saveJournal(save.dataset.save); return; }
-  const del=e.target.closest('[data-att-del]'); if(del){ const[id,idx]=del.dataset.attDel.split(':'); removeAttachment(id,+idx); return; }
+  // trade ids contain ':' themselves (addr:COIN:time) — the index is after the LAST colon
+  const del=e.target.closest('[data-att-del]'); if(del){ const v=del.dataset.attDel, k=v.lastIndexOf(':'); removeAttachment(v.slice(0,k),+v.slice(k+1)); return; }
   const rp=e.target.closest('[data-replay]'); if(rp){ openReplay(rp.dataset.replay,rp); return; }
   const av=e.target.closest('[data-att-view]'); if(av){ const src=av.getAttribute('src');
     if(_attSrcOk(src)){ const w=window.open(); if(w){ const img=w.document.createElement('img');
@@ -5942,7 +6030,7 @@ $('tbody').addEventListener('keydown',e=>{
   if(e.target.closest('textarea,input,.mistakes,.jsave,.attgrid,.attbtn'))return;
   const row=e.target.closest('tr.trow');
   if(row&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); const id=row.dataset.id; expandedId=expandedId===id?null:id; renderTable();
-    if(expandedId===id) setTimeout(()=>{ const r=$('tbody').querySelector(`tr.trow[data-id="${id}"]`); if(r)r.focus(); },0); }
+    if(expandedId===id) setTimeout(()=>{ const r=$('tbody').querySelector(`tr.trow[data-id="${CSS.escape(id)}"]`); if(r)r.focus(); },0); }
 });
 $('tbody').addEventListener('change',e=>{ const fi=e.target.closest('input[data-att]');
   if(fi&&fi.files&&fi.files.length){ addAttachments(fi.dataset.att,[...fi.files]); fi.value=''; } });
@@ -6008,6 +6096,14 @@ $('modalLoad').onclick=async()=>{
       const nc=data.fillCaches?Object.keys(data.fillCaches).length:0;
       setStatus('Backup restored: '+settings.wallets.length+' wallet(s), '+Object.keys(journal).length+' journal entries'+(nc?', fill cache for '+nc+' wallet'+(nc===1?'':'s'):'')+'. Hit Load all to refresh trades.'); return;
     }
+    // a journal export is {"<trade id | day:… | week:…>": {…}} — anything else (an API response,
+    // a settings blob) used to replace the whole journal silently
+    const ents=Object.entries(data);
+    if(!ents.length||!ents.every(([k,v])=>k.includes(':')&&v&&typeof v==='object'&&!Array.isArray(v))){
+      setErr('That JSON isn\u2019t a journal export or a backup \u2014 nothing was changed.'); return; }
+    const have=Object.keys(journal).length;
+    if(have&&!confirm(`Replace your journal (${have} entries) with the pasted one (${ents.length} entries)? Use a full backup to merge devices instead.`)){
+      setStatus('Journal paste cancelled \u2014 nothing was changed.'); return; }
     journal=data; _jrev++; await Store.set(J_KEY,journal); if(allTrades.length)render();
     setStatus('Journal restored ('+Object.keys(journal).length+' entries).'); return;
   }
@@ -6536,7 +6632,7 @@ function weeklyReviewSectionHtml(){
   const lrows=lessons.slice(0,12).map(x=>`<div class="metric-row"><span class="ml">${esc(x.k.slice(5))}</span><span class="mv" style="max-width:70%;text-align:right;white-space:normal;font-weight:400">${esc(x.e.lesson)}</span></div>`).join('');
   return `<div class="diag-section"><h2>Weekly review <span style="font-size:11px;color:var(--faint);font-weight:400">${esc(wkKey.slice(5))} · last completed week</span></h2>
     <div class="diag-grid">
-      <div class="diag-card"><h3 data-tip="Three questions, once a week, about the week that just ended. The digest automates the numbers; this automates the learning — every answer feeds the lessons library.">Guided review — ${closed.length} trade${closed.length===1?'':'s'}, net <span class="${cls(net)}">${fmtUsd(net)}</span></h3>
+      <div class="diag-card" data-draft-scope="${esc(wkKey)}"><h3 data-tip="Three questions, once a week, about the week that just ended. The digest automates the numbers; this automates the learning — every answer feeds the lessons library.">Guided review — ${closed.length} trade${closed.length===1?'':'s'}, net <span class="${cls(net)}">${fmtUsd(net)}</span></h3>
         ${lastWeekFocusHtml(from)}
         <div class="metric-row"><span class="ml">Best trade</span><span class="mv">${tl(best)}</span></div>
         <div class="metric-row"><span class="ml">Worst trade</span><span class="mv">${tl(worst)}</span></div>
@@ -6707,7 +6803,7 @@ function demoFills(seed, now){
 }
 async function loadDemo(){
   setStatus('Generating sample data…',true);
-  try{ await loadFromPaste(demoFills(1)); }
+  try{ await loadFromPaste(demoFills(1),{offline:true}); }
   catch(e){ setErr('Demo generation failed: '+e.message); return; }
   setStatus('Sample data loaded — '+allTrades.length+' synthetic trades across perps and spot. Nothing was fetched or saved to a wallet; add a real address whenever you like.');
 }
@@ -7139,6 +7235,14 @@ function ruleFollowThrough(closed, pred, createdAt){
     : rA<rB?'improving':'not yet';
   return {before:{n:nB,v:vB,rate:rB,net:netB}, after:{n:nA,v:vA,rate:rA,net:netA}, p, status};
 }
+// customRulePreds over all trades, rebuilt only when trades, rules or the clock setting change.
+let _lrpMemo={key:null,preds:null};
+function liveRulePreds(){
+  let last=0; for(const t of allTrades){ const x=t.closeTime||t.openTime||0; if(x>last)last=x; }
+  const key=[allTrades.length,last,settings.tz,JSON.stringify(customRules()),_jrev].join('|');
+  if(_lrpMemo.key!==key)_lrpMemo={key,preds:customRulePreds(allTrades,customRules())};
+  return _lrpMemo.preds;
+}
 // Open positions breaking a live rule right now.
 function liveRuleHits(openTrades, preds){
   const out=[];
@@ -7148,7 +7252,7 @@ function liveRuleHits(openTrades, preds){
 }
 
 // ---- journal inbox + streak ----
-function isJournaled(j){ return !!(j&&(j.notes||j.setup||(j.tags&&j.tags.length)||j.rating)); }
+function isJournaled(j){ return !!(j&&(j.notes||j.setup||(j.tags&&j.tags.length)||j.rating||(j.mistakes&&j.mistakes.length))); }
 // Closed trades from the last `days` days with nothing journaled, newest first.
 function journalInbox(trades, journalObj, now, days){
   const cut=(now||Date.now())-(days||30)*86400000;
@@ -7189,9 +7293,13 @@ function processDays(closed, journalObj, opts){
   const out=[];
   const hasDayPlan=d=>!!(d&&(d.plan||d.bias||d.maxLoss>0));
   const planDays=Object.keys(J).filter(k=>k.startsWith('day:')&&hasDayPlan(J[k])).map(k=>k.slice(4)).sort();
-  const firstDayPlan=planDays.length?planDays[0]:null;
+  const minK=(a,b)=>a&&b?(a<b?a:b):(a||b||null);
+  const pf=opts.planFrom||{};
+  // a planning habit you adopted grades from its adoption day even before your first plan
+  const firstDayPlan=minK(planDays.length?planDays[0]:null,pf.plan);
   let firstTradePlan=null;
   for(const t of closed) if(paBy.has(t.id)){ const k=dayOf(t.closeTime); if(!firstTradePlan||k<firstTradePlan)firstTradePlan=k; }
+  firstTradePlan=minK(firstTradePlan,pf.planned);
   for(const k of Object.keys(by).sort()){
     const arr=by[k].sort((a,b)=>a.closeTime-b.closeTime), n=arr.length;
     const de=J['day:'+k]||null, parts={};
@@ -7203,7 +7311,7 @@ function processDays(closed, journalObj, opts){
       // after the first entry of the day earns half
       parts.plan=!has?0:(de.plannedAt?(de.plannedAt<=first?1:0.5):1);
     }
-    if(opts.rulesActive!==false)parts.rules=1-arr.filter(t=>viol.has(t.id)).length/n;
+    if(opts.rulesActive!==false&&!(opts.rulesFrom&&k<opts.rulesFrom))parts.rules=1-arr.filter(t=>viol.has(t.id)).length/n;
     const pl=arr.map(t=>paBy.get(t.id)).filter(Boolean);
     if(firstTradePlan&&k>=firstTradePlan)parts.planned=pl.filter(x=>x.live!==false).length/n;
     if(pl.length)parts.stops=pl.filter(x=>x.stopHonored).length/pl.length;
@@ -7233,14 +7341,22 @@ function processTrend(days, win){
   return {avg:last.length?_avg(last):null, prevAvg:prev.length?_avg(prev):null, streak, n:s.length};
 }
 // Everything the process score needs from the rule engine, for one trade set.
-function processContext(trades){
+// A rule from findings only counts trades entered after it was made, and when those are the
+// only rules, the "rules kept" part starts on the first rule's day — history isn't regraded.
+function processContext(trades, rulePreds){
   const closed=trades.filter(t=>!t.isOpen&&t.closeTime);
   const viol=new Set();
   for(const r of evaluateRules(closed,nfRules())) if(r.kind!=='dll') for(const id of (r.ids||[])) viol.add(id);
-  for(const x of customRulePreds(trades,customRules())) if(x.pred) for(const t of closed) if(x.pred(t)) viol.add(t.id);
-  // with no rules set, "no rule broken" is vacuously true — it would hand every day 30 free points
-  const R=nfRules(), rulesActive=!!(R.maxPerDay>0||R.cooldownMin>0||R.noAddToLosers||customRules().length);
-  return {closed, days:processDays(closed,journal,{violIds:viol,dayOf:dayKey,excM:_excM,dllLimit:R.dailyLossLimit,rulesActive})};
+  const P=rulePreds||customRulePreds(trades,customRules());
+  for(const x of P) if(x.pred) for(const t of closed) if(t.openTime>=(x.rule.createdAt||0)&&x.pred(t)) viol.add(t.id);
+  // with no rules set, "no rule broken" is vacuously true — it would hand every day free points
+  const R=nfRules(), builtin=!!(R.maxPerDay>0||R.cooldownMin>0||R.noAddToLosers), cr=customRules();
+  const rulesActive=builtin||cr.length>0;
+  const rulesFrom=builtin||!cr.length?null:dayKey(Math.min(...cr.map(r=>r.createdAt||0)));
+  const since=part=>{ const hs=habitsList().filter(h=>h.kind==='process'&&h.part===part);
+    return hs.length?dayKey(Math.min(...hs.map(h=>h.createdAt||Date.now()))):null; };
+  return {closed, days:processDays(closed,journal,{violIds:viol,dayOf:dayKey,excM:_excM,dllLimit:R.dailyLossLimit,
+    rulesActive,rulesFrom,planFrom:{plan:since('plan'),planned:since('planned')}})};
 }
 
 // ---- Review UI: journal inbox, process ----
@@ -7248,13 +7364,13 @@ let _inboxSkip=new Set();
 function inboxSectionHtml(){
   const inbox=journalInbox(allTrades.filter(viewFilter),journal).filter(t=>!_inboxSkip.has(t.id));
   const st=journalStreak(allTrades.filter(viewFilter),journal,dayKey,dayKey(Date.now()));
-  const streakTxt=`<span class="sr-note" data-tip="Consecutive trading days on which every closed trade has a setup, tag, rating or note. Today only counts once it's complete — it never breaks the streak while you're still trading.">streak ${st.current} day${st.current===1?'':'s'} · best ${st.best}</span>`;
+  const streakTxt=`<span class="sr-note" data-tip="Consecutive trading days on which every closed trade has a setup, tag, rating, note or mistake flag. Today only counts once it's complete — it never breaks the streak while you're still trading.">streak ${st.current} day${st.current===1?'':'s'} · best ${st.best}</span>`;
   if(!inbox.length) return `<div class="diag-section"><h2>Journal inbox <span style="font-size:11px;color:var(--faint);font-weight:400">last 30 days</span> ${streakTxt}</h2>
-    <p class="lead">Nothing waiting — every trade from the last 30 days carries at least a setup, tag, rating or note.</p></div>`;
+    <p class="lead">Nothing waiting — every trade from the last 30 days carries at least a setup, tag, rating, note or mistake flag.</p></div>`;
   const t=inbox[0];
   const setups=[...new Set(Object.values(journal).map(j=>j&&j.setup).filter(Boolean))].sort();
   return `<div class="diag-section"><h2>Journal inbox <span style="font-size:11px;color:var(--faint);font-weight:400">${inbox.length} trade${inbox.length===1?'':'s'} waiting · last 30 days</span> ${streakTxt}</h2>
-    <div class="diag-card" id="inboxCard" data-id="${esc(t.id)}">
+    <div class="diag-card" id="inboxCard" data-id="${esc(t.id)}" data-draft-scope="${esc(t.id)}">
       <p class="lead" style="margin:0 0 10px"><b>${esc(dispMarket(dcoin(t)))}</b> ${t.dir} · <span class="${cls(t.net)}">${fmtUsd(t.net)}</span> · closed ${fmtDate(t.closeTime)} · held ${fmtDur(t.durationMs)}</p>
       <div class="field"><label class="coach-q" for="ibNote">${esc(tradeQuestion(t,journal[t.id],_excM[t.id]).q)}</label><input type="text" id="ibNote" maxlength="400" placeholder="one honest line is enough"></div>
       <div class="field"><label>Setup</label><input type="text" id="ibSetup" list="ibSetups" placeholder="what was this trade?"><datalist id="ibSetups">${setups.map(x=>`<option value="${esc(x)}">`).join('')}</datalist></div>
@@ -7392,7 +7508,7 @@ function bucketHabit(dim,key){
   const pid=dim==='dir'?'dir:'+k:dim==='market'?'mkt:'+k:dim==='setup'?'setup:'+k:dim==='tag'?'tag:'+k
     :dim==='size'&&/^largest/.test(k)?'size:hi':null;
   if(!pid)return null;
-  return {kind:'avoid',pid,when:'I’m about to take '+bucketPhrase(dim,k).replace(/^your /,'one of my '),then:'I skip it, or take it at half size'};
+  return {kind:'avoid',pid,when:'I’m about to take '+bucketPhrase(dim,k).replace(/^your /,'one of my '),then:'I pass on it'};
 }
 
 // ---- habit library ----
@@ -7418,8 +7534,12 @@ async function adoptHabit(spec){
   if(!Array.isArray(settings.habits))settings.habits=[];
   const same=settings.habits.find(h=>h&&((spec.tpl&&h.tpl===spec.tpl)||(spec.pid&&h.pid===spec.pid&&h.kind===spec.kind)));
   if(same){ if(same.retired){ same.retired=false; same.createdAt=Date.now(); } await Store.set(S_KEY,settings); return same; }
+  let params=spec.params&&Object.keys(spec.params).length?spec.params:null;
+  if(spec.pid&&!params){ // same contract as pins and rules: thresholds fixed at adoption, never re-derived
+    try{ const chron=allTrades.filter(t=>!t.isOpen&&t.closeTime&&viewFilter(t)).sort((a,b)=>a.closeTime-b.closeTime);
+      params=minerFams(chron,tradeStates(chron)).__params||null; }catch(e){} }
   const h={id:'h'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),tpl:spec.tpl||null,kind:spec.kind,
-    part:spec.part||null,pid:spec.pid||null,params:spec.params||{},cap:spec.cap||null,
+    part:spec.part||null,pid:spec.pid||null,params:params||{},cap:spec.cap||null,
     when:String(spec.when||'').slice(0,160),then:String(spec.then||'').slice(0,160),createdAt:Date.now()};
   settings.habits.push(h);
   await Store.set(S_KEY,settings);
@@ -7459,7 +7579,7 @@ function habitSummary(res){ const kept=res.filter(r=>r.kept).length; return {kep
 function buildFindings(closed, s, ext){
   ext=ext||{}; const N=closed.length, F=[];
   if(!N)return F;
-  const B=behaviorSignals(closed,s);
+  const B=ext.sig||behaviorSignals(closed,s);
   const add=f=>{ F.push(Object.assign({tone:'info',conf:'early',impact:0,n:N},f)); };
   const pc=x=>Math.round(x*100)+'%';
   // edge proof
@@ -7643,7 +7763,8 @@ function coachContext(){
     JSON.stringify(settings.rules||{}),JSON.stringify(settings.habits||[]),_be].join('|');
   if(_coachMemo.key===key)return _coachMemo.ctx;
   const closed=trades.filter(t=>!t.isOpen&&t.closeTime);
-  const pc=processContext(trades);
+  let rulePreds=[]; try{ rulePreds=customRules().length?customRulePreds(trades,customRules()):[]; }catch(e){}
+  const pc=processContext(trades,rulePreds);
   const byDay={}; for(const t of closed){ const k=dayKey(t.closeTime); (byDay[k]=byDay[k]||[]).push(t); }
   const preds={};
   const avoid=habitsList().filter(h=>h.kind==='avoid'&&h.pid);
@@ -7655,7 +7776,6 @@ function coachContext(){
     const chron=[...closed].sort((a,b)=>a.closeTime-b.closeTime), nets=chron.map(t=>t.net);
     findings=buildFindings(closed,s,{scan:diagScan(closed),cdd:currentDD(nets),uw:underwaterStats(chron),skew:_skew(nets),acf1:_autocorr1(nets),esig:edgeSignificance(nets)});
   }catch(e){ console.warn('coach findings failed',e); } }
-  let rulePreds=[]; try{ rulePreds=customRules().length?customRulePreds(trades,customRules()):[]; }catch(e){}
   const ctx={trades,closed,days:pc.days,byDay,preds,findings,rulePreds};
   _coachMemo={key,ctx}; return ctx;
 }
@@ -7668,18 +7788,23 @@ function dotsHtml(res,max){ const r=res.slice(-(max||7));
   return `<span class="hdots" aria-label="${r.filter(x=>x.kept).length} of ${r.length} days kept">${r.map(x=>`<i class="${x.kept?'k':'m'}" data-tip="${esc(x.key)} · ${x.kept?'kept':'missed'}"></i>`).join('')}</span>`; }
 
 // ---- wins: reinforcement, not only correction ----
-function coachWins(ctx){
-  const W=[]; const days=ctx.days, today=dayKey(Date.now());
+// week = {from, to} (ms) for a past week — the letter; omitted = the current week so far.
+function coachWins(ctx, week){
+  const W=[]; const cur=!week;
+  const wFrom=cur?lastCompletedWeekRange().to:week.from, toKey=cur?null:dayKey(week.to);
+  const days=toKey?ctx.days.filter(d=>d.key<toKey):ctx.days, today=toKey||dayKey(Date.now());
+  const label=cur?'this week':'that week';
   const tr=processTrend(days,20);
   if(tr.streak>=3)W.push(`${tr.streak} good-process days in a row`);
-  const js=journalStreak(ctx.trades,journal,dayKey,today);
+  const js=journalStreak(cur?ctx.trades:ctx.trades.filter(t=>t.closeTime<week.to),journal,dayKey,today);
   if(js.current>=3)W.push(`Every trade journaled ${js.current} trading days running`);
-  const wkFrom=dayKey(lastCompletedWeekRange().to);
+  const wkFrom=dayKey(wFrom);
   const wkDays=days.filter(d=>d.key>=wkFrom);
   const st=wkDays.filter(d=>d.parts.stops!=null);
-  if(st.length>=2&&st.every(d=>d.parts.stops>=0.999))W.push('Every planned stop honored this week');
-  const f=weekFocus(); const fh=f&&habitById(f);
-  if(fh){ const p=habitProgress(fh,ctx,lastCompletedWeekRange().to); if(p.total>=2&&p.kept===p.total)W.push(`Focus habit kept every trading day this week (${p.total}/${p.total})`); }
+  if(st.length>=2&&st.every(d=>d.parts.stops>=0.999))W.push('Every planned stop honored '+label);
+  const f=cur?weekFocus():((journal[isoWeekKey(wFrom+3.5*86400000)]||{}).focus||null); const fh0=f&&habitById(f), fh=fh0&&!fh0.retired?fh0:null;
+  if(fh){ const p=habitProgress(fh,ctx,wFrom); const r=toKey?p.res.filter(x=>x.key<toKey):p.res; const kept=r.filter(x=>x.kept).length;
+    if(r.length>=2&&kept===r.length)W.push(`Focus habit kept every trading day ${label} (${r.length}/${r.length})`); }
   const last=days.filter(d=>d.key<today).slice(-1)[0];
   if(last&&last.score>=70&&last.net<0)W.push(`Good loss on ${dayLabel(last.key)}: you followed your process and the market said no`);
   if(tr.avg!=null&&tr.prevAvg!=null&&tr.avg>=tr.prevAvg+5)W.push(`Process score up ${Math.round(tr.avg-tr.prevAvg)} points on the previous 20 days`);
@@ -7758,13 +7883,14 @@ function renderCoach(){
   el.classList.remove('hide');
   el.innerHTML=`<div class="coach-head"><h3>Coach</h3><span class="hint">${DOWN[dt.dow]}, ${MONTHS[dt.mo]} ${dt.day} · from your own trades and journal</span></div>
     ${rows.map(r=>`<div class="coach-row"><div class="coach-k">${r.k}</div><div class="coach-v">${r.v}</div><div class="coach-a">${r.act||''}</div></div>`).join('')}
-    ${wins.length?`<div class="wins">${wins.map(w=>`<span class="win">${esc(w)}</span>`).join('')}</div>`:''}`;
+    ${wins.length?`<div class="wins">${wins.map(w=>`<span class="win-chip">${esc(w)}</span>`).join('')}</div>`:''}`;
   el.querySelectorAll('.coach-go').forEach(b=>b.onclick=()=>coachGo(b.dataset.go));
   const ad=el.querySelector('.coach-adopt');
   if(ad)ad.onclick=async()=>{ const top=ctx.findings.find(f=>f.tone==='leak'||f.tone==='caution'); const spec=top&&resolveHabitSpec(top.habit); if(!spec)return;
     ad.disabled=true; await adoptHabit(spec); renderCoach(); };
 }
 function coachGo(where){
+  if(where==='plan'){ _dayJEditKey=null; _dayJEditSetOn=null; } // a calendar click earlier must not redirect today's plan
   activateTab(document.querySelector('#topnav button[data-tab="review"]'));
   setTimeout(()=>{ const target=where==='plan'?$('djBias'):where==='inbox'?$('ibNote')||$('ibSetup'):$('habitsSec');
     if(target){ target.scrollIntoView({behavior:'smooth',block:'center'}); if(target.focus)try{ target.focus({preventScroll:true}); }catch(e){} } },80);
@@ -7790,7 +7916,7 @@ function habitsSectionHtml(){
   else focusHtml=`<div class="focus-card is-empty"><div class="focus-k">This week’s focus</div><div class="focus-sent">Pick one habit to work on this week.</div>
       <div class="focus-prog">One at a time: the coach, the process score and the weekly review all follow it.</div></div>`;
   return `<div class="diag-section" id="habitsSec"><h2>Habits <span style="font-size:11px;color:var(--faint);font-weight:400">when … then … · kept day by day</span></h2>
-    ${wins.length?`<div class="wins" style="margin:0 0 14px">${wins.map(w=>`<span class="win">${esc(w)}</span>`).join('')}</div>`:''}
+    ${wins.length?`<div class="wins" style="margin:0 0 14px">${wins.map(w=>`<span class="win-chip">${esc(w)}</span>`).join('')}</div>`:''}
     ${focusHtml}
     ${list.length?`<div class="hab-list">${list.map(row).join('')}</div>`:''}
     <div class="hab-add"><label for="habPick">Add a habit</label><select id="habPick"><option value="">Choose from the library…</option>${avail.map(t=>`<option value="${esc(t.tpl)}">When ${esc(t.when)}, ${esc(t.then)}</option>`).join('')}<option value="__custom">Write your own…</option></select>
@@ -7847,25 +7973,27 @@ function coachLetterFacts(){
     habits:habitsList().filter(h=>!fh||h.id!==fh.id).map(prog),
     journaled:{n:inWk.filter(t=>isJournaled(journal[t.id])).length,of:inWk.length},
     findings:ctx.findings.filter(f=>f.tone!=='info').slice(0,3).map(f=>({title:f.title,action:f.action,confidence:confWords(f.conf)})),
-    wins:coachWins(ctx), lessons,
+    wins:coachWins(ctx,{from,to}), lessons,
   };
 }
 let _coachStatus=null, _letterCache={wk:null,letter:null};
 async function loadCoachLetter(force){
   const box=$('coachLetter'); if(!box)return;
   if(!SRV.enabled){ box.innerHTML=''; return; }
-  try{ if(!_coachStatus){ const r=await srvFetch('/api/coach/status'); _coachStatus=r.ok?await r.json():{enabled:false}; } }catch(e){ _coachStatus={enabled:false}; }
+  let st=_coachStatus;
+  if(!st){ try{ const r=await srvFetch('/api/coach/status'); if(r.ok)st=_coachStatus=await r.json(); }catch(e){} } // failures (401 before the token, network) are retried next time
+  st=st||{enabled:false};
   const wk=isoWeekKey(lastCompletedWeekRange().from+3.5*86400000).slice(5);
   let letter=null;
   if(!force&&_letterCache.wk===wk)letter=_letterCache.letter;
   else{ try{ const r=await srvFetch('/api/coach/letter/'+wk); if(r.ok)letter=await r.json(); }catch(e){}
     _letterCache={wk,letter}; }
   if(!$('coachLetter'))return; // Review re-rendered meanwhile
-  if(!_coachStatus.enabled&&!letter){ box.innerHTML=''; return; }
+  if(!st.enabled&&!letter){ box.innerHTML=''; return; }
   const head=`<h3 data-tip="Written by Claude on your companion server from the summary below \u2014 aggregate numbers, your habits and your own lessons only. Switched on by COACH_AI=1 on the server.">Coach\u2019s letter \u00b7 ${esc(wk)}</h3>`;
   if(letter&&letter.text){
     box.innerHTML=`<div class="diag-card letter">${head}<div class="letter-body">${esc(letter.text).split(/\n{2,}/).map(p=>`<p>${p.replace(/\n/g,'<br>')}</p>`).join('')}</div>
-      <div class="letter-foot"><span class="mini-note" style="margin:0">Written ${esc(fmtDate(letter.writtenAt))}${letter.model?' \u00b7 '+esc(letter.model):''}</span>${_coachStatus.enabled?'<button class="btn ghost" id="letterRedo">Rewrite</button>':''}</div></div>`;
+      <div class="letter-foot"><span class="mini-note" style="margin:0">Written ${esc(fmtDate(letter.writtenAt))}${letter.model?' \u00b7 '+esc(letter.model):''}</span>${st.enabled?'<button class="btn ghost" id="letterRedo">Rewrite</button>':''}</div></div>`;
   } else {
     let facts=null; try{ facts=coachLetterFacts(); }catch(e){}
     box.innerHTML=`<div class="diag-card letter">${head}

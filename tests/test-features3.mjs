@@ -203,13 +203,15 @@ await t('FIFO order: oldest lot consumed first, sale split across lots', () => {
   near(m.rows[1].basis, 9);  near(m.rows[1].qty, 3);   // then 3 @ $3
   near(m.rows[0].gain, 15);  near(m.rows[1].gain, 3);
 });
-await t('long-term at >365 days held; short otherwise', () => {
+await t('long-term only when sold after the one-year anniversary date', () => {
+  // T0 = 2024-01-01 (leap year): +366 days is 2025-01-01, the anniversary itself — still short
   const m = spotFifoLots([
-    bfill({ sz: '2', px: '1', time: T0 }),
-    bfill({ side: 'A', sz: '1', px: '2', time: T0 + 366 * DAY }),
-    bfill({ side: 'A', sz: '1', px: '2', time: T0 + 366 * DAY + 1 }), // same lot, still long
+    bfill({ sz: '3', px: '1', time: T0 }),
+    bfill({ side: 'A', sz: '1', px: '2', time: T0 + 366 * DAY + 3600e3 }),
+    bfill({ side: 'A', sz: '1', px: '2', time: T0 + 367 * DAY }),        // 2025-01-02 — long
+    bfill({ side: 'A', sz: '1', px: '2', time: T0 + 367 * DAY + 1 }),    // same lot, still long
   ], {});
-  ok(m.rows[0].term === 'long' && m.rows[1].term === 'long', 'term calc');
+  eq(m.rows.map(r => r.term), ['short', 'long', 'long'], 'term calc');
 });
 await t('overselling (transferred-in tokens) yields flagged zero-basis unknown rows', () => {
   const m = spotFifoLots([

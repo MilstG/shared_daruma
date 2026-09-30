@@ -615,7 +615,8 @@ below, including auth mode and filter docs.
 kelly/whatif/export): `market=perp|spot|combined`, `wallet`, `coin` (matches
 raw coin or resolved spot symbol), `dir`, `status=open|closed|all`,
 `outcome=win|loss|be` (uses your saved break-even band), `tag`, `q` (notes
-substring), `from`/`to` (ms epoch or ISO), `tz=utc|local`. Note `local` is the
+substring), `from`/`to` (ms or seconds epoch, ISO time, or `YYYY-MM-DD` —
+a whole day on the `tz` clock, `to` inclusive), `tz=utc|local`. Note `local` is the
 *server's* timezone — API consumers should prefer `utc`. The 1R basis for R
 multiples is pinned to the filtered closed set, mirroring the app's period
 behavior.
@@ -672,9 +673,11 @@ curl -H "Authorization: Bearer $READ_TOKEN" -o trades.csv 'https://your.app/api/
 
 ## Limitations, stated honestly
 
-- The fills API paginates ~60 pages deep (~120k fills). Wallets beyond that
-  can't be fully backfilled — existing local caches preserve older history, so
-  keep backups. Caches are now gzip-compressed in IndexedDB
+- The exchange serves only the **10,000 most recent fills** per wallet. A wallet
+  with more can't be fully backfilled from scratch: the data-health strip flags
+  it, and trades whose opening fills fall before that window are marked partial.
+  Existing local and server caches keep the older history once they have it, so
+  load regularly and keep backups. Caches are now gzip-compressed in IndexedDB
   (`CompressionStream`, ~5–10× smaller; plain-JSON fallback on old browsers,
   and backups always store the portable uncompressed shape).
 - Spot FIFO lots are only as complete as the fill history: tokens transferred
@@ -703,7 +706,7 @@ curl -H "Authorization: Bearer $READ_TOKEN" -o trades.csv 'https://your.app/api/
 npm test         # or: node tests/run-all.mjs
 ```
 
-397 tests across twenty suites cover reconstruction (flips, funding
+412 tests across twenty-one suites cover reconstruction (flips, funding
 windows, spot/perp separation, partial-history flagging), the Web Worker
 dispatcher end-to-end with byte-parity against the synchronous fallback,
 excursion math and the retention/ratchet behavior, miner families and
