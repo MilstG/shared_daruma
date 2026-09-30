@@ -151,6 +151,7 @@ td button{min-height:32px;padding:4px 10px;font-size:12px}
     const r=await fetch('/api/social/admin'+p,o); const d=await r.json().catch(()=>({}));
     if(!r.ok){ const e=new Error(d.error||('HTTP '+r.status)); e.status=r.status; throw e; } return d; }
   const ago=ms=>{ if(!ms)return '—'; const m=Math.round((Date.now()-ms)/60000); return m<60?m+'m ago':m<1440?Math.round(m/60)+'h ago':Math.round(m/1440)+'d ago'; };
+  const size=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
   let MEMBERS=[];
   function drawMembers(){
     const q=$('q').value.trim().toLowerCase();
@@ -161,7 +162,7 @@ td button{min-height:32px;padding:4px 10px;font-size:12px}
       <td>${m.level}</td><td>${m.streak}</td>
       <td>${m.money?(m.money.ret>=0?'+':'')+(m.money.ret*100).toFixed(1)+'% · DD '+(m.money.dd*100).toFixed(1)+'%':'<span class="muted">—</span>'}</td>
       <td>${m.address?`<code>${esc(m.address.slice(0,6)+'…'+m.address.slice(-4))}</code>${m.claimed&&m.claimed===m.address?'':' <span class="muted">unproven</span>'}`:'<span class="muted">—</span>'}</td>
-      <td>${m.devices||1}${m.vault?` <span class="muted">· sync ${m.vault>1048576?(m.vault/1048576).toFixed(1)+' MB':Math.max(1,Math.round(m.vault/1024))+' KB'}</span>`:''}</td>
+      <td>${m.devices||1}${m.vault?` <span class="muted">· sync ${size(m.vault)}</span>`:''}</td>
       <td>${esc(ago(m.lastSeen))}</td>
       <td><div class="acts"><button data-act="${m.banned?'unban':'ban'}" data-id="${esc(m.id)}">${m.banned?'Restore':'Suspend'}</button><button class="danger" data-act="remove" data-id="${esc(m.id)}" data-h="${esc(m.handle)}">Delete</button></div></td></tr>`).join('')
       ||'<tr><td colspan="9" class="muted">No members yet. Share your /pulse link and people join from the Social tab.</td></tr>';
@@ -169,7 +170,7 @@ td button{min-height:32px;padding:4px 10px;font-size:12px}
   async function load(){
     const ov=await api('/overview');
     $('login').classList.add('hide'); $('app').classList.remove('hide'); $('signout').classList.remove('hide');
-    $('tiles').innerHTML=[['Members',ov.members],['Active this week',ov.active7],['Competitions',ov.comps],['Feed posts',ov.events],['Claimed wallets',ov.claimed||0],['Synced journals',ov.vaults?ov.vaults+' · '+(ov.vaultBytes/1048576).toFixed(1)+' MB':0],['League week',ov.week?ov.week.slice(-3):'—']]
+    $('tiles').innerHTML=[['Members',ov.members],['Active this week',ov.active7],['Competitions',ov.comps],['Feed posts',ov.events],['Claimed wallets',ov.claimed||0],['Synced journals',ov.vaults?ov.vaults+' · '+size(ov.vaultBytes):0],['League week',ov.week?ov.week.slice(-3):'—']]
       .concat(ov.tiers.map(t=>[t.tier+' league',t.n])).map(([l,v])=>`<div class="tile"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('');
     const c=ov.config; $('cOpen').checked=c.open; $('cInvite').value=c.inviteCode||''; $('cUnlocks').checked=c.unlocksOn;
     $('cClaim').checked=!!c.requireClaim; $('cClaim').disabled=!ov.claims; $('cVault').checked=c.vaultOn!==false;

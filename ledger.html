@@ -9804,6 +9804,7 @@ async function vaultPush(){
     if(blob.ct.length>6*1024*1024)throw new Error('Your journal is too large to sync ('+(blob.ct.length/1048576).toFixed(1)+' MB; the limit is 6 MB).');
     const r=await fetch('/api/social/vault',{method:'PUT',headers:{'Content-Type':'application/json','X-Pulse-Key':SOC.key},body:JSON.stringify({rev:VAULT.rev,blob})});
     const d=await r.json().catch(()=>({}));
+    if(r.status===409&&!d.blob){ vaultForget(); if(SOC.me)SOC.me.vault=null; pzNote('Your synced journal was deleted from another device, so this one stopped syncing.'); return; }
     if(r.status===409){ // another device saved first: merge its copy, then push again at its revision
       const walletsChanged=await vaultMerge(d); VAULT.again=true;
       if(walletsChanged&&settings.wallets.length)loadAll({auto:true}); else if(PZ)pzRender(); else render();
