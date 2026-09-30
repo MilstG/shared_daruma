@@ -163,6 +163,14 @@ body.bb .settings-pop{border-color:#3A3A32}
 .sp-row label{font-family:var(--cond);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--lbl);width:104px;flex-shrink:0}
 .sp-note{font-size:11px;color:var(--faint);margin:0 0 12px;line-height:1.5}
 .sp-note:last-child{margin-bottom:0}
+.switch{position:relative;width:38px;height:20px;border:1px solid #223049;background:var(--bg);padding:0;cursor:pointer;flex-shrink:0}
+.switch .knob{position:absolute;top:2px;left:2px;width:14px;height:14px;background:var(--faint);transition:left .15s,background .15s}
+.switch[aria-checked="true"]{border-color:#4A3A20}
+.switch[aria-checked="true"] .knob{left:20px;background:var(--gold)}
+.sw-state{font-family:var(--mono);font-size:11px;color:var(--muted)}
+body.coach-off #calModeBtn{display:none}
+.coach-hide{background:none;border:none;color:var(--faint);font-family:var(--mono);font-size:10.5px;cursor:pointer;margin-left:auto;padding:0}
+.coach-hide:hover{color:var(--text)}
 .bediv{display:inline-flex;align-items:center;gap:6px}
 .bediv input{width:70px}
 
@@ -479,7 +487,33 @@ body.bb .focus-card,body.bb .focus-recap{border-color:#5C4310;border-left-color:
 .letter .letter-body p{font-family:var(--prose);font-size:13.5px;line-height:1.7;color:var(--text);margin:0 0 10px;max-width:72ch}
 .letter-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px}
 .letter-facts{font-family:var(--mono);font-size:10.5px;line-height:1.5;color:var(--muted);background:var(--panel2);border:1px solid var(--line2);padding:10px;margin-top:8px;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word}
-@media(max-width:1020px){ .fnd-grid{grid-template-columns:1fr} }
+.lvl-chip{background:none;border:1px solid #4A3A20;color:var(--gold);font-family:var(--mono);font-size:10.5px;padding:2px 8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.lvl-chip:hover{border-color:var(--gold)}
+.shields{display:inline-flex;gap:3px;vertical-align:middle}
+.shields i{display:inline-block;width:8px;height:10px;border:1px solid var(--line);clip-path:polygon(0 0,100% 0,100% 60%,50% 100%,0 60%)}
+.shields i.on{background:var(--gold);border-color:var(--gold)}
+.gm-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.gm{display:flex;flex-direction:column;gap:8px}
+.gm-big{font-family:var(--prose);font-size:18px;font-weight:600;color:var(--text);line-height:1.35;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gm-sub{font-family:var(--prose);font-size:12px;color:var(--muted);line-height:1.5}
+.gm-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:auto}
+.gm-foot .btn,.gm-actions .btn{font-size:10.5px;padding:4px 10px}
+.gm-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.xpbar{height:8px;background:var(--panel2);border:1px solid var(--line2)}
+.xpbar i{display:block;height:100%;background:linear-gradient(90deg,var(--gold),#E6C77A)}
+body.bb .xpbar i{background:var(--gold)}
+.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.ach{border:1px solid var(--line);padding:10px 11px;display:flex;flex-direction:column;gap:3px;opacity:.55;min-width:0}
+.ach.on{opacity:1;border-color:#4A3A20;background:rgba(201,168,92,.05)}
+body.bb .ach.on{border-color:#5C4310;background:rgba(255,176,32,.05)}
+.ach-g{font-size:16px;color:var(--faint);line-height:1}
+.ach.on .ach-g{color:var(--gold)}
+.ach-t{font-family:var(--prose);font-size:12.5px;font-weight:600;color:var(--text);line-height:1.3}
+.ach-p{font-family:var(--mono);font-size:10px;color:var(--faint)}
+.ach-bar{height:3px;background:var(--panel2);margin-top:2px}
+.ach-bar i{display:block;height:100%;background:var(--muted)}
+.gm-img{display:block;max-width:100%;height:auto;border:1px solid var(--line);margin-bottom:10px}
+@media(max-width:1020px){ .fnd-grid{grid-template-columns:1fr} .gm-grid{grid-template-columns:minmax(0,1fr)} }
 @media(max-width:640px){
   .coach{padding:12px 14px}
   .coach-row{grid-template-columns:1fr;gap:4px}
@@ -610,6 +644,9 @@ tr.trow:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
             <span class="bediv">±$<input type="number" id="beThresh" min="0" step="any" value="50"></span>
           </div>
           <div class="sp-note">Scratches inside the band don't count as wins or losses.</div>
+          <div class="sp-row" data-tip="Turns the coaching layer on or off: the dashboard coach card, habits and the weekly focus, wins, the process score, the question after each trade and the AI weekly letter. Nothing is deleted — your habits, plans and journal stay, and come back when you switch it on."><label for="coachSwitch">Coach mode</label>
+            <button type="button" class="switch" id="coachSwitch" role="switch" aria-checked="true"><span class="knob"></span></button><span class="sw-state" id="coachSwitchState">On</span></div>
+          <div class="sp-note">Coach card, habits, wins, process score and trade questions. Hiding them keeps your data.</div>
         </div>
       </div>
     </div>
@@ -860,14 +897,14 @@ async function unpackFillCache(c){
 }
 function snapshot(){ return {app:'ledger',version:8,exportedAt:new Date().toISOString(),
   wallets:settings.wallets, settings:{riskDefault:settings.riskDefault,view:settings.view,dexView:settings.dexView,rBasis:settings.rBasis,pageSize:settings.pageSize,beThreshold:settings.beThreshold,theme:settings.theme,anaBasis:settings.anaBasis,tz:settings.tz,assumedLev:settings.assumedLev,rules:settings.rules,attribBasis:settings.attribBasis,goals:settings.goals,
-    pins:settings.pins, habits:settings.habits, tzZone:settings.tzZone, calMode:settings.calMode, calWeeks:settings.calWeeks}, journal}; } // pins are the long-horizon forward tracker — losing them on a restore defeated the feature
+    pins:settings.pins, habits:settings.habits, tzZone:settings.tzZone, calMode:settings.calMode, calWeeks:settings.calWeeks, coachMode:settings.coachMode}, journal}; } // pins are the long-horizon forward tracker — losing them on a restore defeated the feature
 async function applySnapshot(data){ if(!data)return false; _applying=true;
   try{
     if(data.journal && typeof data.journal==='object'){ journal=data.journal; _jrev++; }
     if(Array.isArray(data.wallets)) settings.wallets=data.wallets;
     // 'in', not !=null: a cleared risk default (null) must propagate, or another device resurrects it
     if(data.settings){ if('riskDefault' in data.settings)settings.riskDefault=data.settings.riskDefault;
-      if(data.settings.view)settings.view=data.settings.view; if(data.settings.dexView)settings.dexView=data.settings.dexView; if(data.settings.rBasis)settings.rBasis=data.settings.rBasis; if(data.settings.pageSize)settings.pageSize=data.settings.pageSize; if(data.settings.beThreshold!=null)settings.beThreshold=data.settings.beThreshold; if(data.settings.theme)settings.theme=data.settings.theme; if(data.settings.anaBasis)settings.anaBasis=data.settings.anaBasis; if(data.settings.tz)settings.tz=data.settings.tz; if(data.settings.assumedLev>0)settings.assumedLev=data.settings.assumedLev; if(data.settings.rules&&typeof data.settings.rules==='object')settings.rules=data.settings.rules; if(data.settings.attribBasis)settings.attribBasis=data.settings.attribBasis; if(Array.isArray(data.settings.pins))settings.pins=data.settings.pins.filter(p=>p&&typeof p.pid==='string'); if(Array.isArray(data.settings.habits))settings.habits=data.settings.habits.filter(h=>h&&typeof h.id==='string'&&typeof h.kind==='string'); if(typeof data.settings.tzZone==='string')settings.tzZone=data.settings.tzZone; if(data.settings.calMode==='pnl'||data.settings.calMode==='process')settings.calMode=data.settings.calMode; if(data.settings.calWeeks===26||data.settings.calWeeks===52)settings.calWeeks=data.settings.calWeeks; if(data.settings.goals&&typeof data.settings.goals==='object')settings.goals=data.settings.goals; }
+      if(data.settings.view)settings.view=data.settings.view; if(data.settings.dexView)settings.dexView=data.settings.dexView; if(data.settings.rBasis)settings.rBasis=data.settings.rBasis; if(data.settings.pageSize)settings.pageSize=data.settings.pageSize; if(data.settings.beThreshold!=null)settings.beThreshold=data.settings.beThreshold; if(data.settings.theme)settings.theme=data.settings.theme; if(data.settings.anaBasis)settings.anaBasis=data.settings.anaBasis; if(data.settings.tz)settings.tz=data.settings.tz; if(data.settings.assumedLev>0)settings.assumedLev=data.settings.assumedLev; if(data.settings.rules&&typeof data.settings.rules==='object')settings.rules=data.settings.rules; if(data.settings.attribBasis)settings.attribBasis=data.settings.attribBasis; if(Array.isArray(data.settings.pins))settings.pins=data.settings.pins.filter(p=>p&&typeof p.pid==='string'); if(Array.isArray(data.settings.habits))settings.habits=data.settings.habits.filter(h=>h&&typeof h.id==='string'&&typeof h.kind==='string'); if(typeof data.settings.tzZone==='string')settings.tzZone=data.settings.tzZone; if(data.settings.calMode==='pnl'||data.settings.calMode==='process')settings.calMode=data.settings.calMode; if(data.settings.calWeeks===26||data.settings.calWeeks===52)settings.calWeeks=data.settings.calWeeks; if(typeof data.settings.coachMode==='boolean')settings.coachMode=data.settings.coachMode; if(data.settings.goals&&typeof data.settings.goals==='object')settings.goals=data.settings.goals; }
     await rawSet(J_KEY,journal); await rawSet(S_KEY,settings);
     // v9+ backups may carry per-wallet fill caches (see backupAll) — restore the valid ones.
     if(data.fillCaches && typeof data.fillCaches==='object'){
@@ -914,7 +951,7 @@ function markJEdit(id){ _dirtyJ.set(id,(_dirtyJ.get(id)||0)+1); _jrev++; }
 // bouncing back. Wallets are deliberately excluded (list merges are ambiguous; last write
 // wins there, as before).
 let _lastSyncedS=null;
-const _SYNC_S_FIELDS=['riskDefault','view','dexView','rBasis','pageSize','beThreshold','theme','anaBasis','tz','assumedLev','rules','attribBasis','goals','pins','habits','tzZone','calMode','calWeeks'];
+const _SYNC_S_FIELDS=['riskDefault','view','dexView','rBasis','pageSize','beThreshold','theme','anaBasis','tz','assumedLev','rules','attribBasis','goals','pins','habits','tzZone','calMode','calWeeks','coachMode'];
 function _snapS(){ const o={}; for(const k of _SYNC_S_FIELDS)o[k]=settings[k]; return JSON.parse(JSON.stringify(o)); }
 function schedulePersist(){ scheduleLinkedWrite(); scheduleServerWrite(); }
 // A failed write keeps the edits dirty, shows the error, and retries with backoff (5s → 2min).
@@ -2074,7 +2111,7 @@ function minerFams(closed,ST,fz){
   // session check-in (day journal, 1–5): judged on the entry day — known before the trade
   { const ck=CHECKIN_CONDS.map(([nm,id])=>[nm,checkinPred(id),id]);
     const withCk=closed.filter(t=>{ const d=journal[dayJKey(t.openTime)]; return !!(d&&(d.sleep||d.stress||d.focus)); }).length;
-    if(fz.ck||withCk>=10)fams.mood=ck; }
+    if(fz.ck||(settings.coachMode!==false&&withCk>=10))fams.mood=ck; }
   if(closed.some(t=>(journal[t.id]||{}).rating))
     fams.rating=[['rated ≤2★ execution',t=>{const r=(journal[t.id]||{}).rating;return !!r&&r<=2;},'rate:lo'],
                  ['rated 4–5★ execution',t=>{const r=(journal[t.id]||{}).rating;return !!r&&r>=4;},'rate:hi']];
@@ -2442,7 +2479,7 @@ function renderStats(s){
 function renderCalendar(trades){
   const map={}; trades.forEach(t=>{ const k=dayKey(t.closeTime); (map[k]=map[k]||{net:0,n:0}); map[k].net+=t.net; map[k].n++; });
   // process mode: same cells, colored by the day's process score instead of its PnL
-  const proc=settings.calMode==='process'?{}:null;
+  const proc=settings.calMode==='process'&&coachOn()?{}:null;
   if(proc){ try{ for(const d of coachContext().days)proc[d.key]=d; }catch(e){} } // colored only where this period has trades
   const mb=$('calModeBtn'); if(mb)mb.textContent=proc?'Process':'PnL';
   const hint=$('calHint'); if(hint)hint.textContent=proc?'green = disciplined day (70+), red = process broke (<50) · click a day to journal it':'green = up day, red = down day · click a day to journal it';
@@ -3060,7 +3097,7 @@ function renderWhatIf(chron,name,pred,cond){
   </div>`;
   const dNet=m.kept.net-m.all.net, dDD=m.kept.maxDD-m.all.maxDD;
   const verdict=`<p class="lead" style="font-size:13px;margin:0 0 12px;border-left:2px solid var(--${dNet>=0?'profit':'loss'});padding-left:10px">Skipping <b>${esc(name)}</b> (${m.removed.n} trades) would have ${dNet>=0?'added':'cost'} <b>${fmtUsd(Math.abs(dNet))}</b> of net PnL${Math.abs(dDD)>1?` and made your worst drawdown ${dDD>0?'<b>'+fmtUsd(Math.abs(dDD))+'</b> shallower':'<b>'+fmtUsd(Math.abs(dDD))+'</b> deeper'}`:''}. ${dNet>0?'A hard rule (no-trade window, cooldown, filter) beats willpower here.':'These trades are pulling their weight \u2014 keep them.'}</p>`;
-  const ruleBtn=(cond&&cond.cid&&dNet>0)
+  const ruleBtn=(cond&&cond.cid&&dNet>0&&coachOn())
     ? (customRules().some(r=>r.pid===cond.cid)
       ? '<p class="mini-note" style="margin:-4px 0 12px">Already one of your rules \u2014 tracked under Discipline &amp; rules.</p>'
       : '<p style="margin:-4px 0 12px"><button class="btn ghost" id="wiRule" data-tip="Adds \u201cAvoid: '+esc(name)+'\u201d to your rules: past and future breaks get counted and priced, and the rules card shows whether you break it less from today on.">Make this a rule</button></p>')
@@ -3586,11 +3623,15 @@ function renderDiagnostic(closed, allv){
      <div id="excBox">${N<10?'<p class="lead">Needs ≥10 completed trades.</p>':'<button class="btn ghost" id="runExc">Fetch candles + compute excursions</button>'}</div>
    </div>
    ${extraDiagHtml(closed,allv,s)}
-   <div class="diag-section">
+   ${!coachOn()?`<div class="diag-section">
+     <h2>Recommendations</h2>
+     <p class="lead">Prioritized by the money at stake. Higher items have the biggest expected impact.</p>
+     <ol class="recs" id="recsFallback">${findings.map(f=>`<li><b>${esc(f.title)}.</b> ${esc(f.body)} ${esc(f.action)} <span style="color:var(--faint)">${esc(f.evidence||'')}</span></li>`).join('')}</ol>
+   </div>`:`<div class="diag-section">
      <h2>What your numbers say <span style="font-size:11px;color:var(--faint);font-weight:400">in plain words · most money at stake first</span></h2>
      <p class="lead">Each card says what’s happening, one thing to do about it, and how sure the numbers are. Open “The numbers” for the statistics behind it; “Adopt as habit” turns the advice into a when-then habit tracked in Review.</p>
      <div class="fnd-grid" id="fndGrid">${findings.map(findingCardHtml).join('')}</div>
-   </div>
+   </div>`}
    <p class="lead" style="text-align:center;margin-top:8px">Diagnostic reflects the current view (${view}) and period. Bucket signals require ≥${MIN} trades to appear.</p>`;
   document.querySelectorAll('#trackedCard .unpin').forEach(b=>{ b.onclick=async()=>{
     const i=+b.dataset.pi; const pins=Array.isArray(settings.pins)?settings.pins:[];
@@ -3935,7 +3976,7 @@ function _excSubset(trades){ const m={}; for(const t of trades){ const e=_excM[t
 async function minerScan(pool,basis,seed,onProgress){
   try{
     return await runInWorker('miner',{trades:pool,basis,seed,be:_be,
-      settings:{tz:settings.tz},journal:_journalSubset(pool),excursions:_excSubset(pool)},onProgress);
+      settings:{tz:settings.tz,coachMode:settings.coachMode},journal:_journalSubset(pool),excursions:_excSubset(pool)},onProgress);
   }catch(e){ // sync fallback: identical math on the main thread
     _srand(seed);
     const V=basis==='pct'?(t=>retPct(t)):(t=>t.net);
@@ -4368,8 +4409,8 @@ async function openReplay(id,btn){
   if(isFinite(t.avgEntry)&&t.avgEntry>0){ plo=Math.min(plo,t.avgEntry); phi=Math.max(phi,t.avgEntry); }
   if(!t.isOpen&&t.avgExit>0){ plo=Math.min(plo,t.avgExit); phi=Math.max(phi,t.avgExit); }
   // the written plan (stop / target) and the trade's own worst / best prices while it was on
-  const plan=nfPlan(journal[t.id]);
-  const ex=replayExtremes(t,candles,itv.ms);
+  const plan=coachOn()?nfPlan(journal[t.id]):null;
+  const ex=coachOn()?replayExtremes(t,candles,itv.ms):null;
   if(plan){ for(const v of [plan.stop,plan.target]) if(v>0){ plo=Math.min(plo,v); phi=Math.max(phi,v); } }
   // fill markers: every entry/add (gold triangle up) and every partial/final close (green triangle
   // down). Drawn as flags UNDER (entry/add) or OVER (close) the candle that holds the fill — never
@@ -4558,7 +4599,7 @@ function renderMinerResults(r,deep,basis){ basis=basis||'usd';
     return li(good?'good':'bad',good?'▲':'▼',
       `<b>${esc(v.name)}</b>${oosTag(v)}${pinCtl(v)}${ruleCtl(v)}<br>${sent}<br>${stats}`); };
   const byPid={};
-  const ruleCtl=v=>{ if(!v.pid||v.uplift>=0)return'';
+  const ruleCtl=v=>{ if(!v.pid||v.uplift>=0||!coachOn())return'';
     return customRules().some(r=>r.pid===v.pid)?' <span class="sr-note" style="margin-left:6px">rule \u2713</span>'
       :` <button class="btn ghost rulebtn" data-pid="${esc(v.pid)}" data-tip="Turn this leak into a personal rule: every trade that matches it is counted as a break with its dollar cost, open positions that match get a warning chip (when the condition is known at entry), and the rules card tracks whether you break it less from today on." style="font-size:10px;padding:1px 7px;margin-left:6px">+ rule</button>`; };
   const pinCtl=v=>{ if(!v.pid)return''; byPid[v.pid]=v;
@@ -4750,7 +4791,7 @@ function guardrailSignals(){
   if(up.unplanned)
     out.push({type:'unplanned',txt:`<b>${up.n}</b> trades today with no plan filed. The end-of-day review will ask why — write the bias, plan, and max loss in <b>Review → Day journal</b> before the next entry.`});
   // open positions breaking one of your rules-from-findings (entry-knowable conditions only)
-  const open=allTrades.filter(t=>t.isOpen);
+  const open=coachOn()?allTrades.filter(t=>t.isOpen):[];
   if(open.length&&customRules().length){
     try{ const hits=liveRuleHits(open,liveRulePreds());
       for(const h of hits.slice(0,3))
@@ -4981,6 +5022,7 @@ function excLine(t){
 }
 // "written live" vs "written after close" — the difference between a plan and a story.
 function planTimingBadge(t,j){
+  if(!coachOn())return '';
   const at=j&&j.plan&&+j.plan.at; if(!(at>0))return t.isOpen?' <span class="sr-note" style="margin-left:6px">write it now, while it’s live</span>':'';
   if(t.isOpen||!(t.closeTime>0)||at<t.closeTime)return ' <span class="badge ok" style="margin-left:6px" data-tip="Saved while the position was open — a real commitment, scored in the live bucket.">written live</span>';
   return ' <span class="badge mid" style="margin-left:6px" data-tip="Last changed after the trade closed — hindsight. Scored separately from live plans so it can’t flatter your stop discipline.">written after close</span>';
@@ -4989,8 +5031,8 @@ function journalRow(t,j,R){
   return `<tr class="jrow"><td colspan="12"><div class="journal">
     <div>
       <div class="field"><label>Notes — thesis, what happened, lesson</label>
-        ${t.isOpen?'':`<div class="coach-q" data-tip="Chosen for what actually happened in this trade (stop, excursion, adds, outcome). Answer it in the notes.">${esc(tradeQuestion(t,j,_excM[t.id]).q)}</div>`}
-        <textarea data-j="notes" data-id="${esc(t.id)}" placeholder="${t.isOpen?'Why did you take it? Where are you wrong?':'Answer the question above \u2014 one honest line is enough.'}">${esc(j.notes||'')}</textarea></div>
+        ${t.isOpen||!coachOn()?'':`<div class="coach-q" data-tip="Chosen for what actually happened in this trade (stop, excursion, adds, outcome). Answer it in the notes.">${esc(tradeQuestion(t,j,_excM[t.id]).q)}</div>`}
+        <textarea data-j="notes" data-id="${esc(t.id)}" placeholder="${t.isOpen?'Why did you take it? Where are you wrong?':coachOn()?'Answer the question above \u2014 one honest line is enough.':'Why did you take it? How did it play out? What would you repeat or change?'}">${esc(j.notes||'')}</textarea></div>
       <div class="field"><label>Setup / strategy</label>
         <input type="text" data-j="setup" data-id="${esc(t.id)}" value="${esc(j.setup||'')}" placeholder="e.g. breakout retest, funding fade"></div>
       <div class="field"><label>Tags — comma separated</label>
@@ -5132,7 +5174,7 @@ function render(){
   try{ renderInner(); } finally { restoreDrafts(_drafts); }
 }
 function renderInner(){
-  syncDexTog();
+  syncDexTog(); syncCoachMode(); // a sync pull or backup restore can flip coach mode
   const pt=periodTrades(); const ptAll=periodTradesAll();
   _be=(settings.beThreshold!=null?settings.beThreshold:50);
   _oneR=computeOneR(pt);
@@ -5255,6 +5297,7 @@ function renderReviewInner(){
   const costVar=(feeCard||varCard)?`<div class="diag-section"><h2>Costs &amp; variance</h2><div class="diag-grid">${feeCard}${varCard}</div></div>`:'';
 
   el.innerHTML=`<div class="diag-section"><h2>Review · ${view}</h2><p class="lead">Rolling digest for the ${view} view. Windows are trailing 7 / 30 days; "vs prior" compares the immediately preceding window of equal length.</p></div>
+   ${progressSectionHtml()}
    ${dayJournalSectionHtml()}
    ${habitsSectionHtml()}
    ${inboxSectionHtml()}
@@ -5276,7 +5319,7 @@ function renderReviewInner(){
    </div></div>
    <div class="diag-section"><h2>Focus for next week</h2><ol class="recs">${focus.map(f=>`<li>${f}</li>`).join('')}</ol></div>
    ${nfLeaderboardHtml(periodTrades().filter(t=>!t.isOpen))}`;
-  wireDayJournal(); wireHabits(); wireInbox(); wireWeeklyReview(); wireGoals();
+  wireDayJournal(); wireHabits(); wireInbox(); wireWeeklyReview(); wireGoals(); wireProgress();
   loadCoachLetter();
 }
 /* ============================ monthly goals ============================ */
@@ -5370,8 +5413,8 @@ function dayJournalSectionHtml(){
         <div class="field"><label>Bias / market read</label><input type="text" id="djBias" value="${esc(e.bias||'')}" placeholder="e.g. chop until CPI, long bias above break"></div>
         <div class="field"><label>Plan</label><textarea id="djPlan" placeholder="What will you trade today — and what will you NOT do?">${esc(e.plan||'')}</textarea></div>
         <div class="field"><label>Committed max loss ($)</label><input type="number" id="djMaxLoss" min="0" step="any" value="${e.maxLoss>0?esc(e.maxLoss):''}" placeholder="stop trading for the day at −$…"></div>
-        <div class="field"><label data-tip="Ten seconds before the session. The pattern miner tests these like any other condition (&quot;low focus&quot;, &quot;slept badly&quot;) once about ten trades carry a check-in — so how you felt becomes a measured edge or leak, not a guess.">Check-in — 1 low · 5 high</label>
-          <div class="ck-grid">${CHECKIN_FIELDS.map(([k,l])=>`<div class="ck-item"><span class="ck-l">${l}</span><div class="seg" id="djCk_${k}" data-v="${+e[k]||''}" role="radiogroup" aria-label="${l}, 1 low to 5 high">${[1,2,3,4,5].map(n=>`<button type="button" role="radio" aria-checked="${+e[k]===n?'true':'false'}" class="${+e[k]===n?'on':''}" data-n="${n}">${n}</button>`).join('')}</div></div>`).join('')}</div></div>
+${coachOn()?`        <div class="field"><label data-tip="Ten seconds before the session. The pattern miner tests these like any other condition (&quot;low focus&quot;, &quot;slept badly&quot;) once about ten trades carry a check-in — so how you felt becomes a measured edge or leak, not a guess.">Check-in — 1 low · 5 high</label>
+          <div class="ck-grid">${CHECKIN_FIELDS.map(([k,l])=>`<div class="ck-item"><span class="ck-l">${l}</span><div class="seg" id="djCk_${k}" data-v="${+e[k]||''}" role="radiogroup" aria-label="${l}, 1 low to 5 high">${[1,2,3,4,5].map(n=>`<button type="button" role="radio" aria-checked="${+e[k]===n?'true':'false'}" class="${+e[k]===n?'on':''}" data-n="${n}">${n}</button>`).join('')}</div></div>`).join('')}</div></div>`:''}
         <div class="field"><label>End-of-day review</label><textarea id="djReview" placeholder="What actually happened? What would you repeat or change?">${esc(e.review||'')}</textarea></div>
         <label class="dchk" style="display:inline-flex;margin-bottom:10px"><input type="checkbox" id="djAdh" ${e.adherence?'checked':''}> I followed the plan</label>
         <div><button class="btn ghost" id="djSave">Save day</button> <span id="djSaved" style="color:var(--faint);font-size:11px"></span></div>
@@ -5407,7 +5450,10 @@ function wireDayJournal(){
     const e={bias:$('djBias').value.trim(), plan:$('djPlan').value.trim(),
       maxLoss:num>0?num:null, review:$('djReview').value.trim(),
       adherence:$('djAdh').checked||null};
-    for(const [f] of CHECKIN_FIELDS){ const el=$('djCk_'+f); const v=parseInt(el&&el.dataset.v); e[f]=v>=1&&v<=5?v:null; }
+    const prevE=journal[k]||{};
+    for(const [f] of CHECKIN_FIELDS){ const el=$('djCk_'+f);
+      if(!el){ e[f]=prevE[f]||null; continue; } // check-in hidden (coach mode off): keep what's stored
+      const v=parseInt(el.dataset.v); e[f]=v>=1&&v<=5?v:null; }
     const nx=nextDayEntry(journal[k],e,Date.now());
     if(!nx) delete journal[k]; else journal[k]=nx;
     markJEdit(k); Store.set(J_KEY,journal);
@@ -5918,7 +5964,20 @@ $('pClear').addEventListener('click',()=>{ $('pFrom').value=''; $('pTo').value='
 $('rangeBtn').addEventListener('click',()=>{ const f=$('rangeFields'); f.classList.toggle('hide'); $('rangeBtn').classList.toggle('on',!f.classList.contains('hide')); });
 
 $('themeBtn').addEventListener('click',async ()=>{ applyTheme(settings.theme==='bb'?'ink':'bb'); await Store.set(S_KEY,settings); if(allTrades.length)render(); });
+// Coach mode (default on) gates the coaching layer only; the data under it is never touched.
+function coachOn(){ return settings.coachMode!==false; }
+function syncCoachMode(){
+  const on=coachOn(); document.body.classList.toggle('coach-off',!on);
+  const b=$('coachSwitch'); if(b)b.setAttribute('aria-checked',on?'true':'false');
+  const st=$('coachSwitchState'); if(st)st.textContent=on?'On':'Off';
+}
+async function setCoachMode(on){
+  settings.coachMode=!!on; syncCoachMode(); await Store.set(S_KEY,settings);
+  _minerCache={key:null,res:null,deep:null}; // the check-in conditions come and go with coach mode
+  if(allTrades.length)render(); else if(activeTab==='review')renderReview();
+}
 function syncTzBtn(){ const b=$('tzBtn'); if(b)b.textContent=(settings.tz==='utc'?'🕓 UTC':'🕓 Local'); }
+$('coachSwitch').addEventListener('click',()=>setCoachMode(!coachOn()));
 $('tzBtn').addEventListener('click',async ()=>{ settings.tz=settings.tz==='utc'?'local':'utc'; syncTzBtn();
   _minerCache={key:null,res:null,deep:null}; // session/dow buckets changed → invalidate mined patterns
   await Store.set(S_KEY,settings);
@@ -6446,7 +6505,9 @@ function exportDiagPdf(){
       charts.push({title,img:off.toDataURL('image/jpeg',0.82)});
     }catch(e){}
   });
-  const recs=[...document.querySelectorAll('#diagView .fnd')].map(c=>{ const q=sel=>{ const e=c.querySelector(sel); return e?e.textContent.replace(/\s+/g,' ').trim():''; };
+  const recs=!document.querySelector('#diagView .fnd')
+    ?[...document.querySelectorAll('#recsFallback li')].map(li=>li.textContent.replace(/\s+/g,' ').trim()).slice(0,10)
+    :[...document.querySelectorAll('#diagView .fnd')].map(c=>{ const q=sel=>{ const e=c.querySelector(sel); return e?e.textContent.replace(/\s+/g,' ').trim():''; };
     return q('.fnd-title')+'. '+q('.fnd-body')+' Do this: '+q('.fnd-do').replace(/^Do this\s*/,''); }).slice(0,10);
   const periodDesc=rangeActive()
     ? 'custom range'+(customRange.from?' from '+fmtDate(customRange.from):'')+(customRange.to?' to '+fmtDate(customRange.to):'')
@@ -6649,6 +6710,7 @@ function weeklyReviewSectionHtml(){
 }
 // Last week's focus habit, how often it was kept, and a one-click carry-over to this week.
 function lastWeekFocusHtml(from){
+  if(!coachOn())return '';
   const e=journal[isoWeekKey(from+3.5*86400000)]; const h=e&&e.focus&&habitById(e.focus); if(!h||h.retired)return '';
   let p={total:0,kept:0,res:[]}; try{ const ctx=coachContext(); const all=habitProgress(h,ctx,from);
     const toK=dayKey(lastCompletedWeekRange().to); p.res=all.res.filter(r=>r.key<toK); Object.assign(p,habitSummary(p.res)); }catch(err){}
@@ -7084,8 +7146,8 @@ function nfDiagExtra(closed){
     ${pa.targetHitRate!=null?mrow('Target-hit rate',nfPct(pa.targetHitRate),'Share of planned trades (with a target) that reached it.'):''}
     ${mrow('Planned vs realized R','med '+(pa.medPlannedRR!=null?pa.medPlannedRR.toFixed(2)+'R':'\u2014')+' \u2192 '+(pa.medRealizedR!=null?(pa.medRealizedR>=0?'+':'')+pa.medRealizedR.toFixed(2)+'R':'\u2014'),'Median planned reward:risk vs the R you actually realized against that plan\u2019s risk.')}
     ${mrow('Cost of blowing stops',pa.brokeStopCost<0?('<span class="loss">'+fmtUsd(pa.brokeStopCost)+'</span>'):fmtUsd(pa.brokeStopCost),'Total net PnL on the planned trades where you held past your stop.')}
-    ${pa.heldThroughN?mrow('Held through the stop','<span class="neg-t">'+pa.heldThroughN+'</span>','Price traded past your planned stop (from candle excursions) and you stayed in anyway — even if the exit later recovered. Counted as a broken stop above. Run Price excursions to measure more trades.'):''}
-    ${(pa.liveN||pa.hindsightN)?mrow('Written live vs after',pa.liveN+' live ('+nfPct(pa.liveHonoredRate,0)+' honored) · '+pa.hindsightN+' after close ('+nfPct(pa.hindsightHonoredRate,0)+')','A plan saved while the position was still open is a commitment; one written after the close is hindsight, and usually flatters you. Plans saved before this was tracked are in neither bucket.'):''}</div>`; }
+    ${pa.heldThroughN&&coachOn()?mrow('Held through the stop','<span class="neg-t">'+pa.heldThroughN+'</span>','Price traded past your planned stop (from candle excursions) and you stayed in anyway — even if the exit later recovered. Counted as a broken stop above. Run Price excursions to measure more trades.'):''}
+    ${(pa.liveN||pa.hindsightN)&&coachOn()?mrow('Written live vs after',pa.liveN+' live ('+nfPct(pa.liveHonoredRate,0)+' honored) · '+pa.hindsightN+' after close ('+nfPct(pa.hindsightHonoredRate,0)+')','A plan saved while the position was still open is a commitment; one written after the close is hindsight, and usually flatters you. Plans saved before this was tracked are in neither bucket.'):''}</div>`; }
   // 4 rules
   const R=nfRules(); const rc=evaluateRules(closed,R);
   const ruleInputs=`<div class="calc-row" style="flex-wrap:wrap;gap:10px;margin-bottom:8px">
@@ -7300,11 +7362,12 @@ function processDays(closed, journalObj, opts){
   let firstTradePlan=null;
   for(const t of closed) if(paBy.has(t.id)){ const k=dayOf(t.closeTime); if(!firstTradePlan||k<firstTradePlan)firstTradePlan=k; }
   firstTradePlan=minK(firstTradePlan,pf.planned);
+  const inWin=(part,k)=>(opts.planWindows||[]).some(w=>w.part===part&&k>=w.from&&k<w.to);
   for(const k of Object.keys(by).sort()){
     const arr=by[k].sort((a,b)=>a.closeTime-b.closeTime), n=arr.length;
     const de=J['day:'+k]||null, parts={};
     const opened=arr.filter(t=>dayOf(t.openTime)===k);
-    if(opened.length&&firstDayPlan&&k>=firstDayPlan){
+    if(opened.length&&((firstDayPlan&&k>=firstDayPlan)||inWin('plan',k))){
       const first=Math.min(...opened.map(t=>t.openTime));
       const has=hasDayPlan(de);
       // entries saved before plannedAt existed get the benefit of the doubt; a plan written
@@ -7313,15 +7376,17 @@ function processDays(closed, journalObj, opts){
     }
     if(opts.rulesActive!==false&&!(opts.rulesFrom&&k<opts.rulesFrom))parts.rules=1-arr.filter(t=>viol.has(t.id)).length/n;
     const pl=arr.map(t=>paBy.get(t.id)).filter(Boolean);
-    if(firstTradePlan&&k>=firstTradePlan)parts.planned=pl.filter(x=>x.live!==false).length/n;
+    if((firstTradePlan&&k>=firstTradePlan)||inWin('planned',k))parts.planned=pl.filter(x=>x.live!==false).length/n;
     if(pl.length)parts.stops=pl.filter(x=>x.stopHonored).length/pl.length;
     const lim=(de&&de.maxLoss>0)?de.maxLoss:(opts.dllLimit||0);
+    let breached=false;
     if(lim>0){ let cum=0, breachAt=null;
       for(const t of arr){ cum+=t.net; if(breachAt==null&&cum<=-lim)breachAt=t.closeTime; }
-      parts.limit=(breachAt!=null&&arr.some(t=>t.openTime>breachAt))?0:1; }
+      breached=breachAt!=null;
+      parts.limit=(breached&&arr.some(t=>t.openTime>breachAt))?0:1; }
     parts.journal=arr.filter(t=>isJournaled(J[t.id])).length/n;
     let sw=0, sv=0; for(const p in parts){ sw+=PROCESS_W[p]; sv+=PROCESS_W[p]*parts[p]; }
-    out.push({key:k, score:Math.round(100*sv/sw), parts, n, net:arr.reduce((s,t)=>s+t.net,0)});
+    out.push({key:k, score:Math.round(100*sv/sw), parts, n, net:arr.reduce((s,t)=>s+t.net,0), breached});
   }
   return out;
 }
@@ -7355,13 +7420,19 @@ function processContext(trades, rulePreds){
   const rulesFrom=builtin||!cr.length?null:dayKey(Math.min(...cr.map(r=>r.createdAt||0)));
   const since=part=>{ const hs=habitsList().filter(h=>h.kind==='process'&&h.part===part);
     return hs.length?dayKey(Math.min(...hs.map(h=>h.createdAt||Date.now()))):null; };
+  // a weekly challenge on a planning part grades that part for its own week only
+  const planWindows=[];
+  for(const k in journal){ const c=k.startsWith('week:')&&journal[k]&&journal[k].challenge;
+    if(c&&c.spec&&c.spec.kind==='process'&&(c.spec.part==='plan'||c.spec.part==='planned')&&c.from&&c.to)
+      planWindows.push({part:c.spec.part,from:dayKey(c.from),to:dayKey(c.to)}); }
   return {closed, days:processDays(closed,journal,{violIds:viol,dayOf:dayKey,excM:_excM,dllLimit:R.dailyLossLimit,
-    rulesActive,rulesFrom,planFrom:{plan:since('plan'),planned:since('planned')}})};
+    rulesActive,rulesFrom,planFrom:{plan:since('plan'),planned:since('planned')},planWindows})};
 }
 
 // ---- Review UI: journal inbox, process ----
 let _inboxSkip=new Set();
 function inboxSectionHtml(){
+  if(!coachOn())return '';
   const inbox=journalInbox(allTrades.filter(viewFilter),journal).filter(t=>!_inboxSkip.has(t.id));
   const st=journalStreak(allTrades.filter(viewFilter),journal,dayKey,dayKey(Date.now()));
   const streakTxt=`<span class="sr-note" data-tip="Consecutive trading days on which every closed trade has a setup, tag, rating, note or mistake flag. Today only counts once it's complete — it never breaks the streak while you're still trading.">streak ${st.current} day${st.current===1?'':'s'} · best ${st.best}</span>`;
@@ -7372,7 +7443,7 @@ function inboxSectionHtml(){
   return `<div class="diag-section"><h2>Journal inbox <span style="font-size:11px;color:var(--faint);font-weight:400">${inbox.length} trade${inbox.length===1?'':'s'} waiting · last 30 days</span> ${streakTxt}</h2>
     <div class="diag-card" id="inboxCard" data-id="${esc(t.id)}" data-draft-scope="${esc(t.id)}">
       <p class="lead" style="margin:0 0 10px"><b>${esc(dispMarket(dcoin(t)))}</b> ${t.dir} · <span class="${cls(t.net)}">${fmtUsd(t.net)}</span> · closed ${fmtDate(t.closeTime)} · held ${fmtDur(t.durationMs)}</p>
-      <div class="field"><label class="coach-q" for="ibNote">${esc(tradeQuestion(t,journal[t.id],_excM[t.id]).q)}</label><input type="text" id="ibNote" maxlength="400" placeholder="one honest line is enough"></div>
+      <div class="field">${coachOn()?`<label class="coach-q" for="ibNote">${esc(tradeQuestion(t,journal[t.id],_excM[t.id]).q)}</label>`:'<label for="ibNote">Note</label>'}<input type="text" id="ibNote" maxlength="400" placeholder="one honest line is enough"></div>
       <div class="field"><label>Setup</label><input type="text" id="ibSetup" list="ibSetups" placeholder="what was this trade?"><datalist id="ibSetups">${setups.map(x=>`<option value="${esc(x)}">`).join('')}</datalist></div>
       <div class="field"><label>Execution — keys 1–5</label><div class="rating" id="ibRating" role="radiogroup" aria-label="Execution rating">${[1,2,3,4,5].map(n=>`<span class="star" data-r="${n}" role="radio" tabindex="0" aria-label="${n} star${n>1?'s':''}" aria-checked="false">★</span>`).join('')}</div></div>
       <div class="field"><label>Mistakes</label><div class="mistakes" id="ibMistakes">${MISTAKES.map(m=>`<label class="chk"><input type="checkbox" data-m="${esc(m)}">${m}</label>`).join('')}</div></div>
@@ -7391,7 +7462,7 @@ function wireInbox(){
     const mistakes=[...card.querySelectorAll('#ibMistakes input:checked')].map(c=>c.dataset.m);
     if(!setup&&!rating&&!mistakes.length&&!note){ $('ibSetup').focus(); return; }
     const j=ensureJ(id); if(setup)j.setup=setup; if(rating)j.rating=rating;
-    if(note){ const q=tradeQuestion(allTrades.find(x=>x.id===id)||{},j,_excM[id]).q; j.notes=(j.notes?j.notes+'\n\n':'')+q+'\n'+note; }
+    if(note){ const q=coachOn()?tradeQuestion(allTrades.find(x=>x.id===id)||{},j,_excM[id]).q+'\n':''; j.notes=(j.notes?j.notes+'\n\n':'')+q+note; }
     if(mistakes.length)j.mistakes=[...new Set([...(j.mistakes||[]),...mistakes])];
     markJEdit(id); Store.set(J_KEY,journal); renderReview();
     const next=$('ibSetup'); if(next)next.focus();
@@ -7404,6 +7475,7 @@ function wireInbox(){
   };
 }
 function processSectionHtml(){
+  if(!coachOn())return '';
   const {days}=coachContext();
   if(days.length<3)return '';
   const tr=processTrend(days,20);
@@ -7436,6 +7508,7 @@ function processSectionHtml(){
 
 // ---- Diagnostic: rules made from findings ----
 function customRulesHtml(closed){
+  if(!coachOn())return '';
   const rules=customRules();
   const hint='<p class="mini-note" style="margin-top:8px">Make a rule from any leak in the <b>Pattern miner</b> (“+ rule”) or from a <b>What if I stopped doing X</b> replay.</p>';
   if(!rules.length)return hint;
@@ -7729,7 +7802,7 @@ const TONE_TAG={leak:'Leak',edge:'Edge',caution:'Watch',info:'Note',win:'Good'};
 function findingCardHtml(f, i){
   const habit=f.habit?resolveHabitSpec(f.habit):null;
   const adopted=habitAdopted(habit);
-  const btn=!habit?'':adopted?'<span class="fnd-adopted">✓ in your habits</span>'
+  const btn=!habit||!coachOn()?'':adopted?'<span class="fnd-adopted">✓ in your habits</span>'
     :`<button class="btn ghost fnd-adopt" data-fi="${i}" data-tip="${esc(habitSentence(habit))} — adds it to Review → Habits, tracked day by day.">Adopt as habit</button>`;
   return `<article class="fnd ${f.tone}">
     <div class="fnd-top"><span class="fnd-tag">${TONE_TAG[f.tone]||'Note'}</span><span class="fnd-conf" data-tip="${esc(confWords(f.conf))}: how sure the numbers are. Based on ${esc(sampleWords(f.n))}.">${esc(confWords(f.conf))}</span></div>
@@ -7795,7 +7868,8 @@ function coachWins(ctx, week){
   const days=toKey?ctx.days.filter(d=>d.key<toKey):ctx.days, today=toKey||dayKey(Date.now());
   const label=cur?'this week':'that week';
   const tr=processTrend(days,20);
-  if(tr.streak>=3)W.push(`${tr.streak} good-process days in a row`);
+  let sk=tr.streak; if(cur){ try{ sk=gameContext().streak.current; }catch(e){} }
+  if(sk>=3)W.push(`${sk} good-process days in a row`);
   const js=journalStreak(cur?ctx.trades:ctx.trades.filter(t=>t.closeTime<week.to),journal,dayKey,today);
   if(js.current>=3)W.push(`Every trade journaled ${js.current} trading days running`);
   const wkFrom=dayKey(wFrom);
@@ -7857,7 +7931,7 @@ function coachLesson(focusH){
 }
 function renderCoach(){
   const el=$('coach'); if(!el)return;
-  if(!allTrades.length){ el.innerHTML=''; el.classList.add('hide'); return; }
+  if(!allTrades.length||!coachOn()){ el.innerHTML=''; el.classList.add('hide'); return; }
   let ctx; try{ ctx=coachContext(); }catch(e){ console.warn('coach failed',e); el.classList.add('hide'); return; }
   const rows=[];
   const ls=lastSessionLine(ctx); if(ls)rows.push({k:'Last session',v:ls});
@@ -7877,14 +7951,24 @@ function renderCoach(){
   if(fh){ const p=habitProgress(fh,ctx,lastCompletedWeekRange().to);
     rows.push({k:'This week',v:`<span class="coach-habit">${esc(habitSentence(fh))}</span> ${p.total?`${dotsHtml(p.res)} <span class="mut">kept ${p.kept} of ${p.total} trading day${p.total===1?'':'s'}</span>`:'<span class="mut">no trading days yet this week</span>'}`}); }
   else rows.push({k:'This week',v:'<span class="mut">No focus habit yet. One habit a week beats ten resolutions.</span>',act:'<button class="btn ghost coach-go" data-go="habits">Pick one →</button>'});
+  let g=null; try{ g=gameContext(); }catch(e){ console.warn('progress failed',e); }
+  if(g&&g.current){ const c=g.current, kept=c.res.filter(r=>r.kept).length;
+    rows.push({k:'Challenge',v:`<span class="coach-habit">${esc(habitSentence(c.ch.spec))}</span> ${c.res.length?`${dotsHtml(c.res)} <span class="mut">${kept} of ${c.res.length} day${c.res.length===1?'':'s'} \u00b7 +150 XP if it holds all week</span>`:'<span class="mut">starts with your next trading day \u00b7 +150 XP</span>'}`}); }
   const les=coachLesson(fh); if(les)rows.push({k:'Remember',v:`“${esc(les.t)}” <span class="mut">— your lesson, ${esc(les.k.slice(5))}</span>`});
-  const wins=coachWins(ctx);
+  const gw=g?gameWins(g):[];
+  // a new streak personal best already says "N days in a row" — don't say it twice
+  const cw=coachWins(ctx).filter(w=>!(gw.some(x=>/discipline streak/.test(x))&&/good-process days in a row/.test(w)));
+  const wins=[...new Set([...gw,...cw])].slice(0,4);
   const dt=tzParts(Date.now());
+  ensureWeekChallenge(ctx).then(made=>{ if(made){ renderCoach(); if(activeTab==='review')renderReview(); } }).catch(()=>{});
   el.classList.remove('hide');
-  el.innerHTML=`<div class="coach-head"><h3>Coach</h3><span class="hint">${DOWN[dt.dow]}, ${MONTHS[dt.mo]} ${dt.day} · from your own trades and journal</span></div>
+  el.innerHTML=`<div class="coach-head"><h3>Coach</h3><span class="hint">${DOWN[dt.dow]}, ${MONTHS[dt.mo]} ${dt.day} · from your own trades and journal</span>${g?`<button type="button" class="lvl-chip" id="coachLvl" data-tip="${esc(g.level.into+' / '+g.level.need+' XP to the next level \u00b7 discipline streak '+g.streak.current+' days, '+g.streak.shields+' shield'+(g.streak.shields===1?'':'s')+'. Open Review \u2192 Progress.')}">Lv ${g.level.level} \u00b7 ${esc(g.level.title)} ${shieldsHtml(g.streak.shields)}</button>`:''}<button type="button" class="coach-hide" id="coachHide" data-tip="Turns coach mode off: hides the coach card, habits, wins, process score and trade questions. Switch it back on in the settings panel (⚙ next to the clock toggle).">hide coach</button></div>
     ${rows.map(r=>`<div class="coach-row"><div class="coach-k">${r.k}</div><div class="coach-v">${r.v}</div><div class="coach-a">${r.act||''}</div></div>`).join('')}
     ${wins.length?`<div class="wins">${wins.map(w=>`<span class="win-chip">${esc(w)}</span>`).join('')}</div>`:''}`;
   el.querySelectorAll('.coach-go').forEach(b=>b.onclick=()=>coachGo(b.dataset.go));
+  const lv=$('coachLvl'); if(lv)lv.onclick=()=>coachGo('progress');
+  const hb=$('coachHide'); if(hb)hb.onclick=async()=>{ await setCoachMode(false);
+    setStatus('Coach mode is off \u2014 turn it back on in the settings panel (\u2699) under Coach mode.'); };
   const ad=el.querySelector('.coach-adopt');
   if(ad)ad.onclick=async()=>{ const top=ctx.findings.find(f=>f.tone==='leak'||f.tone==='caution'); const spec=top&&resolveHabitSpec(top.habit); if(!spec)return;
     ad.disabled=true; await adoptHabit(spec); renderCoach(); };
@@ -7892,12 +7976,13 @@ function renderCoach(){
 function coachGo(where){
   if(where==='plan'){ _dayJEditKey=null; _dayJEditSetOn=null; } // a calendar click earlier must not redirect today's plan
   activateTab(document.querySelector('#topnav button[data-tab="review"]'));
-  setTimeout(()=>{ const target=where==='plan'?$('djBias'):where==='inbox'?$('ibNote')||$('ibSetup'):$('habitsSec');
+  setTimeout(()=>{ const target=where==='plan'?$('djBias'):where==='inbox'?$('ibNote')||$('ibSetup'):where==='progress'?$('progressSec'):$('habitsSec');
     if(target){ target.scrollIntoView({behavior:'smooth',block:'center'}); if(target.focus)try{ target.focus({preventScroll:true}); }catch(e){} } },80);
 }
 
 // ---- Review: habits + weekly focus ----
 function habitsSectionHtml(){
+  if(!coachOn())return '';
   let ctx; try{ ctx=coachContext(); }catch(e){ return ''; }
   const list=habitsList(); const fid=weekFocus();
   const wins=coachWins(ctx);
@@ -7974,12 +8059,15 @@ function coachLetterFacts(){
     journaled:{n:inWk.filter(t=>isJournaled(journal[t.id])).length,of:inWk.length},
     findings:ctx.findings.filter(f=>f.tone!=='info').slice(0,3).map(f=>({title:f.title,action:f.action,confidence:confWords(f.conf)})),
     wins:coachWins(ctx,{from,to}), lessons,
+    ...(()=>{ try{ const g=gameContext(); const c=g.challenges.find(x=>x.week===wkKey.slice(5));
+      return {level:g.level.level+' '+g.level.title, streak:g.streak.current,
+        challenge:c?{habit:habitSentence(c.ch.spec),kept:c.res.filter(r=>r.kept).length,total:c.res.length}:null}; }catch(e){ return {}; } })(),
   };
 }
 let _coachStatus=null, _letterCache={wk:null,letter:null};
 async function loadCoachLetter(force){
   const box=$('coachLetter'); if(!box)return;
-  if(!SRV.enabled){ box.innerHTML=''; return; }
+  if(!SRV.enabled||!coachOn()){ box.innerHTML=''; return; }
   let st=_coachStatus;
   if(!st){ try{ const r=await srvFetch('/api/coach/status'); if(r.ok)st=_coachStatus=await r.json(); }catch(e){} } // failures (401 before the token, network) are retried next time
   st=st||{enabled:false};
@@ -8010,6 +8098,386 @@ async function loadCoachLetter(force){
       loadCoachLetter(true);
     }catch(e){ go.disabled=false; go.textContent='Try again'; setErr('Coach letter: '+e.message); }
   };
+}
+
+/* ======================= 10 · PROGRESS: XP, levels, streaks, achievements, challenges ======================= */
+// A game layer over the same process days, journal and trades the coach reads. Everything is
+// derived — only the week's challenge is stored — so it syncs for free and can't drift.
+// Points reward PROCESS, never profit or activity: XP is earned per trading day (a day's process
+// score, 0–100), so one well-run trade earns as much as ten; nothing here scores PnL.
+
+const LEVELS=['Rookie','Apprentice','Journeyman','Disciplined','Consistent','Professional','Veteran','Master','Grandmaster','Legend'];
+// Level n starts at 200·n·(n−1) XP: 0, 400, 1200, 2400, 4000, 6000 … — a full-effort trading day
+// is 100 XP, so early levels take a week or two and the later ones take months of consistency.
+function levelFor(xp){
+  let n=1; while(200*(n+1)*n<=xp)n++;
+  const start=200*n*(n-1), next=200*(n+1)*n;
+  return {level:n, title:LEVELS[Math.min(n,LEVELS.length)-1], xp, into:xp-start, need:next-start, next};
+}
+// ISO week ('GGGG-Www') of a 'YYYY-MM-DD' calendar key — pure, no clock or tz involved.
+function isoWeekOfKey(k){
+  const d=new Date(k+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7)+3);
+  const ft=new Date(Date.UTC(d.getUTCFullYear(),0,4)); ft.setUTCDate(ft.getUTCDate()-((ft.getUTCDay()+6)%7)+3);
+  return d.getUTCFullYear()+'-W'+String(1+Math.round((d-ft)/(7*86400000))).padStart(2,'0');
+}
+// Good-process streak that forgives. Days without trades never count either way; a finished
+// perfect week (every trading day 70+, at least 3 of them) earns a shield (max 2) that absorbs
+// one missed day instead of resetting the streak. The current week earns only once it's over.
+function disciplineStreak(days, nowWeek){
+  let cur=0, best=0, shields=0, wk=null, wkDays=[];
+  const shielded=[], perfectWeeks=[];
+  const closeWeek=()=>{ if(wk&&wkDays.length>=3&&wkDays.every(d=>d.score>=70)){ perfectWeeks.push({week:wk,key:wkDays[wkDays.length-1].key}); shields=Math.min(2,shields+1); } };
+  for(const d of days){
+    const w=isoWeekOfKey(d.key);
+    if(w!==wk){ closeWeek(); wk=w; wkDays=[]; }
+    wkDays.push(d);
+    if(d.score>=70)cur++;
+    else if(shields>0&&cur>0){ shields--; shielded.push(d.key); }
+    else cur=0;
+    if(cur>best)best=cur;
+  }
+  if(wk&&wk!==nowWeek)closeWeek();
+  return {current:cur, best, shields, shielded, perfectWeeks};
+}
+function xpLedger(days, bonuses){
+  const byDay={}; let total=0;
+  for(const d of days){ byDay[d.key]=(byDay[d.key]||0)+d.score; total+=d.score; }
+  for(const b of (bonuses||[])){ byDay[b.key]=(byDay[b.key]||0)+b.xp; total+=b.xp; }
+  return {total, byDay};
+}
+// The n-th time a condition held, in date order: its day key (null if it never got there).
+function nthKey(keys, n){ const k=[...keys].sort(); return k.length>=n?k[n-1]:null; }
+// Achievements for moments that are hard in real trading. g = the assembled game inputs.
+function gameAchievements(g){
+  const A=[];
+  const add=(id,title,desc,glyph,n,of,at)=>A.push({id,title,desc,glyph,n:Math.min(n,of),of,at:n>=of?at:null});
+  const closeKey=new Map(g.closed.map(t=>[t.id,g.dayOf(t.closeTime)]));
+  const liveKeys=g.pa.items.filter(x=>x.live===true).map(x=>closeKey.get(x.id)).filter(Boolean);
+  add('first-live','First live plan','Write a trade’s stop while the position is still open.','▲',liveKeys.length,1,nthKey(liveKeys,1));
+  const planKeys=g.days.filter(d=>d.parts.plan===1).map(d=>d.key);
+  add('plan-10','Plan before the bell','File the day’s plan before the first entry on 10 trading days.','▤',planKeys.length,10,nthKey(planKeys,10));
+  const walked=g.days.filter(d=>d.breached&&d.parts.limit===1).map(d=>d.key);
+  add('walked-away','Walked away at the limit','Hit your daily loss limit and open nothing else that day.','⏹',walked.length,1,nthKey(walked,1));
+  const sat=[];
+  for(const k in g.byDay){ const a=[...g.byDay[k]].sort((x,y)=>x.closeTime-y.closeTime);
+    for(let i=1;i<a.length;i++) if(isLoss(a[i-1].net)&&isLoss(a[i].net)&&!a.some(t=>t.openTime>a[i].closeTime)){ sat.push(k); break; } }
+  add('sat-out','Sat out after two losses','Two losses in a row, then no new trades that day.','⏸',sat.length,1,nthKey(sat,1));
+  const goodLoss=g.days.filter(d=>d.score>=70&&d.net<0).map(d=>d.key);
+  add('good-losses','Ten good losses','Ten red days where you still followed your process.','◆',goodLoss.length,10,nthKey(goodLoss,10));
+  // stops honored in a row, in close order
+  const closeT=new Map(g.closed.map(t=>[t.id,t.closeTime]));
+  const planned=g.pa.items.map(x=>({x,k:closeKey.get(x.id),t:closeT.get(x.id)||0})).sort((a,b)=>a.t-b.t);
+  let run=0, bestRun=0, runAt=null;
+  for(const p of planned){ run=p.x.stopHonored?run+1:0; if(run>bestRun){ bestRun=run; if(run===20)runAt=p.k; } }
+  add('stops-20','Twenty stops honored','Honor 20 planned stops in a row.','■',bestRun,20,runAt);
+  A.stopsBest=bestRun; // gameContext reuses this run instead of recomputing it
+  add('journal-30','Thirty-day journal','Journal every trade for 30 trading days in a row.','✎',g.journalRun.best,30,g.journalRun.at30);
+  const jKeys=g.closed.filter(t=>isJournaled(g.J[t.id])).sort((a,b)=>a.closeTime-b.closeTime).map(t=>g.dayOf(t.closeTime));
+  add('journal-100','A hundred entries','Journal 100 closed trades.','≡',jKeys.length,100,jKeys.length>=100?jKeys[99]:null);
+  const ckKeys=g.days.filter(d=>{ const e=g.J['day:'+d.key]; return !!(e&&(e.sleep||e.stress||e.focus)); }).map(d=>d.key);
+  add('checkin-20','Know thyself','Log the session check-in on 20 trading days.','◎',ckKeys.length,20,nthKey(ckKeys,20));
+  add('perfect-week','Perfect week','Every trading day of a week at process 70+ (at least three days).','★',g.streak.perfectWeeks.length,1,g.streak.perfectWeeks.length?g.streak.perfectWeeks[0].key:null);
+  add('kept-month','Kept it for a month','A rule with no breaks for 30 days, or a habit kept 20 trading days in a row.','✓',g.keptMonth.length?1:0,1,nthKey(g.keptMonth,1));
+  const doneCh=g.challenges.filter(c=>c.status==='done').map(c=>c.key);
+  add('challenge-1','Challenge accepted','Complete a weekly challenge.','⚑',doneCh.length,1,nthKey(doneCh,1));
+  add('challenge-5','Five for five','Complete five weekly challenges.','⚐',doneCh.length,5,nthKey(doneCh,5));
+  return A;
+}
+// "Keeping your rules has saved an estimated $X": for each rule/avoid-habit, the trades you'd
+// have taken at the old rate, minus the ones you actually took, times what they averaged before.
+// Only counted when the condition lost money before and you now break it less.
+function disciplineSaved(closed, items){
+  const out=[]; let total=0;
+  for(const it of (items||[])){ if(!it.pred)continue;
+    const ft=ruleFollowThrough(closed,it.pred,it.createdAt);
+    const b=ft.before, a=ft.after;
+    if(b.v<5||!(b.net<0)||a.n<5||a.rate==null||b.rate==null||!(a.rate<b.rate))continue;
+    const avoided=(b.rate-a.rate)*a.n, saved=avoided*(-b.net/b.v);
+    out.push({name:it.name, avoided, saved}); total+=saved; }
+  return {total, items:out.sort((x,y)=>y.saved-x.saved)};
+}
+function personalBests(days, streak, stopsBest, journalBest, nowWeek){
+  const byWk={}; for(const d of days){ const w=isoWeekOfKey(d.key); (byWk[w]=byWk[w]||[]).push(d.score); }
+  let best=null, bestWk=null;
+  for(const w in byWk){ if(w===nowWeek||byWk[w].length<3)continue; const v=_avg(byWk[w]); if(best==null||v>best){ best=v; bestWk=w; } }
+  const cur=byWk[nowWeek]&&byWk[nowWeek].length>=3?_avg(byWk[nowWeek]):null;
+  return [
+    {id:'week',label:'Best process week',value:best!=null?Math.round(best):null,when:bestWk,current:cur!=null?Math.round(cur):null,isNew:cur!=null&&best!=null&&cur>best},
+    {id:'streak',label:'Longest discipline streak',value:streak.best,unit:'days',current:streak.current,isNew:streak.current>0&&streak.current>=streak.best&&streak.best>=5},
+    {id:'stops',label:'Stops honored in a row',value:stopsBest,unit:'trades'},
+    {id:'journal',label:'Longest journaling run',value:journalBest,unit:'days'},
+  ];
+}
+const GRADE=v=>v==null?null:v>=0.9?'A':v>=0.75?'B':v>=0.6?'C':v>=0.4?'D':'F';
+const PART_NAME={plan:'Plan before the first entry',rules:'Rules kept',planned:'Stops written live',stops:'Stops honored',limit:'Loss limit respected',journal:'Trades journaled'};
+// One month's process report card: an overall grade, a grade per habit, and the change vs the
+// previous month that had trading days. No dollar amounts, by design — it's made to be shared.
+function monthlyReport(days, month){
+  const inM=m=>days.filter(d=>d.key.slice(0,7)===m);
+  const cur=inM(month); if(!cur.length)return null;
+  const months=[...new Set(days.map(d=>d.key.slice(0,7)))].sort();
+  const pm=months.filter(m=>m<month).pop(), prev=pm?inM(pm):[];
+  const partAvg=(arr,p)=>{ const v=arr.map(d=>d.parts[p]).filter(x=>x!=null); return v.length?_avg(v):null; };
+  const parts=Object.keys(PROCESS_W).map(p=>{ const v=partAvg(cur,p), pv=partAvg(prev,p);
+    return {part:p, name:PART_NAME[p], value:v, grade:GRADE(v), delta:v!=null&&pv!=null?v-pv:null}; }).filter(x=>x.value!=null);
+  const avg=_avg(cur.map(d=>d.score)), pavg=prev.length?_avg(prev.map(d=>d.score)):null;
+  return {month, prevMonth:pm||null, days:cur.length, good:cur.filter(d=>d.score>=70).length, avg, grade:GRADE(avg/100),
+    delta:pavg!=null?avg-pavg:null, parts};
+}
+
+// ---- weekly challenge: one concrete target a week, drawn from your biggest leak ----
+const CHALLENGE_DEFAULTS=['journal-all','plan-first','stop-live','honor-stop','cool-off'];
+// what a challenge actually tests — two specs with the same key are the same challenge
+function specKey(sp){ return !sp?'':sp.kind==='avoid'?'pid:'+sp.pid:sp.kind==='process'?'part:'+sp.part:sp.kind==='cap'?'cap:'+(sp.cap||3):'tpl:'+sp.tpl; }
+function challengeCandidates(findings){
+  const out=[], seen=new Set();
+  const push=spec=>{ if(!spec)return; const id=specKey(spec); if(seen.has(id))return; seen.add(id); out.push(spec); };
+  for(const f of (findings||[])) if((f.tone==='leak'||f.tone==='caution')&&f.habit)push(resolveHabitSpec(f.habit));
+  for(const tpl of CHALLENGE_DEFAULTS)push(HABIT_LIBRARY.find(h=>h.tpl===tpl));
+  return out;
+}
+function weekChallenge(ms){ const e=journal[isoWeekKey(ms||Date.now())]; return e&&e.challenge&&e.challenge.spec?e.challenge:null; }
+async function setWeekChallenge(spec, idx, auto){
+  const now=Date.now(), k=isoWeekKey(now), from=lastCompletedWeekRange(now).to;
+  let params=spec.params&&Object.keys(spec.params).length?spec.params:null;
+  if(spec.pid&&!params){ try{ const chron=allTrades.filter(t=>!t.isOpen&&t.closeTime&&viewFilter(t)).sort((a,b)=>a.closeTime-b.closeTime);
+    params=minerFams(chron,tradeStates(chron)).__params||null; }catch(e){} }
+  const e={...(journal[k]||{})};
+  e.challenge={spec:{kind:spec.kind,tpl:spec.tpl||null,pid:spec.pid||null,part:spec.part||null,cap:spec.cap||null,params:params||{},when:spec.when,then:spec.then},
+    idx:idx||0, from, to:addDays(from,7), createdAt:now}; // addDays: a DST week is 167 or 169 hours
+  e.updatedAt=now; journal[k]=e;
+  // auto picks aren't marked dirty, so the 409 merge keeps the server's version of the week
+  // (a challenge the user picked on another device) instead of this device's automatic one
+  if(!auto)markJEdit(k); else _jrev++;
+  await Store.set(J_KEY,journal);
+}
+// Picks this week's challenge once (first time the coach runs in a new week). Idempotent.
+async function ensureWeekChallenge(ctx){
+  if(!coachOn()||weekChallenge()||ctx.closed.length<5)return false;
+  const c=challengeCandidates(ctx.findings); if(!c.length)return false;
+  const last=weekChallenge(Date.now()-7*86400000), lastId=last&&specKey(last.spec);
+  let i=c.findIndex(x=>specKey(x)!==lastId); if(i<0)i=0; // variety: not last week's again
+  await setWeekChallenge(c[i],i,true); return true;
+}
+function challengeResults(ch, ctx, pred){
+  const fromKey=dayKey(ch.from), toKey=dayKey(ch.to);
+  return habitDayResults(ch.spec,ctx.days,ctx.byDay,pred,fromKey,journal).filter(r=>r.key<toKey);
+}
+function challengeStatus(res, ended){
+  const kept=res.filter(r=>r.kept).length, missed=res.length-kept;
+  if(!ended)return missed?'missed':'on track';
+  return res.length>=2&&!missed?'done':res.length<2?'too few days':'missed';
+}
+
+// ---- everything the progress panel needs, memoized with the coach context ----
+let _gameMemo={key:null,g:null};
+function gameContext(){
+  const ctx=coachContext();
+  const key=_coachMemo.key+'|'+_jrev;
+  if(_gameMemo.key===key)return _gameMemo.g;
+  const now=Date.now(), nowWeek=isoWeekOfKey(dayKey(now));
+  const streak=disciplineStreak(ctx.days,nowWeek);
+  const pa=planAdherence(ctx.closed,journal,_excM);
+  // journaling runs over trading days (for the 30-day achievement and personal bests)
+  let jr=0, jBest=0, at30=null;
+  for(const k of Object.keys(ctx.byDay).sort()){ const full=ctx.byDay[k].every(t=>isJournaled(journal[t.id]));
+    jr=full?jr+1:0; if(jr>jBest)jBest=jr; if(jr===30&&!at30)at30=k; }
+  // challenges: every stored week with one, graded; predicates for 'avoid' kinds
+  const challenges=[];
+  const predFor=spec=>{ if(spec.kind!=='avoid'||!spec.pid)return null;
+    try{ const P=customRulePreds(ctx.trades,[{pid:spec.pid,name:'',params:spec.params||{},createdAt:0}]); return P[0]&&P[0].pred; }catch(e){ return null; } };
+  for(const k of Object.keys(journal).filter(k=>k.startsWith('week:')&&journal[k]&&journal[k].challenge).sort()){
+    const ch=journal[k].challenge; if(!ch||!ch.spec)continue;
+    const res=challengeResults(ch,ctx,predFor(ch.spec)); const ended=now>=ch.to;
+    challenges.push({key:dayKey(Math.min(ch.to-1,now)),week:k.slice(5),ch,res,status:challengeStatus(res,ended),ended}); }
+  // kept for a month: rules with 30 clean days, or habits kept 20 trading days running
+  const keptMonth=[];
+  for(const x of (ctx.rulePreds||[])){ const r=x.rule; if(!x.pred||!(r.createdAt<=now-30*86400000))continue;
+    const after=ctx.closed.filter(t=>t.openTime>=r.createdAt);
+    if(after.length>=10&&!after.some(x.pred))keptMonth.push(dayKey(r.createdAt+30*86400000)); }
+  for(const h of habitsList()){ const res=habitProgress(h,ctx).res; let run=0;
+    for(const r of res){ run=r.kept?run+1:0; if(run===20){ keptMonth.push(r.key); break; } } }
+  const J=journal;
+  const achievements=gameAchievements({days:ctx.days,closed:ctx.closed,byDay:ctx.byDay,J,pa,dayOf:dayKey,
+    journalRun:{best:jBest,at30},streak,keptMonth,challenges});
+  // XP: the day's process score, plus bonuses for achievements, challenges and focus-habit days
+  const bonuses=[];
+  for(const a of achievements) if(a.at)bonuses.push({key:a.at,xp:50,why:a.title});
+  for(const c of challenges) if(c.status==='done')bonuses.push({key:c.key,xp:150,why:'challenge'});
+  for(const k of Object.keys(journal).filter(k=>k.startsWith('week:')&&journal[k]&&journal[k].focus)){
+    const h=habitById(journal[k].focus); if(!h)continue;
+    for(const r of habitProgress(h,ctx).res) if(r.kept&&isoWeekOfKey(r.key)===k.slice(5))bonuses.push({key:r.key,xp:25,why:'focus habit'}); }
+  const led=xpLedger(ctx.days,bonuses), lv=levelFor(led.total);
+  const wkFrom=dayKey(lastCompletedWeekRange(now).to);
+  const weekXp=Object.keys(led.byDay).filter(k=>k>=wkFrom).reduce((s,k)=>s+led.byDay[k],0);
+  const stopsBest=achievements.stopsBest||0;
+  const pbs=personalBests(ctx.days,streak,stopsBest,jBest,nowWeek);
+  const savedItems=[...(ctx.rulePreds||[]).map(x=>({name:x.rule.name.replace(/^Avoid: /,''),pred:x.pred,createdAt:x.rule.createdAt})),
+    ...habitsList().filter(h=>h.kind==='avoid').map(h=>({name:habitSentence(h),pred:ctx.preds[h.id],createdAt:h.createdAt}))];
+  const seenPid=new Set(), uniq=[];
+  const pidOf=[...(ctx.rulePreds||[]).map(x=>x.rule.pid),...habitsList().filter(h=>h.kind==='avoid').map(h=>h.pid)];
+  savedItems.forEach((it,i)=>{ const p=pidOf[i]; if(p&&seenPid.has(p))return; if(p)seenPid.add(p); uniq.push(it); });
+  const saved=disciplineSaved(ctx.closed,uniq);
+  const cur=challenges.find(c=>!c.ended&&c.week===isoWeekKey(now).slice(5))||null;
+  const g={ctx,streak,level:lv,xp:led,weekXp,achievements,challenges,current:cur,pbs,saved,stopsBest,journalBest:jBest,nowWeek};
+  _gameMemo={key,g}; return g;
+}
+// New since the start of this week — feeds the coach's wins row.
+function gameWins(g){
+  const W=[], wkFrom=dayKey(lastCompletedWeekRange().to);
+  for(const a of g.achievements) if(a.at&&a.at>=wkFrom)W.push(`Achievement unlocked: ${a.title}`);
+  for(const p of g.pbs) if(p.isNew)W.push(`New personal best: ${p.label.toLowerCase()}${p.current!=null?' ('+p.current+(p.unit?' '+p.unit:'')+')':''}`);
+  const prev=levelFor(g.xp.total-g.weekXp);
+  if(g.level.level>prev.level)W.push(`Level up: ${g.level.title} (level ${g.level.level})`);
+  return W;
+}
+
+// ---- Review: the progress panel ----
+function shieldsHtml(n){ return `<span class="shields" aria-label="${n} streak shield${n===1?'':'s'}">${[0,1].map(i=>`<i class="${i<n?'on':''}"></i>`).join('')}</span>`; }
+function progressSectionHtml(){
+  if(!coachOn())return '';
+  let g; try{ g=gameContext(); }catch(e){ console.warn('progress failed',e); return ''; }
+  if(!g.ctx.days.length)return '';
+  const L=g.level, pct=Math.round(100*L.into/L.need);
+  const ch=g.current;
+  let chHtml;
+  if(ch){ const kept=ch.res.filter(r=>r.kept).length;
+    chHtml=`<div class="gm-big">${esc(habitSentence(ch.ch.spec))}</div>
+      <div class="gm-sub">${ch.res.length?`${dotsHtml(ch.res)} ${kept} of ${ch.res.length} trading day${ch.res.length===1?'':'s'} so far`:'Starts with your next trading day.'}
+      ${ch.status==='missed'?' · <span class="neg-t">missed once — the rest of the week still counts for XP</span>':''}</div>
+      <div class="gm-foot"><span class="mini-note" style="margin:0">+150 XP if every trading day this week keeps it</span><button class="btn ghost" id="chSwap">Pick another</button></div>`; }
+  else chHtml=`<div class="gm-sub">A challenge is picked from your biggest leak once you have a few trades.</div>`;
+  const past=g.challenges.filter(c=>c.ended).slice(-6).reverse();
+  const unlocked=g.achievements.filter(a=>a.at).length;
+  const ach=g.achievements.map(a=>`<div class="ach${a.at?' on':''}" data-tip="${esc(a.desc)}${a.at?' · unlocked '+esc(dayLabel(a.at)):' · '+a.n+' of '+a.of}"><span class="ach-g" aria-hidden="true">${a.glyph}</span><span class="ach-t">${esc(a.title)}</span><span class="ach-p">${a.at?esc(dayLabel(a.at)):a.of>1?a.n+'/'+a.of:'locked'}</span>${!a.at&&a.of>1?`<span class="ach-bar"><i style="width:${Math.round(100*a.n/a.of)}%"></i></span>`:''}</div>`).join('');
+  const pb=g.pbs.map(p=>`<div class="metric-row"><span class="ml">${esc(p.label)}${p.isNew?' <span class="badge ok">new best</span>':''}</span><span class="mv">${p.value!=null?p.value+(p.unit?' '+p.unit:''):'—'}${p.when?` <span style="color:var(--faint);font-weight:400">${esc(p.when)}</span>`:''}${p.current!=null&&p.id==='week'?` <span style="color:var(--faint);font-weight:400">· this week ${p.current}</span>`:''}</span></div>`).join('');
+  const sv=g.saved.total>0?`<div class="metric-row" data-tip="For each rule or avoid-habit: trades you'd have taken at your old rate minus the ones you took, times what those trades averaged before. An estimate from your own past trades, not a promise."><span class="ml">Discipline saved you (est.)</span><span class="mv pos-t">${usdPlain(g.saved.total)}</span></div>${g.saved.items.slice(0,3).map(x=>`<div class="metric-row"><span class="ml" style="padding-left:10px">${esc(x.name)}</span><span class="mv" style="font-weight:400">${usdPlain(x.saved)} · ~${Math.round(x.avoided)} fewer trades</span></div>`).join('')}`
+    :`<div class="metric-row"><span class="ml">Discipline saved you (est.)</span><span class="mv" style="font-weight:400;color:var(--faint)">appears once a rule or avoid-habit has a track record</span></div>`;
+  return `<div class="diag-section" id="progressSec"><h2>Progress <span style="font-size:11px;color:var(--faint);font-weight:400">earned by process, never by profit or trade count</span></h2>
+    <div class="gm-grid">
+      <div class="diag-card gm"><h3 data-tip="XP per trading day = that day's process score (0–100), however many trades you took. Bonuses: +25 for each day your focus habit holds, +150 per completed weekly challenge, +50 per achievement.">Level</h3>
+        <div class="gm-big">${L.level} · ${esc(L.title)}</div>
+        <div class="xpbar" role="progressbar" aria-valuemin="0" aria-valuemax="${L.need}" aria-valuenow="${L.into}"><i style="width:${pct}%"></i></div>
+        <div class="gm-sub">${L.into.toLocaleString()} / ${L.need.toLocaleString()} XP to ${esc(LEVELS[Math.min(L.level,LEVELS.length-1)])} · +${g.weekXp.toLocaleString()} this week</div></div>
+      <div class="diag-card gm"><h3 data-tip="Consecutive trading days with process 70+. Days you don't trade never break it. A finished perfect week (every trading day 70+, at least three) earns a shield, max two; a shield absorbs one missed day instead of resetting the streak.">Discipline streak</h3>
+        <div class="gm-big">${g.streak.current} day${g.streak.current===1?'':'s'} ${shieldsHtml(g.streak.shields)}</div>
+        <div class="gm-sub">best ${g.streak.best} · ${g.streak.shields} shield${g.streak.shields===1?'':'s'}${g.streak.shielded.length?` · ${g.streak.shielded.length} miss${g.streak.shielded.length===1?'':'es'} absorbed so far`:''}</div></div>
+      <div class="diag-card gm"><h3 data-tip="One concrete target a week, picked from the biggest leak in your numbers (or a core habit when there isn't one). Kept on every trading day of the week = challenge done.">This week’s challenge</h3>${chHtml}</div>
+    </div>
+    <div class="diag-card" style="margin-top:14px"><h3>Achievements <span class="hint" style="font-family:var(--mono);text-transform:none;letter-spacing:0;color:var(--faint);font-weight:400">${unlocked} of ${g.achievements.length} unlocked</span></h3><div class="ach-grid">${ach}</div></div>
+    <div class="diag-grid" style="margin-top:14px">
+      <div class="diag-card"><h3>Personal bests</h3>${pb}${sv}</div>
+      <div class="diag-card"><h3>Past challenges</h3>${past.length?past.map(c=>`<div class="metric-row"><span class="ml">${esc(c.week)} · ${esc(habitSentence(c.ch.spec))}</span><span class="mv">${c.status==='done'?'<span class="badge ok">done</span>':c.status==='too few days'?'<span class="sr-note">too few days</span>':'<span class="badge no">missed</span>'}</span></div>`).join(''):'<p class="lead">Finished challenges land here.</p>'}
+        <div class="gm-actions"><button class="btn ghost" id="gmReport">Monthly report card</button><button class="btn ghost" id="gmShare">Share this week</button></div></div>
+    </div>
+    <div id="gmOut"></div>
+  </div>`;
+}
+function wireProgress(){
+  const sw=$('chSwap');
+  if(sw)sw.onclick=async()=>{ const g=gameContext(); const c=challengeCandidates(g.ctx.findings); const cur=weekChallenge();
+    if(!c.length)return; const curKey=cur&&specKey(cur.spec);
+    const start=Math.max(0,c.findIndex(x=>specKey(x)===curKey));
+    let i=(start+1)%c.length; for(let n=0;n<c.length&&specKey(c[i])===curKey;n++)i=(i+1)%c.length;
+    await setWeekChallenge(c[i],i); renderReview(); renderCoach(); };
+  const rp=$('gmReport'); if(rp)rp.onclick=()=>showReportCard();
+  const sh=$('gmShare'); if(sh)sh.onclick=()=>showShareCard();
+}
+
+// ---- shareable images (no dollar amounts) ----
+function cardColors(){ const cs=getComputedStyle(document.body), v=n=>cs.getPropertyValue(n).trim();
+  return {bg:v('--bg')||'#0A0E18',panel:v('--panel2')||'#0F1522',line:v('--line')||'#1A2233',text:v('--text')||'#E8ECF5',muted:v('--muted')||'#6B7488',
+    gold:v('--gold')||'#C9A85C',profit:v('--profit')||'#2FD08C',loss:v('--loss')||'#F4586A',lbl:v('--lbl')||'#5C6578'}; }
+// spec: {w,h,kicker,title,sub,big:[[label,value]],rows:[[label,right,color?]],foot}
+async function drawCardPng(spec){
+  try{ if(document.fonts&&document.fonts.ready)await document.fonts.ready; }catch(e){}
+  // height fits the content: header + big numbers + one line per row + footer
+  const W=spec.w||1200, H=Math.max(spec.minH||620,300+((spec.big||[]).length?110:0)+(spec.rows||[]).length*44+120);
+  const c=cardColors(), cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const x=cv.getContext('2d');
+  x.fillStyle=c.bg; x.fillRect(0,0,W,H);
+  x.fillStyle=c.gold; x.fillRect(0,0,8,H);
+  x.strokeStyle=c.line; x.lineWidth=2; x.strokeRect(1,1,W-2,H-2);
+  const P=64; let y=P+10;
+  x.fillStyle=c.gold; x.font='600 22px "Barlow Condensed", sans-serif'; x.fillText(String(spec.kicker||'').toUpperCase().split('').join(' '),P,y);
+  y+=58; x.fillStyle=c.text; x.font='600 46px Inter, sans-serif'; x.fillText(spec.title,P,y);
+  if(spec.sub){ y+=40; x.fillStyle=c.muted; x.font='400 24px Inter, sans-serif'; x.fillText(spec.sub,P,y); }
+  y+=50;
+  const big=spec.big||[], bw=(W-2*P)/Math.max(1,big.length);
+  big.forEach(([l,v],i)=>{ const bx=P+i*bw;
+    x.fillStyle=c.lbl; x.font='600 18px "Barlow Condensed", sans-serif'; x.fillText(String(l).toUpperCase(),bx,y);
+    x.fillStyle=c.text; x.font='600 52px "IBM Plex Mono", monospace'; x.fillText(String(v),bx,y+60); });
+  if(big.length)y+=110;
+  x.strokeStyle=c.line; x.beginPath(); x.moveTo(P,y); x.lineTo(W-P,y); x.stroke(); y+=12;
+  for(const [l,r,col] of (spec.rows||[])){ y+=44; if(y>H-70)break;
+    x.fillStyle=c.muted; x.font='400 24px Inter, sans-serif'; x.fillText(l,P,y);
+    x.fillStyle=col==='good'?c.profit:col==='bad'?c.loss:col==='gold'?c.gold:c.text; x.font='600 26px "IBM Plex Mono", monospace';
+    const tw=x.measureText(r).width; x.fillText(r,W-P-tw,y); }
+  x.fillStyle=c.muted; x.font='400 18px "IBM Plex Mono", monospace'; x.fillText(spec.foot||'Ledger · process, not profit',P,H-36);
+  return await new Promise(res=>cv.toBlob(res,'image/png'));
+}
+let _gmUrl=null;
+function showCardOut(blob, name, text, canSend){
+  const out=$('gmOut'); if(!out)return;
+  if(_gmUrl)URL.revokeObjectURL(_gmUrl); _gmUrl=blob?URL.createObjectURL(blob):null;
+  out.innerHTML=`<div class="diag-card gm-card" style="margin-top:14px">
+    ${_gmUrl?`<img src="${_gmUrl}" alt="${esc(name)}" class="gm-img">`:''}
+    <div class="gm-actions"><button class="btn" id="gmDl">Download image</button><button class="btn ghost" id="gmCopy">Copy text</button>${canSend?'<button class="btn ghost" id="gmSend" data-tip="Posts the text above to the partner chat set by TELEGRAM_SHARE_CHAT_ID on your server.">Send to partner</button>':''}<button class="btn ghost" id="gmClose">Close</button></div>
+    <pre class="letter-facts" style="max-height:none">${esc(text)}</pre></div>`;
+  $('gmDl').onclick=()=>{ if(!_gmUrl)return; const a=document.createElement('a'); a.href=_gmUrl; a.download=name+'.png'; a.click(); };
+  $('gmCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText(text); $('gmCopy').textContent='Copied ✓'; }catch(e){ setErr('Copy failed — select the text instead.'); } };
+  $('gmClose').onclick=()=>{ out.innerHTML=''; };
+  const sd=$('gmSend');
+  if(sd)sd.onclick=async()=>{ sd.disabled=true; sd.textContent='Sending…';
+    try{ const r=await srvFetch('/api/share',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+      const d=await r.json().catch(()=>({})); if(!r.ok)throw new Error(d.error||'HTTP '+r.status); sd.textContent='Sent ✓'; }
+    catch(e){ sd.disabled=false; sd.textContent='Send to partner'; setErr('Share: '+e.message); } };
+  out.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+async function shareAvailable(){
+  if(!SRV.enabled)return false;
+  let st=_coachStatus; if(!st){ try{ const r=await srvFetch('/api/coach/status'); if(r.ok)st=_coachStatus=await r.json(); }catch(e){} }
+  return !!(st&&st.share);
+}
+function weekShareData(){
+  const g=gameContext(), now=Date.now();
+  const wk=isoWeekOfKey(dayKey(now)), from=dayKey(lastCompletedWeekRange(now).to);
+  const days=g.ctx.days.filter(d=>d.key>=from);
+  const avg=days.length?Math.round(_avg(days.map(d=>d.score))):null, good=days.filter(d=>d.score>=70).length;
+  const fid=weekFocus(), fh=fid&&habitById(fid), fp=fh?habitProgress(fh,g.ctx,lastCompletedWeekRange(now).to):null;
+  const ch=g.current, chKept=ch?ch.res.filter(r=>r.kept).length:0;
+  const newA=g.achievements.filter(a=>a.at&&a.at>=from);
+  const rows=[['Discipline streak',g.streak.current+' days'+(g.streak.shields?' · '+g.streak.shields+' shield'+(g.streak.shields===1?'':'s'):''),'gold']];
+  if(fh)rows.push(['Focus: '+fh.then,fp.kept+' / '+fp.total,fp.total&&fp.kept===fp.total?'good':null]);
+  if(ch)rows.push(['Challenge: '+ch.ch.spec.then,chKept+' / '+ch.res.length,ch.res.length&&chKept===ch.res.length?'good':'bad']);
+  for(const a of newA.slice(0,2))rows.push(['Unlocked',a.title,'gold']);
+  const text=['Ledger · week '+wk,
+    'Process '+(avg!=null?avg+'/100':'—')+' · '+good+' of '+days.length+' trading days disciplined',
+    'Discipline streak '+g.streak.current+' days'+(g.streak.shields?' ('+g.streak.shields+' shield'+(g.streak.shields===1?'':'s')+')':''),
+    fh?'Focus habit: '+habitSentence(fh)+' — kept '+fp.kept+'/'+fp.total:null,
+    ch?'Challenge: '+habitSentence(ch.ch.spec)+' — '+chKept+'/'+ch.res.length+' days':null,
+    newA.length?'Unlocked: '+newA.map(a=>a.title).join(', '):null,
+    'Level '+g.level.level+' · '+g.level.title].filter(Boolean).join('\n');
+  return {spec:{kicker:'Ledger · week '+wk,title:'Process '+(avg!=null?avg:'—')+' / 100',sub:good+' of '+days.length+' trading days at 70+ · level '+g.level.level+' '+g.level.title,
+    big:[['Streak',g.streak.current],['Level',g.level.level],['Achievements',g.achievements.filter(a=>a.at).length+'/'+g.achievements.length]],rows},text,name:'ledger-week-'+wk};
+}
+async function showShareCard(){
+  try{ const d=weekShareData(); const blob=await drawCardPng(d.spec); showCardOut(blob,d.name,d.text,await shareAvailable()); }
+  catch(e){ setErr('Share card failed: '+e.message); }
+}
+async function showReportCard(){
+  try{ const g=gameContext(); const months=[...new Set(g.ctx.days.map(d=>d.key.slice(0,7)))].sort();
+    const m=months[months.length-1]; const r=m&&monthlyReport(g.ctx.days,m); if(!r){ setErr('No trading days to grade yet.'); return; }
+    const mName=MONTHS[+r.month.slice(5)-1]+' '+r.month.slice(0,4);
+    const arrow=d=>d==null?'':d>0.02?' ▲':d<-0.02?' ▼':' ▬';
+    const rows=r.parts.map(p=>[p.name,p.grade+' · '+Math.round(p.value*100)+'%'+arrow(p.delta),p.grade==='A'||p.grade==='B'?'good':p.grade==='F'||p.grade==='D'?'bad':null]);
+    const text=['Ledger · '+mName+' report card','Overall '+r.grade+' · process '+Math.round(r.avg)+'/100'+(r.delta!=null?' ('+(r.delta>=0?'+':'')+Math.round(r.delta)+' vs '+r.prevMonth+')':''),
+      r.good+' of '+r.days+' trading days at 70+',...r.parts.map(p=>p.name+': '+p.grade+' ('+Math.round(p.value*100)+'%)')].join('\n');
+    const blob=await drawCardPng({w:1080,minH:760,kicker:'Ledger · report card',title:mName+' · grade '+r.grade,
+      sub:'Process '+Math.round(r.avg)+'/100'+(r.delta!=null?' ('+(r.delta>=0?'+':'')+Math.round(r.delta)+' vs last month)':'')+' · '+r.good+' of '+r.days+' days at 70+',
+      big:[['Grade',r.grade],['Process',Math.round(r.avg)],['Good days',r.good+'/'+r.days]],rows,foot:'Ledger · graded on process, not profit'});
+    showCardOut(blob,'ledger-report-'+r.month,text,await shareAvailable()); }
+  catch(e){ setErr('Report card failed: '+e.message); }
 }
 
 /* ============================ boot ============================ */
@@ -8043,7 +8511,7 @@ async function loadCoachLetter(force){
   settings.rBasis=settings.rBasis||'avgloss';
   $('rBasis').value=settings.rBasis;
   applyTheme(settings.theme||'ink');
-  syncTzBtn();
+  syncTzBtn(); syncCoachMode();
   if(settings.pageSize&&[10,20,50].includes(settings.pageSize))pageSize=settings.pageSize;
   if(settings.beThreshold==null)settings.beThreshold=50;
   if(!settings.rules||typeof settings.rules!=='object')settings.rules={};

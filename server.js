@@ -328,6 +328,8 @@ function sanitizeCoachFacts(f) {
     quadrants60: f.quadrants60 && typeof f.quadrants60 === 'object' ? { goodGreen: num(f.quadrants60.goodGreen), goodRed: num(f.quadrants60.goodRed),
       poorGreen: num(f.quadrants60.poorGreen), poorRed: num(f.quadrants60.poorRed) } : undefined,
     focus: habit(f.focus) || undefined,
+    challenge: habit(f.challenge) || undefined,
+    level: str(f.level, 40), streak: num(f.streak),
     habits: arr(f.habits, 8, habit),
     journaled: f.journaled && typeof f.journaled === 'object' ? { n: num(f.journaled.n), of: num(f.journaled.of) } : undefined,
     findings: arr(f.findings, 5, x => (x && typeof x === 'object' ? { title: str(x.title, 160), action: str(x.action, 220), confidence: str(x.confidence, 60) } : null)),
@@ -888,6 +890,8 @@ function createApp(opts) {
   const telegramCfg = Object.assign({
     token: process.env.TELEGRAM_BOT_TOKEN || '',
     chats: String(process.env.TELEGRAM_CHAT_ID || '').split(',').map(s => s.trim()).filter(Boolean),
+    // accountability partner / group: receives only what the trader explicitly shares
+    shareChats: String(process.env.TELEGRAM_SHARE_CHAT_ID || '').split(',').map(s => s.trim()).filter(Boolean),
   }, opts.telegram || {});
   const tgApi = (method) => 'https://api.telegram.org/bot' + telegramCfg.token + '/' + method;
   async function tgSend(chatId, text) {
@@ -896,9 +900,9 @@ function createApp(opts) {
       body: JSON.stringify({ chat_id: chatId, text: String(text).slice(0, 4000) }), signal: AbortSignal.timeout(15000) });
     if (!res.ok) throw new Error('telegram HTTP ' + res.status);
   }
-  async function tgBroadcast(text) {
+  async function tgBroadcast(text, chats) {
     let sent = 0, lastErr = null;
-    for (const c of telegramCfg.chats) {
+    for (const c of (chats || telegramCfg.chats)) {
       try { await tgSend(c, text); sent++; } catch (e) { lastErr = e; }
     }
     if (!sent) throw lastErr || new Error('no telegram chats configured');
@@ -1064,6 +1068,7 @@ function createApp(opts) {
   }
   async function maybeNudge() {
     if (!hasDelivery() || nudgeCfg.hour == null) return;
+    try { const st = currentSnapshot().settings; if (st && st.coachMode === false) return; } catch (e) {} // coach mode off in the app
     const now = Date.now();
     let n;
     try { n = nudgeFrom(gatherNudgeState(now), nudgeCfg); }
@@ -1883,7 +1888,22 @@ function createApp(opts) {
     // --- coach's weekly letter (opt-in AI): everything here needs the full token ---
     if (url === '/api/coach/status') {
       if (!authOk(req)) return json(res, 401, { error: 'unauthorized' });
-      return json(res, 200, { enabled: !!coachCfg.enabled, model: coachCfg.enabled ? coachCfg.model : null });
+      return json(res, 200, { enabled: !!coachCfg.enabled, model: coachCfg.enabled ? coachCfg.model : null,
+        share: !!(telegramCfg.token && telegramCfg.shareChats.length) });
+    }
+    // --- share a weekly card's text with an accountability partner (TELEGRAM_SHARE_CHAT_ID) ---
+    if (url === '/api/share') {
+      if (!authOk(req)) return json(res, 401, { error: 'unauthorized' });
+      if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
+      if (!(telegramCfg.token && telegramCfg.shareChats.length)) return json(res, 404, { error: 'sharing is off (set TELEGRAM_BOT_TOKEN and TELEGRAM_SHARE_CHAT_ID)' });
+      (async () => {
+        let body; try { body = JSON.parse(await readBody(req)); } catch (e) { return json(res, 400, { error: 'invalid JSON' }); }
+        const text = body && typeof body.text === 'string' ? body.text.trim().slice(0, 1500) : '';
+        if (!text) return json(res, 400, { error: 'expected {text}' });
+        try { const sent = await tgBroadcast(text, telegramCfg.shareChats); return json(res, 200, { ok: true, sent }); }
+        catch (e) { return json(res, 502, { error: 'telegram: ' + ((e && e.message) || 'send failed') }); }
+      })();
+      return;
     }
     const letM = url.match(/^\/api\/coach\/letter\/(\d{4}-W\d{2})$/);
     if (letM) {

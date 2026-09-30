@@ -294,13 +294,14 @@ html{scroll-behavior:smooth}
 <section id="testing">
   <p class="kicker">15</p>
   <h2>Testing</h2>
-  <p><code>npm test</code> runs 21 suites (~410 tests) via <code>tests/run-all.mjs</code>. The harness (<code>tests/harness.mjs</code>) provides <code>makeExtractor(html)</code>: <code>evalModule(names, exports, prelude)</code> brace-matches the named functions out of <code>ledger.html</code>, prepends a prelude of one-line consts, and imports the bundle as a data-URL ES module — the tests run the shipped source, not a copy.</p>
+  <p><code>npm test</code> runs 22 suites (~430 tests) via <code>tests/run-all.mjs</code>. The harness (<code>tests/harness.mjs</code>) provides <code>makeExtractor(html)</code>: <code>evalModule(names, exports, prelude)</code> brace-matches the named functions out of <code>ledger.html</code>, prepends a prelude of one-line consts, and imports the bundle as a data-URL ES module — the tests run the shipped source, not a copy.</p>
   <div class="tblwrap"><table class="mono">
     <tr><th>Suite</th><th>Covers</th></tr>
     <tr><td>test-syntax</td><td>Every script block parses (vm.Script) — catches template-literal and escaping regressions whole-file.</td></tr>
     <tr><td>test-newfeatures · features2-5</td><td>Reconstruction edge cases, capital/XIRR, scorecards, CSV import, clusters, shock, goals, fee tiers, ISO weeks, variance, risk creep, demo fills.</td></tr>
     <tr><td>test-api · test-server</td><td>The server over real HTTP with a mocked exchange: auth scopes, 409 merges, refresh pipeline, capital, backups, metrics, engine-failure softness.</td></tr>
     <tr><td>test-alerts</td><td>alertsFrom thresholds, webhook body shaping, telegramReply wording.</td></tr>
+    <tr><td>test-game</td><td>Levels, XP, the shielded discipline streak, achievements' unlock dates, discipline saved, personal bests, the monthly report card (no dollar amounts), weekly challenge candidates and status, and source checks that every recent feature is gated by the coach-mode switch.</td></tr>
     <tr><td>test-fixes</td><td>Regression tests for the third review round: day stepping across midnight DST starts (run under several TZ values), flip fills split between trades, the exchange's 10k-fill window flag, coin-name validation and escaped ids, process-score gating by rule and habit dates, per-wallet spot FIFO over real HTTP, and the model-gated coach letter request.</td></tr>
     <tr><td>test-coach</td><td>Plain-language findings (phrasebook, Welch confidence, ranking, no jargon outside the evidence line), habit tracking for every habit kind, the after-trade question, and the server's coach letter over real HTTP with a stubbed Claude client: facts allowlist, request shape, refusal handling, storage.</td></tr>
     <tr><td>test-habits</td><td>Rules from findings (live vs after-close, entry-state predicates on open trades, before/after follow-through test), live plan stamping and the held-through-stop check, check-in miner conditions, journal inbox and streak, the process score and its quadrants, replay extremes, and the server's end-of-day nudge.</td></tr>

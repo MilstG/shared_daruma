@@ -123,6 +123,45 @@ days — keep it?") and the optional AI letter all follow it.
 the stop, gave back a big gain, added to a loser, a clean winner — shown above
 the notes and in the journal inbox, where a one-line answer saves to the notes.
 
+**Progress (Review).** A game layer that rewards process, never profit or
+activity:
+
+- **XP and levels** — a trading day earns its process score (0–100) in XP,
+  however many trades it had; +25 for each day the focus habit holds, +150 per
+  completed weekly challenge, +50 per achievement. Ten levels, Rookie → Legend
+  (level n starts at 200·n·(n−1) XP).
+- **Discipline streak with shields** — consecutive trading days at process 70+;
+  days without trades never break it. A finished perfect week (every trading
+  day 70+, at least three) earns a shield (max two) that absorbs one miss.
+- **Weekly challenge** — one target a week, picked from your biggest leak (or a
+  core habit), graded day by day; "Pick another" swaps it.
+- **Achievements** — thirteen, for moments that are hard in real trading:
+  walked away at the limit, sat out after two losses, ten good losses, twenty
+  stops honored in a row, a thirty-day journal, a perfect week, a rule kept for
+  a month, challenges completed…
+- **Personal bests** against your past self, and **discipline saved** — an
+  estimate of what keeping your rules and avoid-habits has saved (trades you'd
+  have taken at the old rate minus the ones you took, times what they averaged).
+- **Monthly report card** and **Share this week** — PNG images with grades and
+  process numbers but no dollar amounts, plus copyable text; with
+  `TELEGRAM_SHARE_CHAT_ID` set on the server, "Send to partner" posts the text
+  to an accountability partner or group.
+
+The coach card shows your level and shields and the week's challenge.
+
+**Coach mode switch.** All of this is optional. The settings panel (⚙) has a
+**Coach mode** switch, and the coach card has a "hide coach" link. Off hides
+everything added with the coach, habits and progress work: the coach card,
+habits and the weekly focus, wins, progress (XP, streaks, challenges,
+achievements, cards), the process score and the calendar's Process view, the
+journal inbox, the session check-in (and its pattern-miner conditions), rules
+from findings (+ rule buttons, their rules-card section, the live warning chip),
+the missing-stop chip, live-plan badges and rows, the replay chart's plan lines,
+the question after each trade, the AI letter and the server's end-of-day nudge.
+The Diagnostic's recommendations fall back to a plain list. Nothing is deleted:
+switch it back on and everything returns as it was; the setting syncs across
+devices and travels in backups.
+
 **Coach's letter (optional AI).** With `COACH_AI=1` and an Anthropic API key on
 the companion server, the weekly review gets a "Write my letter" button: Claude
 writes a short plain-language note on the week (what went well, the one thing
@@ -553,7 +592,9 @@ All opt-in via environment variables, still zero dependencies:
   The coach). Uses the official `@anthropic-ai/sdk`, installed as an *optional*
   dependency: without `COACH_AI` the server never loads it and stays
   dependency-free. Model `COACH_AI_MODEL` (default `claude-opus-5-5`), medium
-  effort, with the API's default refusal fallback. `POST /api/coach/letter/<week>`
+  effort, with the API's default refusal fallback. `POST /api/share` (full
+  token) posts a text to `TELEGRAM_SHARE_CHAT_ID` for accountability sharing.
+  `POST /api/coach/letter/<week>`
   (full token) takes `{facts}` — re-filtered through a server-side allowlist —
   and stores the letter in `DATA_DIR/reports/letter-<week>.json`.
 
@@ -706,7 +747,7 @@ curl -H "Authorization: Bearer $READ_TOKEN" -o trades.csv 'https://your.app/api/
 npm test         # or: node tests/run-all.mjs
 ```
 
-412 tests across twenty-one suites cover reconstruction (flips, funding
+428 tests across twenty-two suites cover reconstruction (flips, funding
 windows, spot/perp separation, partial-history flagging), the Web Worker
 dispatcher end-to-end with byte-parity against the synchronous fallback,
 excursion math and the retention/ratchet behavior, miner families and
