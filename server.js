@@ -68,6 +68,7 @@ const path = require('path');
 const crypto = require('crypto');
 const zlib = require('zlib');
 const vm = require('vm');
+const { createSocial } = require('./social.js');
 
 const MAX_BODY = 25 * 1024 * 1024; // journal snapshots are small; this is generous headroom
 
@@ -1740,6 +1741,9 @@ function createApp(opts) {
     req.on('error', reject);
   });
 
+  // Social layer for Pulse (leagues, competitions, following) and the owner's admin API.
+  const social = createSocial({ dataDir, json, authOk, adminConfigured: !!auth, fetchImpl: opts.fetchImpl, now: opts.now });
+
   const server = http.createServer((req, res) => {
     const [url, qs] = (req.url || '/').split('?');
     const query = Object.fromEntries(new URLSearchParams(qs || ''));
@@ -1836,6 +1840,24 @@ function createApp(opts) {
         + '<rect width="100" height="100" rx="18" fill="#0c0e14"/>'
         + '<path d="M20 72 L38 50 L52 60 L80 28" stroke="#8b93ff" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
         + '<circle cx="80" cy="28" r="6" fill="#2fd08c"/></svg>');
+    }
+
+    // --- social (/api/social/*): members authenticate with their own key, admin with AUTH_TOKEN ---
+    if (url === '/api/social' || url.startsWith('/api/social/')) {
+      social.handle(req, res, url, query).catch(e => {
+        try { json(res, 500, { error: 'internal error: ' + (e && e.message || e) }); } catch (e2) {}
+      });
+      return;
+    }
+    // --- the owner's admin panel (a static page; every action it takes needs AUTH_TOKEN) ---
+    if (req.method === 'GET' && (url === '/admin' || url === '/admin.html')) {
+      fs.readFile(path.join(__dirname, 'admin.html'), (err, buf) => {
+        if (err) return json(res, 404, { error: 'admin.html not deployed alongside server.js' });
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache',
+          'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' });
+        res.end(buf);
+      });
+      return;
     }
 
     // --- health: unauthenticated so the client can detect the server and whether auth is on ---

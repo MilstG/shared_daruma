@@ -574,11 +574,11 @@ tr.trow:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
 body.pz-mode{background:#0A0C0F}
 body.pz-mode #pz{display:block}
 body.pz-mode .wrap,body.pz-mode #appfoot{display:none!important}
-#pz{--pz-bg:#0A0C0F;--pz-card:#14171C;--pz-line:#1F242B;--pz-line2:#2C333C;--pz-track:#232830;--pz-text:#F3F5F7;--pz-muted:#A1AAB5;--pz-soft:#D5DBE1;
+#pz{--pz-acc:#3FE0A0;--pz-bg:#0A0C0F;--pz-card:#14171C;--pz-line:#1F242B;--pz-line2:#2C333C;--pz-track:#232830;--pz-text:#F3F5F7;--pz-muted:#A1AAB5;--pz-soft:#D5DBE1;
   --pz-good:#3FE0A0;--pz-mid:#F4C04E;--pz-low:#FF7A59;--pz-risk:#5AA9FF;--pz-xp:#B69CFF;--pz-streak:#FFB25A;--pz-num:'Barlow Condensed',sans-serif;
   min-height:100vh;background:var(--pz-bg);color:var(--pz-text);font-family:Inter,system-ui,sans-serif;font-size:14px;line-height:1.45;font-variant-numeric:normal;-webkit-tap-highlight-color:transparent}
 #pz *{box-sizing:border-box}
-#pz a{color:var(--pz-good)}
+#pz a{color:var(--pz-acc)}
 #pz button{font-family:inherit}
 #pz :focus-visible{outline:2px solid var(--pz-risk);outline-offset:2px}
 .pz-main{max-width:560px;margin:0 auto;padding:calc(14px + env(safe-area-inset-top)) 16px calc(96px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px}
@@ -652,7 +652,7 @@ body.pz-mode .wrap,body.pz-mode #appfoot{display:none!important}
 .pz-legend span{display:inline-flex;align-items:center;gap:6px}
 .pz-legend i{width:10px;height:10px;border-radius:3px!important}
 .pz-seg{display:flex;gap:4px;padding:4px;border-radius:16px!important;background:var(--pz-card);border:1px solid var(--pz-line)}
-.pz-seg button{min-width:52px;height:40px;border:0;border-radius:12px!important;background:none;color:var(--pz-muted);font-size:13px;font-weight:700;cursor:pointer}
+.pz-seg button{min-width:52px;height:40px;padding:0 12px;border:0;border-radius:12px!important;background:none;color:var(--pz-muted);font-size:13px;font-weight:700;cursor:pointer}
 .pz-seg button[aria-pressed="true"]{background:var(--pz-text);color:var(--pz-bg)}
 .pz-ins{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--pz-line)}
 .pz-ins:last-child{border-bottom:none}
@@ -665,7 +665,7 @@ body.pz-mode .wrap,body.pz-mode #appfoot{display:none!important}
 .pz-q{font-size:15px;font-weight:700;margin:0 0 8px}
 .pz-pills{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
 .pz-pill{height:46px;border-radius:14px!important;border:1px solid var(--pz-line2);background:var(--pz-card);color:var(--pz-soft);font-family:var(--pz-num);font-size:22px;font-weight:600;cursor:pointer}
-.pz-pill[aria-checked="true"]{background:var(--pz-good);border-color:var(--pz-good);color:#07140E}
+.pz-pill[aria-checked="true"]{background:var(--pz-acc);border-color:var(--pz-acc);color:#07140E}
 .pz-ends{display:flex;justify-content:space-between;font-size:12px;color:var(--pz-muted);margin-top:6px}
 .pz-step{display:flex;align-items:center;gap:6px}
 .pz-step button{width:44px;height:44px;border-radius:14px!important;border:1px solid var(--pz-line2);background:#1B1F25;color:var(--pz-text);cursor:pointer;display:flex;align-items:center;justify-content:center}
@@ -676,7 +676,7 @@ body.pz-mode .wrap,body.pz-mode #appfoot{display:none!important}
 #pz textarea{resize:vertical;min-height:64px}
 #pz input::placeholder,#pz textarea::placeholder{color:#8B95A1}
 #pz input:focus,#pz textarea:focus{border-color:var(--pz-risk)}
-.pz-cta{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:56px;border-radius:28px!important;border:0;background:var(--pz-good);color:#07140E;font-size:16px;font-weight:700;cursor:pointer;text-decoration:none}
+.pz-cta{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:56px;border-radius:28px!important;border:0;background:var(--pz-acc);color:#07140E;font-size:16px;font-weight:700;cursor:pointer;text-decoration:none}
 .pz-cta:disabled{opacity:.6;cursor:default}
 .pz-cta .pz-xpb{padding:3px 10px;border-radius:12px!important;background:#0B2A1D;color:#8DF0C6;font-size:12px;font-weight:700}
 .pz-ghost{display:flex;align-items:center;justify-content:center;width:100%;min-height:50px;border-radius:25px!important;border:1px solid var(--pz-line2);background:none;color:var(--pz-text);font-size:15px;font-weight:600;cursor:pointer;text-decoration:none}
@@ -706,7 +706,7 @@ body.pz-mode .wrap,body.pz-mode #appfoot{display:none!important}
 .pz-nav{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;height:calc(66px + env(safe-area-inset-bottom));padding:6px 6px env(safe-area-inset-bottom);background:rgba(15,18,22,.96);border-top:1px solid var(--pz-line);backdrop-filter:blur(8px)}
 .pz-nav a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-decoration:none;font-size:11px;font-weight:600}
 #pz .pz-nav a{color:var(--pz-muted)}
-#pz .pz-nav a[aria-current="page"]{color:var(--pz-good)}
+#pz .pz-nav a[aria-current="page"]{color:var(--pz-acc)}
 .pz-brand{display:none}
 .pz-navfoot{display:none}
 .pz-connect{max-width:440px;margin:0 auto;min-height:100vh;padding:calc(40px + env(safe-area-inset-top)) 20px 40px;display:flex;flex-direction:column;gap:16px;justify-content:center}
@@ -728,6 +728,44 @@ body.pz-mode .wrap,body.pz-mode #appfoot{display:none!important}
 #pz #gmOut .gm-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 #pz #gmOut .btn{min-height:40px;padding:0 14px;border-radius:20px!important;border:1px solid var(--pz-line2);background:none;color:var(--pz-text);font-size:13px;cursor:pointer}
 #pz #gmOut pre{display:none}
+.pz-seg.full{width:100%}
+.pz-seg.full button{flex:1}
+.pz-chiprow{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.pz-chipbtn{flex-shrink:0;height:40px;padding:0 14px;border-radius:20px!important;border:1px solid var(--pz-line2);background:var(--pz-card);color:var(--pz-soft);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+.pz-chipbtn[aria-pressed="true"]{background:var(--pz-text);color:var(--pz-bg);border-color:var(--pz-text)}
+.pz-list{list-style:none;margin:0;padding:0;background:var(--pz-card);border:1px solid var(--pz-line);border-radius:20px!important;overflow:hidden}
+.pz-li{display:flex;align-items:center;gap:12px;min-height:54px;padding:0 14px;border-bottom:1px solid var(--pz-line)}
+.pz-li:last-child{border-bottom:none}
+.pz-li.me{background:#10201A}
+.pz-rank{width:28px;flex-shrink:0;font-family:var(--pz-num);font-size:20px;font-weight:600;color:var(--pz-muted)}
+.pz-rank.top{color:var(--pz-mid)}
+.pz-av{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:34px;height:34px;border-radius:50%!important;color:#0A0C0F;font-size:12px;font-weight:800}
+.pz-who{flex:1;min-width:0;display:flex;flex-direction:column;text-decoration:none}
+#pz a.pz-who{color:var(--pz-text)}
+.pz-who b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pz-who span{font-size:11px;color:var(--pz-muted)}
+.pz-val{font-family:var(--pz-num);font-size:20px;font-weight:600;text-align:right;white-space:nowrap}
+.pz-banner{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:18px!important;background:#16181C;border:1px solid #2E333B}
+.pz-ev{display:flex;flex-direction:column;gap:10px}
+.pz-evh{display:flex;align-items:center;gap:10px}
+.pz-quote{padding:10px 12px;border-radius:14px!important;background:#1B1F25;font-size:14px;line-height:1.45;color:var(--pz-soft)}
+.pz-kudo{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 14px;border-radius:20px!important;border:1px solid var(--pz-line2);background:none;color:var(--pz-soft);font-size:13px;font-weight:700;cursor:pointer}
+.pz-kudo[aria-pressed="true"]{background:#10201A;border-color:#1D3A2E;color:var(--pz-good)}
+.pz-toggle{display:flex;align-items:center;gap:12px;min-height:58px;border-top:1px solid var(--pz-line)}
+.pz-toggle:first-child{border-top:0}
+.pz-toggle b{display:block;font-size:14px}
+.pz-toggle span span,.pz-toggle>span>span{font-size:12px;color:var(--pz-muted)}
+.pz-toggle span.risky{color:#FFB39E}
+.pz-switch{position:relative;flex-shrink:0;width:52px;height:32px;border-radius:16px!important;border:0;background:#3A424C;cursor:pointer}
+.pz-switch[aria-checked="true"]{background:var(--pz-acc)}
+.pz-switch i{position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%!important;background:#F3F5F7;transition:left .15s}
+.pz-switch[aria-checked="true"] i{left:23px}
+.pz-swatches{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.pz-swatch{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 4px;border-radius:16px!important;border:1px solid var(--pz-line);background:var(--pz-card);color:var(--pz-soft);font-size:12px;font-weight:600;cursor:pointer}
+.pz-swatch[aria-pressed="true"]{border-color:var(--pz-text)}
+.pz-swatch:disabled{cursor:default;opacity:.65}
+.pz-swatch i{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%!important;color:#A1AAB5}
+.pz-lock{display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;padding:36px 20px}
 @media (min-width:900px){
   .pz-nav{top:0;right:auto;bottom:0;width:232px;height:auto;flex-direction:column;justify-content:flex-start;gap:4px;padding:28px 14px;border-top:0;border-right:1px solid var(--pz-line);background:#0D1014}
   .pz-nav a{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;min-height:48px;padding:0 14px;border-radius:14px!important;font-size:15px}
@@ -1148,7 +1186,7 @@ function markJEdit(id){ _dirtyJ.set(id,(_dirtyJ.get(id)||0)+1); _jrev++; }
 // bouncing back. Wallets are deliberately excluded (list merges are ambiguous; last write
 // wins there, as before).
 let _lastSyncedS=null;
-const _SYNC_S_FIELDS=['riskDefault','view','dexView','rBasis','pageSize','beThreshold','theme','anaBasis','tz','assumedLev','rules','attribBasis','goals','pins','habits','tzZone','calMode','calWeeks','coachMode'];
+const _SYNC_S_FIELDS=['riskDefault','view','dexView','rBasis','pageSize','beThreshold','theme','anaBasis','tz','assumedLev','rules','attribBasis','goals','pins','habits','tzZone','calMode','calWeeks','coachMode','pzTheme'];
 function _snapS(){ const o={}; for(const k of _SYNC_S_FIELDS)o[k]=settings[k]; return JSON.parse(JSON.stringify(o)); }
 function schedulePersist(){ scheduleLinkedWrite(); scheduleServerWrite(); }
 // A failed write keeps the edits dirty, shows the error, and retries with backoff (5s → 2min).
@@ -8774,10 +8812,13 @@ function pzCoachLine(risk, findings){
 }
 
 // ---- UI state (never stored) ----
-const PZ_TABS=['today','trends','checkin','progress','discipline','journal'];
+const PZ_TABS=['today','trends','checkin','progress','discipline','journal','social','sharing'];
 var _pzQuiet=false; // a background refresh of data Pulse already shows: no status toasts
 var pzS={ring:'discipline',range:30,badge:null,ck:null,sheet:false,jr:{},note:null};
-function pzTab(){ const h=(location.hash||'').slice(1); return PZ_TABS.includes(h)?h:'today'; }
+function pzTab(){ const h=(location.hash||'').slice(1);
+  if(/^u\/[A-Za-z0-9_]{3,20}$/.test(h))return 'profile'; if(/^c\/[0-9a-f]{4,24}$/.test(h))return 'comp';
+  return PZ_TABS.includes(h)?h:'today'; }
+function pzHashArg(){ return (location.hash||'').slice(1).split('/')[1]||''; }
 const PZI={
   today:'<circle cx="12" cy="12" r="9"/><path d="M12 12l4-3"/>',
   trends:'<path d="M5 20V11M12 20V5M19 20v-6"/>',
@@ -8794,11 +8835,12 @@ const PZI={
   medal:'<circle cx="12" cy="9" r="6"/><path d="M8.5 14L7 22l5-3 5 3-1.5-8"/>',
   gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   pen:'<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  social:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c2 .7 3.2 2.5 3.5 5.2"/>',
 };
 function pzI(n,sz,sw){ return `<svg width="${sz||20}" height="${sz||20}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw||2}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PZI[n]||''}</svg>`; }
 function pzRing(value, pct, color, opts){ opts=opts||{};
   const d=Math.max(0,Math.min(1,pct||0))*PZ_C;
-  return `<span class="pz-ring"${opts.size?` style="--sz:${opts.size}px"`:''}><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="52" class="pz-track"/><circle cx="60" cy="60" r="52" class="pz-arc" stroke="${color}" stroke-dasharray="${d.toFixed(1)} ${PZ_C.toFixed(1)}" transform="rotate(-90 60 60)"/></svg><span class="pz-rv">${value}${opts.cap?`<small>${opts.cap}</small>`:''}</span></span>`;
+  return `<span class="pz-ring"${opts.size?` style="--sz:${opts.size}px"`:''}><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="52" class="pz-track"/><circle cx="60" cy="60" r="52" class="pz-arc" style="stroke:${color}" stroke-dasharray="${d.toFixed(1)} ${PZ_C.toFixed(1)}" transform="rotate(-90 60 60)"/></svg><span class="pz-rv">${value}${opts.cap?`<small>${opts.cap}</small>`:''}</span></span>`;
 }
 const pzBar=(pct,color)=>`<div class="pz-bar"><i style="width:${Math.round(Math.max(0,Math.min(1,pct||0))*100)}%;background:${color}"></i></div>`;
 function pzRows(rows,color){ return rows.map(r=>`<div class="pz-row"><div class="pz-row-t"><span>${esc(r.label)}</span><b>${esc(r.value)}</b></div>${pzBar(r.pct,r.color||color)}</div>`).join(''); }
@@ -8815,11 +8857,12 @@ function pzData(){
   return {g,ctx,todayK,dayE,day,last,risk,ready:pzReadiness(dayE),inbox,todayTrades:ctx.byDay[todayK]||[]};
 }
 
-function pzNav(tab){
-  const cur=tab==='discipline'?'today':tab==='journal'?'today':tab;
-  const items=[['today','Today'],['trends','Trends'],['checkin','Check-in'],['progress','Progress']];
-  return `<nav class="pz-nav" aria-label="Pulse"><div class="pz-brand">${pzRing('',0.72,PZ_COL.good,{size:30})}Pulse</div>
-    ${items.map(([k,l])=>`<a href="#${k}"${k===cur?' aria-current="page"':''}>${pzI(k,22)}<span>${l}</span></a>`).join('')}
+function pzNav(tab, level){
+  const cur=tab==='discipline'||tab==='journal'?'today':tab==='profile'||tab==='comp'||tab==='sharing'?'social':tab;
+  const items=[['today','Today'],['trends','Trends'],['checkin','Check-in'],['social','Social'],['progress','Progress']];
+  const lockT=pzNeeds('trends',level||1,pzUnlockCfg(),pzS.demo);
+  return `<nav class="pz-nav" aria-label="Pulse"><div class="pz-brand">${pzRing('',0.72,'var(--pz-acc)',{size:30})}Pulse</div>
+    ${items.map(([k,l])=>`<a href="#${k}"${k===cur?' aria-current="page"':''}${k==='trends'&&lockT?` aria-label="Trends, unlocks at level ${lockT}"`:''}>${pzI(k==='trends'&&lockT?'lock':k,22)}<span>${l}</span></a>`).join('')}
     <div class="pz-navfoot"><a href="${esc(pzFullHref())}">Open the full journal →</a></div></nav>`;
 }
 function pzHead(kick,title,extra){
@@ -9040,7 +9083,8 @@ function pzProgressHtml(D){
     <div class="pz-span">${chHtml}</div>
     <section class="pz-span" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-size:15px">Badges</b><span class="pz-sub" style="font-size:13px">${on} of ${A.length}</span></div>
       <div class="pz-badges">${badges}</div><p class="pz-card pz-sub" aria-live="polite" style="padding:12px 14px;font-size:13px">${esc(aInfo)}</p></section>
-    <section class="pz-span" style="display:flex;flex-wrap:wrap;gap:8px"><button type="button" class="pz-ghost pz-sm" id="pzShare">Share this week</button><button type="button" class="pz-ghost pz-sm" id="pzReport">Monthly report card</button></section>
+    ${pzThemesHtml(g)}
+    <section class="pz-span" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${pzNeeds('share',L.level,pzUnlockCfg(),pzS.demo)?`<span class="pz-fine">${pzI('lock',14)} Share cards unlock at level ${pzNeeds('share',L.level,pzUnlockCfg(),pzS.demo)}</span>`:'<button type="button" class="pz-ghost pz-sm" id="pzShare">Share this week</button><button type="button" class="pz-ghost pz-sm" id="pzReport">Monthly report card</button>'}</section>
     <div class="pz-span" id="gmOut"></div>
   </div>`;
 }
@@ -9112,8 +9156,13 @@ function pzRender(){
   else { const tab=pzTab(); let D;
     try{ D=pzData(); }catch(e){ console.error(e); view.innerHTML=`<div class="pz-connect"><p class="pz-sub pz-err">Pulse hit an error reading your data (${esc(e.message)}).</p><a class="pz-ghost" href="${esc(pzFullHref())}">Open the full journal</a></div>`; return; }
     ensureWeekChallenge(D.ctx).then(made=>{ if(made)pzRender(); }).catch(()=>{});
-    const body=tab==='trends'?pzTrendsHtml(D):tab==='checkin'?pzCheckinHtml(D):tab==='progress'?pzProgressHtml(D):tab==='discipline'?pzDisciplineHtml(D):tab==='journal'?pzJournalHtml(D):pzTodayHtml(D);
-    html=`${pzNav(tab)}<main class="pz-main" id="pzMain">${body}</main>`; }
+    socBoot();
+    const lv=D.g.level.level, lockT=tab==='trends'?pzNeeds('trends',lv,pzUnlockCfg(),pzS.demo):0;
+    const body=tab==='trends'?(lockT?pzLockedHtml('Trends',lockT,D.g):pzTrendsHtml(D)):tab==='checkin'?pzCheckinHtml(D):tab==='progress'?pzProgressHtml(D)
+      :tab==='discipline'?pzDisciplineHtml(D):tab==='journal'?pzJournalHtml(D):tab==='social'?socSocialHtml(D):tab==='sharing'?socSharingHtml(D)
+      :tab==='profile'?socProfileHtml(D,pzHashArg()):tab==='comp'?socCompHtml(D,pzHashArg()):pzTodayHtml(D);
+    html=`${pzNav(tab,lv)}<main class="pz-main" id="pzMain">${body}</main>`;
+    pzApplyTheme(lv); socSync(D.g); }
   view.innerHTML=html;
   const sh=$('pzSheet'); if(sh)sh.innerHTML=pzS.sheet?pzSheetHtml():'';
   for(const id in keep){ const el=$(id); if(el&&root.contains(el)&&keep[id]&&!el.value)el.value=keep[id]; }
@@ -9153,10 +9202,11 @@ function wirePulse(){
     if(ds.pzSheet!==undefined){ pzS.sheet=true; pzRender(); const c=$('pzSheet').querySelector('[data-pz-close].pz-chip'); if(c)c.focus(); return; }
     if(ds.pzClose!==undefined){ if(t.classList.contains('pz-sheet-bg')&&ev.target!==t)return; pzS.sheet=false; pzRender(); return; }
     if(ds.pzRmw!==undefined){ await removeWallet(+ds.pzRmw); pzRender(); return; }
+    if(await socAction(t))return;
     switch(t.id){
       case 'pzConnect': return pzConnect('pzAddr');
       case 'pzAdd2': return pzConnect('pzAddr2');
-      case 'pzDemo': pzNote('Generating sample data…','busy'); await loadDemo();
+      case 'pzDemo': pzS.demo=true; pzNote('Generating sample data…','busy'); await loadDemo();
         if(allTrades.length)pzNote('Sample trades come with no journal, so discipline starts low. Do a check-in and journal a couple to watch the dials move.');
         return;
       case 'pzRefresh': pzS.sheet=false; pzRender(); pzNote('Refreshing…','busy'); return loadAll();
@@ -9176,11 +9226,318 @@ function wirePulse(){
   root.addEventListener('keydown',ev=>{
     if(ev.key==='Enter'&&(ev.target.id==='pzAddr'||ev.target.id==='pzAddr2')){ ev.preventDefault(); pzConnect(ev.target.id); }
     else if(ev.key==='Enter'&&ev.target.id==='pzTok'){ ev.preventDefault(); pzToken(); }
+    else if(ev.key==='Enter'&&ev.target.id==='socHandle'){ ev.preventDefault(); const b=$('socJoin'); if(b)b.click(); }
     else if(ev.key==='Escape'&&pzS.sheet){ pzS.sheet=false; pzRender(); const g=document.querySelector('[data-pz-sheet]'); if(g)g.focus(); } });
-  window.addEventListener('hashchange',()=>{ if(pzTab()==='checkin')pzS.ck=null; pzRender(); window.scrollTo(0,0); });
+  window.addEventListener('hashchange',()=>{ const tb=pzTab(); if(tb==='checkin')pzS.ck=null; if(tb==='sharing')SOC.draft=null; pzRender(); window.scrollTo(0,0); });
   window.addEventListener('beforeinstallprompt',()=>{ if(pzS.sheet)pzRender(); });
 }
 if(PZ)wirePulse();
+
+/* ======================= 11b · PULSE SOCIAL: leagues, competitions, following ======================= */
+// Talks to /api/social on the server that served the page (social.js). A member is a random
+// key in this browser (X-Pulse-Key). Only the numbers in pzSocialStats() are ever sent; the
+// journal, notes and trades never leave the browser. Returns are read on the server from the
+// chain, never sent from here. Sample data is never posted.
+const SOC_KEY_STORE='pz_social_key';
+const SOC_DEFAULT_SHARE={profile:true,boards:true,feed:true,habits:true,ret:false,usd:false,addr:false};
+const SOC_SHARE_ROWS=[
+  ['profile','Public profile','Level, league, badges and streak'],
+  ['boards','Process leaderboards','Weekly XP, discipline and streak boards'],
+  ['feed','Milestones in the feed','Level-ups, streaks, badges and challenges'],
+  ['habits','Habits you run','Others can see and adopt them'],
+  ['ret','Show % return','30-day return and drawdown, read from your first wallet on chain'],
+  ['usd','Show dollar P&L','Reveals your account size to everyone',true],
+  ['addr','Show wallet address','Anyone could look up every trade and balance',true]];
+const SOC_BOARDS=[['xp','Weekly XP'],['discipline','Discipline'],['streak','Streak'],['level','All-time XP'],['riskadj','Return / drawdown'],['ret','% Return'],['usd','$ P&L']];
+const SOC_BOARD_NOTE={
+  xp:'XP earned this week in your league — process, never profit. The top of the league moves up on Monday, the bottom moves down.',
+  discipline:'Average process score over the last 7 days, minimum 3 trading days. Stops, limits and rules come from your fills; journaling is self-reported.',
+  streak:'Current discipline streak: trading days in a row at 70+. Shields count; days off never break it.',
+  level:'All the XP you’ve earned, by process.',
+  riskadj:'30-day return divided by max drawdown, read on chain. Rewards making money without blowing up.',
+  ret:'30-day return, read on chain. Over 25% drawdown drops you off this board.',
+  usd:'30-day dollar P&L, read on chain. Only traders who opt in appear — it reveals account size.'};
+const SOC_COMP_KIND={discipline:'Discipline',survivor:'Survivor',journal:'Journal streak',return:'Return under a drawdown cap'};
+const SOC_COMP_HOW={
+  discipline:'Your daily process score, averaged over the competition days. Profit doesn’t count: a red day with a clean process scores the same as a green one.',
+  survivor:'Stay under your daily loss limit on every trading day. The first day you hit it, you’re out. Days you don’t trade are safe.',
+  journal:'Journal every closed trade, day after day. Your longest run of fully journaled trading days counts.',
+  return:'Return over the competition dates, read from your wallet on chain. Cross the drawdown cap at any point and you finish last.'};
+const PZ_THEMES=[['mint','Mint','#3FE0A0'],['ember','Ember','#FF9F5A'],['aurora','Aurora','#8FA8FF'],['gold','Gold','#F4C04E']];
+const PZ_UNLOCK_DEFAULTS={unlocksOn:true,unlocks:{trends:2,share:3,compete:4},themes:{ember:3,aurora:5,gold:8}};
+var SOC={cfg:null,cfgTried:false,key:null,me:null,share:null,sub:'league',board:'xp',cfilter:'mine',feed:'following',
+  cache:{},busy:{},lastSent:'',lastSentAt:0,timer:null,draft:null};
+try{ SOC.key=localStorage.getItem(SOC_KEY_STORE)||null; }catch(e){}
+
+// The numbers a member shares, from the shared game context. Pure given its inputs.
+function pzSocialStats(g, habits){
+  const done=g.challenges.filter(c=>c.status==='done');
+  return {xp:g.xp.total, level:g.level.level, week:g.nowWeek, weekXp:g.weekXp,
+    streak:g.streak.current, best:g.streak.best, shields:g.streak.shields,
+    challengesDone:done.length, lastChallenge:done.length?habitSentence(done[done.length-1].ch.spec):'',
+    badges:g.achievements.filter(a=>a.at).map(a=>({id:a.id,t:a.title})), badgeN:g.achievements.filter(a=>a.at).length,
+    habits:(habits||[]).slice(0,5),
+    days:g.ctx.days.slice(-45).map(d=>({k:d.key,s:d.score,b:!!d.breached,j:d.parts.journal===1}))};
+}
+// "When X, Y." -> a self-graded habit spec (kept via the day journal's "I followed the plan").
+function socHabitSpec(sentence){
+  const s=String(sentence||'').trim(), m=s.match(/^when (.+?), (.+?)\.?$/i);
+  return m?{kind:'self',when:m[1],then:m[2]}:{kind:'self',when:'I trade',then:s.replace(/\.$/,'')};
+}
+// Level-gated features and themes. 0 = available; otherwise the level that unlocks it.
+function pzUnlockCfg(){ return SOC.cfg||PZ_UNLOCK_DEFAULTS; }
+function pzNeeds(feature, level, cfg, demo){
+  cfg=cfg||PZ_UNLOCK_DEFAULTS; if(!cfg.unlocksOn||demo)return 0;
+  const need=feature.startsWith('theme:')?(cfg.themes||{})[feature.slice(6)]:(cfg.unlocks||{})[feature];
+  return need&&level<need?need:0;
+}
+function socValue(board,v){ if(v==null)return '—';
+  if(board==='ret')return (v>=0?'+':'−')+Math.abs(v*100).toFixed(1)+'%';
+  if(board==='usd')return signedPlain(v);
+  if(board==='riskadj')return v.toFixed(1);
+  return Math.round(v).toLocaleString(); }
+function socAgo(ms){ const m=Math.max(0,Math.round((Date.now()-ms)/60000)); return m<1?'just now':m<60?m+'m':m<1440?Math.round(m/60)+'h':Math.round(m/1440)+'d'; }
+function socAv(h,size){ const P=['#B69CFF','#5AA9FF','#FFB25A','#3FE0A0','#F4C04E','#FF9A7E','#9FB4C8'];
+  let x=0; for(const c of String(h||''))x=(x*31+c.charCodeAt(0))>>>0;
+  return `<span class="pz-av" aria-hidden="true" style="background:${P[x%P.length]}${size?`;width:${size}px;height:${size}px;font-size:${Math.round(size*0.36)}px`:''}">${esc(String(h||'?').slice(0,2).toUpperCase())}</span>`; }
+
+function socAvailable(){ return /^https?:$/.test(location.protocol)&&SRV.enabled; }
+async function socFetch(p,o){ o=o||{};
+  o.headers=Object.assign({},o.body?{'Content-Type':'application/json'}:{},SOC.key?{'X-Pulse-Key':SOC.key}:{},o.headers||{});
+  const r=await fetch('/api/social'+p,o); const d=await r.json().catch(()=>({}));
+  if(!r.ok){ const e=new Error(d.error||('HTTP '+r.status)); e.status=r.status; throw e; }
+  return d; }
+function socBoot(){
+  if(SOC.cfgTried||!socAvailable())return; SOC.cfgTried=true;
+  socFetch('/config').then(c=>{ SOC.cfg=c; if(!SOC.key)return;
+    return socFetch('/me').then(d=>{ SOC.me=d.me; SOC.share=d.share; },e=>{
+      if(e.status===401||e.status===403){ SOC.key=null; try{ localStorage.removeItem(SOC_KEY_STORE); }catch(_){} if(e.status===403)pzNote(e.message,'err'); } }); })
+    .catch(()=>{}).finally(()=>pzRender());
+}
+// Cached GET: returns what's cached (possibly stale) and refreshes in the background.
+function socGet(name, p, maxAge){
+  const c=SOC.cache[name], fresh=c&&Date.now()-c.at<(maxAge||30000);
+  if(!fresh&&!SOC.busy[name]){ SOC.busy[name]=true;
+    socFetch(p).then(d=>{ SOC.cache[name]={at:Date.now(),d,err:null}; },e=>{ SOC.cache[name]={at:Date.now(),d:c?c.d:null,err:e.message}; })
+      .finally(()=>{ SOC.busy[name]=false; if(PZ)pzRender(); }); }
+  return c||null;
+}
+function socStale(){ for(const k in SOC.cache)SOC.cache[k].at=0; }
+function socSync(g){
+  if(!SOC.key||!SOC.me||pzS.demo||!settings.wallets.length)return;
+  let p; try{ p=JSON.stringify(pzSocialStats(g,habitsList().map(habitSentence))); }catch(e){ return; }
+  if(p===SOC.lastSent)return;
+  clearTimeout(SOC.timer);
+  SOC.timer=setTimeout(()=>{ SOC.lastSentAt=Date.now();
+    socFetch('/stats',{method:'POST',body:p}).then(()=>{ SOC.lastSent=p; socStale(); },()=>{}); },
+    Math.max(1500,15000-(Date.now()-SOC.lastSentAt)));
+}
+
+// ---- screens ----
+function socSubTabs(){
+  return `<div class="pz-seg full" role="group" aria-label="Social">${[['league','League'],['compete','Compete'],['feed','Feed']].map(([k,l])=>`<button type="button" data-soc-sub="${k}" aria-pressed="${SOC.sub===k}">${l}</button>`).join('')}</div>`;
+}
+function socHead(){
+  return `<header class="pz-head"><div><span class="pz-kick">${SOC.cfg&&SOC.cfg.week?'Week '+esc(SOC.cfg.week.slice(-2)):'Social'}</span><h1 class="pz-h1">Social</h1></div>
+    <div class="pz-chips"><a class="pz-chip icon" href="#u/${esc(SOC.me.handle)}" aria-label="My profile">${socAv(SOC.me.handle,30)}</a><a class="pz-chip icon" href="#sharing" aria-label="What you share">${pzI('gear',20)}</a></div></header>`;
+}
+function socUnavailableHtml(){
+  return `${pzHead('Leagues · competitions · friends','Social')}<section class="pz-card"><p class="pz-sub">Social lives on the Ledger server this page comes from. Open Pulse from your server’s <b>/pulse</b> link to join the league${/^https?:$/.test(location.protocol)?' — this server didn’t answer just now; try again in a moment.':'.'}</p></section>`;
+}
+function socToggles(share, attr){
+  return SOC_SHARE_ROWS.map(([k,l,n,risky])=>`<div class="pz-toggle"><span style="flex:1"><b id="soct_${k}">${esc(l)}</b><span class="${risky?'risky':''}">${esc(n)}</span></span>
+    <button type="button" role="switch" class="pz-switch" ${attr}="${k}" aria-checked="${!!share[k]}" aria-labelledby="soct_${k}"><i></i></button></div>`).join('');
+}
+function socJoinHtml(){
+  const cfg=SOC.cfg; SOC.draft=SOC.draft||{...SOC_DEFAULT_SHARE};
+  if(cfg&&!cfg.open)return `${pzHead('Leagues · competitions · friends','Social')}<section class="pz-card"><p class="pz-sub">This league isn’t taking new members right now. Ask the person who shared the link.</p></section>`;
+  return `${pzHead('Leagues · competitions · friends','Join the league')}
+  <div class="pz-wide">
+    <div class="pz-col"><section class="pz-card" style="display:flex;flex-direction:column;gap:10px">
+      <div class="pz-big">Compete on discipline, not luck</div>
+      <p class="pz-sub">Weekly leagues rank XP, which only comes from process. Competitions are scored from your fills. Follow traders and adopt the habits that work for them.</p>
+      <p class="pz-sub">${cfg?cfg.members+' trader'+(cfg.members===1?'':'s')+' in this league so far.':''}</p></section>
+      <div class="pz-field"><label for="socHandle">Your public name</label><input type="text" id="socHandle" maxlength="20" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="e.g. slowhands"></div>
+      ${cfg&&cfg.inviteRequired?'<div class="pz-field"><label for="socInvite">Invite code</label><input type="text" id="socInvite" maxlength="40" autocomplete="off"></div>':''}</div>
+    <div class="pz-col"><section class="pz-card" style="padding:4px 16px"><b style="display:block;font-size:15px;margin:12px 0 4px">What you share</b>${socToggles(SOC.draft,'data-soc-draft')}</section>
+      <button type="button" class="pz-cta" id="socJoin">Join the league</button>
+      <p class="pz-fine">Your journal, notes and trades stay in this browser. Only the numbers switched on here are sent, and returns are read from the chain, never from this device.</p></div>
+  </div>`;
+}
+function socLeagueHtml(g){
+  const b=SOC.board, isXp=b==='xp';
+  const c=isXp?socGet('league','/league',30000):socGet('lb:'+b,'/leaderboard?board='+b,30000);
+  const d=c&&c.d;
+  const T=(SOC.cfg&&SOC.cfg.tiers)||['Bronze','Silver','Gold','Platinum','Diamond'];
+  const lg=SOC.cache.league&&SOC.cache.league.d, tier=lg?lg.tier:(SOC.me.tier||0);
+  const banner=`<section class="pz-banner"><span class="pz-ico" style="width:40px;height:40px;background:#23272E;color:${['#C98B5A','#CDD3DA','#F4C04E','#8FD9E8','#B69CFF'][tier]||'#CDD3DA'}">${pzI('shield',22)}</span>
+    <span style="flex:1;display:flex;flex-direction:column;gap:2px"><b style="font-size:14px">${esc(T[tier])} league${lg?' · '+lg.size+' trader'+(lg.size===1?'':'s'):''}</b>
+    <span class="pz-sub" style="font-size:12px">${lg&&lg.promote?'Top '+lg.promote+' by weekly XP move up to '+esc(T[tier+1])+' on Monday':lg&&tier===T.length-1?'The top league. Stay here by keeping your XP up.':'Promotion starts once four or more traders are in your league.'}</span></span></section>`;
+  const chips=`<div class="pz-chiprow" role="group" aria-label="Board">${SOC_BOARDS.map(([k,l])=>`<button type="button" class="pz-chipbtn" data-soc-board="${k}" aria-pressed="${k===b}">${esc(l)}</button>`).join('')}</div>`;
+  let list;
+  if(!d) list=`<p class="pz-sub">${c&&c.err?esc(c.err):'<span class="pz-spin"></span>Loading…'}</p>`;
+  else if(!d.rows.length) list=`<section class="pz-card"><p class="pz-sub">${isXp?'No one in your league has posted XP this week yet. Check in and trade your plan — your XP shows up here.':'No one on this board yet.'}</p></section>`;
+  else list=`<ol class="pz-list" aria-label="Standings">${d.rows.map(r=>`<li class="pz-li${r.me?' me':''}"><span class="pz-rank${r.rank<=3?' top':''}">${r.rank}</span>${socAv(r.handle)}
+      <a class="pz-who" href="#u/${esc(r.handle)}"><b>${r.me?'You':'@'+esc(r.handle)}</b><span>${esc(r.sub||'')}</span></a><span class="pz-val">${esc(socValue(b,r.value))}</span></li>`).join('')}</ol>`;
+  const opt=d&&d.optedIn===false?`<p class="pz-warn">You’re not on this board. Switch on “${b==='usd'?'Show dollar P&L':'Show % return'}” in <a href="#sharing">What you share</a> to appear.</p>`:'';
+  const mine=d&&d.me?`<p class="pz-sub" style="font-size:13px">You’re <b>#${d.me.rank}</b> of ${isXp?d.size:d.total} with ${esc(socValue(b,d.me.value))}.</p>`:'';
+  return `${banner}${chips}<p class="pz-sub" style="font-size:12px">${esc(SOC_BOARD_NOTE[b])}</p>${opt}${mine}${list}`;
+}
+function socCompCard(c, level){
+  const need=pzNeeds('compete',level,pzUnlockCfg(),pzS.demo);
+  const when=c.status==='upcoming'?'Starts '+dayLabel(c.start):c.status==='live'?'Ends '+dayLabel(c.end):'Finished '+dayLabel(c.end);
+  const meLine=c.me?`#${c.me.rank} of ${c.entrants} · ${c.me.note}`:c.entrants+' joined';
+  const act=c.status==='finished'?`<a class="pz-ghost pz-sm" href="#c/${esc(c.id)}">Results</a>`
+    :c.joined?`<a class="pz-ghost pz-sm" href="#c/${esc(c.id)}">Standings</a>`
+    :need?`<span class="pz-fine">${pzI('lock',14)} Unlocks at level ${need}</span>`
+    :`<button type="button" class="pz-cta pz-sm" style="width:auto;min-height:40px;padding:0 18px" data-soc-join="${esc(c.id)}">Join</button>`;
+  return `<section class="pz-card" style="display:flex;flex-direction:column;gap:8px"><div style="display:flex;justify-content:space-between;gap:10px"><span class="pz-lbl" style="color:${c.type==='survivor'?'#FFB25A':c.type==='return'?PZ_COL.xp:c.type==='journal'?PZ_COL.risk:PZ_COL.good}">${esc(SOC_COMP_KIND[c.type]||c.type)}</span><span class="pz-sub" style="font-size:12px">${esc(when)}</span></div>
+    <a href="#c/${esc(c.id)}" style="color:var(--pz-text);text-decoration:none"><b style="font-size:17px">${esc(c.title)}</b></a>${c.rule?`<p class="pz-sub" style="font-size:13px">${esc(c.rule)}</p>`:''}
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span style="font-size:13px;font-weight:600;color:${c.me&&c.me.out?PZ_COL.low:'var(--pz-soft)'}">${esc(meLine)}</span>${act}</div></section>`;
+}
+function socCompeteHtml(g){
+  const c=socGet('comps','/competitions',30000), all=c&&c.d?c.d.competitions:null;
+  const F=SOC.cfilter;
+  const seg=`<div class="pz-seg" role="group" aria-label="Show">${[['mine','Mine'],['open','Open'],['past','Past']].map(([k,l])=>`<button type="button" data-soc-cf="${k}" aria-pressed="${F===k}">${l}</button>`).join('')}</div>`;
+  if(!all)return `${seg}<p class="pz-sub">${c&&c.err?esc(c.err):'<span class="pz-spin"></span>Loading…'}</p>`;
+  const list=all.filter(x=>F==='past'?x.status==='finished':F==='mine'?x.joined&&x.status!=='finished':!x.joined&&x.status!=='finished');
+  const empty=F==='mine'?'You’re not in a competition right now. Pick one from Open.':F==='open'?'No open competitions. The league owner creates them — check back soon.':'Finished competitions land here.';
+  return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">${seg}<span class="pz-fine">Prizes are badges and bragging rights, never money.</span></div>
+    ${list.length?`<div class="pz-jgrid">${list.map(x=>socCompCard(x,g.level.level)).join('')}</div>`:`<section class="pz-card"><p class="pz-sub">${empty}</p></section>`}`;
+}
+function socCompHtml(D, id){
+  const c=socGet('comp:'+id,'/competitions/'+encodeURIComponent(id),20000), x=c&&c.d&&c.d.competition;
+  const back=`<a class="pz-back" href="#social">${pzI('back',20)}Compete</a>`;
+  if(!x)return `${back}<p class="pz-sub">${c&&c.err?esc(c.err):'<span class="pz-spin"></span>Loading…'}</p>`;
+  const need=pzNeeds('compete',D.g.level.level,pzUnlockCfg(),pzS.demo);
+  const act=x.status==='finished'?'':x.joined?`<button type="button" class="pz-ghost" data-soc-leave="${esc(x.id)}">Leave this competition</button>`
+    :need?`<p class="pz-fine">${pzI('lock',14)} Competitions unlock at level ${need}. You’re level ${D.g.level.level}.</p>`:`<button type="button" class="pz-cta" data-soc-join="${esc(x.id)}">Join</button>`;
+  const rows=(x.standings||[]).map(r=>`<li class="pz-li${r.me?' me':''}"><span class="pz-rank${r.rank<=3?' top':''}">${r.rank}</span>${socAv(r.handle)}<a class="pz-who" href="#u/${esc(r.handle)}"><b>${r.me?'You':'@'+esc(r.handle)}</b><span${r.out?' style="color:#FFB39E"':''}>${esc(r.note)}</span></a></li>`).join('');
+  return `${back}${pzHead((SOC_COMP_KIND[x.type]||x.type)+' · '+(x.status==='upcoming'?'starts '+dayLabel(x.start):x.status==='live'?'ends '+dayLabel(x.end):'finished'),x.title)}
+    <div class="pz-wide"><div class="pz-col">
+      ${x.me?`<div class="pz-grid3"><div class="pz-tile good"><span class="pz-t">Your rank</span><span class="pz-n">#${x.me.rank}</span><span class="pz-t">of ${x.entrants}</span></div><div class="pz-tile" style="grid-column:span 2"><span class="pz-t">Your standing</span><span style="font-size:15px;font-weight:600">${esc(x.me.note)}</span></div></div>`:''}
+      <section class="pz-card" style="display:flex;flex-direction:column;gap:8px"><b style="font-size:15px">How it’s scored</b>${x.rule?`<p class="pz-sub" style="font-size:13px">${esc(x.rule)}</p>`:''}<p class="pz-sub" style="font-size:13px">${esc(SOC_COMP_HOW[x.type]||'')}</p><p class="pz-fine">${esc(dayLabel(x.start))} → ${esc(dayLabel(x.end))}${x.type==='discipline'?' · minimum '+x.minDays+' trading days':x.type==='journal'?' · done at '+x.minDays+' days':x.type==='return'&&x.ddCap?' · drawdown cap '+Math.round(x.ddCap*100)+'%':''}</p></section>
+      ${act}</div>
+      <div class="pz-col">${rows?`<ol class="pz-list" aria-label="Standings">${rows}</ol>`:'<section class="pz-card"><p class="pz-sub">No one has joined yet.</p></section>'}</div></div>`;
+}
+function socFeedHtml(){
+  const S=SOC.feed, c=socGet('feed:'+S,'/feed?scope='+S,20000), d=c&&c.d;
+  const seg=`<div class="pz-seg full" role="group" aria-label="Show">${[['following','Following'],['discover','Discover']].map(([k,l])=>`<button type="button" data-soc-feed="${k}" aria-pressed="${S===k}">${l}</button>`).join('')}</div>`;
+  if(!d)return `${seg}<p class="pz-sub">${c&&c.err?esc(c.err):'<span class="pz-spin"></span>Loading…'}</p>`;
+  const sug=d.suggest&&d.suggest.length?`<section style="display:flex;flex-direction:column;gap:8px"><span class="pz-lbl" style="color:var(--pz-muted)">Traders to follow</span><div class="pz-grid3">${d.suggest.map(p=>`<a class="pz-tile" href="#u/${esc(p.handle)}" style="align-items:center;text-align:center;text-decoration:none;color:var(--pz-text)">${socAv(p.handle,40)}<b style="font-size:13px">@${esc(p.handle)}</b><span class="pz-t">${esc(p.tierName)} · ${esc(p.why)}</span></a>`).join('')}</div></section>`:'';
+  const ev=d.events.map(e=>`<article class="pz-card pz-ev"><div class="pz-evh">${e.admin?`<span class="pz-av" style="background:#3FE0A0" aria-hidden="true">${pzI('bolt',16)}</span>`:socAv(e.handle,36)}
+      <span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:14px;line-height:1.35">${e.admin?'<b>League</b>':`<a href="#u/${esc(e.handle)}" style="color:var(--pz-text);font-weight:700;text-decoration:none">${e.mine?'You':'@'+esc(e.handle)}</a>`} ${esc(e.text)}</span><span class="pz-sub" style="font-size:11px">${socAgo(e.at)}</span></span></div>
+      ${e.quote?`<div class="pz-quote">${esc(e.quote)}</div>`:''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${e.admin||e.mine?(e.mine&&e.kudos?`<span class="pz-fine">${e.kudos} kudos</span>`:''):`<button type="button" class="pz-kudo" data-soc-kudos="${esc(e.id)}" aria-pressed="${e.liked}" aria-label="Kudos, ${e.kudos}">${pzI('check',16)}${e.kudos}</button>`}
+      ${e.type==='habit'&&e.quote&&!e.mine?`<button type="button" class="pz-kudo" data-soc-adopt="${esc(e.quote)}">Adopt this habit</button>`:''}</div></article>`).join('');
+  const empty=S==='following'?'Nothing here yet. Follow traders from Discover or the leaderboards and their milestones show up here.':'No posts yet.';
+  return `${seg}${sug}${ev?`<div class="pz-jgrid">${ev}</div>`:`<section class="pz-card"><p class="pz-sub">${empty}</p></section>`}`;
+}
+function socSocialHtml(D){
+  socBoot();
+  if(!socAvailable())return socUnavailableHtml();
+  if(!SOC.cfg)return `${pzHead('Leagues · competitions · friends','Social')}<p class="pz-sub"><span class="pz-spin"></span>Loading…</p>`;
+  if(!SOC.me)return socJoinHtml();
+  const body=SOC.sub==='compete'?socCompeteHtml(D.g):SOC.sub==='feed'?socFeedHtml():socLeagueHtml(D.g);
+  return `${socHead()}${socSubTabs()}${body}`;
+}
+function socProfileHtml(D, handle){
+  const back=`<a class="pz-back" href="#social">${pzI('back',20)}Social</a>`;
+  if(!socAvailable()||!SOC.me)return `${back}${socSocialHtml(D)}`;
+  const c=socGet('u:'+handle.toLowerCase(),'/profile/'+encodeURIComponent(handle),30000), d=c&&c.d, p=d&&d.profile;
+  if(!p)return `${back}<p class="pz-sub">${c&&c.err?esc(c.err):'<span class="pz-spin"></span>Loading…'}</p>`;
+  const T=(SOC.cfg&&SOC.cfg.tiers)||[];
+  const follow=p.isMe?`<a class="pz-ghost" href="#sharing">Edit what you share</a>`
+    :`<button type="button" class="${p.isFollowing?'pz-ghost':'pz-cta'}" data-soc-follow="${esc(p.handle)}" data-on="${p.isFollowing?1:0}">${p.isFollowing?'Following':'Follow'}</button>`;
+  const tiles=p.private?'<section class="pz-card"><p class="pz-sub">This profile is private.</p></section>'
+    :`<div class="pz-grid3"><div class="pz-tile good"><span class="pz-n">${p.discipline30==null?'—':p.discipline30}</span><span class="pz-t">Discipline · 30d</span></div>
+      <div class="pz-tile warm"><span class="pz-n">${p.streak}</span><span class="pz-t">Day streak · best ${p.best}</span></div>
+      <div class="pz-tile"><span class="pz-n">${p.badgeN}</span><span class="pz-t">Badges</span></div></div>`;
+  const money=p.ret!=null||p.usd!=null?`<section class="pz-card" style="display:flex;justify-content:space-between;gap:12px"><span><span class="pz-t pz-sub" style="font-size:12px">30-day return${p.isMe?' (only you see this unless you share it)':''}</span><br><b style="font-family:var(--pz-num);font-size:26px;color:${p.ret>=0?PZ_COL.good:PZ_COL.low}">${p.ret!=null?socValue('ret',p.ret):'—'}</b>${p.usd!=null?` <span class="pz-sub">${esc(signedPlain(p.usd))}</span>`:''}</span><span style="text-align:right"><span class="pz-sub" style="font-size:12px">Max drawdown</span><br><b style="font-family:var(--pz-num);font-size:26px">${p.dd!=null?(p.dd*100).toFixed(1)+'%':'—'}</b></span></section>`:'';
+  const habits=p.habits&&p.habits.length?`<section class="pz-card" style="padding:6px 16px"><b style="display:block;font-size:15px;margin:10px 0 4px">Habits ${p.isMe?'you run':'they run'}</b>${p.habits.map(h=>`<div class="pz-toggle"><span style="flex:1;font-size:14px;line-height:1.4">${esc(h)}</span>${p.isMe?'':`<button type="button" class="pz-kudo" data-soc-adopt="${esc(h)}">Adopt</button>`}</div>`).join('')}</section>`:'';
+  const badges=p.badges&&p.badges.length?`<section style="display:flex;flex-wrap:wrap;gap:6px">${p.badges.map(b=>`<span class="pz-chipbtn" style="height:32px;display:inline-flex;align-items:center;gap:6px;cursor:default">${pzI('medal',14)}${esc(b)}</span>`).join('')}</section>`:'';
+  const ev=(d.events||[]).map(e=>`<div class="pz-ins"><span class="pz-sub" style="font-size:12px;min-width:34px">${socAgo(e.at)}</span><span><b>${esc(e.text)}</b>${e.quote?`<span>${esc(e.quote)}</span>`:''}</span></div>`).join('');
+  return `${back}<section style="display:flex;align-items:center;gap:14px">${socAv(p.handle,72)}<span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><h1 class="pz-h1" style="font-family:Inter,system-ui,sans-serif;font-size:22px;font-weight:800">@${esc(p.handle)}</h1>
+      <span class="pz-sub" style="font-size:13px">Level ${p.level} · ${esc(p.title)} · ${esc(T[p.tier]||p.tierName)} league</span><span class="pz-sub" style="font-size:12px">${p.followers} follower${p.followers===1?'':'s'} · ${p.following} following${p.address?' · '+esc(walletShort(p.address)):''}</span></span></section>
+    <div class="pz-wide"><div class="pz-col">${follow}${tiles}${money}${badges}</div><div class="pz-col">${habits}${ev?`<section class="pz-card" style="padding:4px 16px"><b style="display:block;font-size:15px;margin:10px 0 2px">Recent</b>${ev}</section>`:''}</div></div>`;
+}
+function socSharingHtml(D){
+  const back=`<a class="pz-back" href="#social">${pzI('back',20)}Social</a>`;
+  if(!socAvailable()||!SOC.me)return `${back}${socSocialHtml(D)}`;
+  SOC.draft=SOC.draft||{...SOC.share};
+  const w=settings.wallets[0];
+  return `${back}${pzHead('Profile & privacy','What you share')}
+  <p class="pz-sub" style="margin-top:-6px">Your journal, notes and wallet list never leave this device. Only the numbers switched on below are sent.</p>
+  <div class="pz-wide"><div class="pz-col">
+    <div class="pz-field"><label for="socHandle2">Public name</label><input type="text" id="socHandle2" maxlength="20" value="${esc(SOC.me.handle)}" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+    <section class="pz-card" style="padding:4px 16px">${socToggles(SOC.draft,'data-soc-draft')}</section>
+    <p class="pz-fine">${w?`Returns are read on chain from your first wallet (${esc(walletShort(w.address))}) when “Show % return” or “Show dollar P&L” is on. The server owner can see that address.`:'Add a wallet to take part in return boards and competitions.'}</p>
+    <button type="button" class="pz-cta" id="socSaveShare">Save</button></div>
+  <div class="pz-col">
+    <section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Use Pulse on another device</b>
+      <p class="pz-sub" style="font-size:13px">Your profile is tied to a private key kept in this browser. Copy it to sign in elsewhere, and keep it secret — anyone with it can post as you.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="pz-ghost pz-sm" id="socCopyKey">Copy my key</button></div>
+      <div class="pz-field"><label for="socKeyIn" style="font-size:13px">Have a key from another device?</label><input type="password" id="socKeyIn" autocomplete="off" placeholder="paste it here"><button type="button" class="pz-ghost pz-sm" id="socUseKey">Use this key</button></div></section>
+    <section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Leave the league</b><p class="pz-sub" style="font-size:13px">Deletes your profile, posts and competition entries from this server. Your journal isn’t touched.</p><button type="button" class="pz-ghost pz-sm" id="socLeave" style="color:#FFB39E;border-color:#6A2E20">Leave and delete my profile</button></section>
+  </div></div>`;
+}
+function pzLockedHtml(title, need, g){
+  const L=g.level;
+  const xpTo=Math.max(0,200*need*(need-1)-L.xp);
+  return `${pzHead('Unlocks at level '+need,title)}<section class="pz-card pz-lock">${pzRing(L.level,L.into/L.need,PZ_COL.xp,{size:96,cap:'Level'})}
+    <div class="pz-big">${esc(title)} unlocks at level ${need}</div><p class="pz-sub">${xpTo.toLocaleString()} XP to go. XP comes from process: check in, plan before your first trade, keep your stops and journal every trade.</p>
+    <a class="pz-cta" href="#checkin" style="max-width:320px">Earn XP: do today’s check-in</a></section>`;
+}
+function pzThemesHtml(g){
+  const cfg=pzUnlockCfg(), cur=settings.pzTheme||'mint';
+  return `<section class="pz-span" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Themes</b><div class="pz-swatches">${PZ_THEMES.map(([k,l,c])=>{ const need=k==='mint'?0:pzNeeds('theme:'+k,g.level.level,cfg,pzS.demo);
+    return `<button type="button" class="pz-swatch" data-pz-theme="${k}" aria-pressed="${cur===k}"${need?' disabled':''} aria-label="${l} theme${need?', unlocks at level '+need:''}"><i style="background:${need?'#2C333C':c}">${need?pzI('lock',14):''}</i>${l}${need?`<span class="pz-fine" style="font-size:10px">Level ${need}</span>`:''}</button>`; }).join('')}</div></section>`;
+}
+// A theme only applies while its level is reached (a synced choice from a higher-level device, or
+// an owner raising the bar, falls back to Mint instead of showing a locked theme).
+function pzApplyTheme(level){ const r=$('pz'); if(!r)return; const t=PZ_THEMES.find(x=>x[0]===settings.pzTheme);
+  const need=t&&t[0]!=='mint'?pzNeeds('theme:'+t[0],level||1,pzUnlockCfg(),pzS.demo):0;
+  r.style.setProperty('--pz-acc',t&&!need?t[2]:'#3FE0A0'); }
+
+// ---- actions ----
+async function socAction(t){
+  const ds=t.dataset;
+  const done=(m,kind)=>{ if(m)pzNote(m,kind); socStale(); pzRender(); };
+  try{
+    if(ds.socSub){ SOC.sub=ds.socSub; pzRender(); return true; }
+    if(ds.socBoard){ SOC.board=ds.socBoard; pzRender(); return true; }
+    if(ds.socCf){ SOC.cfilter=ds.socCf; pzRender(); return true; }
+    if(ds.socFeed){ SOC.feed=ds.socFeed; pzRender(); return true; }
+    if(ds.socDraft){ SOC.draft=SOC.draft||{...(SOC.share||SOC_DEFAULT_SHARE)}; SOC.draft[ds.socDraft]=!SOC.draft[ds.socDraft]; t.setAttribute('aria-checked',String(SOC.draft[ds.socDraft])); return true; }
+    if(ds.socKudos){ const r=await socFetch('/kudos/'+encodeURIComponent(ds.socKudos),{method:'POST'}); t.setAttribute('aria-pressed',String(r.liked)); t.lastChild.textContent=r.kudos; socStale(); return true; }
+    if(ds.socFollow){ const on=ds.on==='1'; await socFetch('/follow/'+encodeURIComponent(ds.socFollow),{method:on?'DELETE':'POST'}); done(on?'Unfollowed.':'Following @'+ds.socFollow+'. Their milestones show up in your feed.'); return true; }
+    if(ds.socJoin){ await socFetch('/competitions/'+encodeURIComponent(ds.socJoin)+'/join',{method:'POST'}); done('You’re in. Good luck — play your process.'); return true; }
+    if(ds.socLeave){ if(!confirm('Leave this competition?'))return true; await socFetch('/competitions/'+encodeURIComponent(ds.socLeave)+'/join',{method:'DELETE'}); done('You left the competition.'); return true; }
+    if(ds.socAdopt){ await adoptHabit(socHabitSpec(ds.socAdopt)); done('Added to your habits. It’s tracked by the day journal’s “I followed the plan”.'); return true; }
+    if(ds.pzTheme){ settings.pzTheme=ds.pzTheme; await Store.set(S_KEY,settings); pzRender(); return true; }
+    switch(t.id){
+      case 'socJoin': { const h=($('socHandle')||{value:''}).value.trim(), inv=($('socInvite')||{value:''}).value.trim();
+        const w=settings.wallets[0];
+        const r=await socFetch('/join',{method:'POST',body:JSON.stringify({handle:h,invite:inv,share:SOC.draft||SOC_DEFAULT_SHARE,address:w?w.address:null})});
+        SOC.key=r.key; try{ localStorage.setItem(SOC_KEY_STORE,r.key); }catch(e){}
+        SOC.me=r.me; SOC.share=r.share; SOC.draft=null; SOC.lastSent=''; done('Welcome to the league, @'+r.me.handle+'.'); return true; }
+      case 'socSaveShare': { const h=($('socHandle2')||{value:''}).value.trim(), w=settings.wallets[0];
+        const r=await socFetch('/me',{method:'PUT',body:JSON.stringify({handle:h,share:SOC.draft||SOC.share,address:w?w.address:null})});
+        SOC.me=r.me; SOC.share=r.share; SOC.draft=null; SOC.lastSent=''; done('Saved.'); return true; }
+      case 'socCopyKey': try{ await navigator.clipboard.writeText(SOC.key||''); pzNote('Key copied. Keep it somewhere private.'); }catch(e){ pzNote('Couldn’t copy — your browser blocked the clipboard.','err'); } return true;
+      case 'socUseKey': { const k=($('socKeyIn')||{value:''}).value.trim(); if(!k)return true;
+        const prev=SOC.key; SOC.key=k;
+        try{ const d=await socFetch('/me'); SOC.me=d.me; SOC.share=d.share; try{ localStorage.setItem(SOC_KEY_STORE,k); }catch(e){} SOC.lastSent=''; done('Signed in as @'+d.me.handle+'.'); }
+        catch(e){ SOC.key=prev; pzNote('That key didn’t work.','err'); }
+        return true; }
+      case 'socLeave': { if(!confirm('Leave the league and delete your profile, posts and competition entries? Your journal isn’t touched.'))return true;
+        await socFetch('/me',{method:'DELETE'}); SOC.key=null; SOC.me=null; SOC.share=null; try{ localStorage.removeItem(SOC_KEY_STORE); }catch(e){}
+        location.hash='#social'; done('You left the league.'); return true; }
+    }
+  }catch(e){ pzNote(e.message,'err'); return true; }
+  return false;
+}
+
 
 /* ============================ boot ============================ */
 (async function(){
