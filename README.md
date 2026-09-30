@@ -19,6 +19,7 @@ companion server and your journal persists across devices and reboots.
 3. [The Trades view](#the-trades-view)
 4. [The journal](#the-journal)
 4. [Pulse: the simple view (`/pulse`)](#pulse-the-simple-view-pulse)
+4. [Social, unlocks and the admin panel](#social-unlocks-and-the-admin-panel)
 5. [The Diagnostic view](#the-diagnostic-view)
 6. [The pattern miner](#the-pattern-miner)
 7. [Price excursions (MAE/MFE)](#price-excursions-maemfe)
@@ -203,6 +204,49 @@ server with `AUTH_TOKEN` set, nothing they do is sent to your server; the owner
 signs in once from Pulse's settings to sync. Without `AUTH_TOKEN`, everyone who
 opens the link shares one journal, so set it before sharing (Pulse's settings
 warn about this).
+
+## Social, unlocks and the admin panel
+
+Pulse has a **Social** tab that runs entirely on your own server (`social.js`,
+stored in `DATA_DIR/social.json`). There is no central service: the people you
+send your `/pulse` link to join *your* league.
+
+- **Leagues.** Five tiers (Bronze → Diamond). Each ISO week, traders in a tier are
+  ranked by the XP they earned that week; the top quarter (up to 5) move up and the
+  bottom quarter move down, once at least four traders are in the tier.
+- **Leaderboards.** Weekly XP (your league), discipline (7-day average, minimum 3
+  trading days), streak, all-time XP, and — only for traders who opt in — return /
+  drawdown, % return (dropped over 25% drawdown) and dollar P&L, all over 30 days.
+- **Competitions**, created by the owner: *Discipline* (best average process score),
+  *Survivor* (never hit your daily loss limit), *Journal streak*, and *Return under a
+  drawdown cap*. Prizes are badges and bragging rights, never money.
+- **Following and the feed.** Level-ups, streak milestones, badges, completed
+  challenges and adopted habits post to the feed; others can give kudos, follow you,
+  and adopt a habit you run with one tap.
+- **What you share.** Profile, process boards, feed and habits are on by default;
+  % return, dollar P&L and the wallet address are off. The journal, notes and trades
+  never leave the browser: only XP, level, streak, badges, habit sentences and each
+  trading day's process score and flags are sent.
+
+**Trust model.** Process numbers are computed by each member's browser and are
+self-reported. Money numbers are never taken from the browser: the server reads
+them from Hyperliquid's public `portfolio` endpoint for the member's first wallet,
+and only when they opted in. v0.1 has no wallet signature, so a member could name an
+address that isn't theirs; addresses stay hidden by default and the owner can remove
+anyone. A member is a random key kept in their browser (only its hash is stored);
+Pulse shows how to copy it to another device.
+
+**Unlocks.** Pulse features unlock with level — by default Trends at level 2, share
+cards at 3 and joining competitions at 4 — plus colour themes (Ember 3, Aurora 5,
+Gold 8). XP only comes from process, so unlocking rewards good habits. The owner can
+change the levels or switch unlocks off. Sample data shows everything. The full
+journal at `/` is never locked.
+
+**Admin panel (`/admin`).** Sign in with `AUTH_TOKEN` to see members (with
+addresses, which only you see), move someone's league, suspend or delete a member,
+open or close the league, set an invite code, change unlock levels, create and delete
+competitions, post announcements, and remove feed posts. Without `AUTH_TOKEN` the
+admin API refuses every request instead of opening to everyone.
 
 ## The Trades view
 

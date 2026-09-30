@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Pulse admin</title>
+<style>
+:root{--bg:#0A0C0F;--card:#14171C;--line:#1F242B;--line2:#2C333C;--text:#F3F5F7;--muted:#A1AAB5;--soft:#D5DBE1;--good:#3FE0A0;--mid:#F4C04E;--low:#FF7A59;--risk:#5AA9FF;--xp:#B69CFF}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.45;font-variant-numeric:tabular-nums}
+a{color:var(--good)}
+main{max-width:1120px;margin:0 auto;padding:28px 20px 60px;display:flex;flex-direction:column;gap:18px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{margin:0;font-size:28px;letter-spacing:-.01em}
+h2{margin:0 0 12px;font-size:16px}
+.muted{color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px}
+.tile b{display:block;font-size:26px;line-height:1.1}
+.tile span{font-size:12px;color:var(--muted)}
+.two{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+label{display:block;font-size:13px;font-weight:600;margin:10px 0 6px}
+input,select,textarea{width:100%;font:inherit;font-size:14px;padding:10px 12px;border-radius:12px;border:1px solid var(--line2);background:#0F1216;color:var(--text)}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--risk);outline-offset:1px}
+input[type=checkbox]{width:auto;margin-right:8px;accent-color:var(--good)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.row>*{flex:1;min-width:120px}
+button{font:inherit;font-weight:700;border-radius:999px;border:1px solid var(--line2);background:none;color:var(--text);padding:9px 16px;cursor:pointer;min-height:40px}
+button.primary{background:var(--good);border-color:var(--good);color:#07140E}
+button.danger{border-color:#6A2E20;color:#FFB39E}
+button:disabled{opacity:.5;cursor:default}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{color:var(--muted);font-weight:600;font-size:12px}
+td .acts{display:flex;gap:6px;flex-wrap:wrap}
+td button{min-height:32px;padding:4px 10px;font-size:12px}
+.scroll{overflow-x:auto}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#1B1F25;color:var(--soft)}
+.pill.ban{background:#3A1E16;color:#FFB39E}
+.note{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1B1F25;border:1px solid var(--line2);border-radius:14px;padding:10px 16px;color:var(--soft);max-width:92vw}
+.note.err{border-color:#6A2E20;color:#FFB39E}
+.note:empty{display:none}
+.ev{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
+.ev div{flex:1}
+.hide{display:none!important}
+.warn{padding:12px 14px;border-radius:14px;background:#2B2413;border:1px solid #4A3C18;color:#F9DC8E}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>Pulse admin</h1><div class="muted">Members, leagues, competitions and unlocks for this server.</div></div>
+    <div class="row" style="flex:0 0 auto"><a href="/pulse">Open Pulse</a><a href="/">Full journal</a><button id="signout" class="hide">Sign out</button></div>
+  </header>
+
+  <section class="card" id="login">
+    <h2>Sign in</h2>
+    <p class="muted" style="margin:0">Use the access token set as <code>AUTH_TOKEN</code> on the server. It’s remembered in this browser.</p>
+    <div class="row" style="margin-top:10px"><input type="password" id="tok" autocomplete="current-password" placeholder="access token" aria-label="Access token"><button class="primary" id="go" style="flex:0 0 auto">Sign in</button></div>
+    <p id="loginErr" class="warn hide" style="margin:12px 0 0"></p>
+  </section>
+
+  <div id="app" class="hide" style="display:flex;flex-direction:column;gap:18px">
+    <div class="grid" id="tiles"></div>
+
+    <div class="two">
+      <section class="card">
+        <h2>League settings</h2>
+        <label><input type="checkbox" id="cOpen">Open for new members</label>
+        <label for="cInvite">Invite code (leave empty for anyone with the link)</label>
+        <input id="cInvite" maxlength="40" autocomplete="off">
+        <label><input type="checkbox" id="cUnlocks">Unlock Pulse features with XP</label>
+        <div class="row">
+          <div><label for="uTrends">Trends at level</label><input id="uTrends" type="number" min="1" max="100"></div>
+          <div><label for="uShare">Share cards at level</label><input id="uShare" type="number" min="1" max="100"></div>
+          <div><label for="uCompete">Competitions at level</label><input id="uCompete" type="number" min="1" max="100"></div>
+        </div>
+        <div class="row">
+          <div><label for="tEmber">Ember theme</label><input id="tEmber" type="number" min="1" max="100"></div>
+          <div><label for="tAurora">Aurora theme</label><input id="tAurora" type="number" min="1" max="100"></div>
+          <div><label for="tGold">Gold theme</label><input id="tGold" type="number" min="1" max="100"></div>
+        </div>
+        <div style="margin-top:14px"><button class="primary" id="saveCfg">Save settings</button></div>
+      </section>
+
+      <section class="card">
+        <h2>New competition</h2>
+        <label for="nTitle">Title</label><input id="nTitle" maxlength="60" placeholder="Discipline Cup · Week 41">
+        <label for="nType">Type</label>
+        <select id="nType">
+          <option value="discipline">Discipline — best average process score</option>
+          <option value="survivor">Survivor — never breach your loss limit</option>
+          <option value="journal">Journal streak — journal every trade N days running</option>
+          <option value="return">Return — best % return under a drawdown cap (read from chain)</option>
+        </select>
+        <div class="row">
+          <div><label for="nStart">Starts</label><input id="nStart" type="date"></div>
+          <div><label for="nEnd">Ends</label><input id="nEnd" type="date"></div>
+        </div>
+        <div class="row">
+          <div><label for="nMin">Minimum / target days</label><input id="nMin" type="number" min="1" max="90" value="3"></div>
+          <div><label for="nDd">Drawdown cap % (return only)</label><input id="nDd" type="number" min="1" max="90" value="8"></div>
+        </div>
+        <label for="nRule">Rules, in a sentence or two</label><textarea id="nRule" rows="2" maxlength="280"></textarea>
+        <div style="margin-top:14px"><button class="primary" id="mkComp">Create and announce</button></div>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>Competitions</h2>
+      <div class="scroll"><table><thead><tr><th>Title</th><th>Type</th><th>Dates</th><th>Status</th><th>Entrants</th><th>Leader</th><th></th></tr></thead><tbody id="comps"></tbody></table></div>
+    </section>
+
+    <section class="card">
+      <div class="row" style="justify-content:space-between"><h2 style="margin:0;flex:0 0 auto">Members</h2><input id="q" placeholder="Search by name or address" aria-label="Search members" style="max-width:320px"></div>
+      <p class="muted" style="margin:8px 0 0">Addresses are visible to you as the owner. Members see them only if the member chose to show theirs.</p>
+      <div class="scroll"><table><thead><tr><th>Name</th><th>League</th><th>Level</th><th>Streak</th><th>30d return</th><th>Address</th><th>Last seen</th><th></th></tr></thead><tbody id="members"></tbody></table></div>
+    </section>
+
+    <div class="two">
+      <section class="card">
+        <h2>Announcement</h2>
+        <p class="muted" style="margin:0 0 8px">Posts to everyone’s feed from the league.</p>
+        <textarea id="ann" rows="3" maxlength="280" placeholder="Survivor starts Monday — set your loss limit in the check-in."></textarea>
+        <div style="margin-top:10px"><button class="primary" id="postAnn">Post</button></div>
+      </section>
+      <section class="card">
+        <h2>Recent feed</h2>
+        <div id="events" style="max-height:360px;overflow:auto"></div>
+      </section>
+    </div>
+  </div>
+</main>
+<div class="note" id="note" role="status" aria-live="polite"></div>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const TIERS=['Bronze','Silver','Gold','Platinum','Diamond'];
+  let tok=''; try{ tok=localStorage.getItem('srv_token')||''; }catch(e){}
+  let noteT=null;
+  const note=(m,err)=>{ const n=$('note'); n.className='note'+(err?' err':''); n.textContent=m||''; clearTimeout(noteT); if(m&&!err)noteT=setTimeout(()=>{ n.textContent=''; },3500); };
+  async function api(p,o){ o=o||{}; o.headers=Object.assign({'Authorization':'Bearer '+tok},o.body?{'Content-Type':'application/json'}:{},o.headers||{});
+    const r=await fetch('/api/social/admin'+p,o); const d=await r.json().catch(()=>({}));
+    if(!r.ok){ const e=new Error(d.error||('HTTP '+r.status)); e.status=r.status; throw e; } return d; }
+  const ago=ms=>{ if(!ms)return '—'; const m=Math.round((Date.now()-ms)/60000); return m<60?m+'m ago':m<1440?Math.round(m/60)+'h ago':Math.round(m/1440)+'d ago'; };
+  let MEMBERS=[];
+  function drawMembers(){
+    const q=$('q').value.trim().toLowerCase();
+    const list=MEMBERS.filter(m=>!q||m.handle.toLowerCase().includes(q)||(m.address||'').includes(q));
+    $('members').innerHTML=list.map(m=>`<tr>
+      <td><b>@${esc(m.handle)}</b>${m.banned?' <span class="pill ban">removed from boards</span>':''}</td>
+      <td><select data-tier="${esc(m.id)}" aria-label="League for ${esc(m.handle)}">${TIERS.map((t,i)=>`<option value="${i}"${i===m.tier?' selected':''}>${t}</option>`).join('')}</select></td>
+      <td>${m.level}</td><td>${m.streak}</td>
+      <td>${m.money?(m.money.ret>=0?'+':'')+(m.money.ret*100).toFixed(1)+'% · DD '+(m.money.dd*100).toFixed(1)+'%':'<span class="muted">—</span>'}</td>
+      <td>${m.address?`<code>${esc(m.address.slice(0,6)+'…'+m.address.slice(-4))}</code>`:'<span class="muted">—</span>'}</td>
+      <td>${esc(ago(m.lastSeen))}</td>
+      <td><div class="acts"><button data-act="${m.banned?'unban':'ban'}" data-id="${esc(m.id)}">${m.banned?'Restore':'Suspend'}</button><button class="danger" data-act="remove" data-id="${esc(m.id)}" data-h="${esc(m.handle)}">Delete</button></div></td></tr>`).join('')
+      ||'<tr><td colspan="8" class="muted">No members yet. Share your /pulse link and people join from the Social tab.</td></tr>';
+  }
+  async function load(){
+    const ov=await api('/overview');
+    $('login').classList.add('hide'); $('app').classList.remove('hide'); $('signout').classList.remove('hide');
+    $('tiles').innerHTML=[['Members',ov.members],['Active this week',ov.active7],['Competitions',ov.comps],['Feed posts',ov.events],['League week',ov.week?ov.week.slice(-3):'—']]
+      .concat(ov.tiers.map(t=>[t.tier+' league',t.n])).map(([l,v])=>`<div class="tile"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('');
+    const c=ov.config; $('cOpen').checked=c.open; $('cInvite').value=c.inviteCode||''; $('cUnlocks').checked=c.unlocksOn;
+    $('uTrends').value=c.unlocks.trends; $('uShare').value=c.unlocks.share; $('uCompete').value=c.unlocks.compete;
+    $('tEmber').value=c.themes.ember; $('tAurora').value=c.themes.aurora; $('tGold').value=c.themes.gold;
+    const [ms,cs,ev]=await Promise.all([api('/members'),api('/competitions'),api('/events')]);
+    MEMBERS=ms.members; drawMembers();
+    $('comps').innerHTML=cs.competitions.map(x=>`<tr><td><b>${esc(x.title)}</b><div class="muted">${esc(x.rule||'')}</div></td><td>${esc(x.type)}</td><td>${esc(x.start)} → ${esc(x.end)}</td><td>${esc(x.status)}</td><td>${x.entrants}</td>
+      <td>${x.standings&&x.standings[0]?'@'+esc(x.standings[0].handle)+' · '+esc(x.standings[0].note):'<span class="muted">—</span>'}</td>
+      <td><button class="danger" data-delcomp="${esc(x.id)}" data-t="${esc(x.title)}">Delete</button></td></tr>`).join('')||'<tr><td colspan="7" class="muted">None yet.</td></tr>';
+    $('events').innerHTML=ev.events.map(e=>`<div class="ev"><div><b>${e.admin?'League':'@'+esc(e.handle)}</b> ${esc(e.text)}${e.quote?`<div class="muted">“${esc(e.quote)}”</div>`:''}<div class="muted" style="font-size:12px">${esc(ago(e.at))} · ${e.kudos} kudos</div></div><button class="danger" data-delev="${esc(e.id)}">Remove</button></div>`).join('')||'<p class="muted">Nothing posted yet.</p>';
+  }
+  async function start(){
+    if(!tok){ return; }
+    try{ await load(); }
+    catch(e){ $('login').classList.remove('hide'); $('app').classList.add('hide');
+      const el=$('loginErr'); el.classList.remove('hide');
+      el.textContent=e.status===401?'That token isn’t right.':e.status===403?e.message:'Couldn’t reach the admin API ('+e.message+').'; }
+  }
+  $('go').onclick=()=>{ tok=$('tok').value.trim(); try{ localStorage.setItem('srv_token',tok); }catch(e){} start(); };
+  $('tok').addEventListener('keydown',e=>{ if(e.key==='Enter')$('go').click(); });
+  $('signout').onclick=()=>{ try{ localStorage.removeItem('srv_token'); }catch(e){} location.reload(); };
+  $('q').addEventListener('input',drawMembers);
+  $('saveCfg').onclick=async()=>{ try{
+    await api('/config',{method:'PUT',body:JSON.stringify({open:$('cOpen').checked,inviteCode:$('cInvite').value.trim(),unlocksOn:$('cUnlocks').checked,
+      unlocks:{trends:+$('uTrends').value,share:+$('uShare').value,compete:+$('uCompete').value},themes:{ember:+$('tEmber').value,aurora:+$('tAurora').value,gold:+$('tGold').value}})});
+    note('Settings saved.'); load(); }catch(e){ note(e.message,true); } };
+  const today=new Date(), iso=d=>d.toISOString().slice(0,10);
+  $('nStart').value=iso(today); $('nEnd').value=iso(new Date(today.getTime()+6*86400000));
+  $('nType').onchange=()=>{ $('nMin').value=$('nType').value==='journal'?10:3; };
+  $('mkComp').onclick=async()=>{ try{
+    await api('/competitions',{method:'POST',body:JSON.stringify({title:$('nTitle').value,type:$('nType').value,start:$('nStart').value,end:$('nEnd').value,
+      minDays:+$('nMin').value,ddCap:(+$('nDd').value||8)/100,rule:$('nRule').value})});
+    $('nTitle').value=''; $('nRule').value=''; note('Competition created and announced.'); load(); }catch(e){ note(e.message,true); } };
+  $('postAnn').onclick=async()=>{ const t=$('ann').value.trim(); if(!t)return; try{ await api('/announce',{method:'POST',body:JSON.stringify({text:t})}); $('ann').value=''; note('Posted.'); load(); }catch(e){ note(e.message,true); } };
+  document.addEventListener('change',async ev=>{ const s=ev.target.closest('[data-tier]'); if(!s)return;
+    try{ await api('/members/'+encodeURIComponent(s.dataset.tier),{method:'POST',body:JSON.stringify({action:'tier',tier:+s.value})}); note('League changed.'); }catch(e){ note(e.message,true); } });
+  document.addEventListener('click',async ev=>{
+    const b=ev.target.closest('button'); if(!b)return;
+    try{
+      if(b.dataset.act){ if(b.dataset.act==='remove'&&!confirm('Delete @'+b.dataset.h+'? Their profile, posts and competition entries are removed. This can’t be undone.'))return;
+        await api('/members/'+encodeURIComponent(b.dataset.id),{method:'POST',body:JSON.stringify({action:b.dataset.act})}); note('Done.'); load(); }
+      else if(b.dataset.delcomp){ if(!confirm('Delete “'+b.dataset.t+'”?'))return; await api('/competitions/'+encodeURIComponent(b.dataset.delcomp),{method:'DELETE'}); note('Deleted.'); load(); }
+      else if(b.dataset.delev){ await api('/events/'+encodeURIComponent(b.dataset.delev),{method:'DELETE'}); note('Removed.'); load(); }
+    }catch(e){ note(e.message,true); }
+  });
+  start();
+})();
+</script>
+</body>
+</html>
