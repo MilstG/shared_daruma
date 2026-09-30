@@ -254,10 +254,14 @@ await t('fixes from review: the message names only the pinned site, no claim ora
     // revisions keep rising across a delete, so an old device can't overwrite a new copy
     const blob = x => ({ v: 1, iter: 310000, salt: x, iv: 'AAAAAAAAAAAAAAAA', ct: 'QUJD' });
     await c2('/vault', { method: 'PUT', key: k, body: { rev: 0, blob: blob('AAAA') } });
-    eq((await c2('/vault', { method: 'DELETE', key: k })).d.rev, 1);
-    eq((await c2('/vault', { key: k })).d.rev, 1);
-    eq((await c2('/vault', { method: 'PUT', key: k, body: { rev: 1, blob: blob('BBBB') } })).d.rev, 2);
-    const stale = await c2('/vault', { method: 'PUT', key: k, body: { rev: 1, blob: blob('AAAA') } });
+    eq((await c2('/vault', { key: k, method: 'GET' })).d.rev, 1);
+    const same = (await c2('/vault?have=1', { key: k })).d; eq([same.unchanged, same.blob], [true, null], 'nothing re-sent when the device is current');
+    eq((await c2('/vault', { method: 'DELETE', key: k })).d.rev, 2);
+    const missed = await c2('/vault', { method: 'PUT', key: k, body: { rev: 1, blob: blob('AAAA') } });
+    eq([missed.status, missed.d.blob], [409, null], 'a device that missed the delete learns of it instead of bringing the copy back');
+    eq((await c2('/vault', { key: k })).d.rev, 2);
+    eq((await c2('/vault', { method: 'PUT', key: k, body: { rev: 2, blob: blob('BBBB') } })).d.rev, 3);
+    const stale = await c2('/vault', { method: 'PUT', key: k, body: { rev: 2, blob: blob('AAAA') } });
     eq(stale.status, 409); eq(stale.d.blob.salt, 'BBBB');
     // “claimed wallets only” explains itself in discipline competitions
     const ad = { Authorization: 'Bearer owner-token' };
@@ -316,9 +320,14 @@ await t('a merge keeps only what this device changed: other settings and wallets
   eq(Object.keys(Bd.journal).sort(), ['t1', 't2', 't3']);
   // a restored backup wins everything on the next merge
   const C = dev(); C.VAULT.key = key; C.VAULT.salt = 'AAAA'; C.VAULT.rev = 1; C.VAULT.base = vm.runInContext('vaultSnapS()', C);
-  vm.runInContext('settings.goals={monthlyTarget:42}; journal.t1={notes:"restored"}; vaultMarkAll();', C);
+  vm.runInContext('journal.t2={notes:"old"}; var before=journal; journal={t1:{notes:"restored"}}; settings.goals={monthlyTarget:42}; vaultMarkAll(before);', C);
   await vm.runInContext('vaultMerge', C)({ rev: 2, blob: blobA });
   eq(C.settings.goals, { monthlyTarget: 42 }); eq(C.journal.t1.notes, 'restored'); eq(C.settings.wallets.map(w => w.address), ['0xa']);
+  eq(Object.keys(C.journal), ['t1'], 'an entry the restore removed stays removed');
+});
+t('a cut-off answer from the server is an error, never an empty success that reads as “deleted”', () => {
+  ok(grabFn('socFetch').includes("if(r.ok)throw new Error("));
+  ok(grabFn('vaultSyncOnOpen').includes("'?have='") && grabFn('vaultSyncOnOpen').includes('if(!d||!d.member)throw'));
 });
 t('the wallet signs the exact server text, hex-encoded for personal_sign', () => {
   eq(cctx.utf8Hex('Hi ✓'), '0x' + Buffer.from('Hi ✓').toString('hex'));

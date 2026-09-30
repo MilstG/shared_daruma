@@ -446,7 +446,7 @@ function createSocial(opts) {
         return json(res, 200, { adminConfigured, members: members().length, banned: members().filter(m => m.banned).length, active7: act.length,
           events: S.events.length, comps: Object.keys(S.comps).length, week: wk, config: S.config,
           claimed: members().filter(m => m.claimed).length, vaults: members().filter(m => m.vault).length, vaultBytes: vaultTotal(), claims: !!sig,
-          originPinned: origins.length > 0,
+          originPinned: origins.length > 0 || !!opts.hostVetted,
           tiers: TIERS.map((t, i) => ({ tier: t, n: members().filter(m => !m.banned && (m.tier || 0) === i).length })) });
       }
       if (sub === 'members' && M === 'GET' && !parts[2])
@@ -654,6 +654,9 @@ function createSocial(opts) {
     }
     // ---------- the encrypted journal (vault): ciphertext in, ciphertext out ----------
     if (head === 'vault' && M === 'GET') {
+      // ?have=<rev>: the caller already holds this revision, so skip sending (up to 6 MB of) the copy
+      if (me.vault && query.have !== undefined && +query.have === me.vault.rev)
+        return json(res, 200, { rev: me.vault.rev, at: me.vault.at, unchanged: true, blob: null, max: MAX_VAULT_BODY, on: !!S.config.vaultOn, member: me.id });
       let blob = null; if (me.vault) try { blob = JSON.parse(fs.readFileSync(vaultFile(me.id), 'utf8')); } catch (e) { blob = null; }
       return json(res, 200, { rev: vaultRev(me), at: me.vault ? me.vault.at : null, blob, max: MAX_VAULT_BODY, on: !!S.config.vaultOn, member: me.id });
     }
@@ -673,7 +676,8 @@ function createSocial(opts) {
     }
     if (head === 'vault' && M === 'DELETE') {
       try { fs.unlinkSync(vaultFile(me.id)); } catch (e) {}
-      me.vaultRev = vaultRev(me); me.vault = null; save(); return json(res, 200, { ok: true, rev: me.vaultRev });
+      // one past the last copy: a device still holding it gets a 409 with nothing in it (deleted), not a silent re-upload
+      me.vaultRev = vaultRev(me) + 1; me.vault = null; save(); return json(res, 200, { ok: true, rev: me.vaultRev });
     }
     if (head === 'stats' && M === 'POST') {
       const next = sanitizeStats(body);

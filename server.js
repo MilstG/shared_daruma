@@ -1779,11 +1779,12 @@ function createApp(opts) {
       .map(d => ({ k: d.key, s: d.score, n: d.n }));
   };
   const forgetAddress = (addr) => { try { fs.unlinkSync(path.join(socialFillsDir, String(addr).toLowerCase() + '.json.gz')); } catch (e) {} };
-  // Wallet sign-in messages name the site the member signs for. Pin it (PUBLIC_ORIGIN, comma-separated;
-  // Railway's own domain by default) so a look-alike site can't get a message for its own domain.
-  const publicOrigins = (opts.publicOrigins !== undefined ? opts.publicOrigins
-    : String(process.env.PUBLIC_ORIGIN || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : '')).split(','))
+  // Wallet sign-in messages name the site the member signs for. Pin it (PUBLIC_ORIGIN, comma-separated)
+  // so a look-alike site can't get a message for its own domain. Behind Railway's edge the Host header
+  // can only be one of the service's own domains (custom ones included), so it's trusted there unpinned.
+  const publicOrigins = (opts.publicOrigins !== undefined ? opts.publicOrigins : String(process.env.PUBLIC_ORIGIN || '').split(','))
     .map(x => String(x).trim()).filter(Boolean);
+  const hostVetted = opts.hostVetted !== undefined ? !!opts.hostVetted : !!(process.env.RAILWAY_ENVIRONMENT_NAME || process.env.RAILWAY_ENVIRONMENT);
   // Behind a proxy (Railway), rate limits need the client's address, not the proxy's: the last
   // X-Forwarded-For entry is the one the proxy added. TRUST_PROXY=1 turns this on elsewhere.
   const trustProxy = opts.trustProxy !== undefined ? !!opts.trustProxy
@@ -1792,7 +1793,7 @@ function createApp(opts) {
     if (xf) { const last = String(xf).split(',').map(x => x.trim()).filter(Boolean).pop(); if (last) return last.slice(0, 64); }
     return (req.socket && req.socket.remoteAddress) || ''; };
   const social = createSocial({ dataDir, json, authOk, adminConfigured: !!auth, fetchImpl: opts.fetchImpl, now: opts.now,
-    behaviorFor, verifyAvailable: engine.ok, forgetAddress, publicOrigins, clientIp });
+    behaviorFor, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp });
 
   const server = http.createServer((req, res) => {
     const [url, qs] = (req.url || '/').split('?');

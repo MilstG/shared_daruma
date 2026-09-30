@@ -255,9 +255,10 @@ and only another signature from that wallet moves it. The owner can switch on
 **Only count claimed wallets**, after which verified Discipline, returns and return
 competitions only use claimed wallets. Smart-contract wallets (which can't produce a
 plain signature) and email-login wallets without an exportable key can't claim yet.
-The sign-in message names the site it's for; set `PUBLIC_ORIGIN` to your Pulse address
-(Railway's own domain is used automatically) so the server only writes messages for
-that site and a look-alike page can't collect a usable signature.
+The sign-in message names the site it's for. When self-hosting, set `PUBLIC_ORIGIN` to
+your Pulse address so the server only writes messages for that site and a look-alike
+page can't collect a usable signature (on Railway the edge already guarantees the
+address, custom domains included).
 
 **Your profile on every device.** Each device holds its own random key (only hashes
 are stored; up to 10 per member). A new device signs in with the claimed wallet, or

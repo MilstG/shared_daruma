@@ -6401,9 +6401,10 @@ $('modalLoad').onclick=async()=>{
     if(data.journal||data.wallets||data.settings){ // full backup
       // applySnapshot is the one restore path that knows the whole backup shape — including
       // the v9 fill caches and saved MAE/MFE rows that pasting used to silently drop.
+      const before=journal;
       await applySnapshot(data);
       resetDerivedState(); // restored wallet set replaces the loaded world — derived state goes with it
-      vaultMarkAll(); // a member's encrypted sync: the restore wins the next merge instead of being undone
+      vaultMarkAll(before); // a member's encrypted sync: the restore wins the next merge instead of being undone
       schedulePersist(); // applySnapshot writes via rawSet (no sync triggers) — push the restored state explicitly
       view=settings.view||view; dexView=settings.dexView||dexView; if(settings.riskDefault)$('riskDefault').value=settings.riskDefault;
       document.querySelectorAll('#viewtog button').forEach(x=>x.classList.toggle('on',x.dataset.v===view));
@@ -6419,7 +6420,7 @@ $('modalLoad').onclick=async()=>{
     const have=Object.keys(journal).length;
     if(have&&!confirm(`Replace your journal (${have} entries) with the pasted one (${ents.length} entries)? Use a full backup to merge devices instead.`)){
       setStatus('Journal paste cancelled \u2014 nothing was changed.'); return; }
-    journal=data; _jrev++; await Store.set(J_KEY,journal); if(allTrades.length)render();
+    const before=journal; journal=data; _jrev++; vaultMarkAll(before,true); await Store.set(J_KEY,journal); if(allTrades.length)render();
     setStatus('Journal restored ('+Object.keys(journal).length+' entries).'); return;
   }
   const fills=Array.isArray(data)?data:(data.fills||[]);
@@ -9474,7 +9475,8 @@ function socAv(h,size){ const P=['#B69CFF','#5AA9FF','#FFB25A','#3FE0A0','#F4C04
 function socAvailable(){ return /^https?:$/.test(location.protocol)&&SRV.enabled; }
 async function socFetch(p,o){ o=o||{};
   o.headers=Object.assign({},o.body?{'Content-Type':'application/json'}:{},SOC.key?{'X-Pulse-Key':SOC.key}:{},o.headers||{});
-  const r=await fetch('/api/social'+p,o); const d=await r.json().catch(()=>({}));
+  const r=await fetch('/api/social'+p,o);
+  let d; try{ d=await r.json(); }catch(e){ if(r.ok)throw new Error('The server’s answer didn’t arrive in full. Try again.'); d={}; } // a cut-off body is never an empty success
   if(!r.ok){ const e=new Error(d.error||('HTTP '+r.status)); e.status=r.status; e.data=d; throw e; }
   return d; }
 function socBoot(){
@@ -9796,7 +9798,10 @@ function vaultDirty(){ return VAULT.dirty.size>0||VAULT.sGen!==VAULT.sSent; }
 // called on every local save (Store.set / markJEdit)
 function vaultMark(id){ if(!VAULT.key)return; if(id==null)VAULT.sGen++; else VAULT.dirty.set(id,(VAULT.dirty.get(id)||0)+1); }
 // a restored backup is this device's word on everything: every entry and setting wins the next merge
-function vaultMarkAll(){ if(!VAULT.key)return; for(const id in journal)VAULT.dirty.set(id,(VAULT.dirty.get(id)||0)+1); VAULT.base=null; VAULT.sGen++; vaultSaveLocal(); }
+// prev: the journal before the restore, so entries it removed stay removed too
+function vaultMarkAll(prev, journalOnly){ if(!VAULT.key)return;
+  for(const id of new Set([...Object.keys(prev||{}),...Object.keys(journal)]))VAULT.dirty.set(id,(VAULT.dirty.get(id)||0)+1);
+  if(!journalOnly){ VAULT.base=null; VAULT.sGen++; } vaultSaveLocal(); }
 function vaultSchedule(){ if(!vaultActive()||_applying)return; clearTimeout(VAULT.timer); VAULT.timer=setTimeout(()=>vaultPush(),3000); vaultSaveLocal(); }
 // Another device's copy, merged: theirs wins, except journal entries edited here since the last push,
 // settings fields changed here (against the last synced values), and wallets added or removed here.
@@ -9830,7 +9835,8 @@ async function vaultPush(){
     const blob=await vaultSeal(VAULT.key,VAULT.salt,vaultPayload());
     if(blob.ct.length>6*1024*1024)throw new Error('Your journal is too large to sync ('+(blob.ct.length/1048576).toFixed(1)+' MB; the limit is 6 MB).');
     const r=await fetch('/api/social/vault',{method:'PUT',headers:{'Content-Type':'application/json','X-Pulse-Key':SOC.key},body:JSON.stringify({rev:VAULT.rev,blob})});
-    const d=await r.json().catch(()=>({}));
+    const d=await r.json().catch(()=>null);
+    if(!d)throw new Error('The server’s answer didn’t arrive in full. Will retry.');
     if(r.status===409&&!d.blob){ vaultForget(); if(SOC.me)SOC.me.vault=null; pzNote('Your synced journal was deleted from another device, so this one stopped syncing.'); return; }
     if(r.status===409){ // another device saved first: merge its copy, then push again at its revision
       const walletsChanged=await vaultMerge(d); VAULT.again=true;
@@ -9847,10 +9853,12 @@ async function vaultPush(){
 // On open: take a newer copy from another device (merging anything unsent from here), else push what's unsent.
 async function vaultSyncOnOpen(signal){
   if(!vaultActive())return false;
-  try{ const d=await socFetch('/vault',signal?{signal}:undefined);
-    if(d.member&&VAULT.mid&&d.member!==VAULT.mid){ vaultForget(); return false; }
+  try{ const d=await socFetch('/vault'+(VAULT.rev>0?'?have='+VAULT.rev:''),signal?{signal}:undefined);
+    if(!d||!d.member)throw new Error('The server’s answer didn’t arrive in full.');
+    if(VAULT.mid&&d.member!==VAULT.mid){ vaultForget(); return false; }
     let walletsChanged=false;
-    if(d.blob&&d.rev!==VAULT.rev)walletsChanged=await vaultMerge(d);
+    if(d.unchanged){}
+    else if(d.blob&&d.rev!==VAULT.rev)walletsChanged=await vaultMerge(d);
     else if(!d.blob&&VAULT.rev>0){ vaultForget(); VAULT.err=null; pzNote('Your synced journal was deleted from another device, so this one stopped syncing.'); return false; }
     else if(!d.blob){ VAULT.rev=d.rev||0; VAULT.sGen++; } // turned on here but never sent: send it now
     if(vaultDirty())vaultSchedule();
