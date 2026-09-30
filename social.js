@@ -64,11 +64,14 @@ function sanitizeStats(b) {
     week: WEEK_RE.test(b.week) ? b.week : null, weekXp: clampNum(b.weekXp, 0, 1e6) || 0,
     streak: clampNum(b.streak, 0, 10000) || 0, best: clampNum(b.best, 0, 10000) || 0, shields: clampNum(b.shields, 0, 2) || 0,
     challengesDone: clampNum(b.challengesDone, 0, 10000) || 0, lastChallenge: cleanText(b.lastChallenge, 140),
+    tz: typeof b.tz === 'string' && /^[A-Za-z_+\-/0-9]{1,40}$/.test(b.tz) ? b.tz : 'UTC',
     badges, badgeN: clampNum(b.badgeN, 0, 100) || badges.length, habits, days,
   };
 }
 function sanitizeShare(s, prev) {
-  const out = Object.assign({}, DEFAULT_SHARE, prev || {});
+  // a new member gets the defaults; an existing one keeps what they had, and a key added later
+  // (like verify) stays OFF until they switch it on themselves
+  const out = prev ? Object.assign({}, DEFAULT_SHARE, { verify: false }, prev) : Object.assign({}, DEFAULT_SHARE);
   for (const k of SHARE_KEYS) if (s && typeof s[k] === 'boolean') out[k] = s[k];
   return out;
 }
@@ -183,7 +186,8 @@ function compStandings(c, members, todayKey) {
     if (c.type === 'discipline') {
       // verified days only: recomputed by the server from the member's own fills
       const vd = m.share && m.share.verify && Array.isArray(m.vdays) ? m.vdays.filter(d => d.k >= c.start && d.k <= c.end && d.k <= todayKey) : null;
-      if (!vd) { rows.push({ id, handle: m.handle, score: null, note: 'Needs verification: switch on “Verify my discipline”', out: false }); continue; }
+      if (!vd) { rows.push({ id, handle: m.handle, score: null, out: false,
+        note: !(m.share && m.share.verify) ? 'Needs verification: switch on “Verify my discipline”' : !m.address ? 'Needs a wallet to verify' : 'Verifying from fills…' }); continue; }
       const d = disciplineOver(vd, c.start, c.end, c.minDays || 3);
       if (d.avg == null) note = d.n + ' of ' + (c.minDays || 3) + ' trading days so far'; else { score = Math.round(d.avg); note = d.n + ' trading days'; }
     } else if (c.type === 'survivor') {
@@ -244,7 +248,9 @@ function createSocial(opts) {
   const visible = (e, viewer) => { if (!e.member) return true; const a = own(S.members, e.member) ? S.members[e.member] : null;
     if (!a || a.banned) return false; if (viewer && a.id === viewer.id) return true;
     return !!a.share.feed && (e.type !== 'habit' || !!a.share.habits); };
-  const dropMember = (id) => { delete S.members[id]; delete S.follows[id];
+  const dropMember = (id) => { const gone = own(S.members, id) ? S.members[id].address : null;
+    delete S.members[id]; delete S.follows[id];
+    if (gone && opts.forgetAddress && !members().some(o => o.address === gone)) opts.forgetAddress(gone);
     for (const k in S.follows) S.follows[k] = S.follows[k].filter(x => x !== id);
     S.events = S.events.filter(e => e.member !== id); for (const e of S.events) e.kudos = e.kudos.filter(x => x !== id);
     for (const c of Object.values(S.comps)) { delete c.entrants[id]; if (c.money) delete c.money[id]; } };
@@ -262,14 +268,16 @@ function createSocial(opts) {
   const moneyBusy = new Set();
   const refreshMoney = async (m, force) => {
     if (!m.address || !(m.share.ret || m.share.usd) || moneyBusy.has(m.id)) return;
+    const addr = m.address;
     if (!force && m.money && now() - m.money.at < 30 * 60000) return;
     if (m.moneyFailAt && now() - m.moneyFailAt < 10 * 60000) return; // Hyperliquid erroring: don't hammer it
     moneyBusy.add(m.id);
     try {
       const r = await fetchImpl('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'portfolio', user: m.address }) });
+        body: JSON.stringify({ type: 'portfolio', user: addr }) });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const res = await r.json();
+      if (!own(S.members, m.id) || S.members[m.id].address !== addr) return; // wallet changed meanwhile
       const st = portfolioStats(res, 'month');
       m.money = st ? { ret: st.ret, dd: st.dd, usd: st.usd, at: now() } : { ret: null, dd: null, usd: null, at: now() };
       for (const c of Object.values(S.comps)) if (c.type === 'return' && c.entrants[m.id]) {
@@ -285,15 +293,19 @@ function createSocial(opts) {
   };
   // verified Discipline: recomputed from the member's public fills, at most every 30 minutes each
   const behaviorBusy = new Set();
+  const canVerify = !!opts.behaviorFor && opts.verifyAvailable !== false;
   const refreshBehavior = async (m, force) => {
-    if (!opts.behaviorFor || !m.address || !m.share.verify || behaviorBusy.has(m.id)) return;
+    if (!canVerify || !m.address || !m.share.verify || behaviorBusy.has(m.id)) return;
+    if (behaviorBusy.size >= 2) return; // two fetches at a time; the rest catch up on later requests
     if (!force && m.vAt && now() - m.vAt < 30 * 60000) return;
     if (m.vFailAt && now() - m.vFailAt < 10 * 60000) return;
+    const addr = m.address, tz = (m.stats && m.stats.tz) || 'UTC';
     behaviorBusy.add(m.id);
     try {
-      const days = await opts.behaviorFor(m.address);
+      const days = await opts.behaviorFor(addr, tz);
       if (!Array.isArray(days)) throw new Error('no data');
-      const live = own(S.members, m.id) ? S.members[m.id] : null; if (!live || !live.share.verify || live.address !== m.address) return;
+      // the member may have changed wallet (or left) while this was running
+      const live = own(S.members, m.id) ? S.members[m.id] : null; if (!live || !live.share.verify || live.address !== addr) return;
       live.vdays = days.filter(d => d && DAY_RE.test(d.k)).slice(-60).map(d => ({ k: d.k, s: clampNum(d.s, 0, 100) || 0, n: clampNum(d.n, 0, 1e5) || 0 }));
       live.vAt = now(); live.vFailAt = 0; save();
     } catch (e) { m.vFailAt = now(); }
@@ -447,12 +459,15 @@ function createSocial(opts) {
         if (!HANDLE_RE.test(h)) return json(res, 400, { error: 'Pick a name of 3–20 letters, numbers or underscores.' });
         const other = byHandle(h); if (other && other.id !== me.id) return json(res, 409, { error: 'That name is taken.' }); me.handle = h; }
       if (body.share) me.share = sanitizeShare(body.share, me.share);
-      const prevAddr = me.address;
+      const prevAddr = me.address, prevVerify = !!me.share.verify, prevMoney = !!(me.share.ret || me.share.usd);
       if (body.address !== undefined) me.address = typeof body.address === 'string' && /^0x[0-9a-fA-F]{40}$/.test(body.address) ? body.address.toLowerCase() : null;
       if (!(me.share.ret || me.share.usd)) me.money = null;
       if (!me.share.verify || me.address !== prevAddr) { me.vdays = null; me.vAt = 0; }
       if (!me.share.ret) for (const c of Object.values(S.comps)) if (c.money) delete c.money[me.id]; // opting out hides past results too
-      save(); refreshMoney(me, me.address !== prevAddr); refreshBehavior(me, true);
+      save();
+      refreshMoney(me, me.address !== prevAddr || (!prevMoney && !!(me.share.ret || me.share.usd)));
+      refreshBehavior(me, me.address !== prevAddr || (!prevVerify && !!me.share.verify));
+      if (prevAddr && prevAddr !== me.address && opts.forgetAddress && !members().some(o => o.address === prevAddr)) opts.forgetAddress(prevAddr);
       return json(res, 200, { me: publicMember(me, me), share: me.share });
     }
     if (head === 'me' && M === 'DELETE') {
@@ -485,7 +500,8 @@ function createSocial(opts) {
       const mine = rows.find(r => r.id === me.id) || null;
       return json(res, 200, { board, label: BOARDS[board].label, rows: rows.slice(0, 50).map(r => ({ rank: r.rank, handle: r.handle, tier: r.tier, value: r.value, sub: r.sub, me: r.id === me.id })),
         me: mine, total: rows.length, optedIn: !!me.share[BOARDS[board].needs] && (!BOARDS[board].verified || !!me.share.verify),
-        verifyPending: !!BOARDS[board].verified && !!me.share.verify && !Array.isArray(me.vdays) });
+        need: !me.share[BOARDS[board].needs] ? BOARDS[board].needs : BOARDS[board].verified && !me.share.verify ? 'verify' : null,
+        verifyState: !BOARDS[board].verified || !me.share.verify ? null : !canVerify ? 'unavailable' : !me.address ? 'no-wallet' : !Array.isArray(me.vdays) ? 'pending' : 'ok' });
     }
     if (head === 'feed' && M === 'GET') {
       const scope = query.scope === 'discover' ? 'discover' : 'following';

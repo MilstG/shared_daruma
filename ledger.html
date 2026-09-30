@@ -8757,7 +8757,8 @@ const PZ_BONUS={checkin:['Morning check-in',10],plan:['Plan before your first tr
 // closed before that day's first entry, so a day is never judged against itself.
 function pzBehaviorDays(closed, opts){
   const dayOf=opts.dayOf, loss=opts.isLoss, M=15*60000, H2=2*3600000;
-  const tr=(closed||[]).filter(t=>!t.isOpen&&t.closeTime&&t.openTime).sort((a,b)=>a.openTime-b.openTime);
+  // trades cut off at the start of the history (no opening fill seen) have no real entry to judge
+  const tr=(closed||[]).filter(t=>!t.isOpen&&t.closeTime&&t.openTime&&!t.partialHistory).sort((a,b)=>a.openTime-b.openTime);
   const closes=[...tr].sort((a,b)=>a.closeTime-b.closeTime), ct=closes.map(t=>t.closeTime);
   const before=ms=>{ let lo=0,hi=ct.length; while(lo<hi){ const m=(lo+hi)>>1; if(ct[m]<ms)lo=m+1; else hi=m; } return lo; };
   const size=t=>Math.abs((+t.maxSize||0)*(+t.avgEntry||0)), dur=t=>t.closeTime-t.openTime;
@@ -8772,7 +8773,10 @@ function pzBehaviorDays(closed, opts){
     const winHold=nfMedian(prior.slice(-60).filter(t=>t.net>0&&!loss(t.net)).map(dur).filter(x=>x>0));
     const flags={revenge:0,afterTwo:0,sizeUp:0,addLoser:0,overtrade:0,heldLoser:0}; let clean=0;
     arr.forEach((t,i)=>{
-      const j=before(t.openTime), p1=j>0?closes[j-1]:null, p2=j>1?closes[j-2]:null, f=[];
+      // closes up to and including the entry's millisecond: a stop-and-reverse closes the loser and
+      // opens the next trade on the same fill, and that re-entry counts
+      const prev=[]; for(let q=before(t.openTime+1)-1;q>=0&&prev.length<2;q--)if(closes[q]!==t)prev.push(closes[q]);
+      const p1=prev[0]||null, p2=prev[1]||null, f=[];
       if(p1&&loss(p1.net)&&t.openTime-p1.closeTime<=M)f.push('revenge');
       if(p1&&p2&&loss(p1.net)&&loss(p2.net)&&dayOf(p1.closeTime)===dayOf(t.openTime)&&dayOf(p2.closeTime)===dayOf(t.openTime))f.push('afterTwo');
       if(p1&&loss(p1.net)&&t.openTime-p1.closeTime<=H2&&medSize&&size(t)>1.5*medSize)f.push('sizeUp');
@@ -9425,16 +9429,18 @@ try{ SOC.key=localStorage.getItem(SOC_KEY_STORE)||null; }catch(e){}
 // The numbers a member shares, from the shared game context. Pure given its inputs.
 function pzSocialStats(g, habits){
   const done=g.challenges.filter(c=>c.status==='done');
-  return {xp:g.xp.total, level:g.level.level, week:g.nowWeek, weekXp:g.weekXp,
+  return {xp:g.xp.total, level:g.level.level, week:g.nowWeek, weekXp:g.weekXp, tz:pzClockZone(),
     streak:g.streak.current, best:g.streak.best, shields:g.streak.shields,
     challengesDone:done.length, lastChallenge:done.length?habitSentence(done[done.length-1].ch.spec):'',
     badges:g.achievements.filter(a=>a.at).map(a=>({id:a.id,t:a.title})), badgeN:g.achievements.filter(a=>a.at).length,
     habits:(habits||[]).slice(0,5),
     days:g.days.slice(-45).map(d=>({k:d.key,s:d.score,b:!!d.breached,j:d.parts.journal===1}))};
 }
-// The server only gets a wallet address when a money toggle needs it (returns are read on chain
-// from it) or the member chose to show it; otherwise it never leaves the browser.
+// The server only gets a wallet address when a toggle needs it — Verify my discipline (fills),
+// % return or dollar P&L (portfolio), or Show wallet address; otherwise it never leaves the browser.
 function socAddressFor(share){ const w=settings.wallets[0]; return w&&share&&(share.verify||share.ret||share.usd||share.addr)?w.address:null; }
+// The IANA zone the app's day keys use, so the server scores the same calendar days.
+function pzClockZone(){ try{ return settings&&settings.tz==='utc'?'UTC':Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'; }catch(e){ return 'UTC'; } }
 // "When X, Y." -> a self-graded habit spec (kept via the day journal's "I followed the plan").
 function socHabitSpec(sentence){
   const s=String(sentence||'').trim(), m=s.match(/^when (.+?), (.+?)\.?$/i);
@@ -9535,8 +9541,11 @@ function socLeagueHtml(g){
   else if(!d.rows.length) list=`<section class="pz-card"><p class="pz-sub">${isXp?'No one in your league has posted XP this week yet. Check in and trade your plan — your XP shows up here.':'No one on this board yet.'}</p></section>`;
   else list=`<ol class="pz-list" aria-label="Standings">${d.rows.map(r=>`<li class="pz-li${r.me?' me':''}"><span class="pz-rank${r.rank<=3?' top':''}">${r.rank}</span>${socAv(r.handle)}
       <a class="pz-who" href="#u/${esc(r.handle)}"><b>${r.me?'You':'@'+esc(r.handle)}</b><span>${esc(r.sub||'')}</span></a><span class="pz-val">${esc(socValue(b,r.value))}</span></li>`).join('')}</ol>`;
-  const opt=d&&d.optedIn===false?`<p class="pz-warn">You’re not on this board. Switch on “${b==='usd'?'Show dollar P&L':b==='discipline'?'Verify my discipline':'Show % return'}” in <a href="#sharing">What you share</a> to appear.</p>`
-    :d&&d.verifyPending?'<p class="pz-sub" style="font-size:12px"><span class="pz-spin"></span>Verifying your Discipline from your fills — you’ll appear here shortly.</p>':'';
+  const need={boards:'Process leaderboards',verify:'Verify my discipline',ret:'Show % return',usd:'Show dollar P&L'};
+  const opt=d&&d.optedIn===false?`<p class="pz-warn">You’re not on this board. Switch on “${need[d.need]||'Show % return'}” in <a href="#sharing">What you share</a> to appear.</p>`
+    :d&&d.verifyState==='no-wallet'?'<p class="pz-warn">Add a wallet so the server can verify your Discipline from your fills.</p>'
+    :d&&d.verifyState==='pending'?'<p class="pz-sub" style="font-size:12px"><span class="pz-spin"></span>Verifying your Discipline from your fills — you’ll appear here shortly.</p>'
+    :d&&d.verifyState==='unavailable'?'<p class="pz-sub" style="font-size:12px">This server can’t verify scores right now, so the discipline board is paused.</p>':'';
   const mine=d&&d.me?`<p class="pz-sub" style="font-size:13px">You’re <b>#${d.me.rank}</b> of ${isXp?d.size:d.total} with ${esc(socValue(b,d.me.value))}.</p>`:'';
   return `${banner}${chips}<p class="pz-sub" style="font-size:12px">${esc(SOC_BOARD_NOTE[b])}</p>${opt}${mine}${list}`;
 }

@@ -29,6 +29,12 @@ t('sharing defaults keep money and the address private', () => {
   const sh = S.sanitizeShare({ usd: true, profile: 'yes' });
   eq(sh, { profile: true, boards: true, feed: true, habits: true, verify: true, ret: false, usd: true, addr: false });
 });
+t('a sharing key added later (verify) stays off for existing members until they switch it on', () => {
+  const old = { profile: true, boards: true, feed: true, habits: true, ret: false, usd: false, addr: false };
+  eq(S.sanitizeShare({}, old).verify, false);
+  eq(S.sanitizeShare({ verify: true }, old).verify, true);
+  eq(S.sanitizeShare({}, undefined).verify, true, 'new members get the default');
+});
 t('competitions need a known type, a title and a window of at most 92 days', () => {
   ok(!S.sanitizeComp({ type: 'lottery', title: 'x', start: '2026-10-01', end: '2026-10-07' }));
   ok(!S.sanitizeComp({ type: 'discipline', title: 'x', start: '2026-10-07', end: '2026-10-01' }));
@@ -113,7 +119,7 @@ t('competition standings for each type', () => {
   const disc = S.compStandings({ ...ent, type: 'discipline', minDays: 3 }, members, '2026-09-30');
   eq(disc.map(r => [r.handle, r.score]), [['alpha', 80], ['bravo', null]]);
   const unv = S.compStandings({ ...ent, entrants: { 4: {} }, type: 'discipline', minDays: 1 }, members, '2026-09-30');
-  eq(unv[0].score, null); ok(/Needs verification/.test(unv[0].note), 'unverified entrants don’t score');
+  eq(unv[0].score, null); eq(unv[0].note, 'Needs a wallet to verify', 'unverified entrants don’t score, and are told why');
   ok(/2 of 3 trading days/.test(disc[1].note));
   const m2 = members.map(m => m.id === '1' ? { ...m, stats: { ...m.stats, days: [day('2026-09-28', 90), day('2026-09-29', 80, true)] } } : m);
   const surv = S.compStandings({ ...ent, type: 'survivor' }, m2, '2026-09-30');
@@ -137,7 +143,9 @@ const FILLS = [fl('B', 1, 100, 0, 0, '2026-09-28T10:00:00Z', 1), fl('A', 1, 110,
   fl('B', 1, 100, 0, 0, '2026-09-29T10:00:00Z', 3), fl('A', 1, 110, 1, 10, '2026-09-29T11:00:00Z', 4),
   fl('B', 1, 100, 0, 0, '2026-09-30T09:00:00Z', 5), fl('A', 1, 90, 1, -10, '2026-09-30T10:00:00Z', 6),
   fl('B', 1, 95, 0, 0, '2026-09-30T10:05:00Z', 7), fl('A', 1, 96, 1, 1, '2026-09-30T10:35:00Z', 8)];
+let slowFor = null;
 const fetchImpl = async (url, o) => { hlCalls++; const b = JSON.parse(o.body);
+  if (slowFor && String(b.user).toLowerCase() === slowFor && b.type === 'userFillsByTime') await new Promise(r => setTimeout(r, 250));
   const out = b.type === 'portfolio' ? PORT
     : b.type === 'userFillsByTime' && String(b.user).toLowerCase() === ALPHA ? FILLS.filter(f => f.time >= (b.startTime || 0)) : [];
   return { ok: true, status: 200, json: async () => out }; };
@@ -179,7 +187,8 @@ try {
     const disc = await call('/leaderboard?board=discipline', { key: A });
     eq(disc.d.rows.map(r => [r.handle, r.value]), [['alpha_1', 83]], 'the board shows the score recomputed from fills (100, 100, 50), not the posted 90/80/70');
     ok(/^verified/.test(disc.d.rows[0].sub));
-    eq((await call('/leaderboard?board=discipline', { key: Bk })).d.optedIn, true, 'bravo opted in but has no address yet');
+    const bl = (await call('/leaderboard?board=discipline', { key: Bk })).d;
+    eq(bl.optedIn, true); eq(bl.verifyState, 'no-wallet', 'bravo is told to add a wallet, not left waiting');
     const feed = await call('/feed?scope=discover', { key: Bk });
     ok(feed.d.events.some(e => e.handle === 'alpha_1' && e.text === 'reached level 3 · Journeyman'));
     ok(feed.d.events.some(e => e.text === 'hit a 7-day discipline streak'));
@@ -283,6 +292,28 @@ try {
     await call('/admin/members/' + id, { method: 'POST', admin: true, body: { action: 'remove' } });
     void k;
   });
+  await t('verification follows a wallet change made mid-fetch, and scores days on the member’s own clock', async () => {
+    slowFor = ALPHA;
+    const k = (await call('/join', { method: 'POST', body: { handle: 'switcher', address: ALPHA } })).d.key;
+    await call('/me', { method: 'PUT', key: k, body: { address: '0x' + 'f'.repeat(40) } });
+    await new Promise(r => setTimeout(r, 400)); slowFor = null;
+    await call('/leaderboard?board=discipline', { key: k }); await tick();
+    const m = (await call('/admin/members', { admin: true })).d.members.find(x => x.handle === 'switcher');
+    eq(m.address, '0x' + 'f'.repeat(40));
+    const lb = (await call('/leaderboard?board=discipline', { key: k })).d;
+    ok(!lb.rows.some(r => r.handle === 'switcher'), 'the old wallet’s score never lands on the new one');
+    await call('/me', { method: 'DELETE', key: k });
+    // same fills, New York clock: the 09:00–10:35 UTC trades on the 30th stay on the 30th, and the
+    // 10:00/11:00 UTC trades on the 28th and 29th stay put; a 02:00 UTC trade would move a day back
+    clock += 2 * 3600000; // past the five-joins-an-hour limit this suite has used up
+    const ny = (await call('/join', { method: 'POST', body: { handle: 'newyorker', address: ALPHA } })).d.key;
+    await call('/stats', { method: 'POST', key: ny, body: { level: 1, tz: 'America/New_York' } });
+    await call('/me', { method: 'PUT', key: ny, body: { share: { verify: false } } });
+    await call('/me', { method: 'PUT', key: ny, body: { share: { verify: true } } }); await tick(); await tick();
+    const prof = (await call('/profile/newyorker', { key: ny })).d.profile;
+    eq(prof.verified, true);
+    await call('/me', { method: 'DELETE', key: ny });
+  });
   await t('leaving deletes the profile, posts and entries', async () => {
     eq((await call('/me', { method: 'DELETE', key: A })).status, 200);
     eq((await call('/me', { key: A })).status, 401);
@@ -301,10 +332,10 @@ await t('with no AUTH_TOKEN the admin API refuses instead of opening to everyone
 });
 
 console.log('\nClient helpers');
-const ctx = { Math, Object, Array, String, JSON };
+const ctx = { Math, Object, Array, String, JSON, Intl, settings: { tz: "utc" } };
 vm.createContext(ctx);
 vm.runInContext('const PZ_UNLOCK_DEFAULTS=' + html.slice(html.indexOf('const PZ_UNLOCK_DEFAULTS=') + 25, html.indexOf(';\n', html.indexOf('const PZ_UNLOCK_DEFAULTS='))) + ';\n'
-  + ['pzNeeds', 'socHabitSpec', 'pzSocialStats'].map(grabFn).join('\n') + '\nfunction habitSentence(s){ return "When "+s.when+", "+s.then+"."; }', ctx);
+  + ['pzNeeds', 'socHabitSpec', 'pzSocialStats', 'pzClockZone'].map(grabFn).join('\n') + '\nfunction habitSentence(s){ return "When "+s.when+", "+s.then+"."; }', ctx);
 t('unlock levels: owner settings, off switch, sample data and themes', () => {
   eq(ctx.pzNeeds('trends', 1), 2); eq(ctx.pzNeeds('trends', 2), 0);
   eq(ctx.pzNeeds('compete', 3, { unlocksOn: true, unlocks: { compete: 6 } }), 6);
@@ -322,7 +353,7 @@ t('only process numbers go out: no trades, notes, P&L or addresses in the stats 
     achievements: [{ id: 'x', title: 'X', at: '2026-09-01' }, { id: 'y', title: 'Y', at: null }],
     days: [{ key: '2026-09-30', score: 88, breached: false, parts: { journal: 1 }, net: -500, n: 3 }] };
   const p = ctx.pzSocialStats(g, ['When a, b.']);
-  eq(Object.keys(p).sort(), ['badgeN', 'badges', 'best', 'challengesDone', 'days', 'habits', 'lastChallenge', 'level', 'shields', 'streak', 'week', 'weekXp', 'xp']);
+  eq(Object.keys(p).sort(), ['badgeN', 'badges', 'best', 'challengesDone', 'days', 'habits', 'lastChallenge', 'level', 'shields', 'streak', 'tz', 'week', 'weekXp', 'xp']);
   eq(p.days, [{ k: '2026-09-30', s: 88, b: false, j: true }], 'a day carries its score and flags — never its P&L');
   eq(p.badges, [{ id: 'x', t: 'X' }]); eq(p.lastChallenge, 'When a, b.');
 });

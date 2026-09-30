@@ -34,6 +34,14 @@ t('trading on after two losses in a row the same day', () => {
   eq(d.flags.afterTwo, 1);
   eq(today([tr(-1, 22, 0, 30, -10), tr(0, 9, 0, 30, -10), tr(0, 12, 0, 30, 5)]).flags.afterTwo, 0, 'yesterday’s loss doesn’t count');
 });
+t('a stop-and-reverse right after a loss is a revenge entry (close and entry share a millisecond)', () => {
+  const a = tr(0, 9, 0, 60, -40), b = tr(0, 10, 0, 30, 20); b.openTime = a.closeTime;
+  eq(today([a, b]).flags.revenge, 1);
+});
+t('trades cut off at the start of the history are skipped, not judged', () => {
+  const d = today([tr(0, 9, 0, 0, -40, { partialHistory: true }), tr(0, 9, 5, 30, 20)]);
+  eq(d.n, 1); eq(d.flags.revenge, 0);
+});
 t('sizing up right after a loss, against your recent median size', () => {
   const prior = [0, 1, 2, 3, 4].map(i => tr(-1, 9 + i, 0, 20, 5));
   const d = today([...prior, tr(0, 9, 0, 30, -30), tr(0, 10, 0, 30, 10, { maxSize: 2 })]);

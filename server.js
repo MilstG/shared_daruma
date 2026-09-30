@@ -1748,12 +1748,23 @@ function createApp(opts) {
   // fetched incrementally), rebuilt into trades and scored by the app's own pzBehaviorDays.
   const socialFillsDir = path.join(dataDir, 'social-fills');
   fs.mkdirSync(socialFillsDir, { recursive: true });
-  const behaviorFor = async (addr) => {
+  // one fetch per address at a time (two members naming the same wallet share it)
+  const behaviorInflight = new Map();
+  const zoneDay = (tz) => { let f; try { f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }); }
+    catch (e) { f = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }); }
+    return ms => f.format(ms); };
+  const behaviorFor = (addr, tz) => {
+    const k = String(addr).toLowerCase() + '|' + (tz || 'UTC');
+    if (!behaviorInflight.has(k)) behaviorInflight.set(k, behaviorForOnce(addr, tz).finally(() => behaviorInflight.delete(k)));
+    return behaviorInflight.get(k);
+  };
+  const behaviorForOnce = async (addr, tz) => {
     if (!engine.ok || !E.pzBehaviorDays) return null;
     const a = String(addr).toLowerCase(); if (!/^0x[0-9a-f]{40}$/.test(a)) return null;
     const f = path.join(socialFillsDir, a + '.json.gz'), since = (opts.now || Date.now)() - 50 * 86400000;
     const c = gzRead(f), have = c && c.v === 1 && Array.isArray(c.fills) ? c.fills : [];
-    const from = have.length ? Math.max(since, Math.max(...have.map(x => x.time)) + 1) : since;
+    // the cache is saved sorted, so its last fill is the newest (no spread over huge arrays)
+    const from = have.length ? Math.max(since, have[have.length - 1].time + 1) : since;
     const r = await E.fetchAllFills(a, from);
     const seen = new Set(), fills = [];
     for (const x of have.concat(r.fills || [])) { if (!x || x.time < since) continue; const k = x.tid + ':' + x.time; if (seen.has(k)) continue; seen.add(k); fills.push(x); }
@@ -1763,10 +1774,13 @@ function createApp(opts) {
     // barely move one trade's result and never decide whether it was a loss by more than $1
     const trades = [...E.attributeFunding(E.reconstructTrades(fills, a, 'perp'), []), ...E.attributeFunding(E.reconstructTrades(fills, a, 'spot'), [])];
     const closed = trades.filter(t => !t.isOpen && t.closeTime);
-    return E.pzBehaviorDays(closed, { dayOf: ms => new Date(ms).toISOString().slice(0, 10), isLoss: n => n < -1 /* same fixed rule as the app's PZ_LOSS */ })
+    // days on the member's own clock (the zone their app reports), so both sides score the same days
+    return E.pzBehaviorDays(closed, { dayOf: zoneDay(tz || 'UTC'), isLoss: n => n < -1 /* same fixed rule as the app's PZ_LOSS */ })
       .map(d => ({ k: d.key, s: d.score, n: d.n }));
   };
-  const social = createSocial({ dataDir, json, authOk, adminConfigured: !!auth, fetchImpl: opts.fetchImpl, now: opts.now, behaviorFor });
+  const forgetAddress = (addr) => { try { fs.unlinkSync(path.join(socialFillsDir, String(addr).toLowerCase() + '.json.gz')); } catch (e) {} };
+  const social = createSocial({ dataDir, json, authOk, adminConfigured: !!auth, fetchImpl: opts.fetchImpl, now: opts.now,
+    behaviorFor, verifyAvailable: engine.ok, forgetAddress });
 
   const server = http.createServer((req, res) => {
     const [url, qs] = (req.url || '/').split('?');
