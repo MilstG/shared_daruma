@@ -7849,7 +7849,8 @@ function habitById(id){ return (Array.isArray(settings.habits)?settings.habits:[
 function habitSentence(h){ return 'When '+h.when+', '+h.then+'.'; }
 async function adoptHabit(spec){
   if(!Array.isArray(settings.habits))settings.habits=[];
-  const same=settings.habits.find(h=>h&&((spec.tpl&&h.tpl===spec.tpl)||(spec.pid&&h.pid===spec.pid&&h.kind===spec.kind)));
+  const same=settings.habits.find(h=>h&&((spec.tpl&&h.tpl===spec.tpl)||(spec.pid&&h.pid===spec.pid&&h.kind===spec.kind)
+    ||(!spec.tpl&&!spec.pid&&h.kind===spec.kind&&!h.tpl&&!h.pid&&h.when===String(spec.when||'').slice(0,160)&&h.then===String(spec.then||'').slice(0,160))));
   if(same){ if(same.retired){ same.retired=false; same.createdAt=Date.now(); } await Store.set(S_KEY,settings); return same; }
   let params=spec.params&&Object.keys(spec.params).length?spec.params:null;
   if(spec.pid&&!params){ // same contract as pins and rules: thresholds fixed at adoption, never re-derived
@@ -9221,7 +9222,7 @@ function wirePulse(){
         await setWeekChallenge(c[i],i); pzRender(); return; }
     }
   });
-  root.addEventListener('input',ev=>{ const t=ev.target; if(!pzS.ck)return;
+  root.addEventListener('input',ev=>{ const t=ev.target; if(t.id==='socHandle2'){ SOC.draftHandle=t.value; return; } if(!pzS.ck)return;
     if(t.id==='pzPlan')pzS.ck.plan=t.value; else if(t.id==='pzLoss')pzS.ck.maxLoss=t.value; });
   root.addEventListener('keydown',ev=>{
     if(ev.key==='Enter'&&(ev.target.id==='pzAddr'||ev.target.id==='pzAddr2')){ ev.preventDefault(); pzConnect(ev.target.id); }
@@ -9241,7 +9242,7 @@ if(PZ)wirePulse();
 const SOC_KEY_STORE='pz_social_key';
 const SOC_DEFAULT_SHARE={profile:true,boards:true,feed:true,habits:true,ret:false,usd:false,addr:false};
 const SOC_SHARE_ROWS=[
-  ['profile','Public profile','Level, league, badges and streak'],
+  ['profile','Public profile','Your profile page: streak, discipline, badges. Name, level and league show wherever you appear'],
   ['boards','Process leaderboards','Weekly XP, discipline and streak boards'],
   ['feed','Milestones in the feed','Level-ups, streaks, badges and challenges'],
   ['habits','Habits you run','Others can see and adopt them'],
@@ -9279,6 +9280,9 @@ function pzSocialStats(g, habits){
     habits:(habits||[]).slice(0,5),
     days:g.ctx.days.slice(-45).map(d=>({k:d.key,s:d.score,b:!!d.breached,j:d.parts.journal===1}))};
 }
+// The server only gets a wallet address when a money toggle needs it (returns are read on chain
+// from it) or the member chose to show it; otherwise it never leaves the browser.
+function socAddressFor(share){ const w=settings.wallets[0]; return w&&share&&(share.ret||share.usd||share.addr)?w.address:null; }
 // "When X, Y." -> a self-graded habit spec (kept via the day journal's "I followed the plan").
 function socHabitSpec(sentence){
   const s=String(sentence||'').trim(), m=s.match(/^when (.+?), (.+?)\.?$/i);
@@ -9437,6 +9441,7 @@ function socSocialHtml(D){
   socBoot();
   if(!socAvailable())return socUnavailableHtml();
   if(!SOC.cfg)return `${pzHead('Leagues · competitions · friends','Social')}<p class="pz-sub"><span class="pz-spin"></span>Loading…</p>`;
+  if(SOC.cfg.enabled===false)return `${pzHead('Leagues · competitions · friends','Social')}<section class="pz-card"><p class="pz-sub">The league opens once the server owner sets an access token (AUTH_TOKEN). Without one, anyone with the link could read the owner’s journal.</p></section>`;
   if(!SOC.me)return socJoinHtml();
   const body=SOC.sub==='compete'?socCompeteHtml(D.g):SOC.sub==='feed'?socFeedHtml():socLeagueHtml(D.g);
   return `${socHead()}${socSubTabs()}${body}`;
@@ -9467,9 +9472,9 @@ function socSharingHtml(D){
   SOC.draft=SOC.draft||{...SOC.share};
   const w=settings.wallets[0];
   return `${back}${pzHead('Profile & privacy','What you share')}
-  <p class="pz-sub" style="margin-top:-6px">Your journal, notes and wallet list never leave this device. Only the numbers switched on below are sent.</p>
+  <p class="pz-sub" style="margin-top:-6px">Your journal, notes and trades never leave this device. Only the numbers switched on below are sent.</p>
   <div class="pz-wide"><div class="pz-col">
-    <div class="pz-field"><label for="socHandle2">Public name</label><input type="text" id="socHandle2" maxlength="20" value="${esc(SOC.me.handle)}" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+    <div class="pz-field"><label for="socHandle2">Public name</label><input type="text" id="socHandle2" maxlength="20" value="${esc(SOC.draftHandle!=null?SOC.draftHandle:SOC.me.handle)}" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
     <section class="pz-card" style="padding:4px 16px">${socToggles(SOC.draft,'data-soc-draft')}</section>
     <p class="pz-fine">${w?`Returns are read on chain from your first wallet (${esc(walletShort(w.address))}) when “Show % return” or “Show dollar P&L” is on. The server owner can see that address.`:'Add a wallet to take part in return boards and competitions.'}</p>
     <button type="button" class="pz-cta" id="socSaveShare">Save</button></div>
@@ -9517,21 +9522,21 @@ async function socAction(t){
     if(ds.pzTheme){ settings.pzTheme=ds.pzTheme; await Store.set(S_KEY,settings); pzRender(); return true; }
     switch(t.id){
       case 'socJoin': { const h=($('socHandle')||{value:''}).value.trim(), inv=($('socInvite')||{value:''}).value.trim();
-        const w=settings.wallets[0];
-        const r=await socFetch('/join',{method:'POST',body:JSON.stringify({handle:h,invite:inv,share:SOC.draft||SOC_DEFAULT_SHARE,address:w?w.address:null})});
+        const share=SOC.draft||SOC_DEFAULT_SHARE;
+        const r=await socFetch('/join',{method:'POST',body:JSON.stringify({handle:h,invite:inv,share,address:socAddressFor(share)})});
         SOC.key=r.key; try{ localStorage.setItem(SOC_KEY_STORE,r.key); }catch(e){}
-        SOC.me=r.me; SOC.share=r.share; SOC.draft=null; SOC.lastSent=''; done('Welcome to the league, @'+r.me.handle+'.'); return true; }
-      case 'socSaveShare': { const h=($('socHandle2')||{value:''}).value.trim(), w=settings.wallets[0];
-        const r=await socFetch('/me',{method:'PUT',body:JSON.stringify({handle:h,share:SOC.draft||SOC.share,address:w?w.address:null})});
-        SOC.me=r.me; SOC.share=r.share; SOC.draft=null; SOC.lastSent=''; done('Saved.'); return true; }
+        SOC.me=r.me; SOC.share=r.share; SOC.draft=null; SOC.cache={}; SOC.lastSent=''; done('Welcome to the league, @'+r.me.handle+'.'); return true; }
+      case 'socSaveShare': { const h=($('socHandle2')||{value:''}).value.trim(), share=SOC.draft||SOC.share;
+        const r=await socFetch('/me',{method:'PUT',body:JSON.stringify({handle:h,share,address:socAddressFor(share)})});
+        SOC.me=r.me; SOC.share=r.share; SOC.draft=null; SOC.draftHandle=null; SOC.lastSent=''; done('Saved.'); return true; }
       case 'socCopyKey': try{ await navigator.clipboard.writeText(SOC.key||''); pzNote('Key copied. Keep it somewhere private.'); }catch(e){ pzNote('Couldn’t copy — your browser blocked the clipboard.','err'); } return true;
       case 'socUseKey': { const k=($('socKeyIn')||{value:''}).value.trim(); if(!k)return true;
         const prev=SOC.key; SOC.key=k;
-        try{ const d=await socFetch('/me'); SOC.me=d.me; SOC.share=d.share; try{ localStorage.setItem(SOC_KEY_STORE,k); }catch(e){} SOC.lastSent=''; done('Signed in as @'+d.me.handle+'.'); }
+        try{ const d=await socFetch('/me'); SOC.me=d.me; SOC.share=d.share; SOC.cache={}; try{ localStorage.setItem(SOC_KEY_STORE,k); }catch(e){} SOC.lastSent=''; done('Signed in as @'+d.me.handle+'.'); }
         catch(e){ SOC.key=prev; pzNote('That key didn’t work.','err'); }
         return true; }
       case 'socLeave': { if(!confirm('Leave the league and delete your profile, posts and competition entries? Your journal isn’t touched.'))return true;
-        await socFetch('/me',{method:'DELETE'}); SOC.key=null; SOC.me=null; SOC.share=null; try{ localStorage.removeItem(SOC_KEY_STORE); }catch(e){}
+        await socFetch('/me',{method:'DELETE'}); SOC.key=null; SOC.me=null; SOC.share=null; SOC.cache={}; try{ localStorage.removeItem(SOC_KEY_STORE); }catch(e){}
         location.hash='#social'; done('You left the league.'); return true; }
     }
   }catch(e){ pzNote(e.message,'err'); return true; }

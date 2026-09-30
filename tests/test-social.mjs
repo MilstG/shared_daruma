@@ -79,6 +79,12 @@ t('each week the top quarter (max 5) with XP moves up and the bottom quarter mov
   eq(mv.filter(m => m.from === 0).map(m => m.id), ['x'], 'bronze: nobody drops, zero XP never promotes');
   eq(S.leagueRollover([mk('a', 0, 9), mk('b', 0, 1)], '2026-W40'), [], 'under four traders: no moves');
 });
+t('sitting a week out counts as zero XP: idle members drop before active ones', () => {
+  const act = (id, xp) => ({ id, tier: 1, weekXp: { '2026-W40': xp } }), idle = id => ({ id, tier: 1, weekXp: {} });
+  const mv = S.leagueRollover([act('a', 50), act('b', 40), act('c', 30), act('d', 5), idle('w'), idle('x'), idle('y'), idle('z')], '2026-W40');
+  eq(mv.filter(m => m.to === 0).map(m => m.id).sort(), ['y', 'z']);
+  ok(!mv.some(m => m.id === 'd' && m.to === 0), 'the active trader with 5 XP stays');
+});
 
 console.log('\nBoards and competitions');
 const day = (k, s, b, j) => ({ k, s, b: !!b, j: !!j });
@@ -214,6 +220,50 @@ try {
     eq(me.d.tier, 1, 'alpha had the most XP in Bronze and moved up to Silver');
     const again = await call('/me', { key: A }); eq(again.d.tier, 1, 'no second promotion in the same week');
   });
+  await t('opting out of returns hides your return-competition result too', async () => {
+    const k = (await call('/join', { method: 'POST', body: { handle: 'rita', address: '0x' + 'c'.repeat(40), share: { ret: true } } })).d.key;
+    await tick();
+    const rc = await call('/admin/competitions', { method: 'POST', admin: true, body: { title: 'Ret', type: 'return', start: '2026-09-10', end: '2026-10-08' } });
+    eq((await call('/competitions/' + rc.d.id + '/join', { method: 'POST', key: k })).d.joined, true); await tick();
+    const before = (await call('/competitions/' + rc.d.id, { key: A })).d.competition.standings.find(r => r.handle === 'rita');
+    ok(/%/.test(before.note), 'visible while opted in: ' + before.note);
+    await call('/me', { method: 'PUT', key: k, body: { share: { ret: false } } });
+    const after = (await call('/competitions/' + rc.d.id, { key: A })).d.competition.standings.find(r => r.handle === 'rita');
+    ok(!/%/.test(after.note), 'hidden after opting out: ' + after.note);
+    eq((await call('/admin/members', { admin: true })).d.members.find(m => m.handle === 'rita').address, '0x' + 'c'.repeat(40), 'the address stays until the client clears it');
+    await call('/me', { method: 'PUT', key: k, body: { address: null } });
+    eq((await call('/admin/members', { admin: true })).d.members.find(m => m.handle === 'rita').address, null);
+  });
+  await t('malformed requests get a 400 or 404, never an internal error, and prototype keys resolve to nothing', async () => {
+    eq((await call('/join', { method: 'POST', body: null })).status, 400);
+    const r = await fetch(B + '/api/social/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '[1,2]' }); eq(r.status, 400);
+    eq((await call('/me', { method: 'PUT', key: A, body: 7 })).status, 400);
+    eq((await call('/profile/%E0%A4%A', { key: A })).status, 400);
+    eq((await call('/competitions/__proto__', { key: A })).status, 404);
+    eq((await call('/competitions/constructor/join', { method: 'POST', key: A })).status, 404);
+    eq((await call('/admin/members/__proto__', { method: 'POST', admin: true, body: { action: 'ban' } })).status, 404);
+    eq(({}).banned, undefined, 'Object.prototype untouched');
+    const j = await call('/join', { method: 'POST', body: { handle: 'arrayaddr', address: ['0x' + 'e'.repeat(40)] } });
+    eq((await call('/admin/members', { admin: true })).d.members.find(m => m.handle === 'arrayaddr').address, null);
+    await call('/me', { method: 'DELETE', key: j.d.key });
+  });
+  await t('a member can’t flood the feed, and habit posts repeat only for new habits', async () => {
+    const k = (await call('/join', { method: 'POST', body: { handle: 'spammer' } })).d.key;
+    await call('/stats', { method: 'POST', key: k, body: { level: 1 } });
+    for (let i = 0; i < 25; i++) await call('/stats', { method: 'POST', key: k, body: { level: 1, habits: ['When ' + i + ', stop.'] } });
+    const ev = (await call('/admin/events', { admin: true })).d.events.filter(e => e.handle === 'spammer');
+    ok(ev.length <= 12, ev.length + ' posts in a day');
+    await call('/me', { method: 'DELETE', key: k });
+  });
+  await t('kudos only on posts you can see', async () => {
+    const k = (await call('/join', { method: 'POST', body: { handle: 'ghost', share: { feed: true } } })).d.key;
+    const ev = (await call('/admin/events', { admin: true })).d.events.find(e => e.handle === 'ghost');
+    const id = (await call('/admin/members', { admin: true })).d.members.find(m => m.handle === 'ghost').id;
+    await call('/admin/members/' + id, { method: 'POST', admin: true, body: { action: 'ban' } });
+    eq((await call('/kudos/' + ev.id, { method: 'POST', key: A })).status, 404);
+    await call('/admin/members/' + id, { method: 'POST', admin: true, body: { action: 'remove' } });
+    void k;
+  });
   await t('leaving deletes the profile, posts and entries', async () => {
     eq((await call('/me', { method: 'DELETE', key: A })).status, 200);
     eq((await call('/me', { key: A })).status, 401);
@@ -224,6 +274,9 @@ await t('with no AUTH_TOKEN the admin API refuses instead of opening to everyone
   const open = server.createApp({ dataDir: mkdtempSync(join(tmpdir(), 'ledger-social-')), auth: '', htmlPath, fetchImpl });
   const b = await listen(open);
   try { eq((await fetch(b + '/api/social/admin/overview')).status, 403);
+    eq((await (await fetch(b + '/api/social/config')).json()).enabled, false, 'the league reports closed');
+    eq((await fetch(b + '/api/social/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle: 'friend' }) })).status, 403,
+      'no joining while the owner’s journal is open to anyone');
     const pg = await fetch(b + '/admin'); eq(pg.status, 200); ok((await pg.text()).includes('Pulse admin')); }
   finally { await new Promise(res => open.close(res)); }
 });
@@ -253,6 +306,16 @@ t('only process numbers go out: no trades, notes, P&L or addresses in the stats 
   eq(Object.keys(p).sort(), ['badgeN', 'badges', 'best', 'challengesDone', 'days', 'habits', 'lastChallenge', 'level', 'shields', 'streak', 'week', 'weekXp', 'xp']);
   eq(p.days, [{ k: '2026-09-30', s: 88, b: false, j: true }], 'a day carries its score and flags — never its P&L');
   eq(p.badges, [{ id: 'x', t: 'X' }]); eq(p.lastChallenge, 'When a, b.');
+});
+t('the wallet address goes to the server only when a money toggle or “show address” needs it', () => {
+  const c2 = { settings: { wallets: [{ address: '0xabc' }] } }; vm.createContext(c2); vm.runInContext(grabFn('socAddressFor'), c2);
+  eq(c2.socAddressFor({ profile: true, boards: true }), null);
+  eq(c2.socAddressFor({ ret: true }), '0xabc'); eq(c2.socAddressFor({ addr: true }), '0xabc');
+  c2.settings.wallets = []; eq(c2.socAddressFor({ ret: true }), null);
+  ok(!/address:w\?w\.address/.test(grabFn('socAction')), 'join and save go through socAddressFor');
+});
+t('adopting the same shared habit twice keeps one copy', () => {
+  ok(grabFn('adoptHabit').includes('h.when===String(spec.when'));
 });
 t('Pulse never posts sample data, and routes profiles and competitions by hash', () => {
   ok(grabFn('socSync').includes('pzS.demo') && grabFn('socSync').includes('!settings.wallets.length'));

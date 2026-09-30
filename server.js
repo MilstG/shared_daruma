@@ -1752,7 +1752,7 @@ function createApp(opts) {
     if (corsOrigin && url.startsWith('/api/')) {
       res.setHeader('Access-Control-Allow-Origin', corsOrigin);
       res.setHeader('Vary', 'Origin');
-      res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+      res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Pulse-Key');
       res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS');
       if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
     }
