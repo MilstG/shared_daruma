@@ -1779,8 +1779,20 @@ function createApp(opts) {
       .map(d => ({ k: d.key, s: d.score, n: d.n }));
   };
   const forgetAddress = (addr) => { try { fs.unlinkSync(path.join(socialFillsDir, String(addr).toLowerCase() + '.json.gz')); } catch (e) {} };
+  // Wallet sign-in messages name the site the member signs for. Pin it (PUBLIC_ORIGIN, comma-separated;
+  // Railway's own domain by default) so a look-alike site can't get a message for its own domain.
+  const publicOrigins = (opts.publicOrigins !== undefined ? opts.publicOrigins
+    : String(process.env.PUBLIC_ORIGIN || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : '')).split(','))
+    .map(x => String(x).trim()).filter(Boolean);
+  // Behind a proxy (Railway), rate limits need the client's address, not the proxy's: the last
+  // X-Forwarded-For entry is the one the proxy added. TRUST_PROXY=1 turns this on elsewhere.
+  const trustProxy = opts.trustProxy !== undefined ? !!opts.trustProxy
+    : process.env.TRUST_PROXY ? /^(1|on|true|yes)$/i.test(process.env.TRUST_PROXY) : !!(process.env.RAILWAY_ENVIRONMENT_NAME || process.env.RAILWAY_ENVIRONMENT);
+  const clientIp = req => { const xf = trustProxy && req.headers['x-forwarded-for'];
+    if (xf) { const last = String(xf).split(',').map(x => x.trim()).filter(Boolean).pop(); if (last) return last.slice(0, 64); }
+    return (req.socket && req.socket.remoteAddress) || ''; };
   const social = createSocial({ dataDir, json, authOk, adminConfigured: !!auth, fetchImpl: opts.fetchImpl, now: opts.now,
-    behaviorFor, verifyAvailable: engine.ok, forgetAddress });
+    behaviorFor, verifyAvailable: engine.ok, forgetAddress, publicOrigins, clientIp });
 
   const server = http.createServer((req, res) => {
     const [url, qs] = (req.url || '/').split('?');

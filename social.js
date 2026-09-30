@@ -191,7 +191,7 @@ function boardRows(members, board, opts) {
 
 // ---- competitions ----
 function compStatus(c, todayKey) { return todayKey < c.start ? 'upcoming' : todayKey > c.end ? 'finished' : 'live'; }
-function compStandings(c, members, todayKey) {
+function compStandings(c, members, todayKey, requireClaim) {
   const byId = new Map(members.map(m => [m.id, m]));
   const rows = [];
   for (const id of Object.keys(c.entrants || {})) {
@@ -202,7 +202,8 @@ function compStandings(c, members, todayKey) {
       // verified days only: recomputed by the server from the member's own fills
       const vd = m.share && m.share.verify && Array.isArray(m.vdays) ? m.vdays.filter(d => d.k >= c.start && d.k <= c.end && d.k <= todayKey) : null;
       if (!vd) { rows.push({ id, handle: m.handle, score: null, out: false,
-        note: !(m.share && m.share.verify) ? 'Needs verification: switch on “Verify my discipline”' : !m.address ? 'Needs a wallet to verify' : 'Verifying from fills…' }); continue; }
+        note: !(m.share && m.share.verify) ? 'Needs verification: switch on “Verify my discipline”' : !m.address ? 'Needs a wallet to verify'
+          : requireClaim && m.claimed !== m.address ? 'Needs a claimed wallet' : 'Verifying from fills…' }); continue; }
       const d = disciplineOver(vd, c.start, c.end, c.minDays || 3);
       if (d.avg == null) note = d.n + ' of ' + (c.minDays || 3) + ' trading days so far'; else { score = Math.round(d.avg); note = d.n + ' trading days'; }
     } else if (c.type === 'survivor') {
@@ -278,8 +279,10 @@ function createSocial(opts) {
   const walletFor = m => !m.address ? null : S.config.requireClaim && m.claimed !== m.address ? null : m.address;
   const claimedBy = (addr, notId) => addr ? members().find(o => o.id !== notId && o.claimed === addr) || null : null;
   // simple per-IP rate limits: n requests per window
+  const ipOf = opts.clientIp || (req => (req.socket && req.socket.remoteAddress) || '');
+  const origins = (opts.publicOrigins || []).map(o => { try { const u = new URL(o); return { host: u.host.toLowerCase(), origin: u.origin }; } catch (e) { return null; } }).filter(Boolean);
   const limits = new Map();
-  const limited = (req, bucket, n, windowMs) => { const k = bucket + '|' + ((req.socket && req.socket.remoteAddress) || '');
+  const limited = (req, bucket, n, windowMs) => { const k = bucket + '|' + ipOf(req);
     const recent = (limits.get(k) || []).filter(t => now() - t < windowMs);
     if (recent.length >= n) { limits.set(k, recent); return true; }
     recent.push(now()); limits.set(k, recent);
@@ -289,6 +292,8 @@ function createSocial(opts) {
   const links = new Map();   // one-time device code -> member, single use, 10 minutes
   const sweep = map => { for (const [k, v] of map) if (v.exp < now()) map.delete(k);
     while (map.size > 5000) map.delete(map.keys().next().value); };
+  // revisions never go back, even across a delete: a device holding an old copy can't overwrite a new one
+  const vaultRev = m => m.vault ? m.vault.rev : (m.vaultRev || 0);
   const vaultTotal = () => members().reduce((a, m) => a + (m.vault ? m.vault.size || 0 : 0), 0);
   const byHandle = h => members().find(m => m.handle.toLowerCase() === String(h || '').toLowerCase()) || null;
   const EVENTS_PER_DAY = 12;
@@ -392,7 +397,7 @@ function createSocial(opts) {
     return { id: e.id, at: e.at, type: e.type, text: e.text, quote: e.quote, handle: m ? m.handle : null, tier: m ? m.tier || 0 : null,
       admin: !e.member, kudos: e.kudos.length, liked: !!viewer && e.kudos.includes(viewer.id), mine: !!viewer && e.member === viewer.id }; };
   const compOut = (c, viewer, full) => { const st = compStatus(c, todayKey());
-    const rows = compStandings(c, members(), todayKey());
+    const rows = compStandings(c, members(), todayKey(), !!S.config.requireClaim);
     const mine = viewer ? rows.find(r => r.id === viewer.id) || null : null;
     const o = { id: c.id, title: c.title, type: c.type, rule: c.rule, start: c.start, end: c.end, minDays: c.minDays, ddCap: c.ddCap,
       status: st, entrants: rows.length, joined: !!(viewer && c.entrants[viewer.id]), me: mine };
@@ -413,6 +418,10 @@ function createSocial(opts) {
     const head = parts[0] || '';
     let body = {};
     const limit = head === 'vault' ? MAX_VAULT_BODY + 4096 : MAX_SOCIAL_BODY;
+    if (head === 'vault' && M === 'PUT') { // a member, with sync on, before reading up to 6 MB
+      const who = byKey(req); if (!who) return json(res, 401, { error: 'not a member' });
+      if (who.banned) return json(res, 403, { error: 'This profile was removed from the league.' });
+      if (!S.config.vaultOn) return json(res, 403, { error: 'Journal sync is switched off on this server.' }); }
     if ((M === 'POST' || M === 'PUT') && +req.headers['content-length'] > limit) { res.setHeader('Connection', 'close'); return json(res, 413, { error: 'That’s too large to store here.' }); }
     if (M === 'POST' || M === 'PUT') { try { body = await readJson(req, limit); }
       catch (e) { return json(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? 'That’s too large to store here.' : 'invalid body' }); }
@@ -437,6 +446,7 @@ function createSocial(opts) {
         return json(res, 200, { adminConfigured, members: members().length, banned: members().filter(m => m.banned).length, active7: act.length,
           events: S.events.length, comps: Object.keys(S.comps).length, week: wk, config: S.config,
           claimed: members().filter(m => m.claimed).length, vaults: members().filter(m => m.vault).length, vaultBytes: vaultTotal(), claims: !!sig,
+          originPinned: origins.length > 0,
           tiers: TIERS.map((t, i) => ({ tier: t, n: members().filter(m => !m.banned && (m.tier || 0) === i).length })) });
       }
       if (sub === 'members' && M === 'GET' && !parts[2])
@@ -504,7 +514,7 @@ function createSocial(opts) {
       if (!S.config.open) return json(res, 403, { error: 'This league isn’t taking new members right now.' });
       if (S.config.inviteCode && cleanText(body.invite, 40) !== S.config.inviteCode) return json(res, 403, { error: 'That invite code isn’t right.' });
       if (members().length >= MAX_MEMBERS) return json(res, 403, { error: 'The league is full.' });
-      const ip = (req.socket && req.socket.remoteAddress) || '';
+      const ip = ipOf(req);
       const recent = (joinTimes.get(ip) || []).filter(t => now() - t < 3600000);
       if (recent.length >= 5) return json(res, 429, { error: 'Too many new profiles from here. Try again later.' });
       const handle = cleanText(body.handle, 20).replace(/^@/, '');
@@ -534,13 +544,19 @@ function createSocial(opts) {
       let who = null;
       if (head === 'claim') { who = byKey(req); if (!who) return json(res, 401, { error: 'not a member' });
         if (who.banned) return json(res, 403, { error: 'This profile was removed from the league.' }); }
-      else if (!members().some(m => m.claimed === addr && !m.banned)) return json(res, 404, { error: 'No profile has claimed this wallet yet. Join first, then claim it under Profile & privacy.' });
-      const host = String(req.headers.host || 'pulse').slice(0, 100).replace(/[^A-Za-z0-9.:\-\[\]]/g, '') || 'pulse';
-      const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https' || (req.socket && req.socket.encrypted) ? 'https' : 'http';
+      // (whether a wallet is claimed is only told after its owner signs: /login/finish)
+      const reqHost = String(req.headers.host || '').toLowerCase();
+      let host, uri;
+      if (origins.length) { const o = origins.find(x => x.host === reqHost);
+        if (!o) return json(res, 400, { error: 'Open Pulse at ' + origins[0].origin + '/pulse to sign with your wallet.' });
+        host = o.host; uri = o.origin; }
+      else { // not pinned (local or self-hosted without PUBLIC_ORIGIN): the address this page was served from
+        host = reqHost.slice(0, 100).replace(/[^a-z0-9.:\-\[\]]/g, '') || 'pulse';
+        uri = (String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https' || (req.socket && req.socket.encrypted) ? 'https' : 'http') + '://' + host; }
       const nonce = crypto.randomBytes(8).toString('hex');
       const statement = head === 'claim' ? 'Claim this wallet for @' + who.handle + ' on Pulse. This is a signature, not a transaction: it costs nothing and moves no funds.'
         : 'Sign in to Pulse with this wallet. This is a signature, not a transaction: it costs nothing and moves no funds.';
-      const message = siweMessage({ domain: host, uri: proto + '://' + host, address: sig.toChecksumAddress(addr), statement, nonce,
+      const message = siweMessage({ domain: host, uri, address: sig.toChecksumAddress(addr), statement, nonce,
         issuedAt: new Date(now()).toISOString(), expirationTime: new Date(now() + 10 * 60000).toISOString() });
       sweep(pending);
       pending.set(nonce, { purpose: head, address: addr, memberId: who ? who.id : null, message, exp: now() + 10 * 60000 });
@@ -569,7 +585,7 @@ function createSocial(opts) {
         return json(res, 200, { me: publicMember(me, me), share: me.share });
       }
       const m = members().find(x => x.claimed === p.address);
-      if (!m) return json(res, 404, { error: 'No profile has claimed this wallet.' });
+      if (!m) return json(res, 404, { error: 'No profile has claimed this wallet yet. Join first, then claim it under Profile & privacy.' });
       if (m.banned) return json(res, 403, { error: 'This profile was removed from the league.' });
       const key = addKey(m); m.lastSeen = now(); save();
       return json(res, 200, { key, me: publicMember(m, m), share: m.share });
@@ -596,16 +612,15 @@ function createSocial(opts) {
 
     if (head === 'me' && M === 'GET') return json(res, 200, { me: publicMember(me, me), share: me.share, tier: me.tier || 0 });
     if (head === 'me' && M === 'PUT') {
+      const newAddr = body.address !== undefined && !me.claimed ? (typeof body.address === 'string' && ADDR_RE.test(body.address) ? body.address.toLowerCase() : null) : undefined;
+      if (newAddr && claimedBy(newAddr, me.id)) return json(res, 409, { error: 'That wallet is claimed by another profile. Only a signature from it can move it.', walletTaken: true });
       if (body.handle != null) { const h = cleanText(body.handle, 20).replace(/^@/, '');
         if (!HANDLE_RE.test(h)) return json(res, 400, { error: 'Pick a name of 3–20 letters, numbers or underscores.' });
         const other = byHandle(h); if (other && other.id !== me.id) return json(res, 409, { error: 'That name is taken.' }); me.handle = h; }
-      if (body.share) me.share = sanitizeShare(body.share, me.share);
       const prevAddr = me.address, prevVerify = !!me.share.verify, prevMoney = !!(me.share.ret || me.share.usd);
+      if (body.share) me.share = sanitizeShare(body.share, me.share);
       // a claimed wallet stays put: only releasing it (or claiming another) changes the address
-      if (body.address !== undefined && !me.claimed) {
-        const a = typeof body.address === 'string' && ADDR_RE.test(body.address) ? body.address.toLowerCase() : null;
-        if (a && claimedBy(a, me.id)) return json(res, 409, { error: 'That wallet is claimed by another profile. Only a signature from it can move it.' });
-        me.address = a; }
+      if (newAddr !== undefined) me.address = newAddr;
       if (!(me.share.ret || me.share.usd)) me.money = null;
       if (!me.share.verify || me.address !== prevAddr) { me.vdays = null; me.vAt = 0; }
       if (!me.share.ret) for (const c of Object.values(S.comps)) if (c.money) delete c.money[me.id]; // opting out hides past results too
@@ -640,11 +655,11 @@ function createSocial(opts) {
     // ---------- the encrypted journal (vault): ciphertext in, ciphertext out ----------
     if (head === 'vault' && M === 'GET') {
       let blob = null; if (me.vault) try { blob = JSON.parse(fs.readFileSync(vaultFile(me.id), 'utf8')); } catch (e) { blob = null; }
-      return json(res, 200, { rev: me.vault ? me.vault.rev : 0, at: me.vault ? me.vault.at : null, blob, max: MAX_VAULT_BODY, on: !!S.config.vaultOn });
+      return json(res, 200, { rev: vaultRev(me), at: me.vault ? me.vault.at : null, blob, max: MAX_VAULT_BODY, on: !!S.config.vaultOn, member: me.id });
     }
     if (head === 'vault' && M === 'PUT') {
       if (!S.config.vaultOn) return json(res, 403, { error: 'Journal sync is switched off on this server.' });
-      const cur = me.vault ? me.vault.rev : 0;
+      const cur = vaultRev(me);
       if (+body.rev !== cur) { // another device saved first: hand back its copy to merge
         let blob = null; try { blob = JSON.parse(fs.readFileSync(vaultFile(me.id), 'utf8')); } catch (e) {}
         return json(res, 409, { rev: cur, blob }); }
@@ -658,7 +673,7 @@ function createSocial(opts) {
     }
     if (head === 'vault' && M === 'DELETE') {
       try { fs.unlinkSync(vaultFile(me.id)); } catch (e) {}
-      me.vault = null; save(); return json(res, 200, { ok: true });
+      me.vaultRev = vaultRev(me); me.vault = null; save(); return json(res, 200, { ok: true, rev: me.vaultRev });
     }
     if (head === 'stats' && M === 'POST') {
       const next = sanitizeStats(body);

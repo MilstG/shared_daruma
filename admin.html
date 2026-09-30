@@ -74,6 +74,7 @@ td button{min-height:32px;padding:4px 10px;font-size:12px}
         <input id="cInvite" maxlength="40" autocomplete="off">
         <label><input type="checkbox" id="cClaim">Only count claimed wallets</label>
         <p class="muted" style="margin:2px 0 8px;font-size:13px">Verified Discipline, returns and return competitions then only use wallets a member proved are theirs by signing with them. Anyone can type an address; only the owner of the wallet can claim it.</p>
+        <p class="muted hide" id="originWarn" style="margin:2px 0 8px;font-size:13px;color:#F9DC8E">Wallet sign-in isn’t pinned to your address yet. Set <code>PUBLIC_ORIGIN</code> on the server (e.g. <code>https://pulse.example.com</code>) so a look-alike site can’t collect members’ signatures.</p>
         <label><input type="checkbox" id="cVault">Encrypted journal sync for members</label>
         <p class="muted" style="margin:2px 0 8px;font-size:13px">Members’ journals are encrypted in their browser with their own passphrase. This server stores ciphertext only — you can’t read them.</p>
         <label><input type="checkbox" id="cUnlocks">Unlock Pulse features with XP</label>
@@ -173,7 +174,7 @@ td button{min-height:32px;padding:4px 10px;font-size:12px}
     $('tiles').innerHTML=[['Members',ov.members],['Active this week',ov.active7],['Competitions',ov.comps],['Feed posts',ov.events],['Claimed wallets',ov.claimed||0],['Synced journals',ov.vaults?ov.vaults+' · '+size(ov.vaultBytes):0],['League week',ov.week?ov.week.slice(-3):'—']]
       .concat(ov.tiers.map(t=>[t.tier+' league',t.n])).map(([l,v])=>`<div class="tile"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('');
     const c=ov.config; $('cOpen').checked=c.open; $('cInvite').value=c.inviteCode||''; $('cUnlocks').checked=c.unlocksOn;
-    $('cClaim').checked=!!c.requireClaim; $('cClaim').disabled=!ov.claims; $('cVault').checked=c.vaultOn!==false;
+    $('cClaim').checked=!!c.requireClaim; $('cClaim').disabled=!ov.claims; $('originWarn').classList.toggle('hide',!ov.claims||!!ov.originPinned); $('cVault').checked=c.vaultOn!==false;
     $('uTrends').value=c.unlocks.trends; $('uShare').value=c.unlocks.share; $('uCompete').value=c.unlocks.compete;
     $('tEmber').value=c.themes.ember; $('tAurora').value=c.themes.aurora; $('tGold').value=c.themes.gold;
     const [ms,cs,ev]=await Promise.all([api('/members'),api('/competitions'),api('/events')]);

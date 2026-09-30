@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { webcrypto } from 'node:crypto';
+import http from 'node:http';
 import vm from 'node:vm';
 import { t, ok, eq, report, makeExtractor } from './harness.mjs';
 
@@ -155,7 +156,7 @@ try {
   });
   await t('the vault stores ciphertext with a revision; a stale write gets the newer copy back', async () => {
     const blob = n => ({ v: 1, iter: 310000, salt: 'AAAAAAAAAAAAAAAAAAAAAA==', iv: 'AAAAAAAAAAAAAAAA', ct: Buffer.from('cipher-' + n).toString('base64') });
-    eq((await call('/vault', { key: A })).d, { rev: 0, at: null, blob: null, max: 6 * 1024 * 1024, on: true });
+    const v0 = (await call('/vault', { key: A })).d; eq([v0.rev, v0.blob, v0.max, v0.on], [0, null, 6 * 1024 * 1024, true]); ok(v0.member, 'names the member it belongs to');
     eq((await call('/vault', { method: 'PUT', key: A, body: { rev: 0, blob: blob(1) } })).d.rev, 1);
     const stale = await call('/vault', { method: 'PUT', key: A, body: { rev: 0, blob: blob(2) } });
     eq(stale.status, 409); eq(stale.d.rev, 1); eq(stale.d.blob.ct, blob(1).ct);
@@ -208,7 +209,7 @@ try {
     const code = (await call('/link/start', { method: 'POST', key: k })).d.code;
     const id = (await call('/admin/members', { admin: true })).d.members.find(m => m.handle === 'delta').id;
     await call('/admin/members/' + id, { method: 'POST', admin: true, body: { action: 'ban' } });
-    eq((await signFlow('login', K2, W2)).status, 404);
+    eq((await signFlow('login', K2, W2)).status, 403);
     eq((await call('/link/finish', { method: 'POST', body: { code } })).status, 403);
   });
   await t('sign-in attempts are rate limited per address of origin', async () => {
@@ -217,6 +218,57 @@ try {
   });
 } finally { await new Promise(res => app.close(res)); }
 
+await t('fixes from review: the message names only the pinned site, no claim oracle, no partial saves, rising vault revisions', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ledger-acct-'));
+  const app2 = server.createApp({ dataDir: dir, auth: 'owner-token', htmlPath, fetchImpl, now: () => clock, publicOrigins: ['https://pulse.example.com'], trustProxy: true });
+  const B2 = await listen(app2);
+  // node:http, not fetch: fetch won't send a Host header of our choosing
+  const c2 = (p, o = {}) => new Promise((resolve, reject) => { const u = new URL(B2 + '/api/social' + p);
+    const body = o.body !== undefined ? JSON.stringify(o.body) : null;
+    const rq = http.request({ hostname: u.hostname, port: u.port, path: u.pathname + u.search, method: o.method || 'GET',
+      headers: { 'Content-Type': 'application/json', Host: o.host || 'pulse.example.com', 'X-Forwarded-For': o.ip || '1.1.1.1',
+        ...(body ? { 'Content-Length': Buffer.byteLength(body) } : {}), ...(o.key ? { 'X-Pulse-Key': o.key } : {}), ...(o.headers || {}) } }, r => {
+      let t = ''; r.on('data', c => { t += c; }); r.on('end', () => { let d = {}; try { d = JSON.parse(t); } catch (e) {} resolve({ status: r.statusCode, d }); }); });
+    rq.on('error', reject); if (body) rq.write(body); rq.end(); });
+  try {
+    const k = (await c2('/join', { method: 'POST', body: { handle: 'pinned', address: W1 } })).d.key;
+    const evil = await c2('/claim/start', { method: 'POST', key: k, host: 'evil.example', body: { address: W1 } });
+    eq(evil.status, 400, 'a look-alike Host gets no message'); ok(/pulse\.example\.com/.test(evil.d.error));
+    const st = await c2('/claim/start', { method: 'POST', key: k, body: { address: W1 } });
+    ok(st.d.message.startsWith('pulse.example.com wants you') && st.d.message.includes('URI: https://pulse.example.com'));
+    eq((await c2('/claim/finish', { method: 'POST', key: k, body: { nonce: st.d.nonce, signature: sig.signPersonal(st.d.message, K1) } })).status, 200);
+    // login/start answers the same for claimed and unclaimed wallets
+    eq((await c2('/login/start', { method: 'POST', body: { address: W1 } })).status, 200);
+    eq((await c2('/login/start', { method: 'POST', body: { address: W2 } })).status, 200);
+    // limits follow the client behind the proxy, not the proxy
+    for (let i = 0; i < 20; i++) await c2('/login/start', { method: 'POST', ip: '6.6.6.6', body: { address: W2 } });
+    eq((await c2('/login/start', { method: 'POST', ip: '6.6.6.6', body: { address: W2 } })).status, 429);
+    eq((await c2('/login/start', { method: 'POST', ip: '7.7.7.7', body: { address: W2 } })).status, 200, 'another visitor isn’t blocked');
+    // a refused save changes nothing
+    const k2 = (await c2('/join', { method: 'POST', body: { handle: 'second' } })).d.key;
+    const bad = await c2('/me', { method: 'PUT', key: k2, body: { handle: 'renamed', share: { feed: false }, address: W1 } });
+    eq(bad.status, 409); eq(bad.d.walletTaken, true);
+    const me2 = (await c2('/me', { key: k2 })).d; eq(me2.me.handle, 'second'); eq(me2.share.feed, true);
+    // unauthenticated uploads are refused before the body is read
+    eq((await c2('/vault', { method: 'PUT', body: { rev: 0, blob: { v: 1, iter: 310000, salt: 'AAAA', iv: 'AAAA', ct: 'AAAA' } } })).status, 401);
+    // revisions keep rising across a delete, so an old device can't overwrite a new copy
+    const blob = x => ({ v: 1, iter: 310000, salt: x, iv: 'AAAAAAAAAAAAAAAA', ct: 'QUJD' });
+    await c2('/vault', { method: 'PUT', key: k, body: { rev: 0, blob: blob('AAAA') } });
+    eq((await c2('/vault', { method: 'DELETE', key: k })).d.rev, 1);
+    eq((await c2('/vault', { key: k })).d.rev, 1);
+    eq((await c2('/vault', { method: 'PUT', key: k, body: { rev: 1, blob: blob('BBBB') } })).d.rev, 2);
+    const stale = await c2('/vault', { method: 'PUT', key: k, body: { rev: 1, blob: blob('AAAA') } });
+    eq(stale.status, 409); eq(stale.d.blob.salt, 'BBBB');
+    // “claimed wallets only” explains itself in discipline competitions
+    const ad = { Authorization: 'Bearer owner-token' };
+    await c2('/admin/config', { method: 'PUT', headers: ad, body: { requireClaim: true } });
+    const cid = (await c2('/admin/competitions', { method: 'POST', headers: ad, body: { title: 'Cup', type: 'discipline', start: '2026-09-28', end: '2026-10-30' } })).d.id;
+    const k3 = (await c2('/join', { method: 'POST', ip: '8.8.8.8', body: { handle: 'thirdone', address: '0x' + 'd'.repeat(40) } })).d.key;
+    await c2('/competitions/' + cid + '/join', { method: 'POST', key: k3 });
+    eq((await c2('/competitions/' + cid, { key: k3 })).d.competition.me.note, 'Needs a claimed wallet');
+    eq((await c2('/admin/overview', { headers: ad })).d.originPinned, true);
+  } finally { await new Promise(res => app2.close(res)); }
+});
 await t('without the signature library, claims answer 501 and everything else works', async () => {
   const s = S.createSocial({ dataDir: mkdtempSync(join(tmpdir(), 'ledger-acct-')), json: (res, c, o) => { res.c = c; res.o = o; }, authOk: () => false, adminConfigured: true, sig: null });
   const req = { method: 'POST', headers: {}, socket: {}, on(ev, f) { if (ev === 'data') f(Buffer.from('{"address":"' + W1 + '"}')); if (ev === 'end') f(); } };
@@ -243,6 +295,30 @@ await t('the journal is encrypted in the browser: the server-bound blob is ciphe
   let failed = false; try { await cctx.vaultOpen(await cctx.vaultDerive('wrong passphrase!', salt), blob); } catch (e) { failed = true; }
   ok(failed, 'a wrong passphrase can’t open it');
   const b2 = await cctx.vaultSeal(key, salt, data); ok(b2.iv !== blob.iv && b2.ct !== blob.ct, 'a fresh IV every time');
+});
+await t('a merge keeps only what this device changed: other settings and wallets come from the newer copy', async () => {
+  const src = [line(/const _SYNC_S_FIELDS=[^\n]*/), line(/const vb64=[^\n]*/), line(/const unvb64=[^\n]*/), 'var VAULT_ITER=310000;',
+    ...['snapshot', 'applySnapshot', '_snapS', 'vaultMark', 'vaultMarkAll', 'vaultMerge', 'vaultOpen', 'vaultSeal', 'vaultForget', 'vaultSaveLocal', 'vaultSnapS'].map(grabFn),
+    'var VAULT={key:null,salt:null,rev:0,mid:"m1",dirty:new Map(),base:null,sGen:0,sSent:0};'].join('\n').replace(/^const /gm, 'var ');
+  const dev = () => { const c = { crypto: webcrypto, TextEncoder, TextDecoder, btoa, atob, JSON, Uint8Array, Map, Set, Object, Array, String,
+      localStorage: { setItem() {}, removeItem() {}, getItem() { return null; } }, _applying: false, _jrev: 0, J_KEY: 'j', S_KEY: 's',
+      rawSet: async () => {}, idbSet: async () => {}, validFillCache: () => false, renderWallets() {} };
+    vm.createContext(c); vm.runInContext(src + '\nvar journal={t1:{notes:"x"}}; var settings={wallets:[{address:"0xa"}],goals:{monthlyTarget:100},view:"perp"};', c); return c; };
+  const key = await webcrypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+  const A = dev(), Bd = dev();
+  for (const d of [A, Bd]) { d.VAULT.key = key; d.VAULT.salt = 'AAAA'; d.VAULT.rev = 1; d.VAULT.base = vm.runInContext('vaultSnapS()', d); }
+  vm.runInContext('settings.goals={monthlyTarget:500}; settings.wallets.push({address:"0xb"}); journal.t2={notes:"from A"}; vaultMark(null); vaultMark("t2");', A);
+  const blobA = await vm.runInContext('vaultSeal(VAULT.key,VAULT.salt,snapshot())', A);
+  vm.runInContext('settings.view="spot"; settings.wallets=[]; settings.wallets.push({address:"0xc"}); journal.t3={notes:"from B"}; vaultMark(null); vaultMark("t3");', Bd);
+  await vm.runInContext('vaultMerge', Bd)({ rev: 2, blob: blobA });
+  eq(Bd.settings.goals, { monthlyTarget: 500 }, 'A’s goal arrives'); eq(Bd.settings.view, 'spot', 'B’s own change stays');
+  eq(Bd.settings.wallets.map(w => w.address), ['0xb', '0xc'], 'A added 0xb; B removed 0xa and added 0xc');
+  eq(Object.keys(Bd.journal).sort(), ['t1', 't2', 't3']);
+  // a restored backup wins everything on the next merge
+  const C = dev(); C.VAULT.key = key; C.VAULT.salt = 'AAAA'; C.VAULT.rev = 1; C.VAULT.base = vm.runInContext('vaultSnapS()', C);
+  vm.runInContext('settings.goals={monthlyTarget:42}; journal.t1={notes:"restored"}; vaultMarkAll();', C);
+  await vm.runInContext('vaultMerge', C)({ rev: 2, blob: blobA });
+  eq(C.settings.goals, { monthlyTarget: 42 }); eq(C.journal.t1.notes, 'restored'); eq(C.settings.wallets.map(w => w.address), ['0xa']);
 });
 t('the wallet signs the exact server text, hex-encoded for personal_sign', () => {
   eq(cctx.utf8Hex('Hi ✓'), '0x' + Buffer.from('Hi ✓').toString('hex'));

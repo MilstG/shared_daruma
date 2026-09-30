@@ -79,6 +79,8 @@ tests/          test suites (`npm test`; CI runs them on every push)
 | `AUTH_TOKEN`           | *(empty = API open — don't)*     | Bearer token — everything |
 | `READ_TOKEN`           | *(unset)*                        | Optional second token: `GET /api/v1/*` only. Safe for scripts/dashboards |
 | `CORS_ORIGIN`          | *(unset)*                        | Exact origin allowed to call `/api/*` from a browser app |
+| `PUBLIC_ORIGIN`        | Railway's domain, if on Railway  | The address people open Pulse at (e.g. `https://pulse.example.com`; comma-separate several). Wallet sign-in messages name only this site, so a look-alike site can't collect a valid signature. Set it for a custom domain or self-hosting |
+| `TRUST_PROXY`          | on when on Railway               | Read the visitor's address from `X-Forwarded-For` (the last entry) for rate limits. Only turn on behind a proxy that sets it |
 | `DATA_DIR`             | `/data` if present, else `./data`| Where the journal, caches, reports, and backups live |
 | `REFRESH_INTERVAL_MIN` | *(unset = off)*                  | Refresh server caches from Hyperliquid on a timer (first run ~30s after boot) |
 | `ALERT_WEBHOOK`        | *(unset)*                        | Discord/Slack/ntfy/JSON endpoint for alerts + weekly digests |
