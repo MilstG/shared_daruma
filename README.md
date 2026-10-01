@@ -231,6 +231,8 @@ unjournaled trades from the last 30 days — the ✎ count at the top of Today a
 
 **Your layout.** Every Pulse screen (Today, Stats, Progress) has **Customize
 this screen** at the bottom: show or hide each section, or reset to the default.
+On Today you can also put the cards below the dials in your own order (the up and
+down arrows next to each one); the top of the screen stays where it is.
 Your choices sync with your settings. Today's default is lean: today's one thing
 (the focus you set in last night's review), the dials, net / entries / risk
 used, your session with today's rules as kept-or-broken chips, the one next
@@ -357,8 +359,10 @@ warn about this).
 ## Social, unlocks and the admin panel
 
 Pulse has a **Social** tab that runs entirely on your own server (`social.js`,
-stored in `DATA_DIR/social.json`). There is no central service: the people you
-send your `/pulse` link to join *your* league.
+stored in an SQLite database, `DATA_DIR/pulse.db`, with uploaded pictures in
+`DATA_DIR/media/`). There is no central service: the people you send your `/pulse`
+link to join *your* league. A server upgraded from an older version imports its
+`social.json` on the first start and keeps the file as `social.json.migrated`.
 
 - **Leagues.** New members join the main league by default: five tiers (Bronze → Diamond). Each ISO
   week, traders in a tier are ranked by the XP they earned that week; the top quarter
@@ -380,7 +384,34 @@ send your `/pulse` link to join *your* league.
   drawdown cap*. Prizes are badges and bragging rights, never money.
 - **Following and the feed.** Level-ups, streak milestones, badges, completed
   challenges and adopted habits post to the feed; others can give kudos, follow you,
-  and adopt a habit you run with one tap.
+  and adopt a habit you run with one tap. The feed pages back through everything
+  (**Show older**).
+- **Posts.** **Post a trade** (Social → Feed, your profile, or **Share** on a trade
+  in the journal) shares one of three things: *a trade you took* (picked from your
+  journal, with its chart attached as a picture), *a trade you're planning* (market,
+  side, entry, stop, target, timeframe, setup), or *a note*. Each has a thesis and up
+  to four pictures, which the app shrinks to WebP before uploading. A plan's levels
+  are fixed once posted; afterwards you add what happened (took it, closed at a price,
+  or didn't take it — or link the trade from your journal) and a line on how it went.
+  Results show in R (from the stop) and %, and in dollars only if you share dollar
+  P&L. Results are worked out once, when the exit is known, and never rewritten; R is
+  capped at ±100. A trade gets an **On chain** mark only from a wallet the member
+  *claimed* by signing: it needs a fill on the right side (a buy for a long's entry) in
+  that market within a minute of when it opened and within 3% of the entry price, and
+  for a closed trade the opposite side near the close and the exit, from the last 50
+  days of fills. Changing the trade's times or exit checks it again; a plan can't be
+  marked as taken before it was posted. Plans carry "A member's own plan, shared for
+  accountability. Not advice." Posts take comments (the author gets a note in their
+  inbox), kudos and reports; ten posts and 40 pictures a day per member (deleting
+  doesn't give the slot back). The thesis and the update can each be changed for 15
+  minutes after they're written.
+- **Profile picture and bio.** Under **What you share**: a square picture (shrunk to
+  256 px in the browser) and a bio of up to 160 characters, shown on your profile and
+  next to your name across Social.
+- **Moderation.** Members report a post or comment from its page; reports collect
+  under **Feed & reports** in the admin panel, grouped, with **Remove** or **Keep**.
+  The owner can also remove any post, clear a member's picture or bio, and switch
+  off posts, planned-trade posts or pictures.
 - **What you share.** Profile, process boards, feed and habits are on by default;
   % return, dollar P&L and the wallet address are off. The journal, notes and trades
   never leave the browser: only XP, level, streak, badges, habit sentences and each
@@ -449,8 +480,7 @@ already syncs the whole journal with `AUTH_TOKEN`, so this is for members only, 
 the owner can switch it off.
 
 **Unlocks.** Pulse features unlock with level — by default deeper Stats insights at level 2, share
-cards at 3 and joining competitions at 4 — plus colour themes (Ember 3, Aurora 5,
-Gold 8). XP only comes from process, so unlocking rewards good habits. The owner can
+cards at 3 and joining competitions at 4. XP only comes from process, so unlocking rewards good habits. The owner can
 map every feature (insights, in-depth stats, share cards, competitions, AI coach,
 end-of-day review, report cards) to a level, switch unlocks off, or **fully unlock**
 chosen members. Sample data shows everything. The full journal at `/` is never locked.
@@ -471,7 +501,7 @@ chosen members. Sample data shows everything. The full journal at `/` is never l
   awarded by hand, each paying the XP you set.
 - **Levels & XP** — levels on a curve or a table of thresholds, level titles, a live
   preview, and the XP every action pays.
-- **Features** — the level each feature and theme unlocks at.
+- **Features** — the level each feature unlocks at.
 - **Coach** — on/off for members, daily allowances, your own limit, whether members
   may share trades and notes, today's usage.
 - **Routines** — replace the built-in profiles' questions and add your own profiles.

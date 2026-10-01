@@ -1862,9 +1862,16 @@ function createApp(opts) {
     if (!behaviorInflight.has(k)) behaviorInflight.set(k, behaviorForOnce(addr, tz).finally(() => behaviorInflight.delete(k)));
     return behaviorInflight.get(k);
   };
-  const behaviorForOnce = async (addr, tz) => {
-    if (!engine.ok || !E.pzBehaviorDays) return null;
-    const a = String(addr).toLowerCase(); if (!/^0x[0-9a-f]{40}$/.test(a)) return null;
+  // the wallet's last 50 days of fills, topped up from the exchange and kept gzipped per address
+  const fillsInflight = new Map(), fillsFresh = new Map();
+  // a wallet read in the last two minutes isn't fetched again (a burst of posts or board refreshes shares it)
+  const recentFills = addr => { const a = String(addr).toLowerCase(), f = fillsFresh.get(a);
+    if (f && (opts.now || Date.now)() - f.at < 120000) return Promise.resolve(f.fills);
+    if (!fillsInflight.has(a)) fillsInflight.set(a, recentFillsOnce(a).then(fills => { if (fills) { fillsFresh.set(a, { at: (opts.now || Date.now)(), fills });
+        if (fillsFresh.size > 500) fillsFresh.delete(fillsFresh.keys().next().value); } return fills; }).finally(() => fillsInflight.delete(a)));
+    return fillsInflight.get(a); };
+  const recentFillsOnce = async (a) => {
+    if (!engine.ok || !/^0x[0-9a-f]{40}$/.test(a)) return null;
     const f = path.join(socialFillsDir, a + '.json.gz'), since = (opts.now || Date.now)() - 50 * 86400000;
     const c = gzRead(f), have = c && c.v === 1 && Array.isArray(c.fills) ? c.fills : [];
     // the cache is saved sorted, so its last fill is the newest (no spread over huge arrays)
@@ -1874,6 +1881,22 @@ function createApp(opts) {
     for (const x of have.concat(r.fills || [])) { if (!x || x.time < since) continue; const k = x.tid + ':' + x.time; if (seen.has(k)) continue; seen.add(k); fills.push(x); }
     fills.sort((x, y) => x.time - y.time);
     gzWrite(f, { v: 1, fills, savedAt: Date.now() });
+    return fills;
+  };
+  // A trade a member posts is "on chain" when their wallet has fills that match it: a buy for a long's
+  // entry (a sell for a short's) in that coin within a minute of when it opened and within 3% of the
+  // entry price, and for a closed one the opposite side within a minute of the close and 3% of the exit.
+  // Older than 50 days: unknown (null), as is a wallet that can't be read right now.
+  const tradeCheck = async (addr, t) => {
+    const since = (opts.now || Date.now)() - 50 * 86400000;
+    if (!t || !t.openedAt || t.openedAt < since || !(t.entry > 0)) return null;
+    const fills = await recentFills(addr); if (!Array.isArray(fills)) return null;
+    return fillsMatchTrade(fills, t);
+  };
+  const behaviorForOnce = async (addr, tz) => {
+    if (!engine.ok || !E.pzBehaviorDays) return null;
+    const a = String(addr).toLowerCase(); if (!/^0x[0-9a-f]{40}$/.test(a)) return null;
+    const fills = await recentFills(a); if (!fills) return null;
     // attributeFunding sets each trade's net (P&L − fees); funding rows aren't fetched here — they
     // barely move one trade's result and never decide whether it was a loss by more than $1
     const trades = [...E.attributeFunding(E.reconstructTrades(fills, a, 'perp'), []), ...E.attributeFunding(E.reconstructTrades(fills, a, 'spot'), [])];
@@ -1907,7 +1930,7 @@ function createApp(opts) {
   }
   const wearRef = {}; // filled in below, once the wearables store exists
   const social = createSocial({ dataDir, json, authOk, adminConfigured: !!auth, fetchImpl: opts.fetchImpl, now: opts.now, push: pushCfg, onDrop: id => wearRef.forget && wearRef.forget('m:' + id),
-    behaviorFor, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled });
+    behaviorFor, tradeCheck: opts.tradeCheck || tradeCheck, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled });
   // readiness from WHOOP, Oura or Apple Health: the owner (AUTH_TOKEN) or a member (Pulse key)
   const wearOrigin = req => { if (publicOrigins[0]) { try { return new URL(publicOrigins[0]).origin; } catch (e) {} }
     return hostVetted && req.headers.host ? 'https://' + req.headers.host : opts.wearOrigin || null; };
@@ -2302,6 +2325,7 @@ function createApp(opts) {
   server._buildBotState = buildBotState;       // exposed for tests — the loop itself needs a live bot
   server._social = social; // tests reach the coach allowance through this
   server.pushTick = () => social.tick(); // the reminder pass, for tests and one-off runs
+  server.on('close', () => social.close());
   return server;
 }
 
@@ -2336,5 +2360,15 @@ if (require.main === module) {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-module.exports = { sanitizeCoachChat, coachChatRequest, scrubCoachData, createApp, buildEngine, ENGINE_FNS, alertsFrom, postWebhook, telegramReply, nudgeFrom, zonedDayHour,
+// Whether a wallet's fills back up a posted trade (see tradeCheck in createApp)
+function fillsMatchTrade(fills, t) {
+  const near = (ms, buy, px) => fills.some(x => x && x.coin === t.coin && Math.abs(x.time - ms) <= 60000 && (x.side === 'B') === buy
+    && Math.abs(parseFloat(x.px) - px) / px <= 0.03);
+  const long = t.side !== 'short';
+  if (!near(t.openedAt, long, t.entry)) return false;
+  if (t.status !== 'closed') return true;
+  return !!t.closedAt && t.exit > 0 && near(t.closedAt, !long, t.exit);
+}
+
+module.exports = { fillsMatchTrade, sanitizeCoachChat, coachChatRequest, scrubCoachData, createApp, buildEngine, ENGINE_FNS, alertsFrom, postWebhook, telegramReply, nudgeFrom, zonedDayHour,
   sanitizeCoachFacts, coachLetterRequest, coachLetterText };
