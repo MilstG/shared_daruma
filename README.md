@@ -578,6 +578,8 @@ wallet decisions record who made them.
   the one their numbers are read from), **boost XP** (or correct it) with a reason they see, fully unlock,
   their coach allowance, leagues and tiers, award or take back reward badges, a new
   sign-in code, suspend or delete. Members' addresses are visible to you; others see them only if the member chose to show theirs.
+- **Duels** — on/off, which kinds are allowed, the winner's XP and the limits,
+  every duel running or waiting (with cancel) and recent results.
 - **Benchmarks** — "Traders like you": contributors, peer groups and settings
   (smallest group, when to split groups, whether seed wallets count), a rebuild
   button, and **seed wallets**: paste any text and every 0x address in it is
@@ -982,6 +984,42 @@ it reproduces.
 numbers behind the point and a line on what the chart shows. Bar charts by
 market, month, weekday, hour, session and side also give trades, wins and
 losses, win rate, the average trade and the best and worst trade.
+
+### Duels
+
+Members challenge each other 1 on 1 for a week or a month, from someone's profile
+(**Challenge to a duel**) or under **Social → Duels**. Nothing is staked.
+
+- **What you can compete on:**
+  - **Discipline:** the higher average wins. It can require a minimum number of
+    trading days, so nobody wins by not trading.
+  - **Clean days:** more trading days at 70+ wins.
+  - **Last one standing:** the first trading day under 70 loses.
+  - **Journal streak:** more days with every trade journaled and the day reviewed.
+  - **Process XP:** more XP earned from process.
+  - **% return with a drawdown cap.** Going past the cap loses outright. Both
+    sides must share % return. This type is off unless the owner switches it on.
+  - **Verified scoring.** The first three can be scored "verified from fills",
+    which reads the Discipline the server computes from each wallet, instead of
+    what the apps report.
+- **How it runs.** The other side has 48 hours to accept, decline or **suggest
+  changes**, which sends the challenge back with new terms. An accepted duel runs
+  from the next Monday (or the 1st, for a month), so nobody gets a head start.
+  A live card on Today and under Duels shows both scores and each day's mark, and
+  a notification comes when the lead changes.
+- **Results.** A duel is settled the day after it ends. The winner gets a feed
+  line (naming the loser only if they share milestones too) and an XP bonus the
+  owner sets (default +100, the same for every duel). Either side can forfeit.
+  Records (won, lost, drawn) show on profiles, with a **Rematch** button.
+- **Limits.** At most 3 open duels per member, 5 new challenges a day, and no new
+  challenge to someone who declined you in the last week. Members switch off
+  **Accept duel challenges** under Profile & privacy.
+- **Admin → Duels:**
+  - Switch duels on or off, choose the allowed types, and set the XP bonus and
+    the limits.
+  - See every duel running or waiting, and cancel one without a result.
+  - "Duels" is a Pulse feature, free at level 1; set a level under Features to
+    make it an unlock.
 
 ### Traders like you
 

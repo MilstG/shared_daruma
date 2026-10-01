@@ -123,14 +123,14 @@ function pzCoachLine(D){
 }
 
 // ---- UI state (never stored) ----
-const PZ_TABS=['compose','today','trends','checkin','progress','discipline','journal','social','sharing','account','deep','how','badges','report','review','coach','leagues','lessons','mentor','mentee'];
+const PZ_TABS=['compose','today','trends','checkin','progress','discipline','journal','social','sharing','account','deep','how','badges','report','review','coach','leagues','lessons','mentor','mentee','duels'];
 var _pzQuiet=false; // a background refresh of data Pulse already shows: no status toasts
 var pzS={ring:'discipline',range:30,badge:null,ck:null,sheet:false,custom:null,jr:{},note:null};
 // a sign-in link from the league owner (/pulse#link=CODE): keep the code for the sign-in form, drop it from the address bar
 (function(){ const m=/^#link=([A-Za-z0-9-]{4,20})$/.exec(location.hash||''); if(!m)return; pzS.linkCode=m[1].toUpperCase(); pzS.acctOpen=true;
   try{ history.replaceState(null,'',location.pathname+location.search+'#today'); }catch(e){} })();
 function pzTab(){ const h=(location.hash||'').slice(1);
-  if(/^u\/[A-Za-z0-9_]{3,20}$/.test(h))return 'profile'; if(/^mentee\/[A-Za-z0-9_]{3,20}$/.test(h))return 'mentee'; if(/^c\/[0-9a-f]{4,24}$/.test(h))return 'comp'; if(/^lg\/[a-z0-9-]{1,40}$/.test(h))return 'lginfo'; if(/^post\/[0-9a-f]{12}$/.test(h))return 'post';
+  if(/^u\/[A-Za-z0-9_]{3,20}$/.test(h))return 'profile'; if(/^mentee\/[A-Za-z0-9_]{3,20}$/.test(h))return 'mentee'; if(/^c\/[0-9a-f]{4,24}$/.test(h))return 'comp'; if(/^lg\/[a-z0-9-]{1,40}$/.test(h))return 'lginfo'; if(/^post\/[0-9a-f]{12}$/.test(h))return 'post'; if(/^duel\/[A-Za-z0-9_]{3,20}$/.test(h))return 'duelnew';
   if(/^link=[A-Za-z0-9-]{4,20}$/.test(h))return 'today';
   return PZ_TABS.includes(h)?h:'today'; }
 function pzHashArg(){ return (location.hash||'').slice(1).split('/')[1]||''; }
@@ -202,7 +202,7 @@ const PZ_SECTIONS={
     ['tilt','Tilt meter','Losses in a row, re-entry window, size and pace — and quiet mode when it runs hot',1],
     ['session','Your session','P&L curve, trades, and your rules as they stand',1],['positions','Open positions','Size and hold time against your usual',1],
     ['insight','Coach insight','One line on what matters most',1],['next','Next step','Check-in in the morning, review at night',1],
-    ['now','Right now','This hour in your history, time since a loss',1],['good','Done right today','Moments you followed a rule that usually costs you',1],
+    ['now','Right now','This hour in your history, time since a loss',1],['good','Done right today','Moments you followed a rule that usually costs you',1],['duels','Duels','Challenges waiting for you and duels running',1],
     ['lesson','A lesson to revisit','One of your own lessons, back when it’s due',1],
     ['inbox','From your partners and mentor','Nudges, notes and season results',1],['partners','Your partners','Their streak and slips this week',1],
     ['xp','Today’s XP','What earns XP today, and what’s due this week',1],['week','Last 7 trading days','Discipline and net, day by day',1],
@@ -213,7 +213,7 @@ const PZ_SECTIONS={
     ['leaks','Your leaks','What your slips cost, and plugging them',1],['lessons','Lessons library','Everything your reviews taught you',1],['moments','Good moments','',1],['badges','Badges','Your latest badges',1],['bests','Personal bests','',1]],
 };
 // Today's cards below the dials can also be put in your own order (the top of the screen stays put)
-const PZ_FLOW={today:[['tilt','insight','session','positions'],['next','now','good','inbox','partners','lesson','xp','week','yesterday']]};
+const PZ_FLOW={today:[['tilt','insight','session','positions'],['next','now','good','inbox','duels','partners','lesson','xp','week','yesterday']]};
 function pzOrdered(screen){ const all=(PZ_FLOW[screen]||[]).flat(), o=((settings.pzLayout||{})[screen]||{})._order;
   if(!Array.isArray(o))return null;
   return [...o.filter(id=>all.includes(id)),...all.filter(id=>!o.includes(id))]; }
@@ -587,7 +587,7 @@ function pzTodayHtml(D){
     ${sec('oneThing',()=>pzOneThingHtml(D))}
     <div class="pz-wide">${ringsHtml}<div class="pz-span" id="pzRingDetail">${detail}</div>${more('numbers',pzTodayStripHtml)}${sec('level',()=>pzProgressRowHtml(D))}
       ${(()=>{ const card={tilt:()=>sec('tilt',()=>pzTiltHtml(D)),insight:()=>on('insight')?coach:'',session:()=>more('session',pzSessionHtml),positions:()=>more('positions',pzPositionsHtml),
-          next:()=>sec('next',()=>pzNextHtml(D)),now:()=>more('now',pzNowHtml),good:()=>sec('good',()=>pzGoodHtml(D)),inbox:()=>sec('inbox',()=>socInboxHtml()),partners:()=>sec('partners',()=>socPartnerStripHtml()),
+          next:()=>sec('next',()=>pzNextHtml(D)),now:()=>more('now',pzNowHtml),good:()=>sec('good',()=>pzGoodHtml(D)),inbox:()=>sec('inbox',()=>socInboxHtml()),duels:()=>sec('duels',()=>socDuelsTodayHtml()),partners:()=>sec('partners',()=>socPartnerStripHtml()),
           lesson:()=>sec('lesson',()=>pzLessonDueHtml(D)),xp:()=>on('xp')?bonus:'',week:()=>sec('week',()=>pzWeekSparkHtml(D)),yesterday:()=>sec('yesterday',()=>pzYesterdayHtml(D))};
         const ord=pzOrdered('today'), lead=pzLinkCardHtml()+pzNudgesHtml(D);
         // your own order reads top to bottom, then on into the second column on a wide screen
@@ -1201,7 +1201,7 @@ function pzRender(){
     const lv=D.g.level.level;
     const body=tab==='trends'?pzTrendsHtml(D):tab==='deep'?pzDeepHtml(D):tab==='how'?pzHowHtml():tab==='badges'?pzBadgesHtml(D):tab==='report'?pzReportHtml(D)
       :tab==='review'?pzReviewHtml(D):tab==='coach'?pzCoachHtml(D):tab==='leagues'?socFindHtml(D):tab==='lginfo'?socLeagueInfoHtml(D,pzHashArg()):tab==='checkin'?pzCheckinHtml(D):tab==='progress'?pzProgressHtml(D)
-      :tab==='discipline'?pzDisciplineHtml(D):tab==='journal'?pzJournalHtml(D):tab==='social'?socSocialHtml(D):tab==='sharing'?socSharingHtml(D):tab==='account'?socAccountHtml(D)
+      :tab==='discipline'?pzDisciplineHtml(D):tab==='journal'?pzJournalHtml(D):tab==='social'?socSocialHtml(D):tab==='duels'?socDuelsHtml(D):tab==='duelnew'?socDuelNewHtml(D,pzHashArg()):tab==='sharing'?socSharingHtml(D):tab==='account'?socAccountHtml(D)
       :tab==='lessons'?(()=>{ try{ return pzLessonsHtml(D); }catch(e){ console.warn('lessons',e); return `<a class="pz-back" href="#progress">${pzI('back',20)}Progress</a><p class="pz-sub pz-err">Your lessons couldn’t be read (${esc(e.message)}).</p>`; } })():tab==='mentor'?socMentorHtml(D):tab==='mentee'?socMenteeHtml(D,pzHashArg()):tab==='profile'?socProfileHtml(D,pzHashArg()):tab==='post'?socPostHtml(D,pzHashArg()):tab==='compose'?socComposeHtml(D):tab==='comp'?socCompHtml(D,pzHashArg()):pzTodayHtml(D);
     html=`${pzNav(tab,lv)}<main class="pz-main" id="pzMain">${body}</main>`;
     socSync(D.g); }

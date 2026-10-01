@@ -9,7 +9,7 @@
 // journal, notes and trades never leave the browser. Returns are read on the server from the
 // chain, never sent from here. Sample data is never posted.
 const SOC_KEY_STORE='pz_social_key';
-const SOC_DEFAULT_SHARE={profile:true,boards:true,global:false,page:false,feed:true,habits:true,verify:true,ret:false,usd:false,addr:false,mentor:false,bench:true};
+const SOC_DEFAULT_SHARE={profile:true,boards:true,global:false,page:false,feed:true,habits:true,verify:true,ret:false,usd:false,addr:false,mentor:false,bench:true,duels:true};
 const SOC_SHARE_ROWS=[
   ['profile','Public profile','Your profile page: streak, discipline, badges. Name, level and league show wherever you appear'],
   ['boards','Process leaderboards','Weekly XP, discipline and streak boards in your leagues'],
@@ -22,6 +22,7 @@ const SOC_SHARE_ROWS=[
   ['usd','Show dollar P&L','Reveals your account size to everyone',true],
   ['addr','Show wallet address','Anyone could look up every trade and balance',true],
   ['mentor','Let mentors see my days','Mentors the owner appointed see your scores, slips and the lesson you write each night, and can leave you notes. No trades, P&L or wallet'],
+  ['duels','Accept duel challenges','Other members can challenge you to a week or a month, 1 on 1, on Discipline, clean days, journaling or XP. Nothing starts until you accept; switch off to stop receiving challenges'],
   ['bench','Count me in “Traders like you”','An anonymous summary of your last 90 days (win rate, discipline, how much you journal; trade size only as a range) goes into peer groups of 25 or more. No trades, coins, amounts, name or wallet. Switch off to be left out']];
 const SOC_BOARDS=[['xp','Weekly XP'],['discipline','Discipline'],['streak','Streak'],['level','All-time XP'],['riskadj','Return / drawdown'],['ret','% Return'],['usd','$ P&L']];
 const SOC_BOARD_NOTE={
@@ -213,7 +214,7 @@ function socHead(){
 function socUnavailableHtml(){
   return `${pzHead('Leagues · competitions · friends','Social')}<section class="pz-card"><p class="pz-sub">Social lives on the Ledger server this page comes from. Open Pulse from your server’s <b>/pulse</b> link to join the league${/^https?:$/.test(location.protocol)?' — this server didn’t answer just now; try again in a moment.':'.'}</p></section>`;
 }
-const SOC_SHARE_GROUPS=[['Profile',['profile','page','feed','habits','mentor']],['Boards',['boards','global','verify','ret','bench']],['Sensitive',['usd','addr']]];
+const SOC_SHARE_GROUPS=[['Profile',['profile','page','feed','habits','mentor','duels']],['Boards',['boards','global','verify','ret','bench']],['Sensitive',['usd','addr']]];
 function socToggles(share, attr){
   return SOC_SHARE_GROUPS.map(([g,keys])=>`<section class="pz-card" style="padding:4px 16px"><span class="pz-lbl" style="display:block;margin:12px 0 2px;color:${g==='Sensitive'?'#FFB39E':'var(--pz-muted)'}">${g}</span>${socToggleRows(share,attr,keys)}</section>`).join('');
 }
@@ -293,7 +294,7 @@ function socSocialHtml(D){
   if(SOC.cfg.enabled===false)return `${pzHead('Leagues · competitions · friends','Social')}<section class="pz-card"><p class="pz-sub">The league opens once the server owner sets an access token (AUTH_TOKEN). Without one, anyone with the link could read the owner’s journal.</p></section>`;
   if(!SOC.me)return socJoinHtml();
   const body=SOC.sub==='feed'?socPartnersHtml()+socFeedHtml():SOC.sub==='boards'?socBoardsHtml(D.g):socLeagueHtml(D.g)+`<section style="display:flex;flex-direction:column;gap:10px;margin-top:10px"><span class="pz-lbl" style="color:var(--pz-muted)">Competitions</span>${socCompeteHtml(D.g)}</section>`;
-  return `${socHead()}${socSubTabs()}${body}`;
+  return `${socHead()}${socSubTabs()}${socDuelEntryHtml(D.g)}${body}`;
 }
 function socProfileHtml(D, handle){
   const back=`<a class="pz-back" href="#social">${pzI('back',20)}Social</a>`;
@@ -303,11 +304,12 @@ function socProfileHtml(D, handle){
   const T=(SOC.cfg&&SOC.cfg.tiers)||[];
   const follow=p.isMe?`<a class="pz-ghost" href="#sharing">Edit what you share</a>`
     :`<button type="button" class="${p.isFollowing?'pz-ghost':'pz-cta'}" data-soc-follow="${esc(p.handle)}" data-on="${p.isFollowing?1:0}">${p.isFollowing?'Following':'Follow'}</button>
-      <button type="button" class="pz-ghost" data-soc-pask="${esc(p.handle)}">Ask to be accountability partners</button>`;
+      <button type="button" class="pz-ghost" data-soc-pask="${esc(p.handle)}">Ask to be accountability partners</button>
+      ${p.duelsOpen&&socDuelsOn()&&!pzLocked('duels',D.g.level.level)?`<a class="pz-ghost" href="#duel/${esc(p.handle)}">${pzI('medal',16)} Challenge to a duel</a>`:''}`;
   const tiles=p.private?'<section class="pz-card"><p class="pz-sub">This profile is private.</p></section>'
     :`<div class="pz-grid3"><div class="pz-tile good"><span class="pz-n">${p.discipline30==null?'—':p.discipline30}</span><span class="pz-t">Discipline · 30d${p.verified?' · verified':''}</span></div>
       <div class="pz-tile warm"><span class="pz-n">${p.streak}</span><span class="pz-t">Day streak · best ${p.best}</span></div>
-      <div class="pz-tile"><span class="pz-n">${p.badgeN}</span><span class="pz-t">Badges</span></div></div>`;
+      <div class="pz-tile"><span class="pz-n">${p.badgeN}</span><span class="pz-t">Badges</span></div></div>${p.duels&&(p.duels.w+p.duels.l+p.duels.d)?`<div class="pz-tile" style="flex-direction:row;align-items:center;justify-content:space-between"><span class="pz-t">Duels</span><span class="pz-n" style="font-size:22px"><span style="color:${PZ_COL.good}">${p.duels.w}</span> – <span style="color:${PZ_COL.low}">${p.duels.l}</span>${p.duels.d?' – '+p.duels.d:''}</span></div>`:''}`;
   const money=p.ret!=null||p.usd!=null?`<section class="pz-card" style="display:flex;justify-content:space-between;gap:12px"><span><span class="pz-t pz-sub" style="font-size:12px">30-day return${p.isMe?' (only you see this unless you share it)':''}</span><br><b style="font-family:var(--pz-num);font-size:26px;color:${p.ret>=0?PZ_COL.good:PZ_COL.low}">${p.ret!=null?socValue('ret',p.ret):'—'}</b>${p.usd!=null?` <span class="pz-sub">${esc(signedPlain(p.usd))}</span>`:''}</span><span style="text-align:right"><span class="pz-sub" style="font-size:12px">Max drawdown</span><br><b style="font-family:var(--pz-num);font-size:26px">${p.dd!=null?(p.dd*100).toFixed(1)+'%':'—'}</b></span></section>`:'';
   const habits=p.habits&&p.habits.length?`<section class="pz-card" style="padding:6px 16px"><b style="display:block;font-size:15px;margin:10px 0 4px">Habits ${p.isMe?'you run':'they run'}</b>${p.habits.map(h=>`<div class="pz-toggle"><span style="flex:1;font-size:14px;line-height:1.4">${esc(h)}</span>${p.isMe?'':`<button type="button" class="pz-kudo" data-soc-adopt="${esc(h)}">Adopt</button>`}</div>`).join('')}</section>`:'';
   const badges=p.badges&&p.badges.length?`<section style="display:flex;flex-wrap:wrap;gap:6px">${p.badges.map(b=>`<span class="pz-chipbtn" style="height:32px;display:inline-flex;align-items:center;gap:6px;cursor:default">${pzI('medal',14)}${esc(b)}</span>`).join('')}</section>`:'';
@@ -591,12 +593,150 @@ async function socFilePicked(t){
   return false;
 }
 
+// ---- duels: one member against another for a week or a month ----
+const DUEL_IC={disc:'shield',clean:'check',survive:'bolt',journal:'pen',xp:'medal',ret:'up'};
+function socDuelsOn(){ return !!(SOC.cfg&&(!SOC.cfg.duels||SOC.cfg.duels.on!==false)); }
+function socDuels(){ return SOC.me&&socDuelsOn()?socGet('duels','/duels',30000):null; }
+const duelDate=k=>{ if(!k)return ''; const d=new Date(k+'T12:00:00Z'); return d.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'UTC'}); };
+const duelWhen=v=>v.start?duelDate(v.start)+' – '+duelDate(v.end):v.preview?duelDate(v.preview.start)+' – '+duelDate(v.preview.end):'';
+function duelScoreTxt(v,side){ if(!side)return '—';
+  if(v.type==='ret')return side.score==null?'—':(side.score>=0?'+':'')+(side.score*100).toFixed(1)+'%';
+  if(v.type==='survive')return side.out?'Out':'In';
+  if(side.score==null)return '—';
+  return String(side.score)+(v.type==='xp'?'':''); }
+function duelTerms(v){ const c=[];
+  if(v.minDays)c.push(v.minDays+'+ trading days each'); if(v.verified)c.push('verified from fills'); if(v.ddCap)c.push('drawdown cap '+Math.round(v.ddCap*100)+'%');
+  return c.join(' · '); }
+// the day-by-day marks, one row per side
+function duelMarks(v){
+  const s=v.start, e=v.end; if(!s)return '';
+  const days=[]; for(let t=Date.parse(s+'T00:00:00Z');t<=Date.parse(e+'T00:00:00Z');t+=86400000)days.push(new Date(t).toISOString().slice(0,10));
+  const today=new Date().toISOString().slice(0,10), small=days.length>10;
+  const row=(lbl,side)=>{ const mk=new Map(((side&&side.marks)||[]).map(m=>[m.k,m.s]));
+    return `<span class="pz-dmlab">${esc(lbl)}</span>`+days.map(k=>{ const x=mk.get(k), past=k<=today;
+      const good=v.type==='xp'?x>0:v.type==='journal'?x>=100:x>=70, col=x==null?(past?'var(--pz-line2)':'var(--pz-track)'):good?PZ_COL.good:PZ_COL.low;
+      const tip=duelDate(k)+(x==null?(past?' · no trading':' · to come'):v.type==='xp'?' · '+x+' XP':v.type==='journal'?(x>=100?' · journaled and reviewed':' · not fully journaled'):' · Discipline '+x);
+      return `<i class="pz-dm${small?' sm':''}" style="background:${col}" data-pz-tip="${esc(tip)}">${!small&&x!=null&&v.type!=='journal'?x:''}</i>`; }).join(''); };
+  return `<div class="pz-dmarks" style="grid-template-columns:auto repeat(${days.length},minmax(0,1fr))">${row('you',v.me)}${row(v.other.handle.slice(0,8),v.them)}</div>`;
+}
+function socDuelCardHtml(v, compact){
+  const o=v.other, head=`<div class="pz-kvrow"><b style="font-size:15px">${pzI(DUEL_IC[v.type]||'medal',16)} ${esc(v.label)} duel</b><span class="pz-sub" style="font-size:12px">${esc(duelWhen(v))}</span></div>`;
+  if(v.status==='pending'&&v.awaiting) return `<section class="pz-card pz-duel">${head}
+    <div class="pz-kvrow" style="justify-content:flex-start;gap:10px">${socAv(o.handle,36)}<span><b>@${esc(o.handle)}</b> ${v.countered?'suggested new terms':'challenged you'}<span class="pz-sub" style="display:block;font-size:12px">Level ${o.level} · answer within ${Math.max(1,Math.round((v.exp-Date.now())/3600000))}h</span></span></div>
+    ${v.msg?`<div class="pz-quote">“${esc(v.msg)}”</div>`:''}
+    <p class="pz-sub" style="margin:0;font-size:13px">${esc(v.rule)} ${esc(v.period==='month'?'A month':'A week')}, ${esc(duelWhen(v))}${duelTerms(v)?' · '+esc(duelTerms(v)):''}. Winner gets ${SOC.cache.duels&&SOC.cache.duels.d&&SOC.cache.duels.d.xp?'+'+SOC.cache.duels.d.xp+' XP':'the win'}.</p>
+    <div class="pz-grid2"><button type="button" class="pz-ghost" data-duel-act="counter" data-id="${v.id}" data-h="${esc(o.handle)}">Suggest changes</button><button type="button" class="pz-cta" data-duel-act="accept" data-id="${v.id}">Accept</button></div>
+    <button type="button" class="pz-linkbtn" data-duel-act="decline" data-id="${v.id}" style="align-self:center">Decline</button></section>`;
+  if(v.status==='pending') return `<section class="pz-card pz-duel">${head}<div class="pz-kvrow" style="justify-content:flex-start;gap:10px">${socAv(o.handle,32)}<span>Waiting for <b>@${esc(o.handle)}</b> to answer<span class="pz-sub" style="display:block;font-size:12px">${Math.max(1,Math.round((v.exp-Date.now())/3600000))}h left · ${esc(duelTerms(v)||v.rule)}</span></span></div>
+    ${compact?'':`<button type="button" class="pz-linkbtn" data-duel-act="cancel" data-id="${v.id}" style="align-self:flex-start">Withdraw</button>`}</section>`;
+  if(v.status==='active'&&!v.me) return `<section class="pz-card pz-duel">${head}<div class="pz-kvrow" style="justify-content:flex-start;gap:10px">${socAv(o.handle,32)}<span>Starts ${esc(duelDate(v.start))} against <b>@${esc(o.handle)}</b><span class="pz-sub" style="display:block;font-size:12px">${esc(v.rule)}</span></span></div></section>`;
+  if(v.status==='active'||v.status==='done'){
+    const done=v.status==='done', r=v.result||{}, lead=v.lead;
+    const left=done?'':(()=>{ const d=Math.ceil((Date.parse(v.end+'T23:59:59Z')-Date.now())/86400000); return d<=0?'last day':d+' day'+(d===1?'':'s')+' left'; })();
+    const meCol=(done?r.outcome==='won':lead==='me')?PZ_COL.good:'var(--pz-text)', themCol=(done?r.outcome==='lost':lead==='them')?PZ_COL.xp:'var(--pz-text)';
+    const banner=done?`<div class="pz-dres ${r.outcome}">${r.outcome==='won'?'You won'+(r.xp?' · +'+r.xp+' XP':''):r.outcome==='lost'?'@'+esc(o.handle)+' won':'A draw'}${r.forfeit?' <span class="pz-sub">('+(r.forfeit==='me'?'you forfeited':'they forfeited')+')</span>':''}</div>`
+      :`<div class="pz-dlead">${lead==='me'?'You lead':lead==='them'?'@'+esc(o.handle)+' leads':'Level'}<span class="pz-sub"> · ${esc(v.why||'')}</span></div>`;
+    return `<section class="pz-card pz-duel pz-viz"><div class="pz-kvrow"><b style="font-size:15px">${pzI(DUEL_IC[v.type]||'medal',16)} ${esc(v.label)} duel</b><span class="pz-sub" style="font-size:12px">${done?esc(duelWhen(v)):esc(left)}</span></div>
+      <div class="pz-vs"><div>${socAv((SOC.me&&SOC.me.handle)||'you',40)}<b style="color:${meCol}">${esc(duelScoreTxt(v,v.me))}</b><span class="pz-sub">${esc((v.me&&v.me.note)||'you')}</span></div><span class="pz-sub" style="font-weight:700">VS</span>
+        <div>${socAv(o.handle,40)}<b style="color:${themCol}">${esc(duelScoreTxt(v,v.them))}</b><span class="pz-sub">@${esc(o.handle)} · ${esc((v.them&&v.them.note)||'')}</span></div></div>
+      ${banner}${compact?'':duelMarks(v)}
+      ${v.me&&v.me.missing?'<p class="pz-fine" style="margin:0">Your days count once “Verify my discipline” is on.</p>':''}
+      ${done?`<div class="pz-grid2"><a class="pz-ghost" href="#u/${esc(o.handle)}">Their profile</a><button type="button" class="pz-cta" data-duel-act="rematch" data-id="${v.id}" data-h="${esc(o.handle)}">Rematch</button></div>`
+        :compact?`<a class="pz-link" href="#duels" style="min-height:0;align-self:flex-start">Details ›</a>`:`<button type="button" class="pz-linkbtn" data-duel-act="forfeit" data-id="${v.id}" style="align-self:flex-start">Forfeit</button>`}</section>`;
+  }
+  return `<section class="pz-card pz-duel"><div class="pz-kvrow"><b style="font-size:14px">${esc(v.label)} · @${esc(o.handle)}</b><span class="pz-sub" style="font-size:12px">${v.status==='declined'?(v.mine==='sent'?'declined':'you declined'):v.status==='expired'?'expired':'cancelled'}</span></div></section>`;
+}
+function socDuelEntryHtml(g){
+  if(!socDuelsOn()||pzLocked('duels',g.level.level))return '';
+  const c=socDuels(), d=c&&c.d; if(!d)return '';
+  const wait=d.duels.filter(v=>v.status==='pending'&&v.awaiting).length, run=d.duels.filter(v=>v.status==='active').length, r=d.record;
+  return `<a class="pz-card pz-cardlink" href="#duels" style="margin-bottom:10px"><span class="pz-ico" style="background:rgba(182,156,255,.14);color:${PZ_COL.xp}">${pzI('medal',20)}</span><span style="flex:1;min-width:0"><b style="font-size:15px">Duels</b><span class="pz-sub" style="display:block;font-size:13px">${wait?`<b style="color:${PZ_COL.xp}">${wait} waiting for you</b> · `:''}${run?run+' running · ':''}record ${r.w}–${r.l}${r.d?'–'+r.d:''}</span></span>${pzI('chev',18)}</a>`;
+}
+function socDuelsTodayHtml(){
+  if(!SOC.me||!socDuelsOn())return '';
+  const c=socDuels(), d=c&&c.d; if(!d)return '';
+  const inv=d.duels.filter(v=>v.status==='pending'&&v.awaiting).slice(0,1), act=d.duels.filter(v=>v.status==='active'&&v.me).slice(0,2);
+  if(!inv.length&&!act.length)return '';
+  return inv.map(v=>socDuelCardHtml(v,true)).join('')+act.map(v=>socDuelCardHtml(v,true)).join('');
+}
+function socDuelsHtml(D){
+  const back=`<a class="pz-back" href="#social">${pzI('back',20)}Social</a>`;
+  if(!socAvailable()||!SOC.me)return back+socSocialHtml(D);
+  const lock=pzLocked('duels',D.g.level.level); if(lock)return back+pzLockedHtml('Duels',lock,D.g);
+  const c=socDuels(), d=c&&c.d;
+  if(!d)return `${back}${pzHead('One on one','Duels')}<p class="pz-sub">${c&&c.err?esc(c.err):'<span class="pz-spin"></span>Loading…'}</p>`;
+  if(!d.on)return `${back}${pzHead('One on one','Duels')}<section class="pz-card"><p class="pz-sub">Duels are switched off in this league.</p></section>`;
+  const r=d.record, grp=(t,L)=>L.length?`<section style="display:flex;flex-direction:column;gap:10px"><span class="pz-lbl" style="color:var(--pz-muted)">${t}</span>${L.map(v=>socDuelCardHtml(v,false)).join('')}</section>`:'';
+  const inv=d.duels.filter(v=>v.status==='pending'&&v.awaiting), act=d.duels.filter(v=>v.status==='active'), sent=d.duels.filter(v=>v.status==='pending'&&!v.awaiting),
+    done=d.duels.filter(v=>v.status==='done').slice(0,10), other=d.duels.filter(v=>['declined','expired','cancelled'].includes(v.status)).slice(0,5);
+  return `${back}${pzHead('One on one','Duels')}
+    <div class="pz-wide"><div class="pz-col">
+      <section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><div class="pz-kvrow"><b style="font-size:15px">Your record</b><span class="pz-sub" style="font-size:12px">${act.length+sent.length} of ${d.maxOpen} open</span></div>
+        <div class="pz-grid3"><div class="pz-tile good"><span class="pz-n">${r.w}</span><span class="pz-t">won</span></div><div class="pz-tile hot"><span class="pz-n">${r.l}</span><span class="pz-t">lost</span></div><div class="pz-tile"><span class="pz-n">${r.d}</span><span class="pz-t">drawn</span></div></div>
+        <div class="pz-kvrow" style="gap:8px"><input id="duelWho" placeholder="@name to challenge" autocomplete="off" style="flex:1;min-width:0"><button type="button" class="pz-cta" id="duelGo" style="width:auto;padding:0 18px">Challenge</button></div>
+        <p class="pz-fine" style="margin:0">Or open someone’s profile from a leaderboard. Duels are scored by Pulse from your fills and your app; nothing is ever staked. ${d.xp?'The winner gets +'+d.xp+' XP.':''}${d.accepting?'':' You’re not taking challenges (switched off under <a href="#sharing">Profile & privacy</a>).'}</p></section>
+      ${grp('Waiting for you',inv)}${grp('Running',act)}${grp('Sent',sent)}</div>
+    <div class="pz-col">${grp('Finished',done)}${grp('Didn’t happen',other)}${!d.duels.length?'<section class="pz-card"><p class="pz-sub" style="margin:0">No duels yet. Challenge someone to a week of clean trading.</p></section>':''}</div></div>`;
+}
+function socDuelNewHtml(D, handle){
+  const back=`<a class="pz-back" href="#duels">${pzI('back',20)}Duels</a>`;
+  if(!socAvailable()||!SOC.me)return back+socSocialHtml(D);
+  const lock=pzLocked('duels',D.g.level.level); if(lock)return back+pzLockedHtml('Duels',lock,D.g);
+  const c=socDuels(), d=c&&c.d, w=socGet('dw:'+handle.toLowerCase(),'/duels/with/'+encodeURIComponent(handle),30000), x=w&&w.d;
+  if(!d||!x)return `${back}<p class="pz-sub">${(w&&w.err)||(c&&c.err)?esc((w&&w.err)||c.err):'<span class="pz-spin"></span>Loading…'}</p>`;
+  const o=x.other, st=pzS.duel&&pzS.duel.h===o.handle?pzS.duel:(pzS.duel={h:o.handle,type:(d.types[0]||{}).type,period:'week',verified:!!(x.me.verified&&o.verified),minDays:3,ddCap:0.08}); // verified by default only when both can be
+  if(!d.types.some(t=>t.type===st.type))st.type=(d.types[0]||{}).type;
+  const T=d.types.find(t=>t.type===st.type)||{}, verifiable=['disc','clean','survive'].includes(st.type), counter=pzS.duelCounter&&pzS.duelCounter.h===o.handle?pzS.duelCounter.id:null;
+  const why=!x.accepting?'@'+o.handle+' isn’t taking challenges.':x.busy&&!counter?'You already have a duel with @'+o.handle+'.'
+    :verifiable&&st.verified&&!x.me.verified?'Switch on “Verify my discipline” under Profile & privacy, or turn verification off for this duel.'
+    :verifiable&&st.verified&&!o.verified?'@'+o.handle+' hasn’t switched on “Verify my discipline”. Turn verification off for this duel, or pick another kind.'
+    :st.type==='ret'&&!(x.me.ret&&o.ret)?'Both of you need “Show % return” switched on for a % return duel.':'';
+  const pv=st.period==='month'?d.monthPreview:d.weekPreview, h2=x.h2h;
+  return `${back}${pzHead(counter?'Suggest different terms':'One on one','Challenge @'+esc(o.handle))}
+  <div class="pz-wide"><div class="pz-col"><section class="pz-card" style="display:flex;flex-direction:column;gap:14px">
+    <div class="pz-kvrow" style="justify-content:flex-start;gap:12px">${socAv(o.handle,44)}<span><b style="font-size:16px">@${esc(o.handle)}</b><span class="pz-sub" style="display:block;font-size:12px">Level ${o.level}${o.week!=null?' · Discipline '+o.week+' this week':''}${h2.w+h2.l+h2.d?' · you vs them '+h2.w+'–'+h2.l+(h2.d?'–'+h2.d:''):' · first duel together'}</span></span></div>
+    <div><span class="pz-lbl" style="color:var(--pz-muted)">Compete on</span><div class="pz-dtypes">${d.types.map(t=>`<button type="button" class="pz-dtype" data-duel-type="${t.type}" aria-pressed="${t.type===st.type}">${pzI(DUEL_IC[t.type]||'medal',16)}<b>${esc(t.label)}</b><span>${esc(t.rule)}</span></button>`).join('')}</div></div>
+    <div><span class="pz-lbl" style="color:var(--pz-muted)">When</span><div class="pz-seg" style="margin-top:6px">${[['week','A week · '+duelDate(d.weekPreview.start)+'–'+duelDate(d.weekPreview.end)],['month','A month · '+new Date(d.monthPreview.start+'T12:00:00Z').toLocaleDateString('en-US',{month:'long',timeZone:'UTC'})]].map(([k,l])=>`<button type="button" data-duel-period="${k}" aria-pressed="${st.period===k}">${esc(l)}</button>`).join('')}</div>
+      <p class="pz-fine" style="margin:6px 0 0">It starts on the next Monday (or the 1st) after it’s accepted, so nobody gets a head start.</p></div>
+    <div><span class="pz-lbl" style="color:var(--pz-muted)">Conditions</span>
+      ${st.type==='disc'?`<div class="pz-toggle"><span style="flex:1"><b>At least ${st.minDays} trading day${st.minDays===1?'':'s'} each</b><span>So nobody wins by not trading</span></span><span style="display:flex;gap:6px"><button type="button" class="pz-chipbtn" data-duel-min="-1" aria-label="Fewer">−</button><button type="button" class="pz-chipbtn" data-duel-min="1" aria-label="More">+</button></span></div>`:''}
+      ${verifiable?`<div class="pz-toggle"><span style="flex:1"><b>Verified from fills</b><span>Scored from both wallets’ public fills, not what the apps report</span></span><button type="button" role="switch" class="pz-switch" data-duel-verified="1" aria-checked="${!!st.verified}"><i></i></button></div>`:''}
+      ${st.type==='ret'?`<div class="pz-toggle"><span style="flex:1"><b>Drawdown cap</b><span>Going past it loses outright</span></span><span class="pz-seg">${[0.05,0.08,0.1,0.15].map(v=>`<button type="button" data-duel-dd="${v}" aria-pressed="${st.ddCap===v}">${v*100}%</button>`).join('')}</span></div>`:''}
+      <label class="pz-sub" for="duelMsg" style="display:block;margin-top:8px;font-size:12px">Message (optional)</label><input id="duelMsg" maxlength="140" placeholder="Loser buys coffee" autocomplete="off"></div>
+    <div class="pz-quote">${esc(T.label||'')} · ${esc(duelDate(pv.start))} – ${esc(duelDate(pv.end))}. ${esc(T.rule||'')}${st.type==='disc'?' At least '+st.minDays+' trading days each.':''}${verifiable&&st.verified?' Verified from fills.':''}${st.type==='ret'?' Drawdown cap '+Math.round(st.ddCap*100)+'%.':''}${d.xp?' Winner gets +'+d.xp+' XP.':''}</div>
+    ${why?`<p class="pz-sub pz-err" style="margin:0;font-size:13px">${esc(why)}</p>`:''}
+    <button type="button" class="pz-cta" id="duelSend"${why?' disabled':''}>${counter?'Send these terms back':'Send challenge'}</button></section></div></div>`;
+}
+
 // ---- actions ----
 async function socAction(t){
   const ds=t.dataset;
   const done=(m,kind)=>{ if(m)pzNote(m,kind); socStale(); pzRender(); };
   try{
     if(await socPostAction(t))return true;
+    // duels
+    if(ds.duelType){ pzS.duel.type=ds.duelType; pzRender(); return true; }
+    if(ds.duelPeriod){ pzS.duel.period=ds.duelPeriod; pzRender(); return true; }
+    if(ds.duelVerified){ pzS.duel.verified=!pzS.duel.verified; pzRender(); return true; }
+    if(ds.duelMin){ pzS.duel.minDays=Math.max(1,Math.min(pzS.duel.period==='month'?20:5,(pzS.duel.minDays||3)+(+ds.duelMin))); pzRender(); return true; }
+    if(ds.duelDd){ pzS.duel.ddCap=+ds.duelDd; pzRender(); return true; }
+    if(t.id==='duelGo'){ const h=(($('duelWho')||{value:''}).value||'').trim().replace(/^@/,''); if(!/^[A-Za-z0-9_]{3,20}$/.test(h)){ pzNote('Type their name, like @nora_fx.','err'); return true; }
+      pzS.duelCounter=null; location.hash='#duel/'+h; return true; }
+    if(t.id==='duelSend'){ const st=pzS.duel, msg=(($('duelMsg')||{value:''}).value||'').trim(), counter=pzS.duelCounter&&pzS.duelCounter.h===st.h?pzS.duelCounter.id:null;
+      const terms={type:st.type,period:st.period,verified:st.verified,minDays:st.minDays,ddCap:st.ddCap,msg};
+      t.disabled=true;
+      if(counter)await socFetch('/duels/'+encodeURIComponent(counter),{method:'POST',body:JSON.stringify(Object.assign({action:'counter'},terms))});
+      else await socFetch('/duels',{method:'POST',body:JSON.stringify(Object.assign({to:st.h},terms))});
+      pzS.duelCounter=null; delete SOC.cache.duels; const el=$('duelMsg'); if(el)el.value='';
+      location.hash='#duels'; done(counter?'Sent back to @'+st.h+'.':'Challenge sent to @'+st.h+'. They have 48 hours to answer.'); return true; }
+    if(ds.duelAct){ const a=ds.duelAct, id=ds.id;
+      if(a==='counter'||a==='rematch'){ const v=((SOC.cache.duels&&SOC.cache.duels.d&&SOC.cache.duels.d.duels)||[]).find(x=>x.id===id);
+        if(v)pzS.duel={h:v.other.handle,type:v.type,period:v.period,verified:v.verified,minDays:v.minDays||3,ddCap:v.ddCap||0.08};
+        pzS.duelCounter=a==='counter'?{id,h:ds.h}:null; location.hash='#duel/'+ds.h; return true; }
+      if(a==='forfeit'&&!confirm('Forfeit this duel? The other side wins.'))return true;
+      if(a==='decline'&&!confirm('Decline this challenge?'))return true;
+      const r=await socFetch('/duels/'+encodeURIComponent(id),{method:'POST',body:JSON.stringify({action:a})}); delete SOC.cache.duels;
+      done(a==='accept'?'Accepted. It runs '+duelWhen(r.duel)+'.':a==='decline'?'Declined.':a==='cancel'?'Withdrawn.':'You forfeited.'); return true; }
     if(ds.socSub){ SOC.sub=ds.socSub; if(pzTab()!=='social')location.hash='#social'; else pzRender(); return true; }
     // partners
     if(ds.socPask||t.id==='socPAsk'){ const h=ds.socPask||(($('socPIn')||{value:''}).value.trim()); if(!h)return true;

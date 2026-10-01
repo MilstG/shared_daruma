@@ -536,7 +536,7 @@ function socPartnerStripHtml(){
 function socInboxHtml(){
   if(!SOC.me)return '';
   const c=socGet('inbox','/inbox',60000), L=c&&c.d?c.d.items.filter(x=>x.unread):[]; if(!L.length)return '';
-  const ico={partner:'social',mentor:'coach',season:'medal'};
+  const ico={partner:'social',mentor:'coach',season:'medal',duel:'medal'};
   return `<section class="pz-card pz-kv" aria-label="New for you"><div class="pz-kvrow"><b class="pz-kvh">New for you</b><button type="button" class="pz-linkbtn" id="socInboxRead">Mark read</button></div>
     ${L.slice(0,4).map(x=>`<div class="pz-nowrow"><span style="color:${x.kind==='mentor'?PZ_COL.xp:x.kind==='season'?'#F4C04E':PZ_COL.risk}">${pzI(ico[x.kind]||'bolt',16)}</span><span><b style="font-size:13px;font-weight:600">${esc(x.text)}</b><span class="pz-sub" style="display:block;font-size:11px">${x.day?'About '+esc(dayLabel(x.day))+' · ':''}${socAgo(x.at)}</span></span></div>`).join('')}</section>`;
 }

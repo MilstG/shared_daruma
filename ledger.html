@@ -961,6 +961,24 @@ body.pz-quiet-on{overflow:hidden}
 .peerstrip{width:230px}
 .peerver{font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(47,208,140,.14);color:var(--profit)}
 .pz-hlcard{display:flex;flex-direction:column;gap:12px}
+.pz-duel{display:flex;flex-direction:column;gap:12px}
+.pz-vs{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;text-align:center}
+.pz-vs>div{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
+.pz-vs b{font-family:var(--pz-num);font-size:40px;line-height:1;font-weight:600}
+.pz-vs .pz-sub{font-size:11.5px;overflow-wrap:anywhere}
+.pz-dmarks{display:grid;gap:4px;align-items:center}
+.pz-dmlab{font-size:11px;color:var(--pz-muted);padding-right:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:64px}
+.pz-dm{display:grid;place-items:center;aspect-ratio:1;border-radius:6px!important;font:600 11px var(--pz-num);color:#fff;min-width:0;cursor:default}
+.pz-dm.sm{border-radius:3px!important}
+.pz-dres{text-align:center;font:600 26px var(--pz-num);padding:6px;border-radius:12px!important;background:var(--pz-track)}
+.pz-dres.won{background:rgba(63,224,160,.14);color:var(--pz-good)} .pz-dres.lost{background:rgba(182,156,255,.14);color:var(--pz-xp)}
+body.light .pz-dres.won{background:#E6F6EF} body.light .pz-dres.lost{background:#EFEAFD}
+.pz-dlead{font-size:14px;font-weight:600;padding:8px 12px;border-radius:12px!important;background:var(--pz-track)}
+.pz-dtypes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.pz-dtype{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;padding:10px;border-radius:14px!important;border:1.5px solid var(--pz-line);background:var(--pz-card);color:var(--pz-text);cursor:pointer;font:inherit}
+.pz-dtype b{font-size:13.5px} .pz-dtype span{font-size:11.5px;color:var(--pz-muted);line-height:1.35}
+.pz-dtype[aria-pressed="true"]{border-color:var(--pz-xp);background:rgba(182,156,255,.12)}
+body.light .pz-dtype[aria-pressed="true"]{background:#EFEAFD}
 .pz-peers{display:flex;flex-direction:column;gap:12px}
 .pz-pchips{display:flex;flex-wrap:wrap;gap:6px}
 .pz-pchip{font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px!important;background:var(--pz-track);color:var(--pz-soft)}
