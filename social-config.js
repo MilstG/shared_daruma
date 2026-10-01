@@ -7,7 +7,7 @@ const PROFILES = ['scalper', 'day', 'swing', 'position'];
 // Pulse features that can be tied to a level. 1 = open to everyone.
 const MODULES = {
   trends: 'Deeper Stats insights', deep: 'In-depth stats', share: 'Share cards', compete: 'Competitions',
-  coach: 'AI coach', review: 'End-of-day review', reports: 'Report cards',
+  coach: 'AI coach', review: 'End-of-day review', reports: 'Report cards', peers: 'Traders like you',
 };
 const LEAGUE_METRICS = {
   xp: 'XP earned', discipline: 'Discipline (verified)', streak: 'Discipline streak', level: 'All-time XP',
@@ -20,7 +20,7 @@ const BADGE_METRICS = {
 };
 const DEFAULT_LEVEL_TITLES = ['Rookie', 'Apprentice', 'Journeyman', 'Disciplined', 'Consistent', 'Professional', 'Veteran', 'Master', 'Grandmaster', 'Legend'];
 const DEFAULTS = {
-  modules: { trends: 2, deep: 1, share: 3, compete: 4, coach: 1, review: 1, reports: 1 },
+  modules: { trends: 2, deep: 1, share: 3, compete: 4, coach: 1, review: 1, reports: 1, peers: 1 }, // peers: free for now; set a level to make it an unlock
   levels: { mode: 'curve', base: 200, thresholds: [], titles: DEFAULT_LEVEL_TITLES },
   xp: { discipline: 1, checkin: 10, plan: 15, journal: 15, stops: 10, limit: 10, review: 15, achievement: 50, challenge: 150, focus: 25 },
   coach: { members: true, daily: 3, dailyUnlocked: 3, ownerDaily: 0, detail: true },

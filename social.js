@@ -33,6 +33,7 @@ const path = require('path');
 const crypto = require('crypto');
 const SC = require('./social-config.js');
 const Store = require('./db.js');
+const Bench = require('./bench.js');
 const Push = require('./push.js');
 // Ethereum signature recovery for wallet claims (vendored noble libraries, no install needed)
 let ethSig = null; try { ethSig = require('./vendor/eth-sig.js'); } catch (e) { /* claims and wallet sign-in answer 501 */ }
@@ -62,11 +63,12 @@ const STREAK_MARKS = [7, 14, 21, 30, 50, 75, 100, 150, 200, 365];
 const COMP_TYPES = ['discipline', 'survivor', 'journal', 'return'];
 const DEFAULT_CONFIG = { open: true, inviteCode: '', unlocksOn: true, requireClaim: false, approveWallets: false, vaultOn: true,
   unlocks: { trends: 2, share: 3, compete: 4 } };
-const SHARE_KEYS = ['profile', 'boards', 'global', 'page', 'feed', 'habits', 'verify', 'ret', 'usd', 'addr', 'mentor'];
+const SHARE_KEYS = ['profile', 'boards', 'global', 'page', 'feed', 'habits', 'verify', 'ret', 'usd', 'addr', 'mentor', 'bench'];
 // mentor: the league's mentors can see your trading days (scores, slips, the lesson you wrote) and comment on them — opt-in
 // global: appear on the server-wide leaderboards (every member, every league) — opt-in
 // page: a public badge page at /b/<name> that anyone with the link can open — opt-in
-const DEFAULT_SHARE = { profile: true, boards: true, global: false, page: false, feed: true, habits: true, verify: true, ret: false, usd: false, addr: false, mentor: false };
+// bench: an anonymous summary of your trading counts toward "traders like you" — on unless switched off
+const DEFAULT_SHARE = { profile: true, boards: true, global: false, page: false, feed: true, habits: true, verify: true, ret: false, usd: false, addr: false, mentor: false, bench: true };
 
 const sha = s => crypto.createHash('sha256').update(String(s)).digest('hex');
 const clampNum = (v, lo, hi) => { const n = +v; return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : null; };
@@ -407,7 +409,7 @@ function createSocial(opts) {
   }
   // every section kept as a kv row: one missing here is never loaded or saved (wallet decisions and
   // the admin log would vanish on the next restart)
-  const KV_KEYS = ['config', 'follows', 'comps', 'league', 'leagues', 'badges', 'ownerCoach', 'partners', 'comments', 'leagueSeq', 'wallets', 'adminLog', 'coachUse', 'migrations'];
+  const KV_KEYS = ['config', 'follows', 'comps', 'league', 'leagues', 'badges', 'ownerCoach', 'partners', 'comments', 'leagueSeq', 'wallets', 'adminLog', 'coachUse', 'migrations', 'bench', 'benchSeeds'];
   let S = { v: 1, members: {} };
   const loadedRaw = new Map(); // what each row held, so the first save writes only what loading changed
   for (const r of q('SELECT k, v FROM kv').all()) if (KV_KEYS.includes(r.k)) try { S[r.k] = JSON.parse(r.v); loadedRaw.set(r.k, r.v); } catch (e) {}
@@ -426,6 +428,7 @@ function createSocial(opts) {
   S.config.coach = SC.sanitizeCoachCfg(S.config.coach, null);
   S.config.profiles = SC.sanitizeProfiles(S.config.profiles, null);
   S.config.posts = sanitizePostCfg(S.config.posts, null);
+  S.config.bench = Bench.sanitizeBenchCfg(S.config.bench, null);
   if (!S.badges || typeof S.badges !== 'object') S.badges = {};
   // the owner's wallet decisions, by address (so a new profile can't launder a rejected wallet):
   // { '0x…': { s: 'approved' | 'rejected', at, by: 'owner' | 'existing', note } }
@@ -436,6 +439,9 @@ function createSocial(opts) {
   // AI coach messages asked today, per profile ('m:<id>') and per wallet ('w:<address>'): {k: day, tz, n}
   if (!S.coachUse || typeof S.coachUse !== 'object') S.coachUse = {};
   if (!S.migrations || typeof S.migrations !== 'object') S.migrations = {};
+  // "traders like you": the last build of the peer groups, and the owner's seed wallets by address
+  if (!S.bench || typeof S.bench !== 'object') S.bench = null;
+  if (!S.benchSeeds || typeof S.benchSeeds !== 'object') S.benchSeeds = {};
   // October 2026: the coach goes to 3 messages a day for everyone (admins unlimited). Applied once,
   // so a different number the owner sets later in the Coach tab stays.
   if (!S.migrations.coach3) { S.config.coach.daily = 3; S.config.coach.dailyUnlocked = 3; S.migrations.coach3 = Date.now(); }
@@ -765,6 +771,56 @@ function createSocial(opts) {
     finally { behaviorBusy.delete(m.id); }
   };
   const refreshAll = m => { refreshMoney(m); refreshBehavior(m); };
+  // ---- "traders like you": peer groups from members' summaries and the owner's seed wallets ----
+  const BENCH_FRESH = 21 * 86400000, SEED_REFRESH = 7 * 86400000, SEED_MAX = 5000;
+  const benchRows = () => {
+    const rows = [], mine = new Set(); let seeds = 0;
+    for (const m of members()) {
+      if (m.banned || !m.share || !m.share.bench || !m.bench || now() - (m.bench.at || 0) > BENCH_FRESH) continue;
+      const r = Object.assign({}, m.bench); delete r.at;
+      // returns and drawdown only when read on chain for this member (last 30 days)
+      if (m.money && m.money.ret != null && walletFor(m)) { r.ret = m.money.ret * 100; r.dd = m.money.dd * 100; }
+      const b = Bench.sanitizeBench(r); if (b) { rows.push(b); if (m.address) mine.add(m.address); }
+    }
+    if (S.config.bench.seeds) for (const [a, x] of Object.entries(S.benchSeeds))
+      if (x.st === 'ok' && x.sum && !mine.has(a) && now() - (x.done || 0) < 4 * SEED_REFRESH) { rows.push(x.sum); seeds++; }
+    return { rows, seeds };
+  };
+  const benchBuild = () => { const R = benchRows();
+    S.bench = Object.assign(Bench.buildBenchmarks(R.rows, S.config.bench, now()), { seeds: R.seeds, members: R.rows.length - R.seeds, cfg: JSON.stringify(S.config.bench) });
+    save('bench'); return S.bench; };
+  // built on the first request that needs it: daily, when the settings change, and within a few
+  // minutes of new summaries arriving (a seed batch finishing rebuilds at once)
+  let benchDirty = false;
+  const benchNow = () => !S.bench || now() - (S.bench.at || 0) > 86400000 || S.bench.cfg !== JSON.stringify(S.config.bench)
+    || (benchDirty && now() - (S.bench.at || 0) > 5 * 60000) ? (benchDirty = false, benchBuild()) : S.bench;
+  // seed wallets: read one at a time from their public fills, slowly, so the exchange never sees a burst
+  let seedBusy = false, seedTimer = null, closing = false;
+  const seedDelay = opts.seedDelay != null ? opts.seedDelay : 4000;
+  const nextSeed = () => { let due = null;
+    for (const [a, x] of Object.entries(S.benchSeeds)) { if (x.st === 'queued') return a;
+      if (x.st === 'ok' && now() - (x.done || 0) > SEED_REFRESH && (!due || x.done < S.benchSeeds[due].done)) due = a; }
+    return due; };
+  const SEED_WHY = { few: 'fewer than 30 closed trades in the last 90 days', short: 'under 3 weeks of trading in the last 90 days', bot: 'too many fills for one person (a bot or market maker)' };
+  const seedWork = async () => {
+    const a = nextSeed(); if (seedBusy || !a || !opts.peerSummaryFor) return;
+    seedBusy = true; const x = S.benchSeeds[a];
+    try {
+      const r = await opts.peerSummaryFor(a);
+      if (!own(S.benchSeeds, a)) return; // removed while it was being read
+      const sum = r && r.ok ? Bench.sanitizeBench(r) : null;
+      if (sum) { x.st = 'ok'; x.why = ''; x.sum = sum; }
+      else if (r && r.ok === false) { x.st = 'skip'; x.why = SEED_WHY[r.why] || 'not enough trading to compare'; x.sum = null; }
+      else { x.st = 'err'; x.why = String((r && r.error) || 'couldn’t read this wallet').slice(0, 120); }
+    } catch (e) { if (own(S.benchSeeds, a)) { x.st = 'err'; x.why = String((e && e.message) || e).slice(0, 120); } }
+    finally { if (own(S.benchSeeds, a)) { x.done = now(); x.tries = (x.tries || 0) + 1; } seedBusy = false; benchDirty = true; save('benchSeeds');
+      if (!nextSeed()) { benchDirty = false; benchBuild(); } else seedSchedule(); } // the batch is done: count it now
+  };
+  const seedSchedule = () => { if (seedTimer || closing || !opts.peerSummaryFor || !nextSeed()) return;
+    seedTimer = setTimeout(() => { seedTimer = null; seedWork(); }, seedDelay); if (seedTimer.unref) seedTimer.unref(); };
+  const seedCounts = () => { const c = { queued: 0, ok: 0, skip: 0, err: 0 }; for (const x of Object.values(S.benchSeeds)) c[x.st] = (c[x.st] || 0) + 1; return c; };
+  const benchOut = (B, dims) => ({ on: true, at: B.at, contributors: B.contributors, members: B.members, seeds: B.seeds, min: B.min, split: B.split,
+    groups: Bench.groupsFor(B, dims).map(g => ({ key: g.key, dims: g.dims, n: g.n, q: g.q, top: g.top })) });
   const tierOf = m => ({ tier: m.tier || 0, tierName: TIERS[m.tier || 0] });
   // how many follow each member, counted once until the follows change
   const followersOf = id => { if (!folCount) { folCount = new Map();
@@ -1025,7 +1081,7 @@ function createSocial(opts) {
     const parts = url.split('/').slice(3); // ['', 'api', 'social', ...]
     const head = parts[0] || '';
     let body = {};
-    const limit = head === 'vault' ? MAX_VAULT_BODY + 4096 : head === 'stats' ? 4 * MAX_SOCIAL_BODY : MAX_SOCIAL_BODY;
+    const limit = head === 'vault' ? MAX_VAULT_BODY + 4096 : head === 'stats' ? 4 * MAX_SOCIAL_BODY : head === 'admin' && parts[1] === 'bench' ? 8 * MAX_SOCIAL_BODY /* a pasted list of seed wallets */ : MAX_SOCIAL_BODY;
     if (head === 'vault' && M === 'PUT') { // a member, with sync on, before reading up to 6 MB
       const who = byKey(req); if (!who) return json(res, 401, { error: 'not a member' });
       if (who.banned) return json(res, 403, { error: 'This profile was removed from the league.' });
@@ -1065,6 +1121,7 @@ function createSocial(opts) {
         unlocks: S.config.unlocks, tiers: TIERS, week: S.league.week, members: members().filter(m => !m.banned).length,
         claims: !!sig, passkeys: true, requireClaim: !!S.config.requireClaim, approveWallets: !!S.config.approveWallets, vaultOn: !!S.config.vaultOn,
         modules: S.config.modules, levels: S.config.levels, xp: S.config.xp, profiles: S.config.profiles,
+        bench: { on: !!S.config.bench.on },
         coach: { members: S.config.coach.members, daily: S.config.coach.daily, detail: S.config.coach.detail }, posts: postCfgOut(),
         badges: Object.values(S.badges).map(b => ({ id: b.id, name: b.name, icon: b.icon, desc: b.desc, metric: b.metric, metricLabel: b.metric ? SC.BADGE_METRICS[b.metric] : null, op: b.op, value: b.value, xp: b.xp })),
         leagues: Object.values(S.leagues).filter(L => L.open).length });
@@ -1242,6 +1299,7 @@ function createSocial(opts) {
         if (body.coach) c.coach = SC.sanitizeCoachCfg(body.coach, c.coach);
         if (body.profiles) c.profiles = SC.sanitizeProfiles(body.profiles, c.profiles);
         if (body.posts) c.posts = sanitizePostCfg(body.posts, c.posts);
+        if (body.bench) c.bench = Bench.sanitizeBenchCfg(body.bench, c.bench);
         if (typeof body.requireClaim === 'boolean' && body.requireClaim !== c.requireClaim) {
           c.requireClaim = body.requireClaim;
           // numbers read from wallets nobody signed for stop counting at once, and come back after a claim
@@ -1257,6 +1315,33 @@ function createSocial(opts) {
         }
         c.unlocks = { trends: c.modules.trends, share: c.modules.share, compete: c.modules.compete };
         save(); return json(res, 200, { ok: true, config: c });
+      }
+      // ---- "traders like you": the peer-group catalog and the seed wallets ----
+      if (sub === 'bench' && M === 'GET') {
+        const B = benchNow(), seeds = Object.entries(S.benchSeeds).sort((a, b) => (b[1].added || 0) - (a[1].added || 0));
+        const optedOut = members().filter(m => !m.banned && m.share && !m.share.bench).length;
+        const groups = Object.entries(B.groups).map(([key, g]) => ({ key, dims: g.dims, n: g.n })).sort((a, b) => b.n - a.n);
+        return json(res, 200, { config: S.config.bench, at: B.at, contributors: B.contributors, members: B.members, seeds: B.seeds, split: B.split, min: B.min,
+          optedOut, withSummary: members().filter(m => !m.banned && m.share && m.share.bench && m.bench).length, labels: Bench.DIMS, groups,
+          seedCounts: seedCounts(), seedMax: SEED_MAX, seedReader: !!opts.peerSummaryFor,
+          seedList: seeds.slice(0, 200).map(([a, x]) => ({ address: a, st: x.st, why: x.why || '', added: x.added || 0, done: x.done || 0, by: x.by || '', style: x.sum ? x.sum.style : null, size: x.sum ? x.sum.size : null, exp: x.sum ? x.sum.exp : null, act: x.sum ? x.sum.act : null, n: x.sum ? x.sum.n : null, wr: x.sum ? x.sum.wr : null, ret: x.sum ? x.sum.ret : null })) });
+      }
+      if (sub === 'bench' && M === 'POST') {
+        const a = body.action;
+        if (a === 'rebuild') { benchBuild(); return json(res, 200, { ok: true, at: S.bench.at, contributors: S.bench.contributors }); }
+        if (a === 'seed') { // paste anything: every 0x address in it is queued once
+          const found = [...new Set((String(body.text || '').slice(0, 400000).match(/0x[0-9a-fA-F]{40}/g) || []).map(x => x.toLowerCase()))];
+          let added = 0, dupes = 0, full = 0;
+          for (const ad of found) { if (own(S.benchSeeds, ad)) { dupes++; continue; } if (Object.keys(S.benchSeeds).length >= SEED_MAX) { full++; continue; }
+            S.benchSeeds[ad] = { st: 'queued', added: now(), by: who.owner ? 'owner' : who.by }; added++; }
+          save('benchSeeds'); seedSchedule();
+          return json(res, 200, { ok: true, found: found.length, added, dupes, full, counts: seedCounts() });
+        }
+        if (a === 'retry') { let n = 0; for (const x of Object.values(S.benchSeeds)) if (x.st === 'err' || (body.skipped && x.st === 'skip')) { x.st = 'queued'; n++; } save('benchSeeds'); seedSchedule(); return json(res, 200, { ok: true, requeued: n }); }
+        if (a === 'remove') { const which = body.which; let n = 0;
+          for (const [ad, x] of Object.entries(S.benchSeeds)) if (which === 'all' || x.st === which || ad === String(body.address || '').toLowerCase()) { delete S.benchSeeds[ad]; n++; }
+          save('benchSeeds'); if (n) benchBuild(); return json(res, 200, { ok: true, removed: n, counts: seedCounts() }); }
+        return json(res, 400, { error: 'unknown action' });
       }
       // ---- leagues ----
       if (sub === 'leagues' && M === 'GET') return json(res, 200, { leagues: Object.values(S.leagues).map(L => Object.assign(leagueOut(L, null), { invite: L.invite, autoJoin: L.autoJoin, week: L.week,
@@ -1507,6 +1592,16 @@ function createSocial(opts) {
       return json(res, 200, { key, me: publicMember(m, m), share: m.share });
     }
 
+    // ---------- "traders like you": the groups a trader with these dimensions belongs to ----------
+    // members and the owner; only group deciles go out, never anyone's own numbers
+    if (head === 'bench' && M === 'GET' && !parts[1]) {
+      const bm = byKey(req), owner = !!req.headers['authorization'] && authOk(req);
+      if (!owner && (!bm || bm.banned)) return json(res, 401, { error: 'not a member' });
+      if (!S.config.bench.on) return json(res, 200, { on: false });
+      const dims = {}; for (const k of Bench.DIM_KEYS) if (typeof query[k] === 'string' && own(Bench.DIMS[k], query[k])) dims[k] = query[k];
+      return json(res, 200, Object.assign(benchOut(benchNow(), dims), bm ? { mine: { share: !!bm.share.bench, have: !!bm.bench, at: bm.bench ? bm.bench.at : null } } : {}));
+    }
+
     // ---------- everything below needs a member key ----------
     const me = byKey(req);
     if (!me) return json(res, 401, { error: 'not a member' });
@@ -1652,7 +1747,7 @@ function createSocial(opts) {
         if (!HANDLE_RE.test(h)) return json(res, 400, { error: 'Pick a name of 3–20 letters, numbers or underscores.' });
         const other = byHandle(h); if (other && other.id !== me.id) return json(res, 409, { error: 'That name is taken.' }); me.handle = h; reindex(); }
       const prevAddr = me.address, prevVerify = !!me.share.verify, prevMoney = !!(me.share.ret || me.share.usd);
-      if (body.share) me.share = sanitizeShare(body.share, me.share);
+      if (body.share) { me.share = sanitizeShare(body.share, me.share); if (!me.share.bench && me.bench) { me.bench = null; benchDirty = true; } } // off: their summary is gone from the next build
       if (typeof body.coachDetail === 'boolean') me.coachDetail = body.coachDetail;
       if (body.bio !== undefined) me.bio = cleanText(body.bio, 160);
       // a new picture replaces the old one (whose file goes); null takes it off
@@ -1731,6 +1826,7 @@ function createSocial(opts) {
       }
       me.postedHabits = [...posted].slice(-50);
       me.stats = next; me.statsAt = now();
+      if (body.bench !== undefined) { const b = me.share.bench ? Bench.sanitizeBench(body.bench) : null; if (!!b !== !!me.bench) benchDirty = true; me.bench = b ? Object.assign(b, { at: now() }) : null; }
       if (next.week) { me.weekXp = me.weekXp || {}; me.weekXp[next.week] = next.weekXp;
         const keep = Object.keys(me.weekXp).sort().slice(-16); /* a quarter's season needs 13 */ for (const k of Object.keys(me.weekXp)) if (!keep.includes(k)) delete me.weekXp[k]; }
       awardCheck(me);
@@ -1936,7 +2032,8 @@ function createSocial(opts) {
       else { const k = utcDayKey(now()); S.ownerCoach = { k, n: Math.max(0, (S.ownerCoach.k === k ? S.ownerCoach.n : 0) + d) }; } save(m ? 'coachUse' : 'ownerCoach'); },
   };
   save(); // what loading filled in (defaults, league numbers) is written once, so a restart reads the same
-  return { handle, coach, tick, memberOf: req => { const m = byKey(req); return m && !m.banned ? m : null; }, state: () => S, store, close: () => store.close() };
+  seedSchedule(); // seed wallets still waiting from before a restart
+  return { handle, coach, tick, memberOf: req => { const m = byKey(req); return m && !m.banned ? m : null; }, state: () => S, store, close: () => { closing = true; clearTimeout(seedTimer); store.close(); } };
 }
 
 module.exports = { createSocial, sanitizeTrade, sanitizePostCfg, sanitizeStats, sanitizeShare, sanitizeComp, sanitizeVaultBlob, siweMessage, eventsFromStats, portfolioStats, leagueRollover, leagueRolloverBy, isoWeekMonday,

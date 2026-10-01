@@ -578,6 +578,10 @@ wallet decisions record who made them.
   the one their numbers are read from), **boost XP** (or correct it) with a reason they see, fully unlock,
   their coach allowance, leagues and tiers, award or take back reward badges, a new
   sign-in code, suspend or delete. Members' addresses are visible to you; others see them only if the member chose to show theirs.
+- **Benchmarks** — "Traders like you": contributors, peer groups and settings
+  (smallest group, when to split groups, whether seed wallets count), a rebuild
+  button, and **seed wallets**: paste any text and every 0x address in it is
+  queued, read from its public fills in the background, and counted.
 - **Leagues** — create, edit and delete leagues (metric, period, tiers, listed,
   invite code, auto-join), and add or remove members.
 - **Competitions** — create them for everyone or one league; delete.
@@ -978,6 +982,37 @@ it reproduces.
 numbers behind the point and a line on what the chart shows. Bar charts by
 market, month, weekday, hour, session and side also give trades, wins and
 losses, win rate, the average trade and the best and worst trade.
+
+### Traders like you
+
+Members see how their last 90 days compare with anonymous traders of the same
+style (scalper, day, swing, position), trade size range, experience and activity:
+a simple card in **Pulse → Stats** ("better than 64 of 100 traders like you",
+plus the one habit that most separates the best quarter of their group from them)
+and a detailed table in the journal's **Review**, where they pick which
+dimensions to match and see each group's spread.
+
+- **What's shared.** Each member's app works out a summary of about a dozen
+  numbers (Discipline, revenge trades, % journaled, win rate, profit factor,
+  average win ÷ loss, fees, trades a week, typical hold) and the four ranges, and
+  sends it with its usual sync. No trades, coins, amounts, name or wallet. Returns
+  and drawdown are added only from wallets read on chain. It's **on by default**;
+  members switch it off under Profile & privacy ("Count me in Traders like you"),
+  which removes them from the next build. They can still see the comparison.
+- **Peer groups.** Built at most daily, and within minutes of new summaries.
+  A group needs at least 25 traders (the owner can set 10 or more); below 200
+  contributors only "everyone" and "same style" groups exist. Only each group's
+  deciles leave the server, and a "best quarter" figure only when it covers at
+  least 5 traders. Summaries need 30 closed trades over at least 3 weeks.
+- **Seed wallets.** To get started before you have many members, the owner can
+  bulk-add public Hyperliquid wallets in Admin → Benchmarks. The server reads
+  each one's last 90 days of fills, a few seconds apart, and runs the same
+  summary function the app uses (plus the wallet's 30-day return). Wallets with
+  under 30 trades, or with more than 20,000 fills (bots, market makers), are left
+  out. Counted wallets are re-read weekly; up to 5,000.
+- It's a Pulse feature like the others, **free at level 1**. Set a level under
+  Admin → Features to make it an unlock. The AI coach sees the member's standing
+  (group spreads only) and can use it to make a habit concrete.
 
 ## The Project view
 

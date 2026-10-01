@@ -342,6 +342,11 @@ function pzCoachFacts(D){
     findings:(ctx.findings||[]).filter(f=>f.tone!=='info').slice(0,6).map(f=>({type:f.tone,title:f.title,action:f.action,evidence:f.evidence,confidence:confWords(f.conf)})),
     goodMoments7:pzGoodMoments(g,pzAddDays(D.todayK,-6)).slice(0,8).map(m=>m.key+': '+m.text),
     badges:{earned:g.catalog?g.catalog.earned.length:0,recent:(g.catalog?g.catalog.earned.slice(-3):[]).map(b=>b.t)},
+    // where they stand among anonymous traders of their style, size and experience (group spreads only)
+    tradersLikeYou:(()=>{ try{ const mine=peerMine(), P=mine.ok?peerData(mine):null, grp=P&&P.d?peerGroup(P.d):null; if(!grp)return null;
+      const out={group:peerGroupName(grp),traders:grp.n,measures:{}};
+      for(const m of PEER_M){ if(m.ctx||!grp.q[m.k]||mine[m.k]==null)continue; out.measures[m.l]={you:m.f(mine[m.k]),typical:m.f(grp.q[m.k][4]),bestQuarter:grp.top[m.k]!=null?m.f(grp.top[m.k]):null,betterThanOutOf100:peerBetter(m,grp.q[m.k],mine[m.k])}; }
+      return out; }catch(err){ return null; } })(),
   };
 }
 // only with the member's say-so: recent trades with their notes, and the last week's reviews

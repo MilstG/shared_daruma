@@ -74,7 +74,7 @@ const path = require('path');
 const crypto = require('crypto');
 const zlib = require('zlib');
 const vm = require('vm');
-const { createSocial } = require('./social.js');
+const { createSocial, portfolioStats } = require('./social.js');
 const Push = require('./push.js');
 const Wear = require('./wear.js');
 const Offsite = require('./offsite.js');
@@ -113,6 +113,8 @@ const ENGINE_FNS = [
   'isJournaled',
   // Pulse's Discipline score, recomputed from a member's public fills to verify the social boards
   'nfMedian', 'addedToLoser', 'pzBehaviorDays',
+  // the anonymous summary a seed wallet contributes to the "traders like you" benchmarks
+  'peerSummary',
   // Hyperliquid client (retry/backoff/pagination identical to the browser's)
   'hlPost', 'fetchAllFills', 'fetchFunding', 'fetchSpotMaps', 'fetchSpotState', 'fetchPortfolio',
 ];
@@ -418,7 +420,8 @@ const COACH_CHAT_SYSTEM = [
   '(revenge entry within 15 min of a loss, trading on after two losses in a row, sizing up after a loss,',
   'adding to a loser, overtrading past 1.5x their usual day, holding a loser over 3x their usual winner).',
   'Form: 50 = their usual recent results. Load: 50 = their usual day\'s activity. Readiness: from their',
-  'morning check-in (sleep, calm, focus).',
+  'morning check-in (sleep, calm, focus). tradersLikeYou: where they stand among anonymous traders of',
+  'their style, size and experience (betterThanOutOf100); use it to make a habit concrete, never to shame.',
 ].join('\n');
 // Deep-copies an attached JSON summary within limits, scrubbing wallet addresses.
 function scrubCoachData(v, depth) {
@@ -2201,6 +2204,35 @@ function createApp(opts) {
     return E.pzBehaviorDays(closed, { dayOf: zoneDay(tz || 'UTC'), isLoss: n => n < -1 /* same fixed rule as the app's PZ_LOSS */ })
       .map(d => ({ k: d.key, s: d.score, n: d.n }));
   };
+  // "Traders like you" seed wallets: the same anonymous summary a member's app sends, worked out here
+  // from the wallet's public fills over the last 90 days (and its on-chain return for the last 30).
+  // Wallets with more than 20,000 fills in that time are bots or market makers and are left out.
+  const peerSummaryFor = async (addr) => {
+    if (!engine.ok || !E.peerSummary) return { error: 'the trade engine isn’t available on this server' };
+    const a = String(addr).toLowerCase(); if (!/^0x[0-9a-f]{40}$/.test(a)) return { error: 'not a wallet address' };
+    const t = (opts.now || Date.now)(), fills = [], seen = new Set();
+    let start = t - 90 * 86400000;
+    for (let page = 0; ; page++) {
+      if (page >= 10) return { ok: false, why: 'bot' };
+      const batch = await E.hlPost({ type: 'userFillsByTime', user: a, startTime: start, aggregateByTime: true });
+      if (!Array.isArray(batch) || !batch.length) break;
+      for (const f of batch) { const id = f.tid + '-' + f.oid + '-' + f.time; if (!seen.has(id)) { seen.add(id); fills.push(f); } }
+      if (batch.length < 2000) break;
+      const mx = Math.max(...batch.map(f => f.time)); start = mx > start ? mx : mx + 1;
+    }
+    fills.sort((x, y) => x.time - y.time);
+    const trades = [...E.attributeFunding(E.reconstructTrades(fills, a, 'perp'), []), ...E.attributeFunding(E.reconstructTrades(fills, a, 'spot'), [])];
+    let firstAt = null, ret = null, dd = null;
+    try { const res = await E.hlPost({ type: 'portfolio', user: a });
+      const all = (Array.isArray(res) ? res : []).find(x => x && x[0] === 'allTime'), av = (all && all[1] && all[1].accountValueHistory) || [];
+      const p = av.find(x => parseFloat(x[1]) > 0); if (p) firstAt = +p[0]; // the wallet's first funded day: how long it has traded
+      const st = portfolioStats(res, 'month'); if (st) { ret = st.ret * 100; dd = st.dd * 100; }
+    } catch (e) { /* returns are a bonus; the summary stands without them */ }
+    const sum = E.peerSummary(trades.filter(x => !x.isOpen && x.closeTime), { now: t, firstAt });
+    if (sum.ok && sum.tw > 1500) return { ok: false, why: 'bot' };
+    if (sum.ok) Object.assign(sum, { ret, dd });
+    return sum;
+  };
   const forgetAddress = (addr) => { try { fs.unlinkSync(path.join(socialFillsDir, String(addr).toLowerCase() + '.json.gz')); } catch (e) {} };
   // Wallet sign-in messages name the site the member signs for. Pin it (PUBLIC_ORIGIN, comma-separated)
   // so a look-alike site can't get a message for its own domain. Behind Railway's edge the Host header
@@ -2229,7 +2261,7 @@ function createApp(opts) {
   const cexRelay = CexRelay.createCexRelay({ env: opts.cexEnv || process.env, fetchImpl: opts.cexFetch || opts.fetchImpl, now: opts.now });
   if (cexRelay.relayOnly && !cexRelay.secretSet) console.warn('[ledger] CEX_RELAY_ONLY is on but CEX_RELAY_SECRET is not set — the relay will refuse every request');
   const social = createSocial({ dataDir, json, authOk, adminConfigured: !!auth, fetchImpl: opts.fetchImpl, now: opts.now, push: pushCfg, onDrop: id => wearRef.forget && wearRef.forget('m:' + id),
-    behaviorFor, tradeCheck: opts.tradeCheck || tradeCheck, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled });
+    behaviorFor, peerSummaryFor: opts.peerSummaryFor || peerSummaryFor, seedDelay: opts.seedDelay, tradeCheck: opts.tradeCheck || tradeCheck, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled });
   // readiness from WHOOP, Oura or Apple Health: the owner (AUTH_TOKEN) or a member (Pulse key)
   const wearOrigin = req => { if (publicOrigins[0]) { try { return new URL(publicOrigins[0]).origin; } catch (e) {} }
     return hostVetted && req.headers.host ? 'https://' + req.headers.host : opts.wearOrigin || null; };

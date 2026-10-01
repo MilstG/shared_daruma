@@ -9,7 +9,7 @@
 // journal, notes and trades never leave the browser. Returns are read on the server from the
 // chain, never sent from here. Sample data is never posted.
 const SOC_KEY_STORE='pz_social_key';
-const SOC_DEFAULT_SHARE={profile:true,boards:true,global:false,page:false,feed:true,habits:true,verify:true,ret:false,usd:false,addr:false,mentor:false};
+const SOC_DEFAULT_SHARE={profile:true,boards:true,global:false,page:false,feed:true,habits:true,verify:true,ret:false,usd:false,addr:false,mentor:false,bench:true};
 const SOC_SHARE_ROWS=[
   ['profile','Public profile','Your profile page: streak, discipline, badges. Name, level and league show wherever you appear'],
   ['boards','Process leaderboards','Weekly XP, discipline and streak boards in your leagues'],
@@ -21,7 +21,8 @@ const SOC_SHARE_ROWS=[
   ['ret','Show % return','30-day return and drawdown, read from your first wallet on chain'],
   ['usd','Show dollar P&L','Reveals your account size to everyone',true],
   ['addr','Show wallet address','Anyone could look up every trade and balance',true],
-  ['mentor','Let mentors see my days','Mentors the owner appointed see your scores, slips and the lesson you write each night, and can leave you notes. No trades, P&L or wallet']];
+  ['mentor','Let mentors see my days','Mentors the owner appointed see your scores, slips and the lesson you write each night, and can leave you notes. No trades, P&L or wallet'],
+  ['bench','Count me in “Traders like you”','An anonymous summary of your last 90 days (win rate, discipline, how much you journal; trade size only as a range) goes into peer groups of 25 or more. No trades, coins, amounts, name or wallet. Switch off to be left out']];
 const SOC_BOARDS=[['xp','Weekly XP'],['discipline','Discipline'],['streak','Streak'],['level','All-time XP'],['riskadj','Return / drawdown'],['ret','% Return'],['usd','$ P&L']];
 const SOC_BOARD_NOTE={
   xp:'XP earned this week in your league — process, never profit. The top of the league moves up on Monday, the bottom moves down.',
@@ -117,13 +118,91 @@ function socGet(name, p, maxAge){
 function socStale(){ for(const k in SOC.cache)SOC.cache[k].at=0; }
 function socSync(g){
   if(!SOC.key||!SOC.me||pzS.demo||!settings.wallets.length)return;
-  let p; try{ p=JSON.stringify(pzSocialStats(g,habitsList().map(habitSentence),journal,!!(SOC.share&&SOC.share.mentor))); }catch(e){ return; }
+  let p; try{ p=JSON.stringify(Object.assign(pzSocialStats(g,habitsList().map(habitSentence),journal,!!(SOC.share&&SOC.share.mentor)),
+    {bench:SOC.share&&SOC.share.bench===false?null:(m=>m.ok?m:null)(peerMine())})); }catch(e){ return; }
   if(p===SOC.lastSent)return;
   clearTimeout(SOC.timer);
   SOC.timer=setTimeout(()=>{ SOC.lastSentAt=Date.now();
     socFetch('/stats',{method:'POST',body:p}).then(()=>{ SOC.lastSent=p; socStale(); },()=>{}); },
     Math.max(1500,15000-(Date.now()-SOC.lastSentAt)));
 }
+
+// ---- "Traders like you": your summary, your peer groups, and where you sit in them ----
+// Your summary is worked out here from your own trades (peerSummary, the same function the server
+// runs on seed wallets). The server answers with the deciles of every group you belong to; the
+// comparison itself happens on this device.
+const PEER_DIMS={style:{scalper:'Scalper',day:'Day trader',swing:'Swing trader',position:'Position trader'},
+  size:{s1:'Trades under $1k',s2:'Trades $1k–10k',s3:'Trades $10k–100k',s4:'Trades $100k+'},
+  exp:{e1:'Under 3 months',e2:'3–12 months',e3:'1–3 years',e4:'3+ years'},
+  act:{a1:'Under 5 trades a week',a2:'5–15 trades a week',a3:'15–40 trades a week',a4:'40+ trades a week'}};
+const PEER_DIM_NAMES={style:'Style',size:'Trade size',exp:'Experience',act:'Activity'};
+// hi: higher is better; ctx: context only, not a score
+const PEER_M=[
+  {k:'disc',l:'Discipline',g:'Process',hi:true,f:v=>String(Math.round(v)),tip:'Your average daily Discipline score: the share of your trades with no revenge entry, sizing up after a loss, adding to a loser, trading on after two losses, overtrading or holding a loser too long.'},
+  {k:'rev',l:'Revenge trades',g:'Process',hi:false,f:v=>Math.round(v)+'%',tip:'Share of your trades opened soon after a loss on the same market.'},
+  {k:'jour',l:'Trades journaled',g:'Process',hi:true,f:v=>Math.round(v)+'%',tip:'Share of your trades with a note, setup, tag, rating or mistake.'},
+  {k:'wr',l:'Win rate',g:'Results',hi:true,f:v=>Math.round(v)+'%',tip:'Wins out of wins and losses (more than $1 either way), last 90 days.'},
+  {k:'pf',l:'Profit factor',g:'Results',hi:true,f:v=>v.toFixed(2),tip:'Money won ÷ money lost. Above 1 means you made money overall.'},
+  {k:'pay',l:'Average win ÷ average loss',g:'Results',hi:true,f:v=>v.toFixed(2),tip:'How big your winners are compared with your losers.'},
+  {k:'ret',l:'Return, last 30 days',g:'Results',hi:true,f:v=>(v>=0?'+':'')+v.toFixed(1)+'%',verified:true,tip:'Read on chain for wallets whose owners share it (Show % return).'},
+  {k:'dd',l:'Deepest drawdown, last 30 days',g:'Risk',hi:false,f:v=>Math.round(v)+'%',verified:true,tip:'The biggest drop from a high, as % of the account, read on chain.'},
+  {k:'fees',l:'Fees, % of gross profit',g:'Risk',hi:false,f:v=>Math.round(v)+'%',tip:'How much of what your winning trades made went to fees and funding.'},
+  {k:'tw',l:'Trades a week',g:'Context',ctx:true,f:v=>v<10?v.toFixed(1):String(Math.round(v)),tip:'Context, not a score: how active the group is.'},
+  {k:'hold',l:'Typical hold',g:'Context',ctx:true,f:v=>v<60?Math.round(v)+'m':v<1440?(v/60).toFixed(1)+'h':(v/1440).toFixed(1)+'d',tip:'Context, not a score: the median time a trade stays open.'}];
+let _peerMine={key:null,v:null};
+function peerMine(){
+  const ctx=coachContext(), key=_coachMemo.key+'|'+_jrev;
+  if(_peerMine.key===key)return _peerMine.v;
+  let v; try{ const first=Math.min(...ctx.closed.map(t=>t.openTime||t.closeTime));
+    v=peerSummary(ctx.closed,{now:Date.now(),dayOf:dayKey,firstAt:isFinite(first)?first:null,isJournaled:t=>isJournaled(journal[t.id])});
+    // your own on-chain return, when you share it, sits you among the verified numbers too
+    const mo=SOC.me&&SOC.me.money; if(v.ok&&mo&&mo.ret!=null){ v.ret=mo.ret*100; v.dd=mo.dd*100; }
+  }catch(e){ v={ok:false,why:'error'}; }
+  _peerMine={key,v}; return v;
+}
+// where a value sits in a group, 0–100, from the group's deciles (tails are estimates: 5 and 95)
+function peerPct(q, v){
+  if(v==null||!isFinite(v)||!Array.isArray(q)||q.length!==9)return null;
+  if(v<q[0])return 5; if(v>q[8])return 95;
+  for(let i=0;i<8;i++)if(v<=q[i+1]){ const a=q[i],b=q[i+1]; return Math.round(10*(i+1)+10*(b>a?(v-a)/(b-a):0.5)); }
+  return 95;
+}
+const peerBetter=(m,q,v)=>{ const p=peerPct(q,v); return p==null?null:m.hi?p:100-p; };
+var PEER={q:null,at:0,d:null,err:null,busy:false};
+function peerCanAsk(){ return typeof socAvailable==='function'&&socAvailable()&&(!!SOC.key||!!(SRV.token&&!SRV.badAuth)); }
+// the groups for your dimensions, fetched at most every 10 minutes; re-renders whichever view is open
+function peerData(mine){
+  if(!mine||!mine.ok||!peerCanAsk())return null;
+  const qs=['style','size','exp','act'].map(k=>k+'='+encodeURIComponent(mine[k])).join('&');
+  if(PEER.q!==qs||Date.now()-PEER.at>600000){ if(!PEER.busy){ PEER.busy=true;
+    fetch('/api/social/bench?'+qs,{headers:SOC.key?{'X-Pulse-Key':SOC.key}:{Authorization:'Bearer '+SRV.token}})
+      .then(r=>r.json().then(d=>{ if(!r.ok)throw new Error(d.error||'HTTP '+r.status); return d; }))
+      .then(d=>{ PEER={q:qs,at:Date.now(),d,err:null,busy:false}; },e=>{ PEER={q:qs,at:Date.now(),d:PEER.q===qs?PEER.d:null,err:e.message,busy:false}; })
+      .finally(()=>{ if(typeof PZ!=='undefined'&&PZ){ if(typeof pzRender==='function')pzRender(); } else if(typeof peersRerender==='function')peersRerender(); }); } }
+  return PEER.q===qs?PEER:null;
+}
+// the one matching `pick`, else the most specific group that keeps your style (style matters
+// most), else the most specific there is; groups come broadest first
+function peerGroup(d, pick){
+  const gs=(d&&d.groups)||[]; if(!gs.length)return null;
+  if(pick){ const g=gs.find(x=>x.key===pick); if(g)return g; }
+  const styled=gs.filter(x=>x.dims&&x.dims.style);
+  return (styled.length?styled:gs)[(styled.length?styled:gs).length-1];
+}
+const peerGroupName=g=>!g||g.key==='all'?'everyone on this server':['style','size','exp','act'].filter(k=>g.dims[k]).map(k=>PEER_DIMS[k][g.dims[k]]).join(' · ');
+// the one habit that most separates the group's best quarter from you, in units of the group's spread
+function peerGap(g, mine){
+  let best=null;
+  for(const k of ['jour','rev','disc','fees']){ const m=PEER_M.find(x=>x.k===k), q=g.q[k], top=g.top&&g.top[k], v=mine[k];
+    if(!q||top==null||v==null)continue; const spread=(q[7]-q[1])||1, gap=(m.hi?top-v:v-top)/spread;
+    if(gap>0.25&&(!best||gap>best.gap))best={m,top,v,gap}; }
+  return best;
+}
+const PEER_GAP_SAY={jour:(t,v)=>[`The best quarter journal ${Math.round(t)}% of their trades.`,`You journal ${Math.round(v)}%.`],
+  rev:(t,v)=>[`The best quarter revenge trade on ${Math.round(t)}% of their trades.`,`You: ${Math.round(v)}%.`],
+  disc:(t,v)=>[`The best quarter average ${Math.round(t)} on Discipline.`,`You average ${Math.round(v)}.`],
+  fees:(t,v)=>[`The best quarter give ${Math.round(t)}% of their gross profit to fees.`,`You give ${Math.round(v)}%.`]};
+const PEER_WHY={few:'It needs 30 closed trades in the last 90 days.',short:'It needs at least 3 weeks of trading in the last 90 days.',error:'Your summary couldn’t be worked out.'};
 
 // ---- screens ----
 
@@ -134,7 +213,7 @@ function socHead(){
 function socUnavailableHtml(){
   return `${pzHead('Leagues · competitions · friends','Social')}<section class="pz-card"><p class="pz-sub">Social lives on the Ledger server this page comes from. Open Pulse from your server’s <b>/pulse</b> link to join the league${/^https?:$/.test(location.protocol)?' — this server didn’t answer just now; try again in a moment.':'.'}</p></section>`;
 }
-const SOC_SHARE_GROUPS=[['Profile',['profile','page','feed','habits','mentor']],['Boards',['boards','global','verify','ret']],['Sensitive',['usd','addr']]];
+const SOC_SHARE_GROUPS=[['Profile',['profile','page','feed','habits','mentor']],['Boards',['boards','global','verify','ret','bench']],['Sensitive',['usd','addr']]];
 function socToggles(share, attr){
   return SOC_SHARE_GROUPS.map(([g,keys])=>`<section class="pz-card" style="padding:4px 16px"><span class="pz-lbl" style="display:block;margin:12px 0 2px;color:${g==='Sensitive'?'#FFB39E':'var(--pz-muted)'}">${g}</span>${socToggleRows(share,attr,keys)}</section>`).join('');
 }

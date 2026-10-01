@@ -672,6 +672,7 @@ function renderReviewInner(){
    <div class="diag-section"><h2>This week</h2><div class="diag-grid">${windowCard('Last 7 days',wk,pwk)}${windowCard('Last 30 days',mo,pmo)}</div></div>
    ${procHtml}
    ${routineSectionHtml()}
+   <div id="peersSec">${peersSectionHtml()}</div>
    ${costVar}
    <div class="diag-section"><h2>Highlights · last 30 days</h2><div class="diag-grid">
      <div class="diag-card"><h3>Best &amp; worst</h3>
@@ -689,6 +690,7 @@ function renderReviewInner(){
   wireDayJournal(); wireHabits(); wireInbox(); wireWeeklyReview(); wireGoals(); wirePlaybooks(); wireProgress();
   try{ drawRoutineCharts(); }catch(e){ console.warn('routine charts',e); }
   try{ drawHabitCharts(); }catch(e){ console.warn('habit charts',e); }
+  wirePeers();
   loadCoachLetter();
 }
 /* ============================ playbooks ============================ */
@@ -945,6 +947,51 @@ function drawHabitCharts(){
     'Green bars: habits whose kept days beat their missed days. A link, not proof — but one worth protecting.'));
   const tg=$('hlUnit'); if(tg)tg.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{ _hlUnit=btn.dataset.u; const sec=$('hlSec'); if(sec){ sec.innerHTML=hlSectionInner(); drawHabitCharts(); } });
 }
+// ---- "Traders like you", the detailed version: pick the peer group, see the whole spread ----
+let _peersPick=null;
+function peersSectionHtml(){
+  const head=`<div class="diag-section"><h2>Traders like you <span style="font-size:11px;color:var(--faint);font-weight:400">your last 90 days against anonymous traders of your style, size and experience</span></h2>`;
+  if(!peerCanAsk())return '';
+  if(SOC.cfg&&SOC.cfg.bench&&SOC.cfg.bench.on===false)return '';
+  let mine; try{ mine=peerMine(); }catch(e){ return ''; }
+  if(!mine.ok)return head+`<p class="lead">${esc(PEER_WHY[mine.why]||'')}${mine.n?' You have '+mine.n+'.':''}</p></div>`;
+  const P=peerData(mine), d=P&&P.d;
+  if(!d)return head+`<p class="lead">${P&&P.err?'Couldn’t load the comparison: '+esc(P.err):'Loading your peer groups…'}</p></div>`;
+  if(d.on===false)return '';
+  if(!d.groups.length)return head+`<p class="lead">Not enough traders on this server yet: ${d.contributors} of the ${d.min} needed for a group${d.seeds?' ('+d.seeds+' of them seed wallets)':''}.</p></div>`;
+  const g=peerGroup(d,_peersPick);
+  // pick the group by the dimensions it matches; a combination with too few traders isn't offered
+  const have=new Set(d.groups.map(x=>x.key)), keyOf=dims=>{ const ks=['style','size','exp','act'].filter(k=>dims[k]); return ks.length?ks.map(k=>k+'='+dims[k]).join('|'):'all'; };
+  const chips=['style','size','exp','act'].map(k=>{ const on=!!g.dims[k], nd=Object.assign({},g.dims); if(on)delete nd[k]; else nd[k]=mine[k];
+    const ok=have.has(keyOf(nd));
+    return `<button class="peerchip${on?' on':''}" data-peerkey="${esc(keyOf(nd))}"${ok?'':' disabled'} aria-pressed="${on}" data-tip="${esc(ok?(on?'Stop matching on ':'Also match on ')+PEER_DIM_NAMES[k].toLowerCase():'Too few traders share this with you as well; a group needs '+d.min+'.')}">${esc(PEER_DIM_NAMES[k])}: ${esc(PEER_DIMS[k][mine[k]])}</button>`; }).join('');
+  let last='';
+  const rows=PEER_M.filter(m=>g.q[m.k]).map(m=>{
+    const hdr=m.g!==last?`<tr><td colspan="6" class="peergrp">${m.g}</td></tr>`:''; last=m.g;
+    const v=mine[m.k], b=m.ctx?null:peerBetter(m,g.q[m.k],v), c=b==null?'':b>=75?'pos-t':b<25?'neg-t':'';
+    return hdr+`<tr><td class="l"><span data-tip="${esc(m.tip)}">${esc(m.l)}</span>${m.verified?' <span class="peerver" data-tip="Read on chain">verified</span>':''}</td>
+      <td><b>${v==null?'—':esc(m.f(v))}</b></td><td>${esc(m.f(g.q[m.k][4]))}</td><td>${m.ctx||g.top[m.k]==null?'—':esc(m.f(g.top[m.k]))}</td>
+      <td class="peerstrip">${peerStripSvg(m,g,v)}</td><td class="${c}">${b==null?(m.ctx?'<span style="color:var(--faint)">context</span>':'—'):b+'%'}</td></tr>`; }).join('');
+  const gap=peerGap(g,mine), say=gap&&PEER_GAP_SAY[gap.m.k](gap.top,gap.v);
+  return head+`<div class="peerctl"><span class="mini-note" style="margin:0">Compare me with</span>${chips}<span class="mini-note" style="margin:0 0 0 auto"><b>${g.n}</b> traders · ${esc(peerGroupName(g))}</span></div>
+    ${say?`<p class="lead" style="margin:10px 0 0"><b>What the best quarter does differently:</b> ${esc(say[0])} ${esc(say[1])}</p>`:''}
+    <div class="tbl-wrap"><table class="peertbl"><thead><tr><th class="l">Measure</th><th>You</th><th>Typical</th><th data-tip="The median of the group's best quarter by profit factor">Best quarter</th><th class="l">Where you sit</th><th data-tip="Out of 100 traders in this group, how many you do better than">Better than</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="mini-note">Line: the group's 10th to 90th percentile · box: its middle half · tick: typical · diamond: best quarter · dot: you. Groups of ${d.min} or more, built daily from ${d.contributors} anonymous summaries${d.seeds?' ('+d.seeds+' from seed wallets read on chain)':''}. Only the groups' spreads reach this page, never another trader's numbers.${SOC.share&&SOC.share.bench===false?' You aren’t counted yourself (switched off in Pulse under Profile & privacy).':''}</p></div>`;
+}
+function peerStripSvg(m,g,v){
+  const q=g.q[m.k], top=g.top[m.k], W=220, lo=Math.min(q[0],v==null?q[0]:v,top==null?q[0]:top), hi=Math.max(q[8],v==null?q[8]:v,top==null?q[8]:top);
+  const pad=(hi-lo)*0.06||1, a=lo-pad, b=hi+pad, x=t=>(4+(t-a)/(b-a)*(W-8)).toFixed(1);
+  const bt=m.ctx||v==null?null:peerBetter(m,q,v), col=bt==null?'var(--muted)':bt>=75?'var(--profit)':bt<25?'var(--loss)':'#5AA9FF';
+  return `<svg width="${W}" height="22" viewBox="0 0 ${W} 22" role="img" aria-label="${esc(m.l)}: middle half of the group ${esc(m.f(q[2]))} to ${esc(m.f(q[6]))}${v==null?'':', you '+esc(m.f(v))}">
+    <line x1="${x(q[0])}" x2="${x(q[8])}" y1="11" y2="11" stroke="var(--line)" stroke-width="2"/>
+    <rect x="${x(q[2])}" y="5" width="${Math.max(2,x(q[6])-x(q[2]))}" height="12" rx="3" fill="var(--panel2)" stroke="var(--line)"/>
+    <line x1="${x(q[4])}" x2="${x(q[4])}" y1="3" y2="19" stroke="var(--text)" stroke-width="2"/>
+    ${top==null||m.ctx?'':`<rect x="${(+x(top)-4).toFixed(1)}" y="7" width="8" height="8" transform="rotate(45 ${x(top)} 11)" fill="#8a7bd8"/>`}
+    ${v==null?'':`<circle cx="${x(v)}" cy="11" r="5.5" fill="${col}" stroke="var(--bg)" stroke-width="2"/>`}</svg>`;
+}
+function wirePeers(){ const el=$('peersSec'); if(!el)return;
+  el.querySelectorAll('[data-peerkey]').forEach(b=>b.onclick=()=>{ _peersPick=b.dataset.peerkey; peersRerender(); }); }
+function peersRerender(){ const el=$('peersSec'); if(!el)return; el.innerHTML=peersSectionHtml(); wirePeers(); }
 function drawRoutineCharts(){
   _rvCharts.forEach(c=>{ try{ c.destroy(); }catch(e){} }); _rvCharts=[];
   const a=$('rvWeeks'), b=$('rvCurves'); if(!a||!b)return;
