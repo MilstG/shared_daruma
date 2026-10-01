@@ -923,8 +923,19 @@ which shows from your third trading day:
 The habit score only counts the habits you actually use. A habit you've never
 kept (say, the end-of-day review) isn't held against every day. Stops honored
 and the loss limit stay out of the score, because they can only fail on a
-losing day. Pulse shows the same chart under **Stats → Habits vs results**, for
-the range you pick.
+losing day.
+
+Pulse tells the same story simply, for people getting started, under **Stats →
+Do your habits pay?** (near the top, for the range you pick). It gives a plain
+answer ("On days you kept most of your habits, you made $281 more a day"), a
+"how sure" meter ("Too early to tell", "Not clear yet — could be luck", "Looks
+real", "Clear pattern") and two tiles: habit days and other days, with their
+average day and how many were green. When the link is real it names the habit to
+protect. **See the breakdown** adds a three-step staircase (few, some or most
+habits kept) and the habits ranked by what they're worth a day. There's no
+scatter and no statistics in Pulse; those stay in the full journal. It never
+claims a link before 8 days or without a significant one, and it says so when
+sloppier days did better.
 
 Below that, over your whole history in the current view:
 
