@@ -123,14 +123,14 @@ function pzCoachLine(D){
 }
 
 // ---- UI state (never stored) ----
-const PZ_TABS=['compose','today','trends','checkin','progress','discipline','journal','social','sharing','account','deep','how','badges','report','review','coach','leagues','lessons','mentor','mentee'];
+const PZ_TABS=['compose','today','trends','checkin','progress','discipline','journal','social','sharing','account','deep','how','badges','report','review','coach','leagues','lessons','mentor','mentee','duels'];
 var _pzQuiet=false; // a background refresh of data Pulse already shows: no status toasts
 var pzS={ring:'discipline',range:30,badge:null,ck:null,sheet:false,custom:null,jr:{},note:null};
 // a sign-in link from the league owner (/pulse#link=CODE): keep the code for the sign-in form, drop it from the address bar
 (function(){ const m=/^#link=([A-Za-z0-9-]{4,20})$/.exec(location.hash||''); if(!m)return; pzS.linkCode=m[1].toUpperCase(); pzS.acctOpen=true;
   try{ history.replaceState(null,'',location.pathname+location.search+'#today'); }catch(e){} })();
 function pzTab(){ const h=(location.hash||'').slice(1);
-  if(/^u\/[A-Za-z0-9_]{3,20}$/.test(h))return 'profile'; if(/^mentee\/[A-Za-z0-9_]{3,20}$/.test(h))return 'mentee'; if(/^c\/[0-9a-f]{4,24}$/.test(h))return 'comp'; if(/^lg\/[a-z0-9-]{1,40}$/.test(h))return 'lginfo'; if(/^post\/[0-9a-f]{12}$/.test(h))return 'post';
+  if(/^u\/[A-Za-z0-9_]{3,20}$/.test(h))return 'profile'; if(/^mentee\/[A-Za-z0-9_]{3,20}$/.test(h))return 'mentee'; if(/^c\/[0-9a-f]{4,24}$/.test(h))return 'comp'; if(/^lg\/[a-z0-9-]{1,40}$/.test(h))return 'lginfo'; if(/^post\/[0-9a-f]{12}$/.test(h))return 'post'; if(/^duel\/[A-Za-z0-9_]{3,20}$/.test(h))return 'duelnew';
   if(/^link=[A-Za-z0-9-]{4,20}$/.test(h))return 'today';
   return PZ_TABS.includes(h)?h:'today'; }
 function pzHashArg(){ return (location.hash||'').slice(1).split('/')[1]||''; }
@@ -202,18 +202,18 @@ const PZ_SECTIONS={
     ['tilt','Tilt meter','Losses in a row, re-entry window, size and pace — and quiet mode when it runs hot',1],
     ['session','Your session','P&L curve, trades, and your rules as they stand',1],['positions','Open positions','Size and hold time against your usual',1],
     ['insight','Coach insight','One line on what matters most',1],['next','Next step','Check-in in the morning, review at night',1],
-    ['now','Right now','This hour in your history, time since a loss',1],['good','Done right today','Moments you followed a rule that usually costs you',1],
+    ['now','Right now','This hour in your history, time since a loss',1],['good','Done right today','Moments you followed a rule that usually costs you',1],['duels','Duels','Challenges waiting for you and duels running',1],
     ['lesson','A lesson to revisit','One of your own lessons, back when it’s due',1],
     ['inbox','From your partners and mentor','Nudges, notes and season results',1],['partners','Your partners','Their streak and slips this week',1],
     ['xp','Today’s XP','What earns XP today, and what’s due this week',1],['week','Last 7 trading days','Discipline and net, day by day',1],
     ['level','Level and league','Level progress, XP today, league standing',0],['yesterday','Last trading day','Its score, net and lesson in full',0]],
   stats:[['tiles','Headline numbers','Net, win rate, average trade and more',1],['daily','Daily P&L','',1],['findings','What moves your results','Your biggest edges and leaks',1],
-    ['insights','Does discipline pay?','Results on good-discipline days vs the rest',1],['habits','Do your habits pay?','Your habit days against your other days, in dollars',1],['markets','Markets and time of day','Best and worst markets and hours',1]],
+    ['insights','Does discipline pay?','Results on good-discipline days vs the rest',1],['habits','Do your habits pay?','Your habit days against your other days, in dollars',1],['peers','Traders like you','How you compare with traders of your style, size and experience',1],['markets','Markets and time of day','Best and worst markets and hours',1]],
   progress:[['goals','Process goals','Targets you set for your process, with progress',1],['xpsources','Where your XP came from','',1],['challenge','Weekly challenge','',1],['habits','Your habits','Streaks for each habit you run',1],['reports','Report cards','Last week and this month',1],
     ['leaks','Your leaks','What your slips cost, and plugging them',1],['lessons','Lessons library','Everything your reviews taught you',1],['moments','Good moments','',1],['badges','Badges','Your latest badges',1],['bests','Personal bests','',1]],
 };
 // Today's cards below the dials can also be put in your own order (the top of the screen stays put)
-const PZ_FLOW={today:[['tilt','insight','session','positions'],['next','now','good','inbox','partners','lesson','xp','week','yesterday']]};
+const PZ_FLOW={today:[['tilt','insight','session','positions'],['next','now','good','inbox','duels','partners','lesson','xp','week','yesterday']]};
 function pzOrdered(screen){ const all=(PZ_FLOW[screen]||[]).flat(), o=((settings.pzLayout||{})[screen]||{})._order;
   if(!Array.isArray(o))return null;
   return [...o.filter(id=>all.includes(id)),...all.filter(id=>!o.includes(id))]; }
@@ -587,7 +587,7 @@ function pzTodayHtml(D){
     ${sec('oneThing',()=>pzOneThingHtml(D))}
     <div class="pz-wide">${ringsHtml}<div class="pz-span" id="pzRingDetail">${detail}</div>${more('numbers',pzTodayStripHtml)}${sec('level',()=>pzProgressRowHtml(D))}
       ${(()=>{ const card={tilt:()=>sec('tilt',()=>pzTiltHtml(D)),insight:()=>on('insight')?coach:'',session:()=>more('session',pzSessionHtml),positions:()=>more('positions',pzPositionsHtml),
-          next:()=>sec('next',()=>pzNextHtml(D)),now:()=>more('now',pzNowHtml),good:()=>sec('good',()=>pzGoodHtml(D)),inbox:()=>sec('inbox',()=>socInboxHtml()),partners:()=>sec('partners',()=>socPartnerStripHtml()),
+          next:()=>sec('next',()=>pzNextHtml(D)),now:()=>more('now',pzNowHtml),good:()=>sec('good',()=>pzGoodHtml(D)),inbox:()=>sec('inbox',()=>socInboxHtml()),duels:()=>sec('duels',()=>socDuelsTodayHtml(D.g)),partners:()=>sec('partners',()=>socPartnerStripHtml()),
           lesson:()=>sec('lesson',()=>pzLessonDueHtml(D)),xp:()=>on('xp')?bonus:'',week:()=>sec('week',()=>pzWeekSparkHtml(D)),yesterday:()=>sec('yesterday',()=>pzYesterdayHtml(D))};
         const ord=pzOrdered('today'), lead=pzLinkCardHtml()+pzNudgesHtml(D);
         // your own order reads top to bottom, then on into the second column on a wide screen
@@ -686,6 +686,33 @@ function pzHabitLinkHtml(g, ctx, fromKey){
     <p class="pz-hlline">${line}</p>${tiles}${protect}${meter}
     ${n>=L.need.days?`<button type="button" class="pz-hlmore" data-pz-hlmore="1" aria-expanded="${open}">${open?'Hide the breakdown':'See the breakdown'} ${pzI('chev',14)}</button>`:''}${more}</section>`;
 }
+// ---- "Traders like you", the simple version: five numbers against your peer group, in plain words ----
+function pzPeersHtml(g){
+  if(!peerCanAsk()||(SOC.cfg&&SOC.cfg.bench&&SOC.cfg.bench.on===false))return '';
+  const head=`<div class="pz-kvrow"><b style="font-size:16px">Traders like you</b>`, sec=body=>`<section class="pz-card pz-span pz-viz pz-peers" data-sec="stats:peers">${body}</section>`;
+  const lock=pzLocked('peers',g.level.level);
+  if(lock)return sec(`${head}</div><p class="pz-sub" style="font-size:13px;margin:0">${pzI('lock',14)} Unlocks at level ${lock}. ${pzXpToGo(lock,g)}</p>`);
+  const mine=peerMine();
+  if(!mine.ok)return sec(`${head}</div><p class="pz-sub" style="font-size:13px;margin:0">See how you compare with traders who trade like you. ${esc(PEER_WHY[mine.why]||'')}${mine.n?' You have '+mine.n+'.':''}</p>`);
+  const P=peerData(mine), d=P&&P.d;
+  if(!d)return sec(`${head}</div><p class="pz-sub" style="font-size:13px;margin:0">${P&&P.err?'Couldn’t load the comparison: '+esc(P.err):'Loading your peer group…'}</p>`);
+  if(d.on===false)return '';
+  const grp=peerGroup(d);
+  if(!grp)return sec(`${head}</div><p class="pz-sub" style="font-size:13px;margin:0">Not enough traders on this server to compare yet: ${d.contributors} of the ${d.min} needed for a group. It fills in as more people trade here.</p>`);
+  const rows=PEER_M.filter(m=>['disc','rev','jour','wr','pf'].includes(m.k)&&grp.q[m.k]&&mine[m.k]!=null).map(m=>{
+    const b=peerBetter(m,grp.q[m.k],mine[m.k]), c=b>=75?'top':b<25?'bot':'mid', w=b>=75?'Top 25%':b>=40?'Typical':b>=25?'A bit behind':'Bottom 25%';
+    const col=c==='top'?PZ_COL.good:c==='bot'?PZ_COL.low:PZ_COL.risk, typ=grp.q[m.k][4];
+    return `<div class="pz-prow" tabindex="0" data-pz-tip="${esc(m.l+': '+m.f(mine[m.k])+'\nTypical trader like you: '+m.f(typ)+'\n'+m.tip)}"><span class="pz-plab">${esc(m.l)}</span><b class="pz-pval">${esc(m.f(mine[m.k]))}</b>
+      <span class="pz-pbarw"><span class="pz-pbar2"><s></s><i style="left:${b}%;background:${col}"></i></span><span class="pz-ptag ${c}">${w}</span></span>
+      <span class="pz-sub pz-pline">Better than ${b} of 100 traders like you</span></div>`; }).join('');
+  const gap=peerGap(grp,mine), say=gap&&PEER_GAP_SAY[gap.m.k](gap.top,gap.v);
+  const chips=['style','size','exp','act'].filter(k=>grp.dims[k]).map(k=>`<span class="pz-pchip">${esc(PEER_DIMS[k][grp.dims[k]])}</span>`).join('')||'<span class="pz-pchip">Everyone on this server</span>';
+  const out=SOC.share&&SOC.share.bench===false?`<p class="pz-fine" style="margin:0">You’re not counted in these groups (switched off under Profile & privacy).</p>`:'';
+  return sec(`${head}<span class="pz-sub" style="font-size:12px">${grp.n} traders</span></div>
+    <div class="pz-pchips">${chips}</div><div>${rows}</div>
+    ${say?`<div class="pz-pgap" tabindex="0" data-pz-tip="${esc('The best quarter of your group by profit factor. This is the habit where you’re furthest behind them.')}"><span class="pz-lbl" style="color:${PZ_COL.xp}">What the best of them do</span><b>${esc(say[0])} ${esc(say[1])}</b></div>`:''}
+    ${out}<p class="pz-fine" style="margin:0">Last 90 days · anonymous · groups of ${d.min} or more · updated daily</p>`);
+}
 function pzTrendsHtml(D){
   const {g}=D, ctx=g.ctx, R=pzS.range, now=Date.now();
   const from=R==='all'?0:pzRangeStart(R,now), fromKey=dayKey(from);
@@ -729,6 +756,7 @@ function pzTrendsHtml(D){
         ${rl?`<div class="pz-tile cool"><span class="pz-t" style="font-size:13px;line-height:1.45">On days you checked in at readiness 70+, your discipline averaged <b>${rl.hi}</b>; on the other check-in days, <b>${rl.lo}</b>.</span></div>`:''}</section></div>
       <div class="pz-col" data-sec="stats:findings"><section class="pz-card" style="padding:6px 16px"><b style="display:block;font-size:15px;margin:10px 0 2px">What moves your results <span class="pz-sub" style="font-weight:400;font-size:12px">· ${R==='all'?'all time':'last '+R+' days'}${RF.n?', '+RF.n+' trades':''}</span></b>${RF.few?`<p class="pz-sub" style="font-size:13px;padding:6px 0 12px">Needs at least 10 closed trades in this range to find patterns — there ${RF.n===1?'is':'are'} ${RF.n}. Try a longer range.</p>`:''}${F.length?F.map(f=>`<div class="pz-ins"><span class="pz-tag ${esc(f.tone)}">${esc(TONE_TAG[f.tone]||'Note')}</span><span><b>${esc(f.title)}</b><span>${esc(pzPlain(f.action||f.body||''))}</span>${f.evidence?`<details class="pz-why"><summary>Why</summary><span>${esc(f.evidence)} · ${esc(confWords(f.conf))}</span></details>`:''}</span></div>`).join(''):(RF.few?'':'<p class="pz-sub" style="padding:12px 0">Patterns show up here after about five closed trades.</p>')}</section></div>`; }
   if(!lock)deep=pzHabitLinkHtml(g,ctx,fromKey)+deep; // the plain answer first, then the detail
+  deep+=pzPeersHtml(g);
   return `${pzHead(R==='all'?'All time':'Last '+R+' days','Stats',seg)}${pzMkSeg()}<div class="pz-wide">${stats}${deep}<p class="pz-fine pz-span"><a href="#how">How are the scores worked out?</a></p>${pzCustomizeLink('stats')}</div>${pzLayoutCss('stats')}`;
 }
 // The Diagnostic's findings for one range (all time reuses the coach's set). Same engine, only the
@@ -1173,7 +1201,7 @@ function pzRender(){
     const lv=D.g.level.level;
     const body=tab==='trends'?pzTrendsHtml(D):tab==='deep'?pzDeepHtml(D):tab==='how'?pzHowHtml():tab==='badges'?pzBadgesHtml(D):tab==='report'?pzReportHtml(D)
       :tab==='review'?pzReviewHtml(D):tab==='coach'?pzCoachHtml(D):tab==='leagues'?socFindHtml(D):tab==='lginfo'?socLeagueInfoHtml(D,pzHashArg()):tab==='checkin'?pzCheckinHtml(D):tab==='progress'?pzProgressHtml(D)
-      :tab==='discipline'?pzDisciplineHtml(D):tab==='journal'?pzJournalHtml(D):tab==='social'?socSocialHtml(D):tab==='sharing'?socSharingHtml(D):tab==='account'?socAccountHtml(D)
+      :tab==='discipline'?pzDisciplineHtml(D):tab==='journal'?pzJournalHtml(D):tab==='social'?socSocialHtml(D):tab==='duels'?socDuelsHtml(D):tab==='duelnew'?socDuelNewHtml(D,pzHashArg()):tab==='sharing'?socSharingHtml(D):tab==='account'?socAccountHtml(D)
       :tab==='lessons'?(()=>{ try{ return pzLessonsHtml(D); }catch(e){ console.warn('lessons',e); return `<a class="pz-back" href="#progress">${pzI('back',20)}Progress</a><p class="pz-sub pz-err">Your lessons couldn’t be read (${esc(e.message)}).</p>`; } })():tab==='mentor'?socMentorHtml(D):tab==='mentee'?socMenteeHtml(D,pzHashArg()):tab==='profile'?socProfileHtml(D,pzHashArg()):tab==='post'?socPostHtml(D,pzHashArg()):tab==='compose'?socComposeHtml(D):tab==='comp'?socCompHtml(D,pzHashArg()):pzTodayHtml(D);
     html=`${pzNav(tab,lv)}<main class="pz-main" id="pzMain">${body}</main>`;
     socSync(D.g); }

@@ -470,6 +470,41 @@ function pzBehaviorDays(closed, opts){
   });
   return out;
 }
+// ---- "Traders like you": the anonymous summary a trader contributes to the benchmarks ----
+// The same function runs in the app (from your own trades) and on the server (from a seed
+// wallet's public fills), so both are measured identically. Last 90 days, closed trades only.
+// Sizes and activity are reduced to ranges; nothing here names a coin, a dollar amount or a wallet.
+// o: {now, dayOf, firstAt (first trade ever, for experience), isJournaled (app only)}
+function peerSummary(closed, o){
+  o=o||{}; const now=o.now||Date.now(), from=now-90*86400000, DAY=86400000;
+  const tr=(closed||[]).filter(t=>!t.isOpen&&t.closeTime>=from&&t.closeTime<=now&&t.openTime&&!t.partialHistory);
+  const n=tr.length; if(n<30)return {ok:false,why:'few',n}; // 30 closed trades over at least 3 weeks, so one lucky week can't skew a group
+  const first=Math.min(...tr.map(t=>t.closeTime)), last=Math.max(...tr.map(t=>t.closeTime));
+  if((last-first)/DAY<21)return {ok:false,why:'short',n};
+  const med=a=>{ const s=[...a].sort((x,y)=>x-y), k=s.length; return k?(k%2?s[(k-1)/2]:(s[k/2-1]+s[k/2])/2):null; };
+  const r1=v=>Math.round(v*10)/10, r2=v=>Math.round(v*100)/100;
+  // the same style rule as Pulse's profile (pzDetectProfile)
+  const hold=med(tr.map(t=>t.closeTime-t.openTime)), days=new Set(tr.map(t=>o.dayOf?o.dayOf(t.closeTime):Math.floor(t.closeTime/DAY))).size, perDay=n/Math.max(1,days);
+  const style=hold<20*60000||perDay>=8?'scalper':hold<8*3600000?'day':hold<10*DAY?'swing':'position';
+  const notional=med(tr.map(t=>(t.maxSize||0)*(t.avgEntry||0)).filter(x=>x>0))||0;
+  const size=notional<1000?'s1':notional<10000?'s2':notional<100000?'s3':'s4';
+  const firstAt=Math.min(o.firstAt||first,first), months=(now-firstAt)/(30.44*DAY);
+  const exp=months<3?'e1':months<12?'e2':months<36?'e3':'e4';
+  const weeks=Math.max(1,(now-Math.max(from,firstAt))/(7*DAY)), tw=n/weeks;
+  const act=tw<5?'a1':tw<15?'a2':tw<40?'a3':'a4';
+  // results: a win or a loss is more than $1 either way (the same fixed rule Pulse's Discipline uses)
+  const W=tr.filter(t=>t.net>1), L=tr.filter(t=>t.net<-1), gw=W.reduce((a,t)=>a+t.net,0), gl=-L.reduce((a,t)=>a+t.net,0);
+  const wr=W.length+L.length?100*W.length/(W.length+L.length):null;
+  const pf=gl>0?Math.min(50,gw/gl):gw>0?50:null, pay=W.length&&L.length?Math.min(50,(gw/W.length)/(gl/L.length)):null;
+  const grossUp=tr.reduce((a,t)=>a+Math.max(0,t.pnl!=null?t.pnl:t.net),0), cost=tr.reduce((a,t)=>a+(t.fees||0)+Math.max(0,-(t.funding||0)),0);
+  const fees=grossUp>0?Math.min(500,100*cost/grossUp):null;
+  // process: the day's Discipline score (read from fills) and how often a trade was a revenge entry
+  const bd=pzBehaviorDays(tr,{dayOf:o.dayOf||(ms=>new Date(ms).toISOString().slice(0,10)),isLoss:x=>x<-1});
+  const disc=bd.length?bd.reduce((a,d)=>a+d.score,0)/bd.length:null, rev=100*bd.reduce((a,d)=>a+((d.flags&&d.flags.revenge)||0),0)/n;
+  const jour=typeof o.isJournaled==='function'?100*tr.filter(o.isJournaled).length/n:null;
+  return {ok:true,v:1,n,style,size,exp,act,tw:r1(tw),hold:Math.round(hold/60000),disc:disc==null?null:r1(disc),rev:r1(rev),jour:jour==null?null:r1(jour),
+    wr:wr==null?null:r1(wr),pf:pf==null?null:r2(pf),pay:pay==null?null:r2(pay),fees:fees==null?null:r1(fees)};
+}
 // Bonus XP for what you chose to log that day. Nothing here can lower a score.
 function pzBonus(pday, dayE, X){
   X=X||{checkin:10,plan:15,journal:15,stops:10,limit:10,review:15};

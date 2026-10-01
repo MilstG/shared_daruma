@@ -143,7 +143,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   const XP_LABELS={discipline:['Per Discipline point','× each day’s 0–100 score'],checkin:['Morning check-in',''],plan:['Plan set before trading',''],
     journal:['Every trade journaled',''],stops:['A stop on every trade',''],limit:['Stayed inside the loss limit',''],review:['End-of-day review',''],
     achievement:['Achievement','The base: badge tiers pay ×0.1 to ×3.2 of it'],challenge:['Weekly challenge kept',''],focus:['Focus habit kept','Per kept day']};
-  const TABS=[['overview','Overview'],['members','Members'],['wallets','Wallets'],['leagues','Leagues'],['competitions','Competitions'],['badges','Badges'],['levels','Levels & XP'],
+  const TABS=[['overview','Overview'],['members','Members'],['wallets','Wallets'],['bench','Benchmarks'],['duels','Duels'],['leagues','Leagues'],['competitions','Competitions'],['badges','Badges'],['levels','Levels & XP'],
     ['features','Features'],['coach','Coach'],['routines','Routines'],['feed','Feed & reports'],['settings','Settings']];
   // the owner's AUTH_TOKEN, or (for an admin the owner added) this browser's Pulse member key
   let tok=''; try{ tok=localStorage.getItem('srv_token')||''; }catch(e){}
@@ -178,9 +178,9 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   const levelStart=(c,n)=>n<=1?0:c.mode==='table'?(n-2<c.thresholds.length?c.thresholds[n-2]:Infinity):c.base*n*(n-1);
 
   async function load(){
-    const [me,ov,ms,ls,bs,cs,ev,ws,lg,rp]=await Promise.all([api('/me'),api('/overview'),api('/members'),api('/leagues'),api('/badges'),api('/competitions'),api('/events'),api('/wallets'),api('/log'),api('/reports')]);
+    const [me,ov,ms,ls,bs,cs,ev,ws,lg,rp,bn,du]=await Promise.all([api('/me'),api('/overview'),api('/members'),api('/leagues'),api('/badges'),api('/competitions'),api('/events'),api('/wallets'),api('/log'),api('/reports'),api('/bench').catch(()=>null),api('/duels').catch(()=>null)]);
     ME=me; $('whoami').textContent=me.owner?'Owner':'Admin · '+me.name;
-    Object.assign(D,{ov,members:ms.members,leagues:ls.leagues,badges:bs.badges,comps:cs.competitions,events:ev.events,wallets:ws,log:lg.log,reports:rp.reports});
+    Object.assign(D,{ov,members:ms.members,leagues:ls.leagues,badges:bs.badges,comps:cs.competitions,events:ev.events,wallets:ws,log:lg.log,reports:rp.reports,bench:bn,duels:du});
     for(const a of [...UI.wsel])if(!ws.wallets.some(w=>w.address===a))UI.wsel.delete(a);
     $('login').classList.add('hide'); $('app').classList.remove('hide'); $('signout').classList.remove('hide');
     render();
@@ -207,7 +207,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     lastView=view; UI.submitted=null; UI.fresh=false;
     $('tabs').innerHTML=TABS.map(([k,l])=>`<a href="#${k}"${k===UI.tab?' aria-current="page"':''}>${l}${k==='feed'&&D.reports.length?` <span class="pill warnp">${D.reports.length}</span>`:''}</a>`).join('');
     const tabs=$('tabs'), cur=tabs.querySelector('[aria-current]'); if(cur)tabs.scrollLeft=Math.max(0,cur.offsetLeft-(tabs.clientWidth-cur.offsetWidth)/2);
-    const f={overview:vOverview,members:vMembers,wallets:vWallets,leagues:vLeagues,competitions:vComps,badges:vBadges,levels:vLevels,features:vFeatures,coach:vCoach,routines:vRoutines,feed:vFeed,settings:vSettings}[UI.tab];
+    const f={overview:vOverview,members:vMembers,wallets:vWallets,bench:vBench,duels:vDuels,leagues:vLeagues,competitions:vComps,badges:vBadges,levels:vLevels,features:vFeatures,coach:vCoach,routines:vRoutines,feed:vFeed,settings:vSettings}[UI.tab];
     $('view').innerHTML=f();
     for(const [id,v] of keep){ const el=$(id); if(!el)continue; if(el.type==='checkbox')el.checked=v; else el.value=v; }
     const back=foc&&$(foc); if(back&&$('view').contains(back))back.focus({preventScroll:true});
@@ -223,7 +223,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     const main=D.leagues.find(L=>L.id==='main'), live=Math.max(1,o.members-o.banned);
     const top=D.members.filter(m=>!m.banned).sort((a,b)=>b.xp-a.xp).slice(0,5);
     return `${tiles([['Members',fmt(o.members),o.banned?o.banned+' suspended':''],['Active this week',fmt(o.active7)],['Leagues',o.leagues],['Reward badges',o.badges],
-      ['Competitions',o.comps],['Posts',fmt(o.posts||0),o.reports?o.reports+' open report'+(o.reports===1?'':'s'):o.mediaBytes?size(o.mediaBytes)+' of pictures':''],['Coach messages today',fmt(o.coachToday),o.coachAi?'AI on':'AI off'],['Claimed wallets',o.claimed||0,o.vaults?o.vaults+' synced journals · '+size(o.vaultBytes):'']])}
+      ['Competitions',o.comps],['Duels',D.duels?fmt(D.duels.counts.active):'—',D.duels?fmt(D.duels.counts.pending)+' waiting · '+fmt(D.duels.counts.done30)+' finished in 30d':''],['Traders like you',D.bench?fmt(D.bench.contributors):'—',D.bench?fmt(D.bench.groups.length)+' groups':''],['Posts',fmt(o.posts||0),o.reports?o.reports+' open report'+(o.reports===1?'':'s'):o.mediaBytes?size(o.mediaBytes)+' of pictures':''],['Coach messages today',fmt(o.coachToday),o.coachAi?'AI on':'AI off'],['Claimed wallets',o.claimed||0,o.vaults?o.vaults+' synced journals · '+size(o.vaultBytes):'']])}
     ${warn.length?`<div class="stack" style="gap:8px">${warn.map(w=>`<p class="warn">${w}</p>`).join('')}</div>`:''}
     <div class="two">
       <section class="card"><h2>${esc(main?main.name:'Main league')} · tiers</h2>
@@ -593,6 +593,70 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       <td style="vertical-align:top">${walletStatusPill(w.status)}${w.reviewedAt?`<div class="muted small">${w.by==='existing'?'already in use when approval went on':'by '+(w.by&&w.by!=='owner'?esc(w.by):ME.owner?'you':'the owner')+' · '+esc(ago(w.reviewedAt))}</div>`:''}
         <div class="row" style="align-items:center;margin-top:8px;gap:6px">${w.status!=='approved'?`<button class="sm fit primary" data-wact="approve" data-addr="${esc(w.address)}">Approve</button>`:''}${w.status!=='rejected'?`<button class="sm fit" data-wact="reject" data-addr="${esc(w.address)}">Reject</button>`:''}${w.status!=='pending'?`<button class="sm fit" data-wact="clear" data-addr="${esc(w.address)}" title="Forget the decision: back to waiting">Undo</button>`:''}</div></td></tr>`).join('');
   }
+  // ---- Benchmarks: "traders like you" settings, the peer-group catalog and the seed wallets ----
+  const SEED_ST={queued:['Waiting',''],ok:['Counted','ok'],skip:['Left out',''],err:['Couldn’t read','warnp']};
+  function vBench(){
+    const B=D.bench; if(!B)return '<section class="card"><p class="muted">Couldn’t load the benchmarks.</p></section>';
+    const c=B.config, L=B.labels, sc=B.seedCounts;
+    const dimName=g=>g.key==='all'?'Everyone':['style','size','exp','act'].filter(k=>g.dims[k]).map(k=>L[k][g.dims[k]]).join(' · ');
+    return `<section class="card"><h2>Traders like you</h2>
+        <p class="muted">Members compare their last 90 days with anonymous traders of the same style, trade size and experience, in Pulse (simple) and the journal's Review (detailed). Each member's app sends a summary unless they switch it off under Profile & privacy. Only group spreads leave the server.</p>
+        <div class="row">${[['Contributors',fmt(B.contributors),B.members+' members · '+B.seeds+' seed wallets'],['Groups',fmt(B.groups.length),B.split?'split by size, experience and activity':'everyone and by style only, until '+fmt(c.splitAt)+' contributors'],['Members switched off',fmt(B.optedOut),fmt(B.withSummary)+' members have a summary'],['Built',esc(ago(B.at)),'rebuilt daily on first use']].map(([l,v,h])=>`<div class="tile"><span class="muted small">${l}</span><b style="font-size:22px">${v}</b><span class="muted small">${h}</span></div>`).join('')}</div>
+        <div><button class="fit" id="bRebuild">Rebuild now</button></div></section>
+      <section class="card"><h2>Settings</h2>
+        ${box('bOn','Show “Traders like you”',c.on,'Off hides it in Pulse and the journal. Summaries keep arriving.')}
+        ${box('bSeeds','Count seed wallets',c.seeds,'Seed wallets fill the groups while your server is small. They have no journal, so “trades journaled” only uses members.')}
+        <div class="row">${field('bMin','Smallest group','<input id="bMin" type="number" min="10" max="1000" value="'+c.min+'">','A group with fewer traders isn’t shown, so nobody can be picked out. 25 or more is safest; never under 10.')}
+          ${field('bSplit','Split groups from','<input id="bSplit" type="number" min="0" max="100000" value="'+c.splitAt+'">','Below this many contributors, people are compared with everyone and with their own style only.')}</div>
+        <p class="hint">Unlock level: under Features (“Traders like you”, free at level 1).</p>
+        <div><button class="primary" id="bSave">Save</button></div></section>
+      <section class="card"><h2>Seed wallets</h2>
+        <p class="muted">Kick-start the benchmarks with public Hyperliquid wallets. Paste anything: every 0x address in it is added once. The server reads each wallet’s last 90 days of public fills, about one every few seconds, works out the same summary a member’s app would (and its 30-day return), and counts it in the groups. Wallets with under 30 trades, or so many fills they’re clearly bots, are left out. ${B.seedReader?'':'<b>This server can’t read wallets right now</b> (the trade engine isn’t loaded).'}</p>
+        <textarea id="bSeedText" rows="4" placeholder="0x… one per line, or paste a CSV or a list from anywhere" spellcheck="false"></textarea>
+        <div class="row" style="align-items:center"><button class="primary fit" id="bSeedAdd">Add wallets</button>
+          <span class="muted small">${fmt(sc.queued||0)} waiting · ${fmt(sc.ok||0)} counted · ${fmt(sc.skip||0)} left out · ${fmt(sc.err||0)} couldn’t be read · up to ${fmt(B.seedMax)}</span></div>
+        ${sc.err||sc.skip?`<div class="row">${sc.err?'<button class="sm fit" id="bSeedRetry">Retry the ones that failed</button>':''}${sc.err?'<button class="sm fit" id="bSeedDropErr">Remove the failed ones</button>':''}${sc.skip?'<button class="sm fit" id="bSeedDropSkip">Remove the left-out ones</button>':''}</div>`:''}
+        ${B.seedList.length?`<div class="scroll"><table><thead><tr><th>Wallet</th><th>Status</th><th>Style</th><th>Trades</th><th>Read</th><th></th></tr></thead><tbody>${B.seedList.map(x=>`<tr><td><code class="small">${esc(x.address.slice(0,8)+'…'+x.address.slice(-6))}</code></td>
+          <td><span class="pill ${SEED_ST[x.st]?SEED_ST[x.st][1]:''}">${SEED_ST[x.st]?SEED_ST[x.st][0]:esc(x.st)}</span>${x.why?`<div class="muted small">${esc(x.why)}</div>`:''}</td>
+          <td>${x.style?esc(L.style[x.style]):'—'}</td><td>${x.n!=null?fmt(x.n):'—'}</td><td class="muted small">${x.done?esc(ago(x.done)):'—'}</td>
+          <td><button class="sm fit" data-seeddel="${esc(x.address)}" aria-label="Remove ${esc(x.address)}">Remove</button></td></tr>`).join('')}</tbody></table></div>
+          <p class="hint">Newest 200 shown. ${fmt(Object.values(sc).reduce((a,b)=>a+b,0))} in all. Counted wallets are read again weekly. <button class="sm fit" id="bSeedDropAll">Remove all seed wallets</button></p>`:''}
+      </section>
+      <section class="card"><h2>Peer groups</h2>
+        ${B.groups.length?`<div class="scroll"><table><thead><tr><th>Group</th><th>Traders</th></tr></thead><tbody>${B.groups.slice(0,60).map(g=>`<tr><td>${esc(dimName(g))}</td><td>${fmt(g.n)}</td></tr>`).join('')}</tbody></table></div>
+          <p class="hint">Biggest first${B.groups.length>60?'; 60 of '+fmt(B.groups.length)+' shown':''}. Combinations with fewer than ${fmt(B.min)} traders aren’t listed: those traders are compared with a wider group.</p>`
+          :`<p class="muted">No group has ${fmt(B.min)} traders yet (${fmt(B.contributors)} contributors so far). Add seed wallets above to get started.</p>`}</section>`;
+  }
+  // ---- Duels: what members can challenge each other on, and the ones running now ----
+  const DUEL_ST={pending:['Waiting for an answer',''],active:['Running','ok'],done:['Finished',''],cancelled:['Cancelled','warnp'],declined:['Declined',''],expired:['Expired','']};
+  function vDuels(){
+    const X=D.duels; if(!X)return '<section class="card"><p class="muted">Couldn’t load duels.</p></section>';
+    const c=X.config, k=X.counts, T=X.types;
+    const row=d=>`<tr><td>@${esc(d.a)} <span class="muted">vs</span> @${esc(d.b)}</td><td>${esc(d.label)} · ${d.period==='month'?'month':'week'}${d.stake?`<div class="muted small">${fmt(d.stake)} XP each at stake</div>`:''}</td>
+      <td>${d.start?esc(d.start)+' → '+esc(d.end):'<span class="muted">starts when accepted</span>'}</td>
+      <td><span class="pill ${DUEL_ST[d.status]?DUEL_ST[d.status][1]:''}">${DUEL_ST[d.status]?DUEL_ST[d.status][0]:esc(d.status)}</span>${d.awaiting?`<div class="muted small">@${esc(d.awaiting)} to answer</div>`:''}${d.status==='done'?`<div class="muted small">${d.winner?'@'+esc(d.winner)+' won':'draw'}${d.why?' · '+esc(d.why):''}</div>`:''}</td>
+      <td>${d.status==='pending'||d.status==='active'?`<button class="sm fit" data-duelcancel="${esc(d.id)}">Cancel</button>`:''}</td></tr>`;
+    return `<section class="card"><h2>Duels</h2>
+        <p class="muted">Members challenge each other to a week or a month, 1 on 1, scored by the server from verified fills and the app’s synced days. Money is never staked; XP can be, if you allow it. A challenge waits 48 hours for an answer; a duel is settled the day after it ends.</p>
+        <div class="row">${[['Running',k.active],['Waiting for an answer',k.pending],['Finished, last 30 days',k.done30],['Declined',k.declined]].map(([l,v])=>`<div class="tile"><span class="muted small">${l}</span><b style="font-size:22px">${fmt(v)}</b></div>`).join('')}</div></section>
+      <section class="card"><h2>Settings</h2>
+        ${box('dOn','Duels are on',c.on,'Off hides duels in Pulse and stops new challenges. Duels already running finish.')}
+        <p class="muted small" style="margin:6px 0 4px">What members can compete on</p>
+        ${Object.keys(T).map(t=>box('dT_'+t,T[t].label,c.types[t],esc(T[t].rule)+(t==='ret'?' Both sides must share % return; a drawdown cap is required. It rewards risk-taking, so it’s off unless you switch it on.':''))).join('')}
+        <div class="row">${field('dXp','XP for the winner','<input id="dXp" type="number" min="0" max="10000" step="10" value="'+c.xp+'">','The same for every duel, and only for one played to the end (not a forfeit), so it can’t be farmed. 0 for none.')}
+          ${field('dOpen','Open duels per member','<input id="dOpen" type="number" min="1" max="20" value="'+c.maxOpen+'">','Running and waiting together.')}
+          ${field('dDay','New challenges a day','<input id="dDay" type="number" min="1" max="50" value="'+c.perDay+'">','Per member, to keep it from turning into spam.')}</div>
+        ${box('dStakes','Members can stake XP',c.stakes!==false,'Both sides put up the same XP and the winner takes the other’s; a draw gives both back. It moves XP between members, it never creates it. Backing out before a duel starts costs nothing.')}
+        <div class="row">${field('dMaxStake','Most XP per duel','<input id="dMaxStake" type="number" min="0" max="100000" step="50" value="'+(c.maxStake??500)+'">','The biggest stake one duel can carry.')}
+          ${field('dStakePct','Most of a member’s XP at stake','<input id="dStakePct" type="number" min="1" max="100" value="'+(c.stakePct??25)+'">','Percent, across all their open duels, so one bad week can’t cost more than this share of anyone’s XP.')}</div>
+        <p class="hint">Unlock level: under Features (“Duels”, free at level 1). Members switch off “Accept duel challenges” under Profile & privacy.</p>
+        <div><button class="primary" id="dSave">Save</button></div></section>
+      <section class="card"><h2>Running and waiting</h2>
+        ${X.open.length?`<div class="scroll"><table><thead><tr><th>Who</th><th>On</th><th>Dates</th><th>Status</th><th></th></tr></thead><tbody>${X.open.map(row).join('')}</tbody></table></div>
+          <p class="hint">Cancelling ends a duel without a result: nobody wins, loses or gets XP, and both are told.</p>`:'<p class="muted">No duels running or waiting.</p>'}</section>
+      <section class="card"><h2>Recent results</h2>
+        ${X.recent.length?`<div class="scroll"><table><thead><tr><th>Who</th><th>On</th><th>Dates</th><th>Result</th><th></th></tr></thead><tbody>${X.recent.map(row).join('')}</tbody></table></div>`:'<p class="muted">No finished duels yet.</p>'}</section>`;
+  }
   function vWallets(){
     const W=D.wallets, c=W.counts;
     return `<datalist id="memberHandles">${D.members.map(m=>`<option value="@${esc(m.handle)}">`).join('')}</datalist>
@@ -681,6 +745,20 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       return act(()=>api('/members/'+encodeURIComponent(d.unadmin),{body:{action:'unadmin'}}),'@'+am.handle+' is no longer an admin.'); }
     if(id==='codeDone'){ UI.code=null; return render(); }
     // wallets
+    if(id==='dSave'){ const types={}; for(const t of Object.keys(D.duels.types))types[t]=chk('dT_'+t);
+      return act(()=>api('/config',{method:'PUT',body:{duels:{on:chk('dOn'),types,xp:+val('dXp'),maxOpen:+val('dOpen'),perDay:+val('dDay'),stakes:chk('dStakes'),maxStake:+val('dMaxStake'),stakePct:+val('dStakePct')}}}),'Saved.'); }
+    if(d.duelcancel){ if(!confirm('Cancel this duel? Nobody wins or loses, and both are told.'))return; return act(()=>api('/duels/'+encodeURIComponent(d.duelcancel),{body:{action:'cancel'}}),'Cancelled.'); }
+    if(id==='bRebuild')return act(()=>api('/bench',{body:{action:'rebuild'}}),'Rebuilt.');
+    if(id==='bSave'){ const mn=+val('bMin'), sp=+val('bSplit'); if(!(mn>=10))return note('The smallest group can’t be under 10.',true);
+      return act(()=>api('/config',{method:'PUT',body:{bench:{on:chk('bOn'),seeds:chk('bSeeds'),min:mn,splitAt:sp}}}),'Saved. The groups rebuild with the new settings.'); }
+    if(id==='bSeedAdd'){ const t=val('bSeedText'); if(!/0x[0-9a-fA-F]{40}/.test(t))return note('No wallet addresses found. They look like 0x followed by 40 letters and digits.',true);
+      return act(async()=>{ const r=await api('/bench',{body:{action:'seed',text:t}}); $('bSeedText').value='';
+        note(fmt(r.added)+' added'+(r.dupes?', '+fmt(r.dupes)+' already in the list':'')+(r.full?', '+fmt(r.full)+' over the limit':'')+'. They’re read in the background, a few seconds each.'); return r; }); }
+    if(id==='bSeedRetry')return act(()=>api('/bench',{body:{action:'retry'}}),'Queued again.');
+    if(id==='bSeedDropErr')return act(()=>api('/bench',{body:{action:'remove',which:'err'}}),'Removed.');
+    if(id==='bSeedDropSkip')return act(()=>api('/bench',{body:{action:'remove',which:'skip'}}),'Removed.');
+    if(id==='bSeedDropAll'){ if(!confirm('Remove every seed wallet? Members’ summaries stay.'))return; return act(()=>api('/bench',{body:{action:'remove',which:'all'}}),'All seed wallets removed.'); }
+    if(d.seeddel)return act(()=>api('/bench',{body:{action:'remove',address:d.seeddel}}),'Removed.');
     if(id==='wSave'){ const on=chk('wOn'); if(on===D.wallets.approveWallets)return note('Nothing changed.');
       if(!on&&!confirm('Switch approval off? Every wallet then counts again, including rejected ones. Your decisions are kept for if you switch it back on.'))return;
       return act(()=>put({approveWallets:on}),on?'Approval is on. New wallets now wait for you.':'Approval is off. Every wallet counts.'); }

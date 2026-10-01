@@ -578,6 +578,12 @@ wallet decisions record who made them.
   the one their numbers are read from), **boost XP** (or correct it) with a reason they see, fully unlock,
   their coach allowance, leagues and tiers, award or take back reward badges, a new
   sign-in code, suspend or delete. Members' addresses are visible to you; others see them only if the member chose to show theirs.
+- **Duels** — on/off, which kinds are allowed, the winner's XP and the limits,
+  every duel running or waiting (with cancel) and recent results.
+- **Benchmarks** — "Traders like you": contributors, peer groups and settings
+  (smallest group, when to split groups, whether seed wallets count), a rebuild
+  button, and **seed wallets**: paste any text and every 0x address in it is
+  queued, read from its public fills in the background, and counted.
 - **Leagues** — create, edit and delete leagues (metric, period, tiers, listed,
   invite code, auto-join), and add or remove members.
 - **Competitions** — create them for everyone or one league; delete.
@@ -978,6 +984,85 @@ it reproduces.
 numbers behind the point and a line on what the chart shows. Bar charts by
 market, month, weekday, hour, session and side also give trades, wins and
 losses, win rate, the average trade and the best and worst trade.
+
+### Duels
+
+Members challenge each other 1 on 1 for a week or a month. Anyone in the league
+can be challenged: from their profile (**Challenge to a duel**), by name under
+**Social → Duels**, or from the quick picks there (your partners, people you
+follow and your leagues' members). Money is never staked; XP can be.
+
+- **What you can compete on:**
+  - **Discipline:** the higher average wins. It can require a minimum number of
+    trading days, so nobody wins by not trading.
+  - **Clean days:** more trading days at 70+ wins.
+  - **Last one standing:** the first trading day under 70 loses.
+  - **Journal streak:** more days with every trade journaled and the day reviewed.
+  - **Process XP:** more XP earned from process.
+  - **% return with a drawdown cap.** Going past the cap loses outright. Both
+    sides must share % return. This type is off unless the owner switches it on.
+  - **Verified scoring.** The first three can be scored "verified from fills",
+    which reads the Discipline the server computes from each wallet, instead of
+    what the apps report.
+- **How it runs.** The other side has 48 hours to accept, decline or **suggest
+  changes**, which sends the challenge back with new terms. An accepted duel runs
+  from the next Monday (or the 1st, for a month), so nobody gets a head start.
+  A live card on Today and under Duels shows both scores and each day's mark, and
+  a notification comes when the lead changes.
+- **XP stakes.** A challenge can put XP on the line: both sides put up the same
+  amount and the winner takes the other's (a draw gives both back). A duel can
+  stake at most 500 XP, and at most 25% of a member's XP can ride on their open
+  duels at once (the owner sets both). The other side's limit is checked too.
+  XP won in a duel doesn't count toward a Process XP duel.
+- **Results.** A duel is settled the day after it ends. The winner gets a feed
+  line (naming the loser only if they share milestones too), the stake, and an XP
+  bonus the owner sets (default +100, the same for every duel and only for a duel
+  played to the end). Before the start date either side can **back out** and
+  nothing counts; after it, a **forfeit** gives the other side the win and the
+  stake. In a verified Last one standing duel, switching verification off counts
+  as falling on the first day.
+  Records (won, lost, drawn) show on profiles, with a **Rematch** button.
+- **Limits.** At most 3 open duels per member, 5 new challenges a day, and no new
+  challenge to someone who declined you in the last week. Members switch off
+  **Accept duel challenges** under Profile & privacy.
+- **Admin → Duels:**
+  - Switch duels on or off, choose the allowed types, and set the XP bonus,
+    the limits and XP stakes (on or off, the most per duel, the most of a
+    member's XP at stake).
+  - See every duel running or waiting, and cancel one without a result.
+  - "Duels" is a Pulse feature, free at level 1; set a level under Features to
+    make it an unlock (the server enforces it too).
+
+### Traders like you
+
+Members see how their last 90 days compare with anonymous traders of the same
+style (scalper, day, swing, position), trade size range, experience and activity:
+a simple card in **Pulse → Stats** ("better than 64 of 100 traders like you",
+plus the one habit that most separates the best quarter of their group from them)
+and a detailed table in the journal's **Review**, where they pick which
+dimensions to match and see each group's spread.
+
+- **What's shared.** Each member's app works out a summary of about a dozen
+  numbers (Discipline, revenge trades, % journaled, win rate, profit factor,
+  average win ÷ loss, fees, trades a week, typical hold) and the four ranges, and
+  sends it with its usual sync. No trades, coins, amounts, name or wallet. Returns
+  and drawdown are added only from wallets read on chain. It's **on by default**;
+  members switch it off under Profile & privacy ("Count me in Traders like you"),
+  which removes them from the next build. They can still see the comparison.
+- **Peer groups.** Built at most daily, and within minutes of new summaries.
+  A group needs at least 25 traders (the owner can set 10 or more); below 200
+  contributors only "everyone" and "same style" groups exist. Only each group's
+  deciles leave the server, and a "best quarter" figure only when it covers at
+  least 10 traders. Summaries need 30 closed trades over at least 3 weeks.
+- **Seed wallets.** To get started before you have many members, the owner can
+  bulk-add public Hyperliquid wallets in Admin → Benchmarks. The server reads
+  each one's last 90 days of fills, a few seconds apart, and runs the same
+  summary function the app uses (plus the wallet's 30-day return). Wallets with
+  under 30 trades, or with more than 20,000 fills (bots, market makers), are left
+  out. Counted wallets are re-read weekly; up to 5,000.
+- It's a Pulse feature like the others, **free at level 1**. Set a level under
+  Admin → Features to make it an unlock. The AI coach sees the member's standing
+  (group spreads only) and can use it to make a habit concrete.
 
 ## The Project view
 

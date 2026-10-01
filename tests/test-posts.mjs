@@ -268,7 +268,7 @@ await t('Today’s cards keep your order: a move swaps neighbours, cards added l
   eq(M.pzMove('today', 'tilt', -1), false, 'the first card can’t go higher');
   M.settings.pzLayout.today._order = ['week', 'tilt', 'gone'];
   const o2 = M.pzOrdered('today');
-  eq([o2[0], o2[1], o2.length, o2.includes('gone')], ['week', 'tilt', 13, false]);
+  eq([o2[0], o2[1], o2.length, o2.includes('gone')], ['week', 'tilt', 14, false]); // 14 cards since Duels joined Today
 });
 t('profile pictures are learned from any answer and dropped when removed', () => {
   const SOC = { avs: {} }; const learn = (0, eval)('(SOC=>' + X.grabFn('socLearnAv') + ')')(SOC);

@@ -28,7 +28,12 @@ t('stats are clamped and filtered: bad days, badges and oversized text never get
 });
 t('sharing defaults keep money and the address private', () => {
   const sh = S.sanitizeShare({ usd: true, profile: 'yes' });
-  eq(sh, { profile: true, boards: true, global: false, page: false, feed: true, habits: true, verify: true, ret: false, usd: true, addr: false, mentor: false });
+  eq(sh, { profile: true, boards: true, global: false, page: false, feed: true, habits: true, verify: true, ret: false, usd: true, addr: false, mentor: false, bench: true, duels: true });
+});
+t('“Traders like you” is on for existing members too (an anonymous summary; they can switch it off)', () => {
+  const old = { profile: true, boards: true, feed: true, habits: true, ret: false, usd: false, addr: false, verify: true };
+  eq(S.sanitizeShare({}, old).bench, true);
+  eq(S.sanitizeShare({ bench: false }, old).bench, false);
 });
 t('a sharing key added later (verify) stays off for existing members until they switch it on', () => {
   const old = { profile: true, boards: true, feed: true, habits: true, ret: false, usd: false, addr: false };
