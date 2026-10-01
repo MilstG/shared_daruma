@@ -532,10 +532,11 @@ $('tbody').addEventListener('click',e=>{
     if(_attSrcOk(src)){ const w=window.open(); if(w){ const img=w.document.createElement('img');
       img.src=src; img.style.maxWidth='100%'; w.document.body.appendChild(img); } } return; }
   const star=e.target.closest('.star'); if(star){ setStar(star); return; }
+  const pbr=e.target.closest('.pbrule'); if(pbr){ setTimeout(()=>{ const box=pbr.closest('.pbrules'); pbr.classList.toggle('on',pbr.querySelector('input').checked); pbSaveTicks(box); },0); return; }
   const chk=e.target.closest('.chk'); if(chk){ const id=chk.parentElement.dataset.id,m=chk.querySelector('input').dataset.m;
     const j=ensureJ(id),box=chk.querySelector('input'); setTimeout(()=>{ if(box.checked){if(!j.mistakes.includes(m))j.mistakes.push(m);}else{j.mistakes=j.mistakes.filter(x=>x!==m);} chk.classList.toggle('on',box.checked);
       markJEdit(id); Store.set(J_KEY,journal); },0); return; } // persist immediately — a toggle is an edit, not a draft
-  if(e.target.closest('textarea,input,.rating,.mistakes,.jsave,.attgrid,.attbtn'))return;
+  if(e.target.closest('textarea,input,.rating,.mistakes,.pbrules,.jsave,.attgrid,.attbtn'))return;
   const row=e.target.closest('.trow'); if(row){ const id=row.dataset.id; expandedId=expandedId===id?null:id; renderTable(); }
 });
 function setStar(star){ const id=star.parentElement.dataset.id, r=+star.dataset.r; ensureJ(id).rating=r;

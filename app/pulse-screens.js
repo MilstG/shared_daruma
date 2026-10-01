@@ -145,7 +145,9 @@ async function pzBadgeCardImage(){
 function pzSetups(){ const n={}, canon={};
   for(const id in journal){ const s=journal[id]&&typeof journal[id].setup==='string'?journal[id].setup.trim().replace(/\s+/g,' '):''; if(!s||id.includes(':'))continue;
     const k=s.toLowerCase(); n[k]=(n[k]||0)+1; if(!canon[k])canon[k]=s; }
-  return Object.keys(n).sort((a,b)=>n[b]-n[a]).map(k=>canon[k]); }
+  // playbooks first: their names are the setups with written rules
+  const pbs=(typeof pbList==='function'?pbList():[]).map(p=>p.name), seen=new Set(pbs.map(x=>x.toLowerCase()));
+  return [...pbs,...Object.keys(n).sort((a,b)=>n[b]-n[a]).filter(k=>!seen.has(k)).map(k=>canon[k])]; }
 function pzCanonSetup(s){ s=String(s||'').trim().replace(/\s+/g,' '); if(!s)return ''; const hit=pzSetups().find(x=>x.toLowerCase()===s.toLowerCase()); return hit||s; }
 
 // ---- plan rules: a plan you can check. Each rule is graded from the day's fills at the end of the day ----

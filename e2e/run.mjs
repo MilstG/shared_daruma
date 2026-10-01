@@ -112,6 +112,26 @@ try {
     eq(await page.evaluate(id => journal[id].notes, tradeId), 'e2e: waited for the retest, sized down');
     eq(errors, [], 'no uncaught errors');
   });
+  await t('a playbook gives a trade its checklist, and the Review tab grades it', async () => {
+    await page.click('#demoBtn'); await page.waitForSelector('#tbody tr.trow'); // the reload above left no trades
+    await page.click('#topnav [data-tab="review"]');
+    await page.click('#pbNew');
+    await page.fill('#pbName', 'Breakout retest');
+    await page.fill('#pbRules', 'Wait for the retest\nStop under the range');
+    await page.click('#pbSave');
+    await page.waitForSelector('[data-pbedit]');
+    await page.click('#topnav [data-tab="dash"]');
+    const id = await page.locator('#tbody tr.trow').nth(1).getAttribute('data-id');
+    await page.click(`#tbody tr.trow[data-id="${id}"]`);
+    await page.fill(`[data-j="setup"][data-id="${id}"]`, 'breakout retest');
+    await page.click(`[data-save="${id}"]`);
+    await page.locator(`.pbrules[data-id="${id}"] .pbrule`).first().click();
+    await page.waitForFunction(i => journal[i].pb && journal[i].pb.ok.length === 1, id);
+    await page.click('#topnav [data-tab="review"]');
+    const card = await page.locator('.diag-card', { has: page.locator('[data-pbedit]') }).innerText();
+    ok(/Broke a rule\s*1 trade/.test(card), card);
+    eq(errors, [], 'no uncaught errors');
+  });
   await page.close();
 
   console.log('\nOffline (service worker)');

@@ -299,6 +299,11 @@ tr.trow.expanded .caret{transform:rotate(90deg);display:inline-block}
 .chk{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);padding:4px 9px;font-size:11px;color:var(--muted);cursor:pointer}
 .chk input{display:none}
 .chk.on{border-color:#3A4560;background:var(--panel2);color:var(--text)}
+.pbrules{display:flex;flex-direction:column;gap:4px}
+.field label.pbrule,.pbrule{display:flex;align-items:flex-start;gap:8px;border:1px solid var(--line);padding:7px 9px;margin:0;font-family:var(--prose);font-size:12.5px;letter-spacing:0;text-transform:none;color:var(--muted);cursor:pointer;min-height:34px}
+.field .pbrule input,.pbrule input{width:auto;flex:none;margin:2px 0 0;accent-color:var(--gold)}
+.pbrule.on{border-color:#3A4560;background:var(--panel2);color:var(--text)}
+.pbedit textarea{min-height:110px}
 body.bb .chk.on{border-color:var(--lbl)}
 .jsave{display:flex;align-items:center;gap:10px;margin-top:6px}
 .saved-tag{font-size:11.5px;color:var(--profit);opacity:0;transition:.2s}

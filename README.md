@@ -519,7 +519,11 @@ The main dashboard:
 Every trade row expands into a journal entry:
 
 - **Tags** — freeform, autocompleted from your existing tags.
-- **Setup** — what the trade was (breakout, fade, news…).
+- **Setup** — what the trade was (breakout, fade, news…). Your playbook names
+  are suggested as you type.
+- **Playbook checklist** — when the setup names one of your playbooks, its rules
+  appear as a checklist. Tick the ones you followed: before you enter (open
+  trades have journal rows) or when you review. Ticks save at once.
 - **Rating** — 1–5 stars for execution quality, independent of outcome.
 - **Mistake flags** — chased, oversized, no-stop, revenge, fomo, early-exit…
 - **Planned risk ($)** — what 1R was for this trade. Powers R-multiples
@@ -532,6 +536,18 @@ Every trade row expands into a journal entry:
   dashboard nudge.
 - **Notes** — free text.
 - **Attachments** — paste or drop screenshots; stored in this browser.
+
+**Playbooks** (Review → Playbooks) are your setups with their rules written down:
+a name ("Breakout retest") and one rule per line ("Wait for the retest", "Stop
+under the range"). For each playbook, the section compares trades that kept
+every rule with trades that broke at least one: count, win rate and result per
+trade (in R where the risk is known, else in dollars). It also shows the gap
+between them ("following the playbook is worth +0.6R per trade") and, per rule,
+how often you keep it and what breaking it cost. Only trades with a ticked
+checklist are graded. A rule you add later doesn't grade older trades, and
+rewording a rule starts its history fresh. Gaps built on fewer than 10 trades a
+side are marked *early*. Playbooks sync across devices and ride backups, and
+Pulse offers their names first when you tag a setup.
 
 **Price chart** on the expanded row draws the trade on real candles: every
 entry/add and close fill, average entry/exit, your planned stop and target as

@@ -316,7 +316,9 @@ function journalRow(t,j,R){
         ${t.isOpen||!coachOn()?'':`<div class="coach-q" data-tip="Chosen for what actually happened in this trade (stop, excursion, adds, outcome). Answer it in the notes.">${esc(tradeQuestion(t,j,_excM[t.id]).q)}</div>`}
         <textarea data-j="notes" data-id="${esc(t.id)}" placeholder="${t.isOpen?'Why did you take it? Where are you wrong?':coachOn()?'Answer the question above \u2014 one honest line is enough.':'Why did you take it? How did it play out? What would you repeat or change?'}">${esc(j.notes||'')}</textarea></div>
       <div class="field"><label>Setup / strategy</label>
-        <input type="text" data-j="setup" data-id="${esc(t.id)}" value="${esc(j.setup||'')}" placeholder="e.g. breakout retest, funding fade"></div>
+        <input type="text" data-j="setup" data-id="${esc(t.id)}" value="${esc(j.setup||'')}" placeholder="${pbList().length?'pick a playbook or type a setup':'e.g. breakout retest, funding fade'}" list="pbNames-${esc(t.id)}">
+        <datalist id="pbNames-${esc(t.id)}">${pbList().map(p=>`<option value="${esc(p.name)}">`).join('')}</datalist></div>
+      ${pbChecklistHtml(t,j)}
       <div class="field"><label>Tags — comma separated</label>
         <input type="text" data-j="tags" data-id="${esc(t.id)}" value="${esc((j.tags||[]).join(', '))}" placeholder="a-setup, trend, scalp"></div>
       <div class="field"><label>Planned risk ($) — for this trade's R-multiple</label>
@@ -522,7 +524,7 @@ function renderReview(){
 function renderReviewInner(){
   const el=$('reviewView'); if(!el)return;
   const closed=allTrades.filter(t=>!t.isOpen&&t.closeTime&&viewFilter(t));
-  if(!closed.length){ el.innerHTML=dayJournalSectionHtml()+habitsSectionHtml()+goalsSectionHtml()+'<div class="diag-section"><p class="lead">No closed trades in this view yet.</p></div>'; wireDayJournal(); wireHabits(); wireGoals(); return; }
+  if(!closed.length){ el.innerHTML=dayJournalSectionHtml()+habitsSectionHtml()+goalsSectionHtml()+playbooksSectionHtml()+'<div class="diag-section"><p class="lead">No closed trades in this view yet.</p></div>'; wireDayJournal(); wireHabits(); wireGoals(); wirePlaybooks(); return; }
   let procHtml=''; try{ procHtml=processSectionHtml(); }catch(e){ console.warn('process score failed',e); }
   const now=Date.now(), DAY=86400000;
   const win=(from,to)=>closed.filter(t=>t.closeTime>=from&&t.closeTime<to);
@@ -595,6 +597,7 @@ function renderReviewInner(){
    ${inboxSectionHtml()}
    ${weeklyReviewSectionHtml()}
    ${goalsSectionHtml()}
+   ${playbooksSectionHtml()}
    <div class="diag-section"><h2>This week</h2><div class="diag-grid">${windowCard('Last 7 days',wk,pwk)}${windowCard('Last 30 days',mo,pmo)}</div></div>
    ${procHtml}
    ${costVar}
@@ -611,9 +614,135 @@ function renderReviewInner(){
    </div></div>
    <div class="diag-section"><h2>Focus for next week</h2><ol class="recs">${focus.map(f=>`<li>${f}</li>`).join('')}</ol></div>
    ${nfLeaderboardHtml(periodTrades().filter(t=>!t.isOpen))}`;
-  wireDayJournal(); wireHabits(); wireInbox(); wireWeeklyReview(); wireGoals(); wireProgress();
+  wireDayJournal(); wireHabits(); wireInbox(); wireWeeklyReview(); wireGoals(); wirePlaybooks(); wireProgress();
   loadCoachLetter();
 }
+/* ============================ playbooks ============================ */
+// A playbook is a setup with its written rules ("Breakout: wait for the retest; stop under
+// the range; no entries in the first 15 minutes"). A trade whose setup names a playbook gets
+// that checklist in its journal: tick it before you enter (open trades) or when you review.
+// The Review tab then compares trades that kept every rule with trades that broke one, rule
+// by rule: does following your own rules pay? Playbooks live in settings (synced, merged per
+// playbook, deletions as dated tombstones); ticks live in the trade's journal entry as
+// j.pb = {id, ok:[rule ids ticked], of:[rule ids on the checklist then], at}.
+const PB_MAX=30, PB_RULES_MAX=15;
+function pbNorm(list, keepDeleted){
+  const out=[], seen=new Set();
+  for(const p of (Array.isArray(list)?list:[])){
+    if(!p||typeof p.id!=='string'||!p.id||seen.has(p.id))continue; seen.add(p.id);
+    if(p.del){ if(keepDeleted)out.push({id:p.id.slice(0,24),del:true,at:+p.at||0}); continue; }
+    const name=String(p.name||'').trim().slice(0,60); if(!name)continue;
+    const rules=(Array.isArray(p.rules)?p.rules:[]).filter(r=>r&&typeof r.id==='string'&&String(r.text||'').trim())
+      .slice(0,15).map(r=>({id:r.id.slice(0,24),text:String(r.text).trim().slice(0,160)})); // 15 = PB_RULES_MAX (self-contained: sync code calls this)
+    out.push({id:p.id.slice(0,24),name,rules,at:+p.at||0,createdAt:+p.createdAt||+p.at||0});
+  }
+  return out.slice(-90); // PB_MAX × 3, room for tombstones
+}
+function pbList(){ return pbNorm(settings.playbooks).slice(-PB_MAX); }
+function pbKey(s){ return String(s||'').trim().toLowerCase().replace(/\s+/g,' '); }
+function playbookFor(setup, playbooks){ const k=pbKey(setup); return k?(playbooks||[]).find(p=>!p.del&&pbKey(p.name)===k)||null:null; }
+// rules typed one per line -> rules; a line that didn't change keeps its id, so past ticks still count
+function pbRulesFromText(text, prev, mkId){
+  mkId=mkId||(()=>'r'+Math.random().toString(36).slice(2,9));
+  const old=new Map((prev||[]).map(r=>[pbKey(r.text),r.id])), used=new Set();
+  return String(text||'').split('\n').map(x=>x.replace(/^\s*(?:[-*•]|\d+[.)])\s*/,'').trim()).filter(Boolean).slice(0,15).map(t=>{ // 15 = PB_RULES_MAX
+    let id=old.get(pbKey(t)); if(!id||used.has(id))id=mkId(); used.add(id); return {id,text:t.slice(0,160)}; });
+}
+// Pure. Per playbook: its trades; of those with a filled-in checklist, the ones that kept every
+// rule vs broke at least one; and per rule, the average result when kept vs broken. A rule only
+// counts on trades whose checklist had it (rules added later don't grade older trades).
+// Results come in R (rOf) where the risk is known, and in $ always.
+function playbookStats(closed, J, playbooks, rOf){
+  rOf=rOf||(()=>null);
+  const agg=list=>{ const n=list.length; if(!n)return {n:0,net:0,exp:null,wr:null,avgR:null,nR:0};
+    const net=list.reduce((s,t)=>s+t.net,0), w=list.filter(t=>isWin(t.net)).length, l=list.filter(t=>isLoss(t.net)).length;
+    const rs=list.map(rOf).filter(x=>x!=null&&isFinite(x));
+    return {n,net,exp:net/n,wr:w+l?w/(w+l):null,avgR:rs.length?rs.reduce((a,b)=>a+b,0)/rs.length:null,nR:rs.length}; };
+  return (playbooks||[]).filter(p=>!p.del).map(p=>{
+    const mine=closed.filter(t=>{ const j=J[t.id]; return j&&playbookFor(j.setup,[p]); });
+    const ticks=t=>{ const pb=J[t.id].pb; return pb&&pb.id===p.id&&Array.isArray(pb.ok)?pb:null; };
+    const checked=mine.filter(ticks);
+    const onList=(t,r)=>{ const pb=ticks(t); return !Array.isArray(pb.of)||pb.of.includes(r.id); };
+    const kept=(t,r)=>ticks(t).ok.includes(r.id);
+    const allKept=t=>p.rules.every(r=>!onList(t,r)||kept(t,r));
+    const rules=p.rules.map(r=>{ const graded=checked.filter(t=>onList(t,r)), k=graded.filter(t=>kept(t,r)), b=graded.filter(t=>!kept(t,r));
+      return {id:r.id,text:r.text,graded:graded.length,keptRate:graded.length?k.length/graded.length:null,kept:agg(k),broke:agg(b)}; });
+    return {id:p.id,name:p.name,ruleN:p.rules.length,n:mine.length,checked:checked.length,all:agg(mine),
+      kept:agg(checked.filter(allKept)),broke:agg(checked.filter(t=>!allKept(t))),rules};
+  });
+}
+// the cost of breaking a rule, in R when both sides have R for most trades, else in $ per trade
+function pbGap(k, b){
+  if(!k.n||!b.n)return null;
+  if(k.avgR!=null&&b.avgR!=null&&k.nR>=k.n/2&&b.nR>=b.n/2)return {v:k.avgR-b.avgR,unit:'R'};
+  return {v:k.exp-b.exp,unit:'$'};
+}
+// the checklist inside a trade's journal row
+function pbChecklistHtml(t,j){
+  const p=playbookFor(j.setup,pbList()); if(!p)return '';
+  if(!p.rules.length)return `<div class="field"><label>${esc(p.name)} playbook</label><p class="mini-note">This playbook has no rules yet — add them under Review → Playbooks.</p></div>`;
+  const pb=j.pb&&j.pb.id===p.id?j.pb:null, ok=new Set(pb?pb.ok:[]);
+  return `<div class="field"><label data-tip="Tick each rule you followed on this trade${t.isOpen?' — before you enter is best':''}. Unticked rules count as broken once any box here has been saved. Review → Playbooks compares trades that kept every rule with trades that broke one.">${esc(p.name)} playbook${pb?` · ${p.rules.filter(r=>ok.has(r.id)).length}/${p.rules.length} kept`:' · not checked yet'}</label>
+    <div class="pbrules" data-pb="${esc(p.id)}" data-id="${esc(t.id)}">${p.rules.map(r=>`<label class="pbrule${ok.has(r.id)?' on':''}"><input type="checkbox" data-pbr="${esc(r.id)}"${ok.has(r.id)?' checked':''}><span>${esc(r.text)}</span></label>`).join('')}</div></div>`;
+}
+// a tick is an edit, saved at once (like the mistake flags)
+function pbSaveTicks(box){
+  const id=box.dataset.id, p=pbList().find(x=>x.id===box.dataset.pb); if(!p)return;
+  const j=ensureJ(id), ok=[...box.querySelectorAll('input[data-pbr]')].filter(i=>i.checked).map(i=>i.dataset.pbr);
+  j.pb={id:p.id,ok,of:p.rules.map(r=>r.id),at:Date.now()};
+  const lab=box.previousElementSibling; if(lab)lab.textContent=p.name+' playbook · '+ok.length+'/'+p.rules.length+' kept';
+  markJEdit(id); Store.set(J_KEY,journal);
+}
+let _pbEdit=null; // playbook id being edited, 'new', or null
+function playbooksSectionHtml(){
+  const list=pbList();
+  const closed=allTrades.filter(t=>!t.isOpen&&t.closeTime&&viewFilter(t));
+  const stats=playbookStats(closed,journal,list,rFor);
+  const mrow=(l,v,tip)=>`<div class="metric-row"${tip?` data-tip="${esc(tip)}"`:''}><span class="ml">${l}</span><span class="mv">${v}</span></div>`;
+  const pct=x=>x==null?'—':Math.round(x*100)+'%';
+  const res=a=>!a.n?'—':`${a.n} trade${a.n===1?'':'s'} · win ${pct(a.wr)} · `+(a.avgR!=null&&a.nR>=a.n/2?`<span class="${cls(a.avgR)}">${a.avgR>=0?'+':''}${a.avgR.toFixed(2)}R</span>/trade`:`<span class="${cls(a.exp)}">${fmtUsd(a.exp)}</span>/trade`);
+  const early=(a,b)=>Math.min(a.n,b.n)<10?` <span style="color:var(--faint)" data-tip="Fewer than 10 trades on one side: this can flip with a few more trades.">· early (${Math.min(a.n,b.n)} vs ${Math.max(a.n,b.n)})</span>`:'';
+  const gapTxt=g=>!g?'':g.unit==='R'?`${g.v>=0?'+':''}${g.v.toFixed(2)}R`:`${g.v>=0?'+':''}${fmtUsd(g.v)}`;
+  const editor=p=>`<div class="diag-card pbedit"><h3>${p?'Edit playbook':'New playbook'}</h3>
+      <div class="field"><label for="pbName">Setup name</label><input type="text" id="pbName" maxlength="60" value="${esc(p?p.name:'')}" placeholder="e.g. Breakout retest"></div>
+      <div class="field"><label for="pbRules">Rules — one per line</label><textarea id="pbRules" placeholder="Wait for the retest of the range high&#10;Stop under the range low&#10;Risk no more than 1R&#10;No entries in the first 15 minutes">${esc(p?p.rules.map(r=>r.text).join('\n'):'')}</textarea></div>
+      <p class="mini-note">A trade gets this checklist when its Setup field says exactly this name. Rewording a rule starts it fresh; unchanged lines keep their history.</p>
+      <button class="btn" id="pbSave" data-pbid="${esc(p?p.id:'')}">Save playbook</button> <button class="btn ghost" id="pbCancel">Cancel</button></div>`;
+  const cards=stats.map(s=>{ const p=list.find(x=>x.id===s.id); if(_pbEdit===s.id)return editor(p);
+    const g=pbGap(s.kept,s.broke);
+    const rules=s.rules.map(r=>({r,g:pbGap(r.kept,r.broke)})).sort((a,b)=>(b.g?Math.abs(b.g.v):-1)-(a.g?Math.abs(a.g.v):-1));
+    return `<div class="diag-card"><h3>${esc(s.name)} <span style="font-size:11px;color:var(--faint);font-weight:400">${s.ruleN} rule${s.ruleN===1?'':'s'} · ${s.n} trade${s.n===1?'':'s'}</span></h3>
+      ${s.checked?`${mrow('Kept every rule',res(s.kept),'Trades whose checklist had every rule ticked.')}
+      ${mrow('Broke a rule',res(s.broke),'Trades with at least one rule left unticked.')}
+      ${g?mrow('Following the playbook is worth',`<b class="${cls(g.v)}">${gapTxt(g)}</b> per trade${early(s.kept,s.broke)}`,'Average result when every rule was kept minus when one was broken. Small samples swing a lot — read it as a direction until each side has 20+ trades.'):''}
+      <div style="margin-top:8px;border-top:1px solid var(--line);padding-top:6px">${rules.map(({r,g})=>mrow(esc(r.text),r.graded?`kept ${pct(r.keptRate)}${!g?'':g.v>=0?` · breaking it cost <b class="neg-t">${gapTxt(g).replace('+','')}</b>/trade`:` · broken trades did <b class="pos-t">${gapTxt({v:-g.v,unit:g.unit})}</b> better`}${g?early(r.kept,r.broke):''}`:'<span style="color:var(--faint)">not graded yet</span>','Of the '+r.graded+' checked trades that had this rule: how often you kept it, and the average result when kept vs broken.')).join('')}</div>`
+      :`<p class="mini-note">${s.n?`${s.n} trade${s.n===1?' has':'s have'} this setup, none checked yet. Open one in the trade list and tick the rules you followed.`:'No trades with this setup yet. Type “'+esc(s.name)+'” in a trade’s Setup field to get the checklist.'}</p>`}
+      ${s.checked&&s.checked<s.n?`<p class="mini-note">${s.n-s.checked} of ${s.n} trades with this setup aren’t checked yet.</p>`:''}
+      <div style="margin-top:8px"><button class="btn ghost" data-pbedit="${esc(s.id)}">Edit</button> <button class="btn ghost" data-pbdel="${esc(s.id)}">Delete</button></div></div>`; }).join('');
+  return `<div class="diag-section"><h2>Playbooks <span style="font-size:11px;color:var(--faint);font-weight:400">your setups' rules, and what keeping them is worth · current view</span></h2>
+    <p class="lead">Write the rules for each setup once. Every trade with that setup gets a checklist; tick what you followed${list.length?'':' — then this section shows whether following your own rules pays'}.</p>
+    <div class="diag-grid">${cards}${_pbEdit==='new'?editor(null):''}</div>
+    ${_pbEdit===null&&list.length<PB_MAX?'<button class="btn ghost" id="pbNew" style="margin-top:8px">+ New playbook</button>':''}</div>`;
+}
+function wirePlaybooks(){
+  const root=$('reviewView'); if(!root)return;
+  const nb=$('pbNew'); if(nb)nb.onclick=()=>{ _pbEdit='new'; renderReview(); setTimeout(()=>{ const n=$('pbName'); if(n)n.focus(); },0); };
+  const cancel=$('pbCancel'); if(cancel)cancel.onclick=()=>{ _pbEdit=null; renderReview(); };
+  const save=$('pbSave'); if(save)save.onclick=async()=>{
+    const name=$('pbName').value.trim(); if(!name){ setErr('A playbook needs a setup name.'); return; }
+    const all=pbNorm(settings.playbooks,true), id=save.dataset.pbid, prev=all.find(p=>p.id===id&&!p.del);
+    if(pbList().some(p=>p.id!==id&&pbKey(p.name)===pbKey(name))){ setErr('There is already a playbook called “'+name+'”.'); return; }
+    const now=Date.now(), p={id:prev?prev.id:'pb'+now.toString(36)+Math.random().toString(36).slice(2,5),name,rules:pbRulesFromText($('pbRules').value,prev&&prev.rules),at:now,createdAt:prev?prev.createdAt:now};
+    settings.playbooks=[...all.filter(x=>x.id!==p.id),p];
+    _pbEdit=null; await Store.set(S_KEY,settings); renderReview(); renderTable();
+  };
+  root.querySelectorAll('[data-pbedit]').forEach(b=>b.onclick=()=>{ _pbEdit=b.dataset.pbedit; renderReview(); });
+  root.querySelectorAll('[data-pbdel]').forEach(b=>b.onclick=async()=>{
+    const p=pbList().find(x=>x.id===b.dataset.pbdel); if(!p||!confirm('Delete the “'+p.name+'” playbook? Trades keep their setup name; their checklist ticks stop counting.'))return;
+    settings.playbooks=[...pbNorm(settings.playbooks,true).filter(x=>x.id!==p.id),{id:p.id,del:true,at:Date.now()}];
+    await Store.set(S_KEY,settings); renderReview(); renderTable(); });
+}
+
 /* ============================ monthly goals ============================ */
 // This-month progress vs self-set goals: realized net vs target (with straight-line pace
 // and projection), worst intramonth drawdown vs the acceptable max, trades/week vs the
