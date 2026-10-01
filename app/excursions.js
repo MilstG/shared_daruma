@@ -312,6 +312,7 @@ function renderExcResults(c){
         callbacks:{label:ctx=>' dipped '+ctx.parsed.x.toFixed(2)+'% → ended '+(ctx.parsed.y>=0?'+':'')+ctx.parsed.y.toFixed(2)+'%'}}},
       scales:scales({title:{display:true,text:'worst dip during the trade (% of entry)',color:'#8b93a7',font:{size:11}}}),
       interaction:{intersect:false,mode:'nearest'}}});
+  explain(_diagCharts.exc,'One dot per trade: across, the worst it went against you; up, how it ended. Dots right of the dashed line dipped deeper than 90% of your winners ever did.');
 }
 // Re-run on demand: closed trades reload from saved measurements (fast); open positions
 // get a fresh entry-to-now measurement — the monitor no longer goes stale while a
@@ -496,6 +497,7 @@ async function openReplay(id,btn){
       y:{min:ylo,max:yhi,beginAtZero:false,grid:{color:GRID,drawTicks:false},border:{display:false},
         ticks:{callback:v=>{const a=Math.abs(v);return v.toLocaleString(undefined,{maximumFractionDigits:a>=1000?2:a>=1?4:6});}}}},
     interaction:{intersect:false,mode:'nearest'}}});
+  explain(_replayChart,'The market while this trade was on: candles are price, triangles your fills, dashed lines your average entry and exit.');
   replayWire(box,t,{candles,wick,wickBg,body,bodyBg,marks,EDS,MDS,XDS,cIdx,fpx});
 }
 
@@ -623,6 +625,7 @@ async function renderBenchmark(closed){
         ticks:{maxTicksLimit:8,callback:v=>{const d=new Date(v);return (d.getMonth()+1)+'/'+d.getDate();}}},
         y:{grid:{color:GRID,drawTicks:false},border:{display:false},ticks:{callback:v=>v+'%'}}},
       interaction:{intersect:false,mode:'nearest'}}});
+    explain(_diagCharts.bench,'Your running total as a % of your average position size, against simply holding BTC or HYPE over the same dates.');
   }catch(e){ /* benchmark is a bonus — never break the diagnostic over it */ }
 }
 
@@ -813,5 +816,6 @@ function renderMinerResults(r,deep,basis){ basis=basis||'usd';
         scales:{x:{ticks:{color:TXT,maxTicksLimit:4,maxRotation:0,font:{size:10}},grid:{display:false}},
                 y:{ticks:{color:TXT,font:{size:10},callback:v=>fmtA(v)},grid:{color:GRID}}}}});
     ch.$cp=cpX; charts.regime=ch;
+    explain(ch,'Your average trade over a rolling window. The gold dashed line marks where your results changed character.');
   }
 }

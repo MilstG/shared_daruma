@@ -31,7 +31,7 @@ function pzProgressHtml(D){
   const hero=`<section class="pz-card pz-hero pz-span">
     <div class="pz-hero-ring">${pzRing(L.level,L.max?1:L.into/L.need,PZ_COL.xp,{size:132,cap:'Level'})}</div>
     <div class="pz-hero-main"><span class="pz-lbl" style="color:${PZ_COL.xp}">Level ${L.level}</span><h2 class="pz-hero-t">${esc(L.title)}</h2>
-      <div class="pz-xpbar" role="progressbar" aria-label="XP to next level" aria-valuemin="0" aria-valuemax="${L.need}" aria-valuenow="${L.into}"><i style="width:${L.max?100:Math.round(100*L.into/L.need)}%"></i></div>
+      <div class="pz-xpbar" role="progressbar" aria-label="XP to next level" aria-valuemin="0" aria-valuemax="${L.need}" aria-valuenow="${L.into}" data-pz-tip="${esc(L.max?'Top level reached':L.into.toLocaleString()+' of '+L.need.toLocaleString()+' XP into level '+L.level+'\n'+(L.need-L.into).toLocaleString()+' XP to '+pzLevelTitle(L.level+1)+'. XP comes from process, never profit.')}"><i style="width:${L.max?100:Math.round(100*L.into/L.need)}%"></i></div>
       <p class="pz-sub" style="font-size:13px">${L.xp.toLocaleString()} XP · ${L.max?'top level reached':(L.need-L.into).toLocaleString()+' XP to '+esc(pzLevelTitle(L.level+1))}</p>
     </div></section>`;
   const xpCard=`<section class="pz-card pz-kv"><div class="pz-kvrow"><b class="pz-kvh">Where this week’s XP came from</b><span class="pz-sub" style="font-size:12px">${wkTot.toLocaleString()} XP</span></div>
@@ -499,7 +499,7 @@ function socLeagueInfoHtml(D, id){
 // ---- accountability partners: up to three, each sees the other's streak, scores and slips ----
 const SOC_SLIP_SHORT={revenge:'revenge entry',afterTwo:'traded on after two losses',sizeUp:'sized up after a loss',addLoser:'added to a loser',overtrade:'overtraded',heldLoser:'held a loser'};
 function socDayDots(days){
-  return `<span class="pz-pdots" aria-hidden="true">${(days||[]).slice(-14).map(d=>`<i title="${esc(dayLabel(d.k))}: ${d.s}${d.f&&d.f.length?' · '+esc(d.f.map(k=>SOC_SLIP_SHORT[k]||k).join(', ')):''}" style="background:${PZ_COL[pzBand(d.s)]}${d.f&&d.f.length?';box-shadow:0 0 0 2px #FF7A59':''}"></i>`).join('')}</span>`;
+  return `<span class="pz-pdots" aria-hidden="true">${(days||[]).slice(-14).map(d=>`<i data-pz-tip="${esc(dayLabel(d.k))} · discipline ${d.s}${d.f&&d.f.length?' · '+esc(d.f.map(k=>SOC_SLIP_SHORT[k]||k).join(', ')):''}" style="background:${PZ_COL[pzBand(d.s)]}${d.f&&d.f.length?';box-shadow:0 0 0 2px #FF7A59':''}"></i>`).join('')}</span>`;
 }
 function socPartnersHtml(){
   if(!SOC.me)return '';

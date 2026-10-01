@@ -906,7 +906,27 @@ the tripwire also fires a desktop notification when the tab is backgrounded.
 ### Routine vs results
 
 **Review → Routine vs results** answers the long-run question: does your
-discipline actually pay? Over your whole history in the current view it shows:
+discipline actually pay? It opens with **Habits vs results · day by day**,
+which shows from your third trading day:
+
+- **A scatter, one dot per trading day.** Across is your *habit score*: the
+  share of your habits you kept that day. Up and down is the day's result in
+  $ P&L, % return on notional or R (a toggle). A dashed trend line runs through
+  the dots, and from 8 days a rank correlation says in plain words whether days
+  with more habits kept come with better results. Hover or tap a dot for the
+  day, the habits it missed and its trades.
+- **Average day by habit score.** Days grouped into bands (under 50, 50–69,
+  70–89, 90–100), with the average result in each band.
+- **Which habits pay.** For each habit, the average day when you kept it minus
+  the average day when you didn't.
+
+The habit score only counts the habits you actually use. A habit you've never
+kept (say, the end-of-day review) isn't held against every day. Stops honored
+and the loss limit stay out of the score, because they can only fail on a
+losing day. Pulse shows the same chart under **Stats → Habits vs results**, for
+the range you pick.
+
+Below that, over your whole history in the current view:
 
 - **Week by week.** Average result per trade as bars, with your routine score
   as a line.
@@ -938,10 +958,15 @@ Two choices keep it honest:
 - **Results are in R** (or % return on notional when most trades have no
   planned risk), so trading bigger never counts as trading better.
 
-It needs 8 weeks of trading before it claims anything, and it says so when your
+The week-by-week part needs 8 weeks of trading before it claims anything, and it says so when your
 score never varied. Pulse's "Does discipline pay?" card adds a one-line
 whole-history summary with the habit that pays most. Every number is seeded, so
 it reproduces.
+
+**Every chart explains itself.** Hover any chart (tap on a phone) for the
+numbers behind the point and a line on what the chart shows. Bar charts by
+market, month, weekday, hour, session and side also give trades, wins and
+losses, win rate, the average trade and the best and worst trade.
 
 ## The Project view
 

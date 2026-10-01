@@ -21,10 +21,11 @@ Object.assign(ctx, {
   _be: 50, isWin: n => n > 50, isLoss: n => n < -50, isJournaled: j => !!(j && (j.notes || j.setup || j.rating)),
   _avg: a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0,
   dispMarket: x => x, dcoin: t => t.coin, dayLabel: k => k, isoWeekOfKey: k => k.slice(0, 7), usdPlain: v => '$' + Math.abs(v),
+  signedPlain: v => (v < 0 ? '−$' : '+$') + Math.abs(v), PZ_BEH: {},
 });
 vm.createContext(ctx);
 vm.runInContext(grabConst('PROCESS_W') + '\n' + grabConst('pzReadinessManual') + '\n' + ['nfMedian', 'pzReadiness', 'pzScoreOf', 'pzRisk', 'pzTrendStats',
-  'pzReadinessLink', 'pzBars', 'pzHasPlan', 'pzBonusItems', 'pzPlain', 'pzRulesBroken', 'pzCoachLine'].map(grabFn).join('\n'), ctx);
+  'pzReadinessLink', 'pzBars', 'pzDayTip', 'pzHasPlan', 'pzBonusItems', 'pzPlain', 'pzRulesBroken', 'pzCoachLine'].map(grabFn).join('\n'), ctx);
 
 const DAY = 86400000, T0 = Date.UTC(2026, 8, 30, 12);
 const dayOf = ms => new Date(ms).toISOString().slice(0, 10);

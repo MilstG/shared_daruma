@@ -195,8 +195,10 @@ function wireExtraDiag(closed,allv,s){
   const fee=feeDragByMonth(closed);
   if(fee.length&&$('diagFeeMonth')){ const lab=fee.map(r=>r.k.slice(2)), d=fee.map(r=>r.drag!=null?r.drag*100:0);
     _diagCharts.feeMonth=new Chart($('diagFeeMonth'),{type:'bar',data:{labels:lab,datasets:[{data:d,backgroundColor:d.map(v=>v>25?'rgba(244,88,106,.8)':'rgba(201,168,92,.75)'),borderRadius:4}]},
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+c.parsed.y.toFixed(0)+'% of gross profit'}}},
-        scales:{x:{grid:{display:false},border:{display:false},ticks:{maxRotation:45,minRotation:45,font:{size:9}}},y:{grid:{color:GRID,drawTicks:false},border:{display:false},ticks:{callback:v=>v+'%'}}}}}); }
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' Costs: '+c.parsed.y.toFixed(0)+'% of gross profit',
+        afterLabel:c=>{ const r=fee[c.dataIndex]; return [' Fees and funding '+fmtUsd(-r.cost),' Gross profit '+fmtUsd(r.gross)]; }}}},
+        scales:{x:{grid:{display:false},border:{display:false},ticks:{maxRotation:45,minRotation:45,font:{size:9}}},y:{grid:{color:GRID,drawTicks:false},border:{display:false},ticks:{callback:v=>v+'%'}}}}});
+    explain(_diagCharts.feeMonth,'How much of each month’s gross profit went to fees and funding. Red bars: over a quarter of it.'); }
   // sizing calculator
   const calc=()=>{ const acct=parseFloat($('szAcct')&&$('szAcct').value), risk=parseFloat($('szRisk')&&$('szRisk').value), stop=parseFloat($('szStop')&&$('szStop').value);
     if(!$('szRiskOut'))return; const rDollar=(acct>0&&risk>0)?acct*risk/100:null;
@@ -686,6 +688,7 @@ function renderReviewInner(){
    ${nfLeaderboardHtml(periodTrades().filter(t=>!t.isOpen))}`;
   wireDayJournal(); wireHabits(); wireInbox(); wireWeeklyReview(); wireGoals(); wirePlaybooks(); wireProgress();
   try{ drawRoutineCharts(); }catch(e){ console.warn('routine charts',e); }
+  try{ drawHabitCharts(); }catch(e){ console.warn('habit charts',e); }
   loadCoachLetter();
 }
 /* ============================ playbooks ============================ */
@@ -837,11 +840,12 @@ function routineSectionHtml(){
   const u=r.unit, fmt=v=>v==null?'—':(v>=0?'+':'')+(u==='R'?v.toFixed(2)+'R':v.toFixed(2)+'%');
   const mrow=(l,v,tip)=>`<div class="metric-row"${tip?` data-tip="${esc(tip)}"`:''}><span class="ml">${l}</span><span class="mv">${v}</span></div>`;
   const head=`<div class="diag-section"><h2>Routine vs results <span style="font-size:11px;color:var(--faint);font-weight:400">the long view · does your discipline pay? · current view</span></h2>`;
-  if(r.weeks.length<r.need.weeks)return head+`<p class="lead">This needs at least ${r.need.weeks} weeks with trades to say anything honest — you have ${r.weeks.length}. Keep trading your process; the link (or the lack of one) shows up here once there’s enough history.</p>
-    <div class="rvbar" role="progressbar" aria-valuemin="0" aria-valuemax="${r.need.weeks}" aria-valuenow="${r.weeks.length}"><i style="width:${Math.round(100*r.weeks.length/r.need.weeks)}%"></i></div></div>`;
+  const hl=`<div id="hlSec">${hlSectionInner()}</div>`;
+  if(r.weeks.length<r.need.weeks)return head+hl+`<p class="lead" style="margin-top:14px">The week-by-week test below needs at least ${r.need.weeks} weeks with trades to say anything honest — you have ${r.weeks.length}. Keep trading your process; the link (or the lack of one) shows up here once there’s enough history.</p>
+    <div class="rvbar" role="progressbar" aria-valuemin="0" aria-valuemax="${r.need.weeks}" aria-valuenow="${r.weeks.length}" data-tip="${r.weeks.length} of ${r.need.weeks} weeks with trades"><i style="width:${Math.round(100*r.weeks.length/r.need.weeks)}%"></i></div></div>`;
   const L=rvLinkWords(r.corr), N=rvLinkWords(r.lead), dv=r.dividend;
   const flat=!r.corr&&r.weeks.every(w=>Math.abs(w.score-r.weeks[0].score)<1e-9);
-  if(flat)return head+`<p class="lead">Your routine score was ${Math.round(r.weeks[0].score)} every week of this history (${r.weeks.length} weeks) — no revenge entries, sizing up after losses, adds to losers or overtrading${r.weeks[0].score<100?' changed from week to week':''}. With no variation there’s nothing to compare yet; this fills in as soon as some weeks go differently.</p></div>`;
+  if(flat)return head+hl+`<p class="lead">Your routine score was ${Math.round(r.weeks[0].score)} every week of this history (${r.weeks.length} weeks) — no revenge entries, sizing up after losses, adds to losers or overtrading${r.weeks[0].score<100?' changed from week to week':''}. With no variation there’s nothing to compare yet; this fills in as soon as some weeks go differently.</p></div>`;
   const hRows=r.habits.filter(h=>h.kept.n>0&&h.missed.n>0);
   const headline=dv?(dv.lo>0?`On your disciplined days (score 70+) you made <b class="pos-t">${fmt(dv.diff)}</b> more per trade than on the rest — and that holds up (90% range ${fmt(dv.lo)} to ${fmt(dv.hi)}).`
       :dv.hi<0?`Surprisingly, your disciplined days did <b class="neg-t">${fmt(dv.diff)}</b> per trade versus the rest (90% range ${fmt(dv.lo)} to ${fmt(dv.hi)}). Worth a look at what “disciplined” trades you’re taking.`
@@ -849,7 +853,7 @@ function routineSectionHtml(){
     :'Not enough trades on both kinds of day yet to compare them.';
   const sig=h=>h.mechanical?'<span style="color:var(--faint)">follows from the result</span>':h.q!=null&&h.q<0.1?'<b>holds up</b>':h.p!=null&&h.p<0.05?'suggestive':h.p!=null?'<span style="color:var(--faint)">could be chance</span>':'<span style="color:var(--faint)">too few days</span>';
   const roll=r.rolling.length>=2?r.rolling:null;
-  return head+`<p class="lead">${headline}</p>
+  return head+hl+`<h3 style="margin:18px 0 6px;font-size:13px">Week by week · the long view</h3><p class="lead">${headline}</p>
     <div class="diag-grid">
       <div class="diag-card"><h3 data-tip="Bars: average result per trade each week. Line: that week’s routine score (0–100, right axis) — the share of trades with no revenge entry, sizing up after a loss, adding to a loser or overtrading.">Week by week</h3><div class="chart-box" style="height:220px"><canvas id="rvWeeks"></canvas></div></div>
       <div class="diag-card"><h3 data-tip="Cumulative result of the trades taken on days scoring 70+ versus all other days, in date order. Two separate running totals.">Disciplined days vs the rest</h3><div class="chart-box" style="height:220px"><canvas id="rvCurves"></canvas></div></div>
@@ -871,6 +875,76 @@ function routineSectionHtml(){
         </tbody></table></div></div>
     </div></div>`;
 }
+// ---- habits vs results, day by day: the scatter, the score bands and which habits pay ----
+// Shown from three trading days (the week-by-week test above waits for eight weeks). Same model
+// as Pulse → Stats → Habits vs results (habitLink), on this view's whole history.
+let _hlUnit='$', _hlMemo={key:null,v:null}, _hlCharts=[];
+function hlModel(){
+  const g=gameContext(), ctx=coachContext(), key=_coachMemo.key+'|'+g.days.length+'|'+_hlUnit+'|'+_jrev;
+  if(_hlMemo.key===key)return _hlMemo.v;
+  const entryOf=k=>{ const e=journal['day:'+k]; return {checkin:typeof pzReadinessManual==='function'&&pzReadinessManual(e)!=null, review:!!(e&&e.eod&&e.eod.at)}; };
+  const v=habitLink(g.days,ctx.byDay,{unit:_hlUnit,rOf:rFor,pctOf:retPct,entryOf,seed:_hashSeed('hl|'+view)});
+  _hlMemo={key,v}; return v;
+}
+const hlFmt=(v,u)=>v==null||!isFinite(v)?'—':u==='$'?fmtUsd(v):u==='%'?(v>=0?'+':'')+v.toFixed(2)+'%':(v>=0?'+':'')+v.toFixed(2)+'R';
+const HL_UNIT_WORDS={'$':'dollars of net P&L','%':'% return on the size traded (summed per day)','R':'R — result ÷ planned risk (summed per day)'};
+function hlSectionInner(){
+  let L; try{ L=hlModel(); }catch(e){ console.warn('habits vs results',e); return ''; }
+  const u=L.unit;
+  const tog=L.units.length>1?`<span class="viewtog" id="hlUnit" role="group" aria-label="Result in">${L.units.map(k=>`<button class="${k===u?'on':''}" data-u="${k}" data-tip="Results in ${esc(HL_UNIT_WORDS[k])}">${k==='$'?'$ P&amp;L':k}</button>`).join('')}</span>`:'';
+  const top=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 8px"><h3 style="margin:0;font-size:13px" data-tip="Each trading day is a dot: across, your habit score (the share of your habits you kept that day: plan, rules, stops written, check-in, review, journaling, and no revenge entry, sizing up after a loss, adding to a loser or overtrading); up and down, what the day made. Dots drifting up to the right mean your habits pay.">Habits vs results · day by day</h3>${tog}</div>`;
+  if(L.points.length<L.need.days)return top+`<p class="lead">Each trading day becomes a dot — how many of your habits you kept against what you made. Needs ${L.need.days} trading days; you have ${L.points.length}.</p>`;
+  const W=hlLinkWords(L.corr), gd=L.good, rs=L.rest;
+  const lead=!L.spread?`Every day has the same habit score (${L.points[0].score}) so far — nothing to compare yet. As some days go better or worse on your habits, the dots spread out and the link shows. `:(gd.n&&rs.n?`Days you kept 70%+ of your habits averaged <b class="${cls(gd.avg)}">${hlFmt(gd.avg,u)}</b> (${gd.n} days); the rest averaged <b class="${cls(rs.avg)}">${hlFmt(rs.avg,u)}</b> (${rs.n} days). `:'')
+    +(!L.spread?'':W?`<b>${esc(W.text)}</b> <span style="color:var(--faint)" data-tip="Spearman rank correlation across ${L.corr.n} days, with a permutation p-value (1,000 shuffles). ρ above 0: days with more habits kept come with better results. p under 0.05: unlikely to be chance.">ρ ${L.corr.rho.toFixed(2)} · p ${L.corr.p.toFixed(3)} · ${L.corr.n} days</span>`
+       :`<span style="color:var(--faint)">${L.points.length} days so far — the link is stated from ${L.need.corr}.</span>`);
+  return top+`<p class="lead">${lead}</p>
+    <div class="diag-grid">
+      <div class="diag-card"><h3 data-tip="One dot per trading day. Across: habit score (0–100). Up and down: the day's result. The dashed line is the trend; the shaded band is 70+. Hover a dot for the day.">Habit score vs day result</h3><div class="chart-box" style="height:260px"><canvas id="hlScatter"></canvas></div><p class="mini-note">Habits counted: ${esc(L.tracked.join(', ').toLowerCase())}. Stops honored and the loss limit are left out of the score: they can only fail on a losing day.</p></div>
+      <div class="diag-card"><h3 data-tip="Your days grouped by habit score, and what an average day in each group made. If your habits pay, the bars climb to the right.">Average day by habit score</h3><div class="chart-box" style="height:260px"><canvas id="hlBands"></canvas></div></div>
+    </div>
+    ${L.habits.length?`<div class="diag-card" style="margin-top:14px"><h3 data-tip="For each habit: your average day when you kept it minus your average day when you didn't. Right and green: keeping it went with better days. Grey: a habit that can only fail on a losing day, so it follows from the result.">Which habits pay · kept minus missed</h3><div class="chart-box" style="height:${Math.max(140,34*L.habits.length+40)}px"><canvas id="hlHabits"></canvas></div></div>`:''}`;
+}
+function drawHabitCharts(){
+  _hlCharts.forEach(c=>{ try{ c.destroy(); }catch(e){} }); _hlCharts=[];
+  const L=_hlMemo.v, a=$('hlScatter'); if(!L||!a)return;
+  const css=v=>getComputedStyle(document.body).getPropertyValue(v).trim();
+  const pos=css('--profit')||'#2FD08C', neg=css('--loss')||'#F4586A', gold=css('--gold')||'#C9A85C', u=L.unit;
+  const yTick=v=>u==='$'?'$'+Number(v).toLocaleString():(+Number(v).toFixed(2))+(u==='%'?'%':'R');
+  const jit=k=>{ let h=0; for(const c of k)h=(h*31+c.charCodeAt(0))|0; return ((h>>>0)%1000/1000-0.5)*3; };
+  const P=L.points, x0=Math.min(...P.map(p=>p.score));
+  const band={id:'hlBand',beforeDatasetsDraw(ch){ const xa=ch.scales.x, ya=ch.scales.y, c=ch.ctx; c.save(); c.fillStyle='rgba(47,208,140,.06)';
+    c.fillRect(xa.getPixelForValue(70),ya.top,xa.getPixelForValue(100)-xa.getPixelForValue(70),ya.bottom-ya.top); c.restore(); }};
+  const ds=[{type:'scatter',label:'Trading day',data:P.map(p=>({x:Math.max(0,Math.min(100,p.score+jit(p.key))),y:p.v,p})),
+    backgroundColor:P.map(p=>p.v>=0?pos:neg),pointRadius:5,pointHoverRadius:7,borderColor:'rgba(0,0,0,.25)',borderWidth:1}];
+  if(L.fit&&x0<100)ds.push({type:'line',label:'Trend',data:[{x:x0,y:L.fit.icpt+L.fit.slope*x0},{x:100,y:L.fit.icpt+L.fit.slope*100}],borderColor:gold,borderDash:[6,4],borderWidth:2,pointRadius:0,pointHitRadius:0});
+  _hlCharts.push(explain(new Chart(a,{data:{datasets:ds},plugins:[band],
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false,axis:'xy'},
+      plugins:{legend:{display:false},tooltip:{filter:i=>i.datasetIndex===0,callbacks:{
+        title:it=>{ const p=it[0].raw.p; return dayLabel(p.key); },
+        label:c=>{ const p=c.raw.p; return ' Habit score '+p.score+' · '+p.kept.length+' of '+(p.kept.length+p.missed.length)+' kept'+(p.discipline!=null?' · Discipline '+p.discipline:''); },
+        afterLabel:c=>{ const p=c.raw.p;
+          return [' Result '+hlFmt(p.v,u)+(u!=='$'?' ('+fmtUsd(p.usd)+')':''),' '+p.n+' trade'+(p.n===1?'':'s')+' · '+p.wins+' W · '+p.losses+' L'].concat(p.missed.length?wrapTip('Missed: '+p.missed.join(', '),48).map(x=>' '+x):[' Every habit kept']); }}}},
+      scales:{x:{type:'linear',min:Math.max(0,Math.min(60,Math.floor((x0-8)/10)*10)),max:100,grid:{color:GRID},ticks:{stepSize:10},title:{display:true,text:'habit score (share of your habits kept that day)',color:TXT,font:{size:11}}},
+        y:{grid:{color:GRID},ticks:{callback:yTick},title:{display:true,text:'day result ('+(u==='$'?'net P&L':u==='%'?'% return':'R')+')',color:TXT,font:{size:11}}}}}}),
+    items=>items&&items[0]&&items[0].datasetIndex===0?'Shaded: 70+ of your habits kept. Dashed line: the trend'+(L.fit?' — about '+hlFmt(L.fit.per10,u)+' a day per 10 points of score':'')+'.':''));
+  const b=$('hlBands');
+  if(b)_hlCharts.push(explain(new Chart(b,{type:'bar',data:{labels:L.bands.map(x=>x.label),datasets:[{data:L.bands.map(x=>x.avg),backgroundColor:L.bands.map(x=>(x.avg||0)>=0?pos:neg),borderRadius:4,maxBarThickness:70}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{
+      title:it=>'Habit score '+it[0].label,label:c=>{ const x=L.bands[c.dataIndex]; return x.n?' Average day '+hlFmt(x.avg,u):' No days in this band'; },
+      afterLabel:c=>{ const x=L.bands[c.dataIndex]; return x.n?[' '+x.n+' day'+(x.n===1?'':'s')+' · '+x.green+' green · '+x.trades+' trades',' All together '+hlFmt(x.total,u)]:[]; }}}},
+      scales:{x:{grid:{display:false},title:{display:true,text:'habit score',color:TXT,font:{size:11}}},y:{grid:{color:GRID},ticks:{callback:yTick}}}}}),
+    'What an average day made at each habit score. Rising to the right: your habits pay.'));
+  const h=$('hlHabits');
+  if(h)_hlCharts.push(explain(new Chart(h,{type:'bar',data:{labels:L.habits.map(x=>x.label),datasets:[{data:L.habits.map(x=>x.diff),
+      backgroundColor:L.habits.map(x=>x.mechanical?'rgba(120,130,150,.6)':x.diff>=0?pos:neg),borderRadius:4,maxBarThickness:22}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{
+      label:c=>' Kept minus missed: '+hlFmt(c.parsed.x,u),
+      afterLabel:c=>{ const x=L.habits[c.dataIndex]; return [' Kept: '+hlFmt(x.kept.avg,u)+' a day over '+x.kept.n+' day'+(x.kept.n===1?'':'s'),' Missed: '+hlFmt(x.missed.avg,u)+' a day over '+x.missed.n+' day'+(x.missed.n===1?'':'s')].concat(x.mechanical?[' Can only fail on a losing day — follows from the result.']:[]); }}}},
+      scales:{x:{grid:{color:GRID},ticks:{callback:yTick}},y:{grid:{display:false},ticks:{autoSkip:false}}}}}),
+    'Green bars: habits whose kept days beat their missed days. A link, not proof — but one worth protecting.'));
+  const tg=$('hlUnit'); if(tg)tg.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{ _hlUnit=btn.dataset.u; const sec=$('hlSec'); if(sec){ sec.innerHTML=hlSectionInner(); drawHabitCharts(); } });
+}
 function drawRoutineCharts(){
   _rvCharts.forEach(c=>{ try{ c.destroy(); }catch(e){} }); _rvCharts=[];
   const a=$('rvWeeks'), b=$('rvCurves'); if(!a||!b)return;
@@ -880,15 +954,20 @@ function drawRoutineCharts(){
   _rvCharts.push(new Chart(a,{data:{labels:r.weeks.map(w=>w.week.replace(/^\d{4}-/,'')),datasets:[
       {type:'bar',label:'Result per trade',data:r.weeks.map(w=>w.res),backgroundColor:r.weeks.map(w=>w.res>=0?pos:neg),yAxisID:'y',order:2},
       {type:'line',label:'Routine score',data:r.weeks.map(w=>w.score),borderColor:gold,backgroundColor:gold,pointRadius:0,borderWidth:2,tension:.25,yAxisID:'y2',order:1}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{maxTicksLimit:8,maxRotation:0}},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{title:it=>'Week '+r.weeks[it[0].dataIndex].week,
+        label:c=>c.datasetIndex===0?' Result per trade '+(c.parsed.y>=0?'+':'')+c.parsed.y.toFixed(2)+(r.unit==='R'?'R':'%'):' Routine score '+Math.round(c.parsed.y),
+        afterBody:it=>{ const w=r.weeks[it[0].dataIndex]; return [' '+w.days+' trading day'+(w.days===1?'':'s')+' · '+w.trades+' trade'+(w.trades===1?'':'s')]; }}}},scales:{x:{grid:{display:false},ticks:{maxTicksLimit:8,maxRotation:0}},
       y:{grid:{color:GRID},ticks:{callback:v=>(+v.toFixed(2))+(r.unit==='R'?'R':'%')}},y2:{position:'right',min:0,max:100,grid:{display:false}}}}}));
+  explain(_rvCharts[0],'Bars: each week’s average result per trade. Gold line: that week’s routine score (right axis). If they rise and fall together, discipline is paying.');
   const pts=s=>s.map(p=>({x:Date.parse(p.key+'T12:00:00Z'),y:p.v}));
   _rvCharts.push(new Chart(b,{type:'line',data:{datasets:[
       {label:'Disciplined days (70+)',data:pts(r.curves.good),borderColor:pos,pointRadius:0,borderWidth:2},
       {label:'Other days',data:pts(r.curves.rest),borderColor:neg,pointRadius:0,borderWidth:2,borderDash:[5,4]}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{boxWidth:10}}},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,labels:{boxWidth:10}},
+      tooltip:{callbacks:{title:it=>dayLabel(new Date(it[0].parsed.x).toISOString().slice(0,10)),label:c=>' '+c.dataset.label+': '+(c.parsed.y>=0?'+':'')+c.parsed.y.toFixed(2)+(r.unit==='R'?'R':'%')+' so far'}}},
       scales:{x:{type:'linear',min:Math.min(...[...r.curves.good,...r.curves.rest].map(p=>Date.parse(p.key+'T12:00:00Z'))),max:Math.max(...[...r.curves.good,...r.curves.rest].map(p=>Date.parse(p.key+'T12:00:00Z'))),grid:{display:false},ticks:{maxTicksLimit:6,callback:v=>{ const d=new Date(v); return (d.getUTCMonth()+1)+'/'+String(d.getUTCFullYear()).slice(2); }}},
         y:{grid:{color:GRID},ticks:{callback:v=>(+v.toFixed(2))+(r.unit==='R'?'R':'%')}}}}}));
+  explain(_rvCharts[1],'Two running totals: trades on your disciplined days (routine 70+) and trades on all other days. The gap is what discipline is worth.');
 }
 /* ============================ monthly goals ============================ */
 // This-month progress vs self-set goals: realized net vs target (with straight-line pace
@@ -1145,8 +1224,9 @@ function renderProjection(){
   ];
   _projChart=new Chart($('projChart'),{type:'line',data:{labels,datasets:ds},
     options:{responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:'index'},
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+c.dataset.label+': '+fmtUsd(c.parsed.y)}}},
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+({'95th':'Best 5% of paths','5th':'Worst 5% of paths','75th':'Better quarter','25th':'Worse quarter',median:'Middle path'}[c.dataset.label]||c.dataset.label)+': '+fmtUsd(c.parsed.y)}}},
       scales:scales()}});
+  explain(_projChart,'400 simulated futures built from your own past days. Half the paths end inside the darker band, 90% inside the lighter one.');
   el.insertAdjacentHTML('beforeend', nfSizerHtml()); nfWireSizer();
 }
 // Persistent data-health strip: partial or failing data sources, visible until resolved.

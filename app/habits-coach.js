@@ -512,6 +512,18 @@ const RV_HABITS=[ // key, label, how a day is graded (true kept / false missed /
   ['stops','Stops honored',d=>d.parts.stops==null?null:d.parts.stops>=1,true],
   ['limit','Stayed under the loss limit',d=>d.parts.limit==null?null:d.parts.limit>=1,true],
 ];
+// Spearman rank correlation, with a two-sided permutation p-value drawn from rnd (seeded by the caller)
+function _seededRnd(seed){ seed=(seed>>>0)||1; return ()=>{ seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function _spearmanWith(rnd){
+  const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+  const ranks=a=>{ const idx=a.map((v,i)=>[v,i]).sort((x,y)=>x[0]-y[0]), r=new Array(a.length);
+    for(let i=0;i<idx.length;){ let j=i; while(j+1<idx.length&&idx[j+1][0]===idx[i][0])j++; for(let k=i;k<=j;k++)r[idx[k][1]]=(i+j)/2+1; i=j+1; } return r; };
+  const pearson=(x,y)=>{ const mx=mean(x), my=mean(y); let sxy=0,sx=0,sy=0; for(let i=0;i<x.length;i++){ sxy+=(x[i]-mx)*(y[i]-my); sx+=(x[i]-mx)**2; sy+=(y[i]-my)**2; } return sx>0&&sy>0?sxy/Math.sqrt(sx*sy):null; };
+  return (x,y,perms)=>{ if(x.length<3)return null; const rx=ranks(x), ry=ranks(y), rho=pearson(rx,ry); if(rho==null)return null;
+    let hits=0; const P=perms==null?1000:perms, sh=ry.slice();
+    for(let k=0;k<P;k++){ for(let i=sh.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [sh[i],sh[j]]=[sh[j],sh[i]]; } const r=pearson(rx,sh); if(r!=null&&Math.abs(r)>=Math.abs(rho)-1e-12)hits++; }
+    return {rho,p:(hits+1)/(P+1),n:x.length}; };
+}
 function routineVsResults(days, byDay, opts){
   opts=opts||{};
   const rOf=opts.rOf||(()=>null), pctOf=opts.pctOf||(()=>null), weekOf=opts.weekOf||(k=>k.slice(0,7)), entryOf=opts.entryOf||(()=>({}));
@@ -528,14 +540,7 @@ function routineVsResults(days, byDay, opts){
     const flags={}; for(const f of RV_BLIND)flags[f]=(b.flags&&b.flags[f])||0;
     const e=entryOf(d.key)||{};
     D.push({key:d.key,week:weekOf(d.key),score:n?Math.round(100*(n-Math.min(n,bad.size))/n):null,vals,mean:mean(vals),parts:d.parts||{},flags,checkin:!!e.checkin,review:!!e.review}); }
-  // Spearman rank correlation, with a two-sided permutation p-value
-  const ranks=a=>{ const idx=a.map((v,i)=>[v,i]).sort((x,y)=>x[0]-y[0]), r=new Array(a.length);
-    for(let i=0;i<idx.length;){ let j=i; while(j+1<idx.length&&idx[j+1][0]===idx[i][0])j++; for(let k=i;k<=j;k++)r[idx[k][1]]=(i+j)/2+1; i=j+1; } return r; };
-  const pearson=(x,y)=>{ const mx=mean(x), my=mean(y); let sxy=0,sx=0,sy=0; for(let i=0;i<x.length;i++){ sxy+=(x[i]-mx)*(y[i]-my); sx+=(x[i]-mx)**2; sy+=(y[i]-my)**2; } return sx>0&&sy>0?sxy/Math.sqrt(sx*sy):null; };
-  const spearman=(x,y,perms)=>{ if(x.length<3)return null; const rx=ranks(x), ry=ranks(y), rho=pearson(rx,ry); if(rho==null)return null;
-    let hits=0; const P=perms==null?1000:perms, sh=ry.slice();
-    for(let k=0;k<P;k++){ for(let i=sh.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [sh[i],sh[j]]=[sh[j],sh[i]]; } const r=pearson(rx,sh); if(r!=null&&Math.abs(r)>=Math.abs(rho)-1e-12)hits++; }
-    return {rho,p:(hits+1)/(P+1),n:x.length}; };
+  const spearman=_spearmanWith(rnd);
   // weeks: average routine score, average per-trade result
   const wk={}; for(const d of D){ const w=wk[d.week]=wk[d.week]||{week:d.week,days:0,scores:[],vals:[]}; w.days++; if(d.score!=null)w.scores.push(d.score); w.vals.push(...d.vals); }
   const weeks=Object.values(wk).sort((a,b)=>a.week<b.week?-1:1).map(w=>({week:w.week,days:w.days,trades:w.vals.length,score:mean(w.scores),res:mean(w.vals)})).filter(w=>w.score!=null);
@@ -570,6 +575,65 @@ function routineVsResults(days, byDay, opts){
   const rolling=[]; const WIN=12;
   for(let i=WIN;i<=weeks.length;i++){ const w=weeks.slice(i-WIN,i), s=spearman(w.map(x=>x.score),w.map(x=>x.res),0); if(s)rolling.push({week:w[w.length-1].week,rho:s.rho}); }
   return {unit,days:D.length,trades:all.length,weeks,corr,lead,dividend,curves,habits,rolling,need:{weeks:MINW,have:weeks.length}};
+}
+// Habits vs results, day by day — the picture behind "does discipline pay?". Each trading day is
+// a point: its habit score (the share of your habits you kept that day: plan written, rules kept,
+// stops written, check-in, end-of-day review, every trade journaled, and no revenge entry, sizing
+// up after a loss, adding to a loser or overtrading) against that day's result in dollars, %
+// return on notional or R. Only habits you actually use count (one you've never kept in this
+// history isn't held against every day), and the two that can only fail on a losing day (stops
+// honored, loss limit) are left out of the score so a red day can't drag its own score down.
+// Also: the average day per score band, and each habit's kept-vs-missed days in the same unit.
+// Points show from HL_MIN.days days; the correlation is only stated from HL_MIN.corr. Seeded.
+const HL_MIN={days:3,corr:8};
+const HL_BANDS=[[0,49,'Under 50'],[50,69,'50–69'],[70,89,'70–89'],[90,100,'90–100']];
+function habitLink(days, byDay, opts){
+  opts=opts||{};
+  const rOf=opts.rOf||(()=>null), pctOf=opts.pctOf||(()=>null), entryOf=opts.entryOf||(()=>({}));
+  const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null, fin=v=>v!=null&&isFinite(v);
+  const pts=[];
+  for(const d of days||[]){ const tr=(byDay&&byDay[d.key])||[]; if(!tr.length)continue;
+    const b=d.behavior||{}, n=b.n||tr.length, blind=(b.slips||[]).filter(s=>(s.f||[]).some(f=>RV_BLIND.includes(f)));
+    const flags={}; for(const f of RV_BLIND)flags[f]=0; for(const s2 of blind)for(const f of s2.f)if(f in flags)flags[f]++;
+    let usd=0,pct=0,pn=0,r=0,rn=0,w=0,l=0;
+    for(const t of tr){ usd+=+t.net||0; const p=pctOf(t); if(fin(p)){ pct+=p; pn++; } const x=rOf(t); if(fin(x)){ r+=x; rn++; } if(t.net>0)w++; else if(t.net<0)l++; }
+    const e=entryOf(d.key)||{};
+    pts.push({key:d.key,routine:Math.round(100*(n-Math.min(n,blind.length))/n),discipline:d.score!=null?d.score:null,n:tr.length,wins:w,losses:l,
+      usd,pct:pn?pct:null,r:rn&&rn===tr.length?r:null,flags,parts:d.parts||{},checkin:!!e.checkin,review:!!e.review}); }
+  // the habits in play: graded on some day and kept at least once (fill checks always count)
+  const H=RV_HABITS.filter(h=>!h[3]);
+  const inPlay=H.filter(([key,,grade])=>RV_BLIND.includes(key)||pts.some(p=>grade(p)===true));
+  for(const p of pts){ const kept=[], missed=[];
+    for(const [key,label,grade] of inPlay){ const g=grade(p); if(g===true)kept.push(label); else if(g===false)missed.push(label); }
+    p.kept=kept; p.missed=missed; p.score=kept.length+missed.length?Math.round(100*kept.length/(kept.length+missed.length)):null; }
+  const hasR=pts.length>0&&pts.filter(p=>p.r!=null).length/pts.length>=0.6, hasPct=pts.some(p=>p.pct!=null);
+  const units=['$'].concat(hasPct?['%']:[],hasR?['R']:[]);
+  const unit=units.includes(opts.unit)?opts.unit:'$';
+  const val=p=>unit==='$'?p.usd:unit==='%'?p.pct:p.r;
+  const P=pts.filter(p=>p.score!=null&&fin(val(p))).map(p=>Object.assign({},p,{v:val(p)}));
+  const spread=P.length>1&&P.some(p=>p.score!==P[0].score);
+  // the straight line through the points (least squares), for the eye — the rank correlation is the test
+  let fit=null;
+  if(P.length>=HL_MIN.days&&spread){ const mx=mean(P.map(p=>p.score)), my=mean(P.map(p=>p.v)); let sxy=0,sxx=0;
+    for(const p of P){ sxy+=(p.score-mx)*(p.v-my); sxx+=(p.score-mx)**2; }
+    if(sxx>0){ const slope=sxy/sxx; fit={slope,icpt:my-slope*mx,per10:slope*10}; } }
+  const corr=P.length>=HL_MIN.corr&&spread?_spearmanWith(_seededRnd(opts.seed||7))(P.map(p=>p.score),P.map(p=>p.v)):null;
+  const bands=HL_BANDS.map(([lo,hi,label])=>{ const g=P.filter(p=>p.score>=lo&&p.score<=hi);
+    return {label,lo,hi,n:g.length,avg:mean(g.map(p=>p.v)),total:g.reduce((s2,p)=>s2+p.v,0),green:g.filter(p=>p.v>0).length,trades:g.reduce((s2,p)=>s2+p.n,0)}; });
+  const split=hi=>{ const g=P.filter(p=>(p.score>=70)===hi); return {n:g.length,avg:mean(g.map(p=>p.v)),green:g.filter(p=>p.v>0).length}; };
+  const habits=RV_HABITS.map(([key,label,grade,mech])=>{ const k=[],m=[];
+    for(const p of P){ const g=grade(p); if(g===true)k.push(p.v); else if(g===false)m.push(p.v); }
+    return {key,label,mechanical:mech,kept:{n:k.length,avg:mean(k)},missed:{n:m.length,avg:mean(m)},diff:k.length&&m.length?mean(k)-mean(m):null}; })
+    .filter(h=>h.kept.n>0&&h.missed.n>0)
+    .sort((a,b)=>(a.mechanical-b.mechanical)||(b.diff-a.diff));
+  return {unit,units,points:P,spread,fit,corr,bands,good:split(true),rest:split(false),habits,tracked:inPlay.map(h=>h[1]),need:HL_MIN};
+}
+// plain words for a day-level rank correlation
+function hlLinkWords(c){
+  if(!c)return null;
+  const a=Math.abs(c.rho), size=a>=0.5?'Strong':a>=0.3?'Moderate':a>=0.1?'Weak':null;
+  if(!size)return {tone:'flat',text:'No real link yet between your routine and your results'};
+  return {tone:c.rho>0?(c.p<0.05?'good':'maybe'):'bad',text:size+' link: '+(c.rho>0?'cleaner days, better results':'cleaner days, worse results')+(c.p>=0.05?' — could still be chance':'')};
 }
 // Everything the process score needs from the rule engine, for one trade set.
 // A rule from findings only counts trades entered after it was made, and when those are the
@@ -650,7 +714,8 @@ function processSectionHtml(){
   const PN={plan:'Plan filed before first entry',rules:'Trades breaking no rule',planned:'Trades with a live plan',stops:'Planned stops honored',limit:'Stopped at the loss limit',journal:'Trades journaled'};
   const bar=v=>`<span style="display:inline-block;width:70px;height:6px;background:var(--panel2);vertical-align:middle;margin-right:6px"><span style="display:block;height:6px;width:${Math.round(v*100)}%;background:${v>=0.7?'var(--profit)':v>=0.4?'var(--gold)':'var(--loss)'}"></span></span>`;
   const mrow=(l,v,tip)=>`<div class="metric-row"${tip?` data-tip="${esc(tip)}"`:''}><span class="ml">${l}</span><span class="mv">${v}</span></div>`;
-  const partRows=Object.keys(PROCESS_W).map(p=>last.parts[p]==null?'':mrow(PN[p]+` <span style="color:var(--faint)">· ${PROCESS_W[p]}</span>`,bar(last.parts[p])+Math.round(last.parts[p]*100)+'%')).join('');
+  const partRows=Object.keys(PROCESS_W).map(p=>last.parts[p]==null?'':mrow(PN[p]+` <span style="color:var(--faint)">· ${PROCESS_W[p]}</span>`,bar(last.parts[p])+Math.round(last.parts[p]*100)+'%',
+    PN[p]+': '+Math.round(last.parts[p]*100)+'% on your last trading day ('+dayLabel(last.key)+'). It counts '+PROCESS_W[p]+' toward the process score.')).join('');
   const sc=v=>`<b style="color:${v>=70?'var(--profit)':v>=50?'var(--gold)':'var(--loss)'}">${Math.round(v)}</b>`;
   const cell=(title,b,tip,tone)=>`<div style="padding:10px 12px;border:1px solid var(--line);border-left:3px solid var(--${tone})" data-tip="${esc(tip)}"><div style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em">${title}</div><div style="font-size:18px;font-weight:600;margin:2px 0">${b.n} day${b.n===1?'':'s'}</div><div class="${cls(b.net)}" style="font-size:12px">${fmtUsd(b.net)}</div></div>`;
   return `<div class="diag-section"><h2>Process <span style="font-size:11px;color:var(--faint);font-weight:400">how you traded, not what the market paid</span></h2>

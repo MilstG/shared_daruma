@@ -132,7 +132,8 @@ t('mostly taker volume, fees eating the price result, funding paid: one line of 
 t('the trade chart draws candles, entry and exit, and the written stop and target', () => {
   const T1 = Date.UTC(2026, 9, 1, 10), c = Array.from({ length: 30 }, (_, i) => [T1 + i * 3e5, 101 + i * 0.1, 99 + i * 0.1, 100 + i * 0.1, 100 + i * 0.1 - 0.05]);
   const svg = ctx.pzSnapSvg({ coin: 'SOL', avgEntry: 100.5, avgExit: 102, openTime: T1 + 3e6, closeTime: T1 + 6e6, net: 30 }, c, 3e5, { stop: 99, target: 103 });
-  ok(svg.startsWith('<svg') && (svg.match(/<rect/g) || []).length === 30);
+  ok(svg.startsWith('<svg') && (svg.match(/<rect(?![^>]*fill="transparent")/g) || []).length === 30, 'a body per candle');
+  eq((svg.match(/data-pz-tip="/g) || []).length, 30, 'each candle explains itself on hover');
   for (const lab of ['in 100.5', 'out 102', 'stop', 'target']) ok(svg.includes('>' + lab + '<'), lab);
   eq(ctx.pzSnapSvg({}, [c[0]], 3e5, null), '', 'no chart from one candle');
 });

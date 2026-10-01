@@ -72,9 +72,16 @@ function pzReadinessLink(days, J){
 }
 // Chart bars: one per trading day, or weekly averages when there are too many days to read.
 function pzBars(days){
-  if(days.length<=40)return {unit:'Daily score',bars:days.map(d=>({v:d.score,tip:dayLabel(d.key)+': '+d.score}))};
-  const by={}; for(const d of days){ const w=isoWeekOfKey(d.key); (by[w]=by[w]||[]).push(d.score); }
-  return {unit:'Weekly average',bars:Object.keys(by).sort().map(w=>{ const v=Math.round(_avg(by[w])); return {v,tip:w+': '+v}; })};
+  if(days.length<=40)return {unit:'Daily score',bars:days.map(d=>({v:d.score,tip:pzDayTip(d)}))};
+  const by={}; for(const d of days){ const w=isoWeekOfKey(d.key); (by[w]=by[w]||[]).push(d); }
+  return {unit:'Weekly average',bars:Object.keys(by).sort().map(w=>{ const ds=by[w], v=Math.round(_avg(ds.map(d=>d.score))), net=ds.reduce((a,d)=>a+(d.net||0),0), n=ds.reduce((a,d)=>a+(d.n||0),0);
+    return {v,tip:'Week '+w.replace(/^\d{4}-W?/,'')+' · discipline '+v+' on average\n'+ds.length+' trading day'+(ds.length===1?'':'s')+' · '+n+' trade'+(n===1?'':'s')+'\nNet '+signedPlain(net)+'\n'+ds.filter(d=>d.score>=70).length+' of '+ds.length+' days 70+'}; })};
+}
+// what a day's discipline bar says on hover: the score, the trades, the P&L and the slips
+function pzDayTip(d){
+  const f=(d.behavior&&d.behavior.flags)||{}, sl=Object.keys(f).filter(k=>f[k]>0).map(k=>(PZ_BEH[k]||k)+(f[k]>1?' ×'+f[k]:''));
+  return dayLabel(d.key)+' · discipline '+d.score+(d.score>=70?' (clean day)':'')+'\n'+(d.behavior&&d.behavior.clean!=null?d.behavior.clean+' of '+d.n+' trade'+(d.n===1?'':'s')+' clean':d.n+' trade'+(d.n===1?'':'s'))
+    +(d.net!=null?'\nNet '+signedPlain(d.net):'')+'\n'+(sl.length?'Slips: '+sl.join(', '):'No slips');
 }
 function pzHasPlan(e){ return !!(e&&(e.plan||e.bias||e.maxLoss>0||(r=>!!r&&typeof r==='object'&&Object.values(r).some(v=>Array.isArray(v)?v.length:!!v))(e.rules))); }
 
@@ -201,7 +208,7 @@ const PZ_SECTIONS={
     ['xp','Today’s XP','What earns XP today, and what’s due this week',1],['week','Last 7 trading days','Discipline and net, day by day',1],
     ['level','Level and league','Level progress, XP today, league standing',0],['yesterday','Last trading day','Its score, net and lesson in full',0]],
   stats:[['tiles','Headline numbers','Net, win rate, average trade and more',1],['daily','Daily P&L','',1],['findings','What moves your results','Your biggest edges and leaks',1],
-    ['insights','Does discipline pay?','Results on good-discipline days vs the rest',1],['markets','Markets and time of day','Best and worst markets and hours',1]],
+    ['insights','Does discipline pay?','Results on good-discipline days vs the rest',1],['habits','Habits vs results','Each day’s routine against its P&L, and which habits pay',1],['markets','Markets and time of day','Best and worst markets and hours',1]],
   progress:[['goals','Process goals','Targets you set for your process, with progress',1],['xpsources','Where your XP came from','',1],['challenge','Weekly challenge','',1],['habits','Your habits','Streaks for each habit you run',1],['reports','Report cards','Last week and this month',1],
     ['leaks','Your leaks','What your slips cost, and plugging them',1],['lessons','Lessons library','Everything your reviews taught you',1],['moments','Good moments','',1],['badges','Badges','Your latest badges',1],['bests','Personal bests','',1]],
 };
@@ -391,7 +398,7 @@ function pzSessionHtml(D,F){
     let r=rows.findIndex(end=>end<=a-2); if(r<0){ r=rows.length<4?rows.length:rows.indexOf(Math.min(...rows)); } rows[r]=Math.max(b,a+4);
     const col=t.isOpen?PZ_COL.risk:t.net>0?PZ_COL.good:t.net<0?PZ_COL.low:'var(--pz-muted)', f=slip.get(t.id);
     const tip=`${dispMarket(dcoin(t))} ${t.dir||''} · ${t.isOpen?'open':esc(signedPlain(t.net))}${f&&f.length?' · '+f.map(k=>PZ_BEH[k]||k).join(', '):''}`;
-    bars.push(`<g><title>${esc(tip)}</title><rect x="${x(a).toFixed(1)}" y="${LT+r*(LH+LG)}" width="${Math.max(4,x(b)-x(a)).toFixed(1)}" height="${LH}" rx="4" fill="${col}" opacity="${t.isOpen?0.55:0.9}"/>${f&&f.length?`<circle cx="${x(a).toFixed(1)}" cy="${LT+r*(LH+LG)+LH/2}" r="5" fill="none" stroke="${PZ_COL.mid}" stroke-width="2"/>`:''}</g>`);
+    bars.push(`<g data-pz-tip="${esc(tip.replace(' · ','\n'))}"><rect x="${x(a).toFixed(1)}" y="${LT+r*(LH+LG)}" width="${Math.max(4,x(b)-x(a)).toFixed(1)}" height="${LH}" rx="4" fill="${col}" opacity="${t.isOpen?0.55:0.9}"/>${f&&f.length?`<circle cx="${x(a).toFixed(1)}" cy="${LT+r*(LH+LG)+LH/2}" r="5" fill="none" stroke="${PZ_COL.mid}" stroke-width="2"/>`:''}</g>`);
   }
   const H=LT+Math.max(1,rows.length)*(LH+LG)+20;
   const ticks=[]; const step=(hi-lo)>720?180:(hi-lo)>360?120:60; for(let m=Math.ceil(lo/step)*step;m<=hi;m+=step)ticks.push(m);
@@ -402,7 +409,7 @@ function pzSessionHtml(D,F){
     <line x1="${PL}" x2="${W-PR}" y1="${y(0)}" y2="${y(0)}" stroke="var(--pz-line2)" stroke-width="1"/>
     ${limit!=null?`<line x1="${PL}" x2="${W-PR}" y1="${y(limit)}" y2="${y(limit)}" stroke="${PZ_COL.low}" stroke-width="1.5" stroke-dasharray="5 4"/><text x="${W-PR}" y="${y(limit)-4}" font-size="13" text-anchor="end" fill="${PZ_COL.low}">loss limit ${esc(pzShort(-limit))}</text>`:''}
     <path d="${path}" fill="none" stroke="${curveCol}" stroke-width="2.2" stroke-linejoin="round"/>
-    ${F.curve.map(p=>`<circle cx="${x(pzDayMin(p.t,todayK)).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="3" fill="${p.tr.net>=0?PZ_COL.good:PZ_COL.low}"><title>${esc(dispMarket(dcoin(p.tr))+' '+signedPlain(p.tr.net)+' · day '+signedPlain(p.v))}</title></circle>`).join('')}
+    ${F.curve.map(p=>`<g data-pz-tip="${esc(dispMarket(dcoin(p.tr))+' '+(p.tr.dir||'')+' closed '+new Date(p.t).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})+'\nThis trade '+signedPlain(p.tr.net)+'\nDay so far '+signedPlain(p.v))}"><circle cx="${x(pzDayMin(p.t,todayK)).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="10" fill="transparent"/><circle cx="${x(pzDayMin(p.t,todayK)).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="3" fill="${p.tr.net>=0?PZ_COL.good:PZ_COL.low}"/></g>`).join('')}
     ${mark(planAt,'plan',PZ_COL.xp)}${mark(until,'stop '+(R.until||''),PZ_COL.mid,true)}${mark(nowM,'now','var(--pz-soft)')}
     ${bars.join('')}</svg>`;
   return `<section class="pz-card pz-kv"><div class="pz-kvrow"><b class="pz-kvh">Your session</b><span class="pz-sub" style="font-size:12px">high ${esc(pzSigned(F.hi))} · low ${esc(pzSigned(F.lo))}</span></div>${svg}
@@ -498,7 +505,7 @@ function pzWeekSparkHtml(D){
     <div class="pz-wk" role="table" aria-label="Your last ${days.length} trading days">
       <div class="pz-wkr pz-wkh" role="row"><span role="columnheader">Day</span><span role="columnheader">Discipline</span><span role="columnheader">Net</span></div>
       ${days.map(d=>{ const c=PZ_COL[pzBand(d.score)], w=Math.round(Math.abs(d.net)/maxAbs*100);
-        return `<a class="pz-wkr" role="row" href="#discipline" title="${esc(dl(d.key)+': discipline '+d.score+', '+d.n+' trade'+(d.n===1?'':'s')+', '+signedPlain(d.net))}">
+        return `<a class="pz-wkr" role="row" href="#discipline" data-pz-tip="${esc(dl(d.key)+': discipline '+d.score+', '+d.n+' trade'+(d.n===1?'':'s')+', '+signedPlain(d.net))}">
           <span role="cell" class="pz-wkd">${esc(dl(d.key))}</span>
           <span role="cell" class="pz-wks"><b style="color:${c}">${d.score}</b><i><em style="width:${d.score}%;background:${c}"></em></i></span>
           <span role="cell" class="pz-wkn"><b style="color:${d.net>=0?PZ_COL.good:PZ_COL.low}">${esc(pzSigned(d.net))}</b><i class="${d.net<0?'neg':''}"><em style="width:${Math.max(3,w)}%;background:${d.net>=0?PZ_COL.good:PZ_COL.low}"></em></i></span></a>`; }).join('')}
@@ -526,11 +533,11 @@ function pzTodayHtml(D){
   const {g,day,last,risk,ready,form,load}=D;
   const shown=day||last, disc=shown?shown.score:null; // until today's first close, the last trading day's score
   const rings=[
-    {k:'form',label:'Form',shown:form.score==null?'—':form.score,pct:(form.score||0)/100,col:PZ_COL[pzBand(form.score)]},
-    {k:'discipline',label:'Discipline',cap:day||!last?'':dayLabel(last.key).slice(0,3),shown:disc==null?'—':disc,pct:(disc||0)/100,col:PZ_COL[pzBand(disc)]},
-    {k:'load',label:'Load',shown:load.score==null?'—':load.ratio.toFixed(1)+'×',pct:(load.score||0)/100,col:pzLoadCol(load.score)}];
+    {k:'form',label:'Form',shown:form.score==null?'—':form.score,pct:(form.score||0)/100,col:PZ_COL[pzBand(form.score)],tip:'Your recent trading against your own usual: 50 is normal for you, higher is better than usual. Tap for the details.'},
+    {k:'discipline',label:'Discipline',cap:day||!last?'':dayLabel(last.key).slice(0,3),shown:disc==null?'—':disc,pct:(disc||0)/100,col:PZ_COL[pzBand(disc)],tip:(shown?shown.behavior.clean+' of '+shown.n+' trade'+(shown.n===1?'':'s')+' clean'+(day?' today':' on '+dayLabel(last.key))+'. ':'')+'The share of trades free of revenge entries, sizing up after losses, adding to losers, trading on after two losses, overtrading and over-held losers. 70+ is a clean day.'},
+    {k:'load',label:'Load',shown:load.score==null?'—':load.ratio.toFixed(1)+'×',pct:(load.score||0)/100,col:pzLoadCol(load.score),tip:'How much you’re trading today against your usual day: 1× is normal, above it is busier than usual.'}];
   const sel=['form','discipline','load'].includes(pzS.ring)?pzS.ring:'discipline';
-  const ringsHtml=`<div class="pz-rings pz-span" role="group" aria-label="Today’s dials">${rings.map(r=>`<button type="button" class="pz-ringbtn" data-pz-ring="${r.k}" aria-pressed="${r.k===sel}" aria-label="${r.label} ${r.shown}${r.cap?', last trading day '+r.cap:''}">${pzRing(r.shown,r.pct,r.col,r.cap?{cap:r.cap}:null)}<span class="pz-rl">${r.label}</span></button>`).join('')}</div>`;
+  const ringsHtml=`<div class="pz-rings pz-span" role="group" aria-label="Today’s dials">${rings.map(r=>`<button type="button" class="pz-ringbtn" data-pz-ring="${r.k}" aria-pressed="${r.k===sel}" aria-label="${r.label} ${r.shown}${r.cap?', last trading day '+r.cap:''}" data-pz-tip="${esc(r.label+' · '+r.shown+'\n'+r.tip)}">${pzRing(r.shown,r.pct,r.col,r.cap?{cap:r.cap}:null)}<span class="pz-rl">${r.label}</span></button>`).join('')}</div>`;
   let det;
   if(sel==='form'){
     if(form.score==null) det={lbl:'Form',col:PZ_COL.good,href:'#trends',link:'Stats',head:form.stale?'No trades in the last 30 days':'Building your baseline',
@@ -598,7 +605,7 @@ function pzDisciplineHtml(D){
     return `<div class="pz-part"><span class="pz-pc ${c?'miss':'full'}">${pzI(c?'x':'check',15,3)}</span><span class="pz-pt"><b>${esc(PZ_BEH[k])}</b><span>${c?c+' of '+d.n+' trade'+(d.n===1?'':'s'):'None'}</span></span></div>`; }).join('');
   const bp=d.bonus.parts;
   const recent=g.days.slice(-14);
-  const bars=recent.map(x=>`<i style="height:${Math.max(4,Math.round(x.score*0.96))}px;background:${PZ_COL[pzBand(x.score)]}" title="${esc(dayLabel(x.key))}: ${x.score}"></i>`).join('');
+  const bars=recent.map(x=>`<i style="height:${Math.max(4,Math.round(x.score*0.96))}px;background:${PZ_COL[pzBand(x.score)]}" data-pz-tip="${esc(pzDayTip(x))}"></i>`).join('');
   return `${back}${pzHead(isToday?'Today':dayLabel(d.key),'Discipline')}
   <div class="pz-wide">
     <div class="pz-col"><section style="display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">${pzRing(d.score,d.score/100,PZ_COL[b],{size:188,cap:'Discipline'})}
@@ -631,6 +638,79 @@ function pzLongViewHtml(){
   const holds=dv.lo>0, against=dv.hi<0, top=r.habits.filter(h=>!h.mechanical&&h.q!=null&&h.q<0.1&&h.diff>0)[0];
   return `<div class="pz-tile ${holds?'good':against?'hot':'cool'}"><span class="pz-t" style="font-size:13px;line-height:1.45">Over all ${r.weeks.length} weeks: disciplined days made <b>${esc(f(dv.diff))}</b> more per trade than the rest${holds?' — and it holds up':against?' — the other way round':' — not clear yet'} (90% range ${esc(f(dv.lo))} to ${esc(f(dv.hi))}).${top?` The habit that pays most: <b>${esc(top.label.toLowerCase())}</b> (${esc(f(top.diff))}/trade).`:''} <a href="${esc(pzFullHref())}">Full analysis</a></span></div>`;
 }
+// ---- habits vs results: each trading day's routine score against its result ----
+// The scatter answers "do my cleaner days make more?" at a glance; the bands and the habit rows
+// say by how much. Same outcome-blind score as Review → Routine vs results, so a red day can't
+// pull its own score down. Every mark explains itself on hover (or tap on a phone).
+let _pzHL={key:null,v:null};
+function pzHabitModel(g, ctx, fromKey){
+  const unit=pzS.hlu||'$', days=g.days.filter(d=>d.key>=fromKey&&(byd=>byd.some(pzInMk))(ctx.byDay[d.key]||[]));
+  const key=[fromKey,unit,pzMk(),days.length,_coachMemo.key,_jrev].join('|');
+  if(_pzHL.key===key)return _pzHL.v;
+  const byDay={}; for(const d of days)byDay[d.key]=(ctx.byDay[d.key]||[]).filter(pzInMk);
+  const entryOf=k=>{ const e=journal['day:'+k]; return {checkin:typeof pzReadinessManual==='function'&&pzReadinessManual(e)!=null, review:!!(e&&e.eod&&e.eod.at)}; };
+  let v=null; try{ v=habitLink(days,byDay,{unit,rOf:rFor,pctOf:retPct,entryOf,seed:_hashSeed('hl|'+fromKey)}); }catch(e){ console.warn('habits vs results',e); }
+  _pzHL={key,v}; return v;
+}
+const pzHlFmt=(v,u,exact)=>v==null||!isFinite(v)?'—':u==='$'?(exact?signedPlain(v):pzSigned(v)):u==='%'?(v>=0?'+':'')+v.toFixed(2)+'%':(v>=0?'+':'')+v.toFixed(2)+'R';
+const PZ_HL_UNIT={'$':'P&L in dollars','%':'% return on the size you traded','R':'R — result ÷ the risk you planned'};
+function pzHabitScatterSvg(L){
+  const P=L.points, u=L.unit, vw=typeof innerWidth==='number'?innerWidth:800, W=Math.round(Math.max(300,Math.min(980,vw<900?vw-56:vw-360)));
+  const Lm=58, R=14, T=14, CH=Math.round(Math.max(170,Math.min(240,W*0.32))), B=40, H=T+CH+B, pw=W-Lm-R;
+  let lo=Math.min(0,...P.map(p=>p.v)), hi=Math.max(0,...P.map(p=>p.v)); if(hi-lo<1e-9){ hi+=1; lo-=1; }
+  const st=pzNiceStep(hi-lo,4); lo=Math.floor(lo/st)*st; hi=Math.ceil(hi/st)*st;
+  const xMin=Math.max(0,Math.min(60,Math.floor((Math.min(...P.map(p=>p.score))-8)/10)*10)); // zoom in on where the days are
+  const x=sc=>Lm+(sc-xMin)/(100-xMin)*pw, y=v=>T+(hi-v)/(hi-lo)*CH, f1=n=>n.toFixed(1);
+  // a little sideways spread, the same every time, so days with the same score don't hide each other
+  const jit=k=>{ let h=0; for(const c of k)h=(h*31+c.charCodeAt(0))|0; return ((h>>>0)%1000/1000-0.5)*3; };
+  const yt=[]; for(let v=lo;v<=hi+st/2;v+=st)yt.push(v);
+  const fmtY=v=>u==='$'?(v<0?'−':'')+pzShort(Math.abs(v)):u==='%'?(+v.toFixed(2))+'%':(+v.toFixed(2))+'R';
+  const dot=p=>{ const cx=x(Math.max(0,Math.min(100,p.score+jit(p.key)))), cy=y(p.v), col=p.v>0?PZ_COL.good:p.v<0?PZ_COL.low:'var(--pz-muted)';
+    const tip=[dayLabel(p.key),'Habit score '+p.score+' · '+p.kept.length+' of '+(p.kept.length+p.missed.length)+' habits kept'+(p.discipline!=null?' · Discipline '+p.discipline:''),'Result '+pzHlFmt(p.v,u,true)+(u!=='$'?' ('+signedPlain(p.usd)+')':''),
+      p.n+' trade'+(p.n===1?'':'s')+' · '+p.wins+' W · '+p.losses+' L',p.missed.length?'Missed: '+p.missed.join(', '):'Every habit kept'].join('\n');
+    return `<g class="pz-hld" data-pz-tip="${esc(tip)}" tabindex="0"><circle cx="${f1(cx)}" cy="${f1(cy)}" r="11" fill="transparent"/><circle cx="${f1(cx)}" cy="${f1(cy)}" r="5" fill="${col}" fill-opacity=".85" stroke="var(--pz-card)" stroke-width="1.5"/></g>`; };
+  const fit=L.fit, x0=Math.min(...P.map(p=>p.score));
+  const line=fit&&x0<100?`<line x1="${f1(x(x0))}" y1="${f1(y(fit.icpt+fit.slope*x0))}" x2="${f1(x(100))}" y2="${f1(y(fit.icpt+fit.slope*100))}" stroke="${PZ_COL.xp}" stroke-width="2" stroke-dasharray="6 4" clip-path="url(#pzHlClip)"/>
+    <line class="pz-hlfit" x1="${f1(x(x0))}" y1="${f1(y(fit.icpt+fit.slope*x0))}" x2="${f1(x(100))}" y2="${f1(y(fit.icpt+fit.slope*100))}" stroke="transparent" stroke-width="14" clip-path="url(#pzHlClip)" data-pz-tip="${esc('Trend line\nThe straight line that best fits the dots: about '+pzHlFmt(fit.per10,u,true)+' a day for every 10 points of routine score.\nA guide for the eye — the link sentence above is the real test.')}"/>`:'';
+  return `<svg class="pz-hlsvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Each trading day's routine score against its result: ${P.length} days">
+    <defs><clipPath id="pzHlClip"><rect x="${Lm}" y="${T}" width="${pw}" height="${CH}"/></clipPath></defs>
+    <rect x="${f1(x(70))}" y="${T}" width="${f1(x(100)-x(70))}" height="${CH}" fill="${PZ_COL.good}" fill-opacity=".05" data-pz-tip="${esc('70+ zone\nDays you kept at least 70% of your habits.')}"/>
+    ${yt.map(v=>`<line x1="${Lm}" x2="${W-R}" y1="${f1(y(v))}" y2="${f1(y(v))}" stroke="${Math.abs(v)<st/1e6?'#4A535E':'var(--pz-line)'}"${Math.abs(v)<st/1e6?' stroke-dasharray="4 4"':''}/><text x="${Lm-8}" y="${f1(y(v)+4)}" font-size="11" text-anchor="end" fill="var(--pz-muted)">${esc(fmtY(v))}</text>`).join('')}
+    ${[...new Set([xMin,...[10,20,30,40,50,60,70,80,90].filter(v=>v>xMin&&(100-xMin<=50||v%20===0||v===70)),100])].map(sc=>`<line x1="${f1(x(sc))}" x2="${f1(x(sc))}" y1="${T}" y2="${T+CH}" stroke="${sc===70?PZ_COL.good:'var(--pz-line)'}"${sc===70?' stroke-dasharray="3 3" stroke-opacity=".7"':''}/><text x="${f1(x(sc))}" y="${T+CH+15}" font-size="11" text-anchor="${sc===xMin?'start':sc===100?'end':'middle'}" fill="var(--pz-muted)">${sc}</text>`).join('')}
+    <text x="${f1(Lm+pw/2)}" y="${H-4}" font-size="11" text-anchor="middle" fill="var(--pz-muted)">Habit score · share of your habits kept that day</text>
+    ${line}
+    ${P.map(dot).join('')}
+  </svg>`;
+}
+function pzHabitLinkHtml(g, ctx, fromKey){
+  const L=pzHabitModel(g,ctx,fromKey);
+  const head=`<b style="font-size:15px">Habits vs results</b>`;
+  if(!L)return '';
+  const u=L.unit, seg=L.units.length>1?`<div class="pz-seg" role="group" aria-label="Result in">${L.units.map(k=>`<button type="button" data-pz-hlu="${k}" aria-pressed="${k===u}" data-pz-tip="${esc(PZ_HL_UNIT[k])}">${k==='$'?'$ P&amp;L':k}</button>`).join('')}</div>`:'';
+  const top=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">${head}${seg}</div>`;
+  if(L.points.length<L.need.days)return `<section class="pz-card pz-span" data-sec="stats:habits" style="display:flex;flex-direction:column;gap:10px">${top}<p class="pz-sub" style="font-size:13px">Each trading day becomes a dot: how many of your habits you kept against what you made. It needs ${L.need.days} trading days in this range — you have ${L.points.length}.</p></section>`;
+  const W=hlLinkWords(L.corr), gd=L.good, rs=L.rest;
+  const lead=!L.spread?`Every day here has the same habit score (${L.points[0].score}), so there’s nothing to compare yet. As some days go better or worse on your habits, the dots spread out and the link shows. `
+    :(gd.n&&rs.n?`Days you kept 70%+ of your habits averaged <b style="color:${pzSignCol(gd.avg)};white-space:nowrap">${esc(pzHlFmt(gd.avg,u))}</b> (${gd.n} day${gd.n===1?'':'s'}); days under 70 averaged <b style="color:${pzSignCol(rs.avg)};white-space:nowrap">${esc(pzHlFmt(rs.avg,u))}</b> (${rs.n}). `
+      :gd.n?`Every day here scored 70+ (average ${esc(pzHlFmt(gd.avg,u))}). `:`No day here scored 70+ yet (average ${esc(pzHlFmt(rs.avg,u))}). `)
+    +(!L.spread?'':W?`<b>${esc(W.text)}</b> <span class="pz-fine" data-pz-tip="${esc('Rank correlation across '+L.corr.n+' days\nρ (rho) runs from −1 to +1: above 0, higher routine scores come with better days. p is the chance of a link this strong if there were none (1,000 shuffles); under 0.05 is unlikely to be luck.')}" tabindex="0">ρ ${L.corr.rho.toFixed(2)} · p ${L.corr.p.toFixed(3)}</span>`
+       :`<span class="pz-fine">${L.points.length} days so far — the link is stated from ${L.need.corr}.</span>`);
+  const bands=L.bands.map(b=>({l:b.label.replace('Under 50','<50').replace('90–100','90+'),v:b.avg||0,
+    tip:b.n?`Habit score ${b.label} · ${b.n} day${b.n===1?'':'s'}\nAverage day ${pzHlFmt(b.avg,u,true)}\n${b.green} of ${b.n} days green · ${b.trades} trades\nAll together ${pzHlFmt(b.total,u,true)}`:`Habit score ${b.label}\nNo days in this band`}));
+  const hab=L.habits.slice(0,8), hmax=Math.max(1e-9,...hab.map(h=>Math.abs(h.diff)));
+  const habRows=hab.map(h=>{ const w=Math.round(Math.abs(h.diff)/hmax*50), col=h.mechanical?'var(--pz-muted)':h.diff>=0?PZ_COL.good:PZ_COL.low;
+    const tip=`${h.label}\nKept: ${pzHlFmt(h.kept.avg,u,true)} a day over ${h.kept.n} day${h.kept.n===1?'':'s'}\nMissed: ${pzHlFmt(h.missed.avg,u,true)} a day over ${h.missed.n} day${h.missed.n===1?'':'s'}\nDifference ${pzHlFmt(h.diff,u,true)}${h.mechanical?'\nThis one can only fail on a losing day, so it follows from the result rather than causing it.':''}`;
+    return `<div class="pz-hlrow" data-pz-tip="${esc(tip)}" tabindex="0"><span>${esc(h.label)}</span><span class="pz-hlbar"><i style="${h.diff>=0?'left:50%':'right:50%'};width:${w}%;background:${col}"></i></span><b style="color:${col}">${esc(pzHlFmt(h.diff,u))}</b></div>`; }).join('');
+  return `<section class="pz-card pz-span pz-viz" data-sec="stats:habits" style="display:flex;flex-direction:column;gap:12px">${top}
+    <p class="pz-sub" style="font-size:13px;line-height:1.5;margin:0">${lead}</p>
+    ${pzHabitScatterSvg(L)}
+    <div class="pz-legend"><span><i style="background:${PZ_COL.good}"></i>green day</span><span><i style="background:${PZ_COL.low}"></i>red day</span>${L.fit?`<span><i style="background:${PZ_COL.xp}"></i>trend</span>`:''}<span class="pz-fine">Hover or tap a dot for the day</span></div>
+    <div class="pz-hlgrid">
+      <div style="display:flex;flex-direction:column;gap:6px"><b style="font-size:14px" data-pz-tip="${esc('Average day by habit score\nYour days grouped by how many of your habits you kept, and what an average day in each group made. If your habits pay, the bars climb to the right.')}" tabindex="0">Average day by habit score</b>${pzDivBars(bands,96)}</div>
+      <div style="display:flex;flex-direction:column;gap:6px"><b style="font-size:14px" data-pz-tip="${esc('Which habits pay\nFor each habit: your average day when you kept it minus your average day when you didn’t. Right and green: keeping it went with better days.')}" tabindex="0">Which habits pay</b>${habRows||'<p class="pz-sub" style="font-size:13px">Every habit was either always kept or never tracked in this range — nothing to compare yet.</p>'}</div>
+    </div>
+    <p class="pz-fine" style="margin:0">One dot per trading day in this range. ${esc(PZ_HL_UNIT[u])}. Habits counted: ${esc(L.tracked.join(', ').toLowerCase())}. A link isn’t proof of cause — but a habit that keeps showing up green is worth protecting.</p></section>`;
+}
 function pzTrendsHtml(D){
   const {g}=D, ctx=g.ctx, R=pzS.range, now=Date.now();
   const from=R==='all'?0:pzRangeStart(R,now), fromKey=dayKey(from);
@@ -643,7 +723,7 @@ function pzTrendsHtml(D){
     const tile=(label,val,sub,c,full)=>`<div class="pz-tile"${full?` title="${esc(label+': '+full)}"`:''}><span class="pz-t">${esc(label)}</span><span class="pz-n" style="color:${c||'var(--pz-text)'}">${esc(val)}</span>${sub?`<span class="pz-t">${esc(sub)}</span>`:''}</div>`;
     const maxAbs=Math.max(1,...st.days.map(x=>Math.abs(x.net)));
     const days=st.days.slice(-60);
-    const bars=days.map(x=>`<i style="height:${Math.max(3,Math.round(Math.abs(x.net)/maxAbs*100))}px;background:${x.net>=0?PZ_COL.good:PZ_COL.low};opacity:.9" title="${esc(dayLabel(x.k))}: ${esc(signedPlain(x.net))}"></i>`).join('');
+    const bars=days.map(x=>`<i style="height:${Math.max(3,Math.round(Math.abs(x.net)/maxAbs*100))}px;background:${x.net>=0?PZ_COL.good:PZ_COL.low};opacity:.9" data-pz-tip="${esc(dayLabel(x.k)+'\nNet '+signedPlain(x.net)+'\n'+x.n+' trade'+(x.n===1?'':'s')+' · '+x.w+' W · '+x.l+' L'+(x.n?'\nAverage trade '+signedPlain(x.net/x.n):''))}"></i>`).join('');
     const mk=st.markets, best=mk.slice(0,3).filter(x=>x.net>0), worst=mk.slice(-3).reverse().filter(x=>x.net<0);
     const hr=h=>String(h).padStart(2,'0')+':00';
     const hrs=st.hours.length>=2?[['Best hour',st.hours[0]],['Worst hour',st.hours[st.hours.length-1]]]:[];
@@ -663,7 +743,7 @@ function pzTrendsHtml(D){
   let deep;
   if(lock) deep=`<section class="pz-card pz-span" style="display:flex;align-items:center;gap:14px">${pzI('lock',22)}<span style="flex:1"><b style="font-size:15px">Deeper insights unlock at level ${lock}</b><br><span class="pz-sub" style="font-size:13px">Does discipline pay for you, how your check-ins relate to your trading, and what moves your score. ${pzXpToGo(lock,g)}</span></span></section>`;
   else { const ts=pzTrendStats(g.days,ctx.byDay,fromKey), bc=pzBars(ts.days);
-    const chart=ts.days.length?`<div class="pz-chart" style="--h:110px;--gap:${bc.bars.length>20?'3px':'8px'}"><span class="pz-thr" style="bottom:${Math.round(70*1.1)}px"></span>${bc.bars.map(b=>`<i style="height:${Math.max(4,Math.round(b.v*1.1))}px;background:${PZ_COL[pzBand(b.v)]}" title="${esc(b.tip)}"></i>`).join('')}</div>`:'<p class="pz-sub">No trading days in this range.</p>';
+    const chart=ts.days.length?`<div class="pz-chart" style="--h:110px;--gap:${bc.bars.length>20?'3px':'8px'}"><span class="pz-thr" style="bottom:${Math.round(70*1.1)}px"></span>${bc.bars.map(b=>`<i style="height:${Math.max(4,Math.round(b.v*1.1))}px;background:${PZ_COL[pzBand(b.v)]}" data-pz-tip="${esc(b.tip)}"></i>`).join('')}</div>`:'<p class="pz-sub">No trading days in this range.</p>';
     const tile=(cls,lbl,x)=>`<div class="pz-tile ${cls}"><span class="pz-lbl" style="font-size:11px">${lbl} · ${x.n} day${x.n===1?'':'s'}</span><span class="pz-n">${esc(money(x.avgNet))}</span><span class="pz-t">avg day · ${pzPct(x.winRate)} win rate</span></div>`;
     const rl=pzReadinessLink(ts.days,journal), RF=pzRangeFindings(ctx,from), FA=RF.findings;
     // the six most significant edges and leaks (already ranked by size × confidence); plain notes only fill the gaps
@@ -673,6 +753,7 @@ function pzTrendsHtml(D){
         ${pzLongViewHtml()}
         ${rl?`<div class="pz-tile cool"><span class="pz-t" style="font-size:13px;line-height:1.45">On days you checked in at readiness 70+, your discipline averaged <b>${rl.hi}</b>; on the other check-in days, <b>${rl.lo}</b>.</span></div>`:''}</section></div>
       <div class="pz-col" data-sec="stats:findings"><section class="pz-card" style="padding:6px 16px"><b style="display:block;font-size:15px;margin:10px 0 2px">What moves your results <span class="pz-sub" style="font-weight:400;font-size:12px">· ${R==='all'?'all time':'last '+R+' days'}${RF.n?', '+RF.n+' trades':''}</span></b>${RF.few?`<p class="pz-sub" style="font-size:13px;padding:6px 0 12px">Needs at least 10 closed trades in this range to find patterns — there ${RF.n===1?'is':'are'} ${RF.n}. Try a longer range.</p>`:''}${F.length?F.map(f=>`<div class="pz-ins"><span class="pz-tag ${esc(f.tone)}">${esc(TONE_TAG[f.tone]||'Note')}</span><span><b>${esc(f.title)}</b><span>${esc(pzPlain(f.action||f.body||''))}</span>${f.evidence?`<details class="pz-why"><summary>Why</summary><span>${esc(f.evidence)} · ${esc(confWords(f.conf))}</span></details>`:''}</span></div>`).join(''):(RF.few?'':'<p class="pz-sub" style="padding:12px 0">Patterns show up here after about five closed trades.</p>')}</section></div>`; }
+  if(!lock)deep+=pzHabitLinkHtml(g,ctx,fromKey);
   return `${pzHead(R==='all'?'All time':'Last '+R+' days','Stats',seg)}${pzMkSeg()}<div class="pz-wide">${stats}${deep}<p class="pz-fine pz-span"><a href="#how">How are the scores worked out?</a></p>${pzCustomizeLink('stats')}</div>${pzLayoutCss('stats')}`;
 }
 // The Diagnostic's findings for one range (all time reuses the coach's set). Same engine, only the
@@ -697,7 +778,7 @@ const pzSignCol=v=>v>0?PZ_COL.good:v<0?PZ_COL.low:'var(--pz-text)';
 const pzRatio=v=>v==null?'—':isFinite(v)?v.toFixed(2):'∞';
 // a card of label/value rows; tip explains the number on hover
 function pzKv(title, rows, note){
-  return `<section class="pz-card pz-kv"><b class="pz-kvh">${esc(title)}</b>${rows.filter(Boolean).map(([l,v,c,tip])=>`<div class="pz-row-t"${tip?` title="${esc(tip)}"`:''}><span>${esc(l)}</span><b${c?` style="color:${c}"`:''}>${esc(v)}</b></div>`).join('')}${note?`<p class="pz-fine">${note}</p>`:''}</section>`;
+  return `<section class="pz-card pz-kv"><b class="pz-kvh">${esc(title)}</b>${rows.filter(Boolean).map(([l,v,c,tip])=>`<div class="pz-row-t"${tip?` data-pz-tip="${esc(l+'\n'+tip)}" tabindex="0"`:''}><span>${esc(l)}</span><b${c?` style="color:${c}"`:''}>${esc(v)}</b></div>`).join('')}${note?`<p class="pz-fine">${note}</p>`:''}</section>`;
 }
 // a breakdown table: label, trades, win rate, net, average
 // Lists longer than ten show ten at a time; each list remembers its page while the app is open.
@@ -715,7 +796,7 @@ function pzTbl(title, rows, labelOf, note){
 function pzDivBars(items, h){
   const max=Math.max(1,...items.map(x=>Math.abs(x.v||0)));
   return `<div class="pz-div" style="--h:${h||110}px" role="img" aria-label="Net P&L by bucket; the table view is below">${items.map(x=>{ const pct=Math.round(Math.abs(x.v||0)/max*100);
-    return `<span title="${esc(x.tip)}"><i class="up">${x.v>0?`<b style="height:${Math.max(2,pct)}%;background:${PZ_COL.good}"></b>`:''}</i><i class="dn">${x.v<0?`<b style="height:${Math.max(2,pct)}%;background:${PZ_COL.low}"></b>`:''}</i><em>${esc(x.l)}</em></span>`; }).join('')}</div>`;
+    return `<span data-pz-tip="${esc(x.tip)}" tabindex="0"><i class="up">${x.v>0?`<b style="height:${Math.max(2,pct)}%;background:${PZ_COL.good}"></b>`:''}</i><i class="dn">${x.v<0?`<b style="height:${Math.max(2,pct)}%;background:${PZ_COL.low}"></b>`:''}</i><em>${esc(x.l)}</em></span>`; }).join('')}</div>`;
 }
 // cumulative P&L, trade by trade, with the drawdown underneath
 // The equity curve, spelled out: dollar axis, dates, the peak, where it stands now, the deepest
@@ -786,15 +867,21 @@ document.addEventListener('pointerleave',ev=>{ const w=ev.target&&ev.target.clos
 // One floating box, kept inside the screen; on a phone the badge's own info card does the job.
 function pzTipShow(el){ const txt=el.getAttribute('data-pz-tip'); if(!txt)return; let box=document.getElementById('pzTip');
   if(!box){ box=document.createElement('div'); box.id='pzTip'; box.className='pz-tipbox'; box.setAttribute('role','tooltip'); document.body.appendChild(box); }
-  const [head,...rest]=txt.split('\n'); box.innerHTML='<b>'+esc(head)+'</b>'+(rest.length?'<br>'+rest.map(esc).join('<br>'):''); box.hidden=false;
+  _pzTipEl=el; const [head,...rest]=txt.split('\n'); box.innerHTML='<b>'+esc(head)+'</b>'+(rest.length?'<br>'+rest.map(esc).join('<br>'):''); box.hidden=false;
   const r=el.getBoundingClientRect(), bw=box.offsetWidth, bh=box.offsetHeight;
   let x=r.left+r.width/2-bw/2, y=r.top-bh-8; if(y<8)y=r.bottom+8;
   box.style.left=Math.max(8,Math.min(innerWidth-bw-8,x))+'px'; box.style.top=Math.max(8,Math.min(innerHeight-bh-8,y))+'px'; }
-function pzTipHide(){ const box=document.getElementById('pzTip'); if(box)box.hidden=true; }
+function pzTipHide(){ const box=document.getElementById('pzTip'); if(box)box.hidden=true; _pzTipEl=null; }
+var _pzTipEl=null;
+const PZ_VIZ='.pz-viz,.pz-chart,.pz-div,.pz-session,.pz-hlsvg,.pz-snapsvg';
+// no hover on a phone: a tap on a chart mark shows what it means, a tap anywhere else hides it
+document.addEventListener('pointerdown',ev=>{ if(ev.pointerType==='mouse')return; const el=ev.target.closest&&ev.target.closest('[data-pz-tip]');
+  if(el&&el.closest(PZ_VIZ)){ pzTipShow(el); _pzTapAt=Date.now(); } else pzTipHide(); },{passive:true});
+var _pzTapAt=0;
 document.addEventListener('pointerover',ev=>{ if(ev.pointerType!=='mouse')return; const el=ev.target.closest&&ev.target.closest('[data-pz-tip]'); if(el)pzTipShow(el); },{passive:true});
-document.addEventListener('pointerout',ev=>{ const el=ev.target.closest&&ev.target.closest('[data-pz-tip]'); if(el&&!el.contains(ev.relatedTarget))pzTipHide(); },{passive:true});
-document.addEventListener('focusin',ev=>{ const el=ev.target.closest&&ev.target.closest('[data-pz-tip]'); if(el&&el.matches(':focus-visible'))pzTipShow(el); else pzTipHide(); });
-document.addEventListener('focusout',pzTipHide); addEventListener('scroll',pzTipHide,{passive:true,capture:true}); addEventListener('hashchange',pzTipHide);
+document.addEventListener('pointerout',ev=>{ if(ev.pointerType&&ev.pointerType!=='mouse')return; /* a lifted finger "leaves" too; a tap elsewhere closes it */ const el=ev.target.closest&&ev.target.closest('[data-pz-tip]'); if(el&&!el.contains(ev.relatedTarget))pzTipHide(); },{passive:true});
+document.addEventListener('focusin',ev=>{ const el=ev.target.closest&&ev.target.closest('[data-pz-tip]'); if(el&&el.matches(':focus-visible'))pzTipShow(el); else if(el!==_pzTipEl)pzTipHide(); });
+document.addEventListener('focusout',ev=>{ const to=ev.relatedTarget; if(Date.now()-_pzTapAt<500||(_pzTipEl&&to&&_pzTipEl.contains(to)))return; pzTipHide(); }); // the blur a tap causes doesn't close the tip it just opened addEventListener('scroll',pzTipHide,{passive:true,capture:true}); addEventListener('hashchange',pzTipHide);
 // Midnight (on the app's clock) of the first day of an n-day range ending today — calendar
 // days, not 24-hour steps, so a daylight-saving change doesn't shift the window by an hour.
 function pzRangeStart(n, now){ const p=tzParts(now); return settings.tz==='utc'?Date.UTC(p.y,p.mo,p.day-(n-1)):new Date(p.y,p.mo,p.day-(n-1)).getTime(); }
@@ -1153,6 +1240,7 @@ function wirePulse(){
       return; }
     if(await pzGrowthAction(t))return;
     if(ds.pzRange){ pzS.range=ds.pzRange==='all'?'all':+ds.pzRange; pzRender(); return; }
+    if(ds.pzHlu){ pzS.hlu=ds.pzHlu; pzRender(); return; }
     if(ds.pzBadge){ pzS.badge=pzS.badge===ds.pzBadge?null:ds.pzBadge; pzRender(); return; }
     if(ds.pzCk&&pzS.ck){ const n=+ds.n; pzS.ck[ds.pzCk]=pzS.ck[ds.pzCk]===n?null:n;
       t.closest('.pz-pills').querySelectorAll('button').forEach(b=>b.setAttribute('aria-checked',String(+b.dataset.n===pzS.ck[ds.pzCk])));
