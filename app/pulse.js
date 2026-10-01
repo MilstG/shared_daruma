@@ -601,6 +601,16 @@ const pzInMk=t=>{ const m=pzMk(); return m==='all'||t.market===m; };
 function pzMkSeg(){
   if(!pzBothMarkets())return '';
   return `<div class="pz-seg pz-mkseg" role="group" aria-label="Markets">${[['all','All markets'],['perp','Perps'],['spot','Spot']].map(([k,l])=>`<button type="button" data-pz-mk="${k}" aria-pressed="${pzMk()===k}">${l}</button>`).join('')}</div>`; }
+// the whole-history answer under the range tiles: the good-day dividend and whether it holds up,
+// from the same analysis as Review → Routine vs results in the full journal
+function pzLongViewHtml(){
+  let r; try{ r=rvModel(); }catch(e){ return ''; }
+  const u=r.unit, f=v=>(v>=0?'+':'')+(u==='R'?v.toFixed(2)+'R':v.toFixed(2)+'%');
+  if(r.weeks.length<r.need.weeks)return `<p class="pz-fine">The long view needs ${r.need.weeks} weeks of trading; you have ${r.weeks.length}.</p>`;
+  const dv=r.dividend; if(!dv)return '';
+  const holds=dv.lo>0, against=dv.hi<0, top=r.habits.filter(h=>!h.mechanical&&h.q!=null&&h.q<0.1&&h.diff>0)[0];
+  return `<div class="pz-tile ${holds?'good':against?'hot':'cool'}"><span class="pz-t" style="font-size:13px;line-height:1.45">Over all ${r.weeks.length} weeks: disciplined days made <b>${esc(f(dv.diff))}</b> more per trade than the rest${holds?' — and it holds up':against?' — the other way round':' — not clear yet'} (90% range ${esc(f(dv.lo))} to ${esc(f(dv.hi))}).${top?` The habit that pays most: <b>${esc(top.label.toLowerCase())}</b> (${esc(f(top.diff))}/trade).`:''} <a href="${esc(pzFullHref())}">Full analysis</a></span></div>`;
+}
 function pzTrendsHtml(D){
   const {g}=D, ctx=g.ctx, R=pzS.range, now=Date.now();
   const from=R==='all'?0:pzRangeStart(R,now), fromKey=dayKey(from);
@@ -640,6 +650,7 @@ function pzTrendsHtml(D){
     const F=[...FA.filter(f=>f.tone!=='info'),...FA.filter(f=>f.tone==='info')].slice(0,6);
     deep=`<section class="pz-card pz-span" data-sec="stats:insights" style="display:flex;flex-direction:column;gap:12px"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px"><span><span class="pz-lbl" style="color:${PZ_COL.good}">Discipline</span><br><span class="pz-sub" style="font-size:13px">${bc.unit}</span></span><span style="display:flex;align-items:baseline;gap:6px"><span class="pz-sub" style="font-size:12px">avg</span><span style="font-family:var(--pz-num);font-size:40px;font-weight:600;line-height:1">${ts.avg==null?'—':ts.avg}</span></span></div>${chart}</section>
       <div class="pz-col" data-sec="stats:insights"><section style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Does discipline pay?</b><div class="pz-grid2">${tile('good','Days 70+',ts.hi)}${tile('hot','Under 70',ts.lo)}</div>
+        ${pzLongViewHtml()}
         ${rl?`<div class="pz-tile cool"><span class="pz-t" style="font-size:13px;line-height:1.45">On days you checked in at readiness 70+, your discipline averaged <b>${rl.hi}</b>; on the other check-in days, <b>${rl.lo}</b>.</span></div>`:''}</section></div>
       <div class="pz-col" data-sec="stats:findings"><section class="pz-card" style="padding:6px 16px"><b style="display:block;font-size:15px;margin:10px 0 2px">What moves your results <span class="pz-sub" style="font-weight:400;font-size:12px">· ${R==='all'?'all time':'last '+R+' days'}${RF.n?', '+RF.n+' trades':''}</span></b>${RF.few?`<p class="pz-sub" style="font-size:13px;padding:6px 0 12px">Needs at least 10 closed trades in this range to find patterns — there ${RF.n===1?'is':'are'} ${RF.n}. Try a longer range.</p>`:''}${F.length?F.map(f=>`<div class="pz-ins"><span class="pz-tag ${esc(f.tone)}">${esc(TONE_TAG[f.tone]||'Note')}</span><span><b>${esc(f.title)}</b><span>${esc(pzPlain(f.action||f.body||''))}</span>${f.evidence?`<details class="pz-why"><summary>Why</summary><span>${esc(f.evidence)} · ${esc(confWords(f.conf))}</span></details>`:''}</span></div>`).join(''):(RF.few?'':'<p class="pz-sub" style="padding:12px 0">Patterns show up here after about five closed trades.</p>')}</section></div>`; }
   return `${pzHead(R==='all'?'All time':'Last '+R+' days','Stats',seg)}${pzMkSeg()}<div class="pz-wide">${stats}${deep}<p class="pz-fine pz-span"><a href="#how">How are the scores worked out?</a></p>${pzCustomizeLink('stats')}</div>${pzLayoutCss('stats')}`;

@@ -669,6 +669,7 @@ function renderReviewInner(){
    ${playbooksSectionHtml()}
    <div class="diag-section"><h2>This week</h2><div class="diag-grid">${windowCard('Last 7 days',wk,pwk)}${windowCard('Last 30 days',mo,pmo)}</div></div>
    ${procHtml}
+   ${routineSectionHtml()}
    ${costVar}
    <div class="diag-section"><h2>Highlights · last 30 days</h2><div class="diag-grid">
      <div class="diag-card"><h3>Best &amp; worst</h3>
@@ -684,6 +685,7 @@ function renderReviewInner(){
    <div class="diag-section"><h2>Focus for next week</h2><ol class="recs">${focus.map(f=>`<li>${f}</li>`).join('')}</ol></div>
    ${nfLeaderboardHtml(periodTrades().filter(t=>!t.isOpen))}`;
   wireDayJournal(); wireHabits(); wireInbox(); wireWeeklyReview(); wireGoals(); wirePlaybooks(); wireProgress();
+  try{ drawRoutineCharts(); }catch(e){ console.warn('routine charts',e); }
   loadCoachLetter();
 }
 /* ============================ playbooks ============================ */
@@ -812,6 +814,82 @@ function wirePlaybooks(){
     await Store.set(S_KEY,settings); renderReview(); renderTable(); });
 }
 
+/* ============================ routine vs results (Review) ============================ */
+// The long view of "does discipline pay": routineVsResults (habits-coach.js) over the whole history
+// in the current view, memoized on the coach context (it runs ~3k seeded permutations/resamples).
+let _rvMemo={key:null,r:null}, _rvCharts=[];
+function rvModel(){
+  const g=gameContext(), ctx=coachContext(), key=_coachMemo.key+'|'+g.days.length;
+  if(_rvMemo.key===key)return _rvMemo.r;
+  const entryOf=k=>{ const e=journal['day:'+k]; return {checkin:typeof pzReadinessManual==='function'&&pzReadinessManual(e)!=null, review:!!(e&&e.eod&&e.eod.at)}; };
+  const r=routineVsResults(g.days,ctx.byDay,{rOf:rFor,pctOf:retPct,weekOf:isoWeekOfKey,entryOf,seed:_hashSeed('rv|'+view)});
+  _rvMemo={key,r}; return r;
+}
+// plain words for a rank correlation and its p-value
+function rvLinkWords(c){
+  if(!c)return null;
+  const a=Math.abs(c.rho), size=a>=0.5?'strong':a>=0.3?'moderate':a>=0.1?'weak':'no real';
+  const dir=c.rho>=0?'better':'worse';
+  return {size,dir,chance:c.p>=0.05,text:(a<0.1?'No real link':size[0].toUpperCase()+size.slice(1)+' link: more disciplined weeks, '+dir+' results')+(c.p>=0.05&&a>=0.1?' — but it could still be chance':'')};
+}
+function routineSectionHtml(){
+  let r; try{ r=rvModel(); }catch(e){ console.warn('routine vs results',e); return ''; }
+  const u=r.unit, fmt=v=>v==null?'—':(v>=0?'+':'')+(u==='R'?v.toFixed(2)+'R':v.toFixed(2)+'%');
+  const mrow=(l,v,tip)=>`<div class="metric-row"${tip?` data-tip="${esc(tip)}"`:''}><span class="ml">${l}</span><span class="mv">${v}</span></div>`;
+  const head=`<div class="diag-section"><h2>Routine vs results <span style="font-size:11px;color:var(--faint);font-weight:400">the long view · does your discipline pay? · current view</span></h2>`;
+  if(r.weeks.length<r.need.weeks)return head+`<p class="lead">This needs at least ${r.need.weeks} weeks with trades to say anything honest — you have ${r.weeks.length}. Keep trading your process; the link (or the lack of one) shows up here once there’s enough history.</p>
+    <div class="rvbar" role="progressbar" aria-valuemin="0" aria-valuemax="${r.need.weeks}" aria-valuenow="${r.weeks.length}"><i style="width:${Math.round(100*r.weeks.length/r.need.weeks)}%"></i></div></div>`;
+  const L=rvLinkWords(r.corr), N=rvLinkWords(r.lead), dv=r.dividend;
+  const flat=!r.corr&&r.weeks.every(w=>Math.abs(w.score-r.weeks[0].score)<1e-9);
+  if(flat)return head+`<p class="lead">Your routine score was ${Math.round(r.weeks[0].score)} every week of this history (${r.weeks.length} weeks) — no revenge entries, sizing up after losses, adds to losers or overtrading${r.weeks[0].score<100?' changed from week to week':''}. With no variation there’s nothing to compare yet; this fills in as soon as some weeks go differently.</p></div>`;
+  const hRows=r.habits.filter(h=>h.kept.n>0&&h.missed.n>0);
+  const headline=dv?(dv.lo>0?`On your disciplined days (score 70+) you made <b class="pos-t">${fmt(dv.diff)}</b> more per trade than on the rest — and that holds up (90% range ${fmt(dv.lo)} to ${fmt(dv.hi)}).`
+      :dv.hi<0?`Surprisingly, your disciplined days did <b class="neg-t">${fmt(dv.diff)}</b> per trade versus the rest (90% range ${fmt(dv.lo)} to ${fmt(dv.hi)}). Worth a look at what “disciplined” trades you’re taking.`
+      :`So far your disciplined days and the rest perform about the same per trade (${fmt(dv.diff)}, 90% range ${fmt(dv.lo)} to ${fmt(dv.hi)}) — not enough to call either way yet.`)
+    :'Not enough trades on both kinds of day yet to compare them.';
+  const sig=h=>h.mechanical?'<span style="color:var(--faint)">follows from the result</span>':h.q!=null&&h.q<0.1?'<b>holds up</b>':h.p!=null&&h.p<0.05?'suggestive':h.p!=null?'<span style="color:var(--faint)">could be chance</span>':'<span style="color:var(--faint)">too few days</span>';
+  const roll=r.rolling.length>=2?r.rolling:null;
+  return head+`<p class="lead">${headline}</p>
+    <div class="diag-grid">
+      <div class="diag-card"><h3 data-tip="Bars: average result per trade each week. Line: that week’s routine score (0–100, right axis) — the share of trades with no revenge entry, sizing up after a loss, adding to a loser or overtrading.">Week by week</h3><div class="chart-box" style="height:220px"><canvas id="rvWeeks"></canvas></div></div>
+      <div class="diag-card"><h3 data-tip="Cumulative result of the trades taken on days scoring 70+ versus all other days, in date order. Two separate running totals.">Disciplined days vs the rest</h3><div class="chart-box" style="height:220px"><canvas id="rvCurves"></canvas></div></div>
+    </div>
+    <div class="diag-grid">
+      <div class="diag-card"><h3>The numbers</h3>
+        ${mrow('Same week',L?`${esc(L.text)} <span style="color:var(--faint)">ρ ${r.corr.rho.toFixed(2)} · p ${r.corr.p.toFixed(3)} · ${r.corr.n} weeks</span>`:'—','Spearman rank correlation between each week’s routine score and its average result per trade, with a permutation p-value (1,000 shuffles).')}
+        ${mrow('Next week',N?`${esc(N.text.replace('more disciplined weeks, ','a disciplined week, then '))} <span style="color:var(--faint)">ρ ${r.lead.rho.toFixed(2)} · p ${r.lead.p.toFixed(3)}</span>`:'—','Does a disciplined week predict the FOLLOWING week’s results? Same-week links can run backwards (a bad day makes you sloppy); a next-week link can’t, so it’s closer to cause and effect.')}
+        ${dv?mrow('Per trade, disciplined days',`${fmt(dv.good.mean)} <span style="color:var(--faint)">${dv.good.n} trades</span>`):''}
+        ${dv?mrow('Per trade, other days',`${fmt(dv.rest.mean)} <span style="color:var(--faint)">${dv.rest.n} trades</span>`):''}
+        ${roll?mrow('Over time',`ρ ${roll[0].rho.toFixed(2)} → ${roll[roll.length-1].rho.toFixed(2)} <span style="color:var(--faint)">rolling 12 weeks</span>`,'The same-week correlation over a sliding 12-week window, first and latest. Rising means discipline is paying more lately.'):''}
+        <p class="mini-note">Results are ${u==='R'?'in R (your planned risk per trade)':'% return on notional (set a planned risk to see R)'}, so bigger size doesn’t count as better trading. Correlation isn’t proof: read the next-week line and the habits below as the stronger evidence.</p></div>
+    </div>
+    <div class="diag-grid" style="grid-template-columns:1fr">
+      <div class="diag-card"><h3 data-tip="Average result per trade on days you kept each habit versus days you didn’t. 'Holds up' survives a false-discovery check across all habits tested; 'suggestive' doesn’t yet. Habits that can only fail on a losing day are listed but not tested.">Which habits pay</h3>
+        <div class="tbl-wrap"><table class="rvtbl"><thead><tr><th class="l">Habit</th><th>Kept</th><th>Missed</th><th>Difference</th><th class="l">Evidence</th></tr></thead><tbody>
+        ${hRows.length?'':'<tr><td colspan="5" class="l" style="color:var(--faint)">Every habit here was either always kept or never logged in this history — nothing to compare yet.</td></tr>'}
+        ${hRows.map(h=>`<tr${h.mechanical?' class="rvmech"':''}><td class="l">${esc(h.label)}</td><td>${fmt(h.kept.mean)} <span class="rvn">${h.kept.n}d</span></td><td>${fmt(h.missed.mean)} <span class="rvn">${h.missed.n}d</span></td><td class="${h.diff==null?'':cls(h.diff)}">${h.diff==null?'—':fmt(h.diff)}</td><td class="l">${sig(h)}</td></tr>`).join('')}
+        </tbody></table></div></div>
+    </div></div>`;
+}
+function drawRoutineCharts(){
+  _rvCharts.forEach(c=>{ try{ c.destroy(); }catch(e){} }); _rvCharts=[];
+  const a=$('rvWeeks'), b=$('rvCurves'); if(!a||!b)return;
+  const r=_rvMemo.r; if(!r)return;
+  const css=v=>getComputedStyle(document.body).getPropertyValue(v).trim();
+  const pos=css('--profit')||'#2FD08C', neg=css('--loss')||'#F4586A', gold=css('--gold')||'#C9A85C';
+  _rvCharts.push(new Chart(a,{data:{labels:r.weeks.map(w=>w.week.replace(/^\d{4}-/,'')),datasets:[
+      {type:'bar',label:'Result per trade',data:r.weeks.map(w=>w.res),backgroundColor:r.weeks.map(w=>w.res>=0?pos:neg),yAxisID:'y',order:2},
+      {type:'line',label:'Routine score',data:r.weeks.map(w=>w.score),borderColor:gold,backgroundColor:gold,pointRadius:0,borderWidth:2,tension:.25,yAxisID:'y2',order:1}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{maxTicksLimit:8,maxRotation:0}},
+      y:{grid:{color:GRID},ticks:{callback:v=>(+v.toFixed(2))+(r.unit==='R'?'R':'%')}},y2:{position:'right',min:0,max:100,grid:{display:false}}}}}));
+  const pts=s=>s.map(p=>({x:Date.parse(p.key+'T12:00:00Z'),y:p.v}));
+  _rvCharts.push(new Chart(b,{type:'line',data:{datasets:[
+      {label:'Disciplined days (70+)',data:pts(r.curves.good),borderColor:pos,pointRadius:0,borderWidth:2},
+      {label:'Other days',data:pts(r.curves.rest),borderColor:neg,pointRadius:0,borderWidth:2,borderDash:[5,4]}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{boxWidth:10}}},
+      scales:{x:{type:'linear',min:Math.min(...[...r.curves.good,...r.curves.rest].map(p=>Date.parse(p.key+'T12:00:00Z'))),max:Math.max(...[...r.curves.good,...r.curves.rest].map(p=>Date.parse(p.key+'T12:00:00Z'))),grid:{display:false},ticks:{maxTicksLimit:6,callback:v=>{ const d=new Date(v); return (d.getUTCMonth()+1)+'/'+String(d.getUTCFullYear()).slice(2); }}},
+        y:{grid:{color:GRID},ticks:{callback:v=>(+v.toFixed(2))+(r.unit==='R'?'R':'%')}}}}}));
+}
 /* ============================ monthly goals ============================ */
 // This-month progress vs self-set goals: realized net vs target (with straight-line pace
 // and projection), worst intramonth drawdown vs the acceptable max, trades/week vs the

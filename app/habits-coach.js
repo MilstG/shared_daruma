@@ -476,6 +476,88 @@ function processTrend(days, win){
   let streak=0; for(let i=s.length-1;i>=0&&s[i]>=70;i--)streak++;
   return {avg:last.length?_avg(last):null, prevAvg:prev.length?_avg(prev):null, streak, n:s.length};
 }
+/* ---- routine vs results: does your discipline pay, over the long run? ---- */
+// Pure. days: Pulse's day list ({key, behavior:{n, slips:[{id,f:[flags]}]}, parts}); byDay: {key: closed
+// trades}; opts: {rOf(t)->R|null, pctOf(t)->% return|null, weekOf(key), entryOf(key)->{checkin,review}, seed}.
+// The routine score is OUTCOME-BLIND: the share of the day's trades free of revenge entries, sizing
+// up after a loss, adding to a loser and overtrading. The two checks that can only fail on a losing
+// trade (holding a loser, trading on after two losses) are left out, so a red day can't lower the
+// score by itself and manufacture a correlation. Results are per trade, in R when most trades have
+// a risk, else % return on notional (both size-neutral). Everything is seeded, so it reproduces.
+const RV_BLIND=['revenge','sizeUp','addLoser','overtrade'];
+const RV_HABITS=[ // key, label, how a day is graded (true kept / false missed / null n.a.), mechanical?
+  ['plan','Plan written before the first trade',d=>d.parts.plan==null?null:d.parts.plan>=1?true:d.parts.plan===0?false:null,false],
+  ['rules','Your rules kept',d=>d.parts.rules==null?null:d.parts.rules>=1,false],
+  ['planned','Stops written while the trade was open',d=>d.parts.planned==null?null:d.parts.planned>=1,false],
+  ['checkin','Morning check-in done',d=>d.checkin,false],
+  ['review','End-of-day review written',d=>d.review,false],
+  ['journal','Every trade journaled',d=>d.parts.journal==null?null:d.parts.journal>=1,false],
+  ['revenge','No revenge entries',d=>!d.flags.revenge,false],
+  ['sizeUp','No sizing up after a loss',d=>!d.flags.sizeUp,false],
+  ['addLoser','No adding to losers',d=>!d.flags.addLoser,false],
+  ['overtrade','No overtrading',d=>!d.flags.overtrade,false],
+  ['stops','Stops honored',d=>d.parts.stops==null?null:d.parts.stops>=1,true],
+  ['limit','Stayed under the loss limit',d=>d.parts.limit==null?null:d.parts.limit>=1,true],
+];
+function routineVsResults(days, byDay, opts){
+  opts=opts||{};
+  const rOf=opts.rOf||(()=>null), pctOf=opts.pctOf||(()=>null), weekOf=opts.weekOf||(k=>k.slice(0,7)), entryOf=opts.entryOf||(()=>({}));
+  let seed=(opts.seed>>>0)||1; const rnd=()=>{ seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; };
+  const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+  const all=[]; for(const d of days||[]) for(const t of (byDay[d.key]||[])) all.push(t);
+  const withR=all.filter(t=>{ const r=rOf(t); return r!=null&&isFinite(r); }).length;
+  const unit=all.length&&withR/all.length>=0.6?'R':'%';
+  const res=t=>{ const v=unit==='R'?rOf(t):pctOf(t); return v!=null&&isFinite(v)?v:null; };
+  // per day: outcome-blind score, per-trade results, habit grades
+  const D=[];
+  for(const d of days||[]){ const tr=(byDay[d.key]||[]), vals=tr.map(res).filter(v=>v!=null); if(!vals.length)continue;
+    const b=d.behavior||{}, n=b.n||tr.length, bad=new Set((b.slips||[]).filter(s=>(s.f||[]).some(f=>RV_BLIND.includes(f))).map(s=>s.id));
+    const flags={}; for(const f of RV_BLIND)flags[f]=(b.flags&&b.flags[f])||0;
+    const e=entryOf(d.key)||{};
+    D.push({key:d.key,week:weekOf(d.key),score:n?Math.round(100*(n-Math.min(n,bad.size))/n):null,vals,mean:mean(vals),parts:d.parts||{},flags,checkin:!!e.checkin,review:!!e.review}); }
+  // Spearman rank correlation, with a two-sided permutation p-value
+  const ranks=a=>{ const idx=a.map((v,i)=>[v,i]).sort((x,y)=>x[0]-y[0]), r=new Array(a.length);
+    for(let i=0;i<idx.length;){ let j=i; while(j+1<idx.length&&idx[j+1][0]===idx[i][0])j++; for(let k=i;k<=j;k++)r[idx[k][1]]=(i+j)/2+1; i=j+1; } return r; };
+  const pearson=(x,y)=>{ const mx=mean(x), my=mean(y); let sxy=0,sx=0,sy=0; for(let i=0;i<x.length;i++){ sxy+=(x[i]-mx)*(y[i]-my); sx+=(x[i]-mx)**2; sy+=(y[i]-my)**2; } return sx>0&&sy>0?sxy/Math.sqrt(sx*sy):null; };
+  const spearman=(x,y,perms)=>{ if(x.length<3)return null; const rx=ranks(x), ry=ranks(y), rho=pearson(rx,ry); if(rho==null)return null;
+    let hits=0; const P=perms==null?1000:perms, sh=ry.slice();
+    for(let k=0;k<P;k++){ for(let i=sh.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [sh[i],sh[j]]=[sh[j],sh[i]]; } const r=pearson(rx,sh); if(r!=null&&Math.abs(r)>=Math.abs(rho)-1e-12)hits++; }
+    return {rho,p:(hits+1)/(P+1),n:x.length}; };
+  // weeks: average routine score, average per-trade result
+  const wk={}; for(const d of D){ const w=wk[d.week]=wk[d.week]||{week:d.week,days:0,scores:[],vals:[]}; w.days++; if(d.score!=null)w.scores.push(d.score); w.vals.push(...d.vals); }
+  const weeks=Object.values(wk).sort((a,b)=>a.week<b.week?-1:1).map(w=>({week:w.week,days:w.days,trades:w.vals.length,score:mean(w.scores),res:mean(w.vals)})).filter(w=>w.score!=null);
+  const MINW=8;
+  const corr=weeks.length>=MINW?spearman(weeks.map(w=>w.score),weeks.map(w=>w.res)):null;
+  // lead: does THIS week's routine predict NEXT week's results? (consecutive weeks only)
+  const pairs=[]; for(let i=0;i+1<weeks.length;i++)pairs.push([weeks[i].score,weeks[i+1].res]);
+  const lead=pairs.length>=MINW?spearman(pairs.map(p=>p[0]),pairs.map(p=>p[1])):null;
+  // the discipline dividend: per-trade result on good days (score >= 70) vs the rest, with a bootstrap 90% range
+  const good=[], rest=[]; for(const d of D)(d.score>=70?good:rest).push(...d.vals);
+  let dividend=null;
+  if(good.length>=10&&rest.length>=10){ const diffs=[];
+    for(let k=0;k<1000;k++){ let a=0,b=0; for(let i=0;i<good.length;i++)a+=good[Math.floor(rnd()*good.length)]; for(let i=0;i<rest.length;i++)b+=rest[Math.floor(rnd()*rest.length)]; diffs.push(a/good.length-b/rest.length); }
+    diffs.sort((x,y)=>x-y);
+    dividend={good:{n:good.length,mean:mean(good)},rest:{n:rest.length,mean:mean(rest)},diff:mean(good)-mean(rest),lo:diffs[50],hi:diffs[949]}; }
+  // cumulative results, good days vs the rest, in date order (the "two equity curves")
+  const curves={good:[],rest:[]}; let cg=0,cr=0;
+  for(const d of D){ const s=d.vals.reduce((x,y)=>x+y,0); if(d.score>=70){ cg+=s; curves.good.push({key:d.key,v:cg}); } else { cr+=s; curves.rest.push({key:d.key,v:cr}); } }
+  // habits: days kept vs missed, Welch t-test, Benjamini–Hochberg across the habits tested
+  const tP=(a,b)=>{ if(a.length<5||b.length<5)return null; const ma=mean(a), mb=mean(b), va=a.reduce((s,x)=>s+(x-ma)**2,0)/(a.length-1), vb=b.reduce((s,x)=>s+(x-mb)**2,0)/(b.length-1);
+    const se=Math.sqrt(va/a.length+vb/b.length); if(!(se>0))return null; const z=Math.abs(ma-mb)/se;
+    // normal approximation to the t tail (fine at these sample sizes; flagged early below)
+    const tail=x=>{ const t=1/(1+0.2316419*x), d=0.3989423*Math.exp(-x*x/2); return d*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274)))); };
+    return Math.min(1,2*tail(z)); };
+  const habits=RV_HABITS.map(([key,label,grade,mech])=>{ const k=[],m=[]; for(const d of D){ const g=grade(d); if(g===true)k.push(d.mean); else if(g===false)m.push(d.mean); }
+    return {key,label,mechanical:mech,kept:{n:k.length,mean:mean(k)},missed:{n:m.length,mean:mean(m)},diff:k.length&&m.length?mean(k)-mean(m):null,p:tP(k,m)}; });
+  const tested=habits.filter(h=>h.p!=null&&!h.mechanical).sort((a,b)=>a.p-b.p);
+  tested.forEach((h,i)=>{ h.q=Math.min(1,h.p*tested.length/(i+1)); });
+  for(let i=tested.length-2;i>=0;i--)tested[i].q=Math.min(tested[i].q,tested[i+1].q);
+  habits.sort((a,b)=>(a.mechanical-b.mechanical)||((b.diff==null?-1e9:b.diff)-(a.diff==null?-1e9:a.diff)));
+  // is it paying more over time? Spearman over a rolling 12-week window
+  const rolling=[]; const WIN=12;
+  for(let i=WIN;i<=weeks.length;i++){ const w=weeks.slice(i-WIN,i), s=spearman(w.map(x=>x.score),w.map(x=>x.res),0); if(s)rolling.push({week:w[w.length-1].week,rho:s.rho}); }
+  return {unit,days:D.length,trades:all.length,weeks,corr,lead,dividend,curves,habits,rolling,need:{weeks:MINW,have:weeks.length}};
+}
 // Everything the process score needs from the rule engine, for one trade set.
 // A rule from findings only counts trades entered after it was made, and when those are the
 // only rules, the "rules kept" part starts on the first rule's day — history isn't regraded.

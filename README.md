@@ -816,6 +816,46 @@ rules from findings) and **no stop written** (a recent perp position with no
 trade plan). If notifications were granted (asked only when you save a loss limit),
 the tripwire also fires a desktop notification when the tab is backgrounded.
 
+### Routine vs results
+
+**Review → Routine vs results** answers the long-run question: does your
+discipline actually pay? Over your whole history in the current view it shows:
+
+- **Week by week.** Average result per trade as bars, with your routine score
+  as a line.
+- **Two curves.** Cumulative results of trades on disciplined days (routine
+  score 70+) and on all other days.
+- **The numbers.**
+  - Same-week link: Spearman correlation with a 1,000-shuffle permutation
+    p-value.
+  - Next-week link: does a disciplined week predict the *following* week? That's
+    closer to cause and effect, because it can't run backwards.
+  - Per-trade result on disciplined days vs the rest, with a bootstrapped 90%
+    range for the difference.
+  - Whether the link is growing, over a rolling 12-week window.
+- **Which habits pay.** Plan before the first trade, rules kept, stops written,
+  check-in, end-of-day review, journaling, and no revenge entries, sizing up,
+  adding to losers or overtrading. Each shows days kept vs missed and the
+  difference per trade, marked *holds up* (it survives a false-discovery check
+  across all the habits), *suggestive* or *could be chance*.
+
+Two choices keep it honest:
+
+- **The routine score here is outcome-blind.** It's the share of the day's
+  trades free of revenge entries, sizing up after a loss, adding to a loser and
+  overtrading. The two Discipline checks that can only fail on a losing trade
+  (holding a loser, trading on after two losses) are left out, so a red day
+  can't lower the score by itself and manufacture a link. For the same reason,
+  habits that follow from the result ("stayed under the loss limit", "stops
+  honored") are listed but not tested.
+- **Results are in R** (or % return on notional when most trades have no
+  planned risk), so trading bigger never counts as trading better.
+
+It needs 8 weeks of trading before it claims anything, and it says so when your
+score never varied. Pulse's "Does discipline pay?" card adds a one-line
+whole-history summary with the habit that pays most. Every number is seeded, so
+it reproduces.
+
 ## The Project view
 
 Forward visualization of your current performance — explicitly a *what-if*,
