@@ -186,7 +186,7 @@ function socCompHtml(D, id){
   const need=pzLocked('compete',D.g.level.level);
   const act=x.status==='finished'?'':x.joined?`<button type="button" class="pz-ghost" data-soc-leave="${esc(x.id)}">Leave this competition</button>`
     :need?`<p class="pz-fine">${pzI('lock',14)} Competitions unlock at level ${need}. You’re level ${D.g.level.level}.</p>`:`<button type="button" class="pz-cta" data-soc-join="${esc(x.id)}">Join</button>`;
-  const spg=pzPage('st:'+x.id,x.standings||[]), rows=spg.items.map(r=>`<li class="pz-li${r.me?' me':''}"><span class="pz-rank${r.rank<=3?' top':''}">${r.rank}</span>${socAv(r.handle)}<a class="pz-who" href="#u/${esc(r.handle)}"><b>${r.me?'You':'@'+esc(r.handle)}</b><span${r.out?' style="color:#FFB39E"':''}>${esc(r.note)}</span></a></li>`).join('');
+  const spg=pzPage('st:'+x.id,x.standings||[]), rows=spg.items.map(r=>`<li class="pz-li${r.me?' me':''}"><span class="pz-rank${r.rank<=3?' top':''}">${r.rank}</span>${socAv(r.handle)}<a class="pz-who" href="#u/${esc(r.handle)}"><b>${r.me?'You':'@'+esc(r.handle)}</b><span${r.out?' style="color:var(--pz-err-t)"':''}>${esc(r.note)}</span></a></li>`).join('');
   return `${back}${pzHead((SOC_COMP_KIND[x.type]||x.type)+' · '+(x.status==='upcoming'?'starts '+dayLabel(x.start):x.status==='live'?'ends '+dayLabel(x.end):'finished'),x.title)}
     <div class="pz-wide"><div class="pz-col">
       ${x.me?`<div class="pz-grid3"><div class="pz-tile good"><span class="pz-t">Your rank</span><span class="pz-n">#${x.me.rank}</span><span class="pz-t">of ${x.entrants}</span></div><div class="pz-tile" style="grid-column:span 2"><span class="pz-t">Your standing</span><span style="font-size:15px;font-weight:600">${esc(x.me.note)}</span></div></div>`:''}
@@ -252,7 +252,7 @@ function socSharingHtml(D){
       :SOC.me.walletStatus==='rejected'?'<p class="pz-warn">The league owner hasn’t accepted this wallet. It doesn’t count for returns, verified Discipline or return competitions here.</p>':''}
     <p class="pz-fine">${SOC.me.claimed?`Returns and verified Discipline are read on chain from your claimed wallet (${esc(walletShort(SOC.me.claimedAddress||''))}).`:w?`Returns are read on chain from your first wallet (${esc(walletShort(w.address))}) when “Show % return” or “Show dollar P&L” is on. The server owner can see that address.`:'Add a wallet to take part in return boards and competitions.'}</p>
     <button type="button" class="pz-cta" id="socSaveShare">Save</button>
-    <a class="pz-card pz-cardlink" href="#account"><span class="pz-ico" style="background:#23272E;color:var(--pz-soft)">${pzI('shield',20)}</span>
+    <a class="pz-card pz-cardlink" href="#account"><span class="pz-ico" style="background:var(--pz-tint-n);color:var(--pz-soft)">${pzI('shield',20)}</span>
       <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><b style="font-size:15px">Account</b><span class="pz-sub" style="font-size:12px">Claim your wallet, devices, journal sync, leave the league</span></span>${pzI('chev',18)}</a>
   </div></div>`;
 }
@@ -264,7 +264,7 @@ function socAccountHtml(D){
   return `${back}${pzHead('@'+SOC.me.handle,'Account')}
   <div class="pz-wide"><div class="pz-col">${socClaimCardHtml()}${socDevicesCardHtml()}</div>
   <div class="pz-col">${sync}
-    <section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Leave the league</b><p class="pz-sub" style="font-size:13px">Deletes your profile, posts and competition entries from this server. Your journal isn’t touched.</p><button type="button" class="pz-ghost pz-sm" id="socLeave" style="color:#FFB39E;border-color:#6A2E20">Leave and delete my profile</button></section>
+    <section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Leave the league</b><p class="pz-sub" style="font-size:13px">Deletes your profile, posts and competition entries from this server. Your journal isn’t touched.</p><button type="button" class="pz-ghost pz-sm" id="socLeave" style="color:var(--pz-err-t);border-color:var(--pz-err-b)">Leave and delete my profile</button></section>
   </div></div>`;
 }
 function pzXpToGo(need,g){ const s=pzLevelStart(need); return isFinite(s)?Math.max(0,s-g.level.xp).toLocaleString()+' XP to go.':'Past the top level the league set — ask the owner.'; }
@@ -283,7 +283,11 @@ function pzThemesHtml(g){
 // an owner raising the bar, falls back to Mint instead of showing a locked theme).
 function pzApplyTheme(level){ const r=$('pz'); if(!r)return; const t=PZ_THEMES.find(x=>x[0]===settings.pzTheme);
   const need=t&&t[0]!=='mint'?pzLocked('theme:'+t[0],level||1):0;
-  r.style.setProperty('--pz-acc',t&&!need?t[2]:'#3FE0A0'); }
+  const acc=t&&!need?t[2]:'#3FE0A0';
+  r.style.setProperty('--pz-acc-d',acc); r.style.setProperty('--pz-acc-l',pzDeepen(acc)); } // the stylesheet picks one by appearance
+// the accent on white: mixed 40% toward black, so links and text in it stay readable
+function pzDeepen(hex){ const n=parseInt(String(hex).slice(1),16); if(!(n>=0))return hex;
+  const f=v=>Math.round(v*0.6).toString(16).padStart(2,'0'); return '#'+f(n>>16&255)+f(n>>8&255)+f(n&255); }
 
 // ---- actions ----
 async function socAction(t){
@@ -326,6 +330,7 @@ async function socAction(t){
     if(ds.socJoin){ await socFetch('/competitions/'+encodeURIComponent(ds.socJoin)+'/join',{method:'POST'}); done('You’re in. Good luck — play your process.'); return true; }
     if(ds.socLeave){ if(!confirm('Leave this competition?'))return true; await socFetch('/competitions/'+encodeURIComponent(ds.socLeave)+'/join',{method:'DELETE'}); done('You left the competition.'); return true; }
     if(ds.socAdopt){ await adoptHabit(socHabitSpec(ds.socAdopt)); done('Added to your habits. It’s tracked by the day journal’s “I followed the plan”.'); return true; }
+    if(ds.pzAppear){ await setAppearance(ds.pzAppear); return true; }
     if(ds.pzTheme){ settings.pzTheme=ds.pzTheme; await Store.set(S_KEY,settings); pzRender(); return true; }
     if(t.id&&await acctAction(t))return true;
     switch(t.id){
@@ -592,7 +597,7 @@ function socVaultCardHtml(){
   if(VAULT.key)return `<section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px;display:flex;align-items:center;gap:8px">${pzI('check',16)}Journal sync is on</b>
     <p class="pz-sub" style="font-size:13px">Your journal, wallets and settings are encrypted on this device before they’re sent, so the server stores only scrambled data. On another device, sign in and enter your sync passphrase.</p>
     ${VAULT.err?`<p class="pz-fine pz-err" role="alert">Last sync failed: ${esc(VAULT.err)}</p>`:me.vault&&me.vault.at?`<p class="pz-fine">Last synced ${socAgo(me.vault.at)}${me.vault.at>Date.now()-60000?'':' ago'}.</p>`:''}
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="pz-ghost pz-sm" id="vaultOff">Stop syncing on this device</button><button type="button" class="pz-ghost pz-sm" id="vaultDelete" style="color:#FFB39E;border-color:#6A2E20">Delete the synced copy</button></div></section>`;
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="pz-ghost pz-sm" id="vaultOff">Stop syncing on this device</button><button type="button" class="pz-ghost pz-sm" id="vaultDelete" style="color:var(--pz-err-t);border-color:var(--pz-err-b)">Delete the synced copy</button></div></section>`;
   const has=!!(me.vault&&me.vault.rev);
   return `<section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Your journal on every device</b>
     <p class="pz-sub" style="font-size:13px">${has?'This profile has a synced journal. Enter its passphrase to open it here — anything only on this device is kept too.'

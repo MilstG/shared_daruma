@@ -247,13 +247,31 @@ function renderDowHour(trades){
 /* ============================ charts ============================ */
 let charts={}; let GRID='rgba(26,34,51,.9)', TXT='#5C6578';
 Chart.defaults.font.family="'IBM Plex Mono', monospace"; Chart.defaults.font.size=11; Chart.defaults.color=TXT;
-const THEMES={ ink:{grid:'rgba(26,34,51,.9)',txt:'#5C6578'}, bb:{grid:'rgba(44,44,40,.9)',txt:'#8C8C84'} };
+const THEMES={ ink:{grid:'rgba(26,34,51,.9)',txt:'#5C6578'}, bb:{grid:'rgba(44,44,40,.9)',txt:'#8C8C84'}, light:{grid:'rgba(18,24,38,.09)',txt:'#6B7488'} };
+// Appearance (settings.appearance): 'auto' follows the device's light/dark setting, or 'dark' /
+// 'light' by hand. The colorway (INK/BB) is a dark-mode choice; light replaces it.
+const APPEARANCES=['auto','dark','light'];
+function appearanceIsLight(mode, prefersLight){ mode=APPEARANCES.includes(mode)?mode:'auto'; return mode==='light'||(mode==='auto'&&!!prefersLight); }
+function prefersLight(){ try{ return matchMedia('(prefers-color-scheme: light)').matches; }catch(e){ return false; } }
 function applyTheme(t){ t=(t==='bb')?'bb':'ink';
-  document.body.classList.toggle('bb',t==='bb');
-  GRID=THEMES[t].grid; TXT=THEMES[t].txt; Chart.defaults.color=TXT;
+  const light=appearanceIsLight(settings.appearance,prefersLight());
+  document.body.classList.toggle('light',light);
+  document.body.classList.toggle('bb',!light&&t==='bb');
+  const pal=THEMES[light?'light':t]; GRID=pal.grid; TXT=pal.txt; Chart.defaults.color=TXT;
   settings.theme=t;
-  const b=$('themeBtn'); if(b)b.textContent=t==='bb'?'◧ BB':'◧ INK';
+  const b=$('themeBtn'); if(b){ b.textContent=t==='bb'?'◧ BB':'◧ INK'; b.disabled=light; b.title=light?'Colorways apply in dark mode':''; }
+  const a=$('appearBtn'); if(a)a.textContent={auto:'◐ Auto',dark:'● Dark',light:'○ Light'}[APPEARANCES.includes(settings.appearance)?settings.appearance:'auto'];
+  const m=document.querySelector('meta[name="theme-color"]'); if(m)m.setAttribute('content',light?'#F3F5F8':document.body.classList.contains('pz-mode')?'#0A0C0F':t==='bb'?'#000000':'#0A0E18');
+  try{ localStorage.setItem('ledger_light',light?'1':'0'); }catch(e){} // read by the first-paint script in ledger.html
 }
+// cycle Auto -> Dark -> Light, re-theme everything that draws its own colours
+async function setAppearance(mode){
+  settings.appearance=APPEARANCES.includes(mode)?mode:'auto';
+  applyTheme(settings.theme); await Store.set(S_KEY,settings);
+  if(typeof PZ!=='undefined'&&PZ&&typeof pzRender==='function')pzRender(); else if(allTrades.length)render();
+}
+// a device switching between light and dark (sunset, a phone's schedule) follows along in Auto
+try{ matchMedia('(prefers-color-scheme: light)').addEventListener('change',()=>{ if((settings.appearance||'auto')==='auto')setAppearance('auto'); }); }catch(e){}
 function destroyCharts(){ Object.values(charts).forEach(c=>c&&c.destroy()); charts={}; }
 const usdTip={callbacks:{label:c=>' '+fmtUsd(c.parsed.y)}};
 function scales(x={}){ return {x:{grid:{color:GRID,drawTicks:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:8},...x},
@@ -340,7 +358,7 @@ function renderCharts(closed, allv){
   charts.side=bar('bySide',sideLabels,sideLabels.map(k=>sides[k]),{ds:{barThickness:60}});
   const w=closed.filter(t=>isWin(t.net)).length,l=closed.filter(t=>isLoss(t.net)).length,be=closed.filter(t=>isBE(t.net)).length;
   charts.dist=new Chart($('dist'),{type:'doughnut',data:{labels:['Wins','Losses','Break-even'],
-    datasets:[{data:[w,l,be],backgroundColor:['rgba(47,208,140,.85)','rgba(244,88,106,.85)','rgba(91,100,120,.6)'],borderColor:'#0A0E18',borderWidth:3}]},
+    datasets:[{data:[w,l,be],backgroundColor:['rgba(47,208,140,.85)','rgba(244,88,106,.85)','rgba(91,100,120,.6)'],borderColor:getComputedStyle(document.body).getPropertyValue('--bg').trim()||'#0A0E18',borderWidth:3}]},
     options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'right',labels:{boxWidth:10,padding:12}}}}});
   const rs=closed.map(rFor).filter(r=>r!==null);
   const buckets=['≤-2','-2⋯-1','-1⋯0','0⋯1','1⋯2','2⋯3','>3']; const bc=Array(7).fill(0);

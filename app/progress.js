@@ -765,7 +765,7 @@ function pzLessonDueHtml(D){
 }
 function pzLessonsCardHtml(){
   const L=pzLessonsAll(), due=L.filter(l=>!l.done&&l.due<=Date.now()).length, done=L.filter(l=>l.done).length;
-  return `<a class="pz-card pz-cardlink" href="#lessons"><span class="pz-ico" style="background:#22213A;color:${PZ_COL.xp}">${pzI('book',20)}</span>
+  return `<a class="pz-card pz-cardlink" href="#lessons"><span class="pz-ico" style="background:var(--pz-tint-xp);color:${PZ_COL.xp}">${pzI('book',20)}</span>
     <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><b style="font-size:15px">Lessons library</b><span class="pz-sub" style="font-size:12px">${L.length?L.length+' lesson'+(L.length===1?'':'s')+(due?' · '+due+' to revisit':'')+(done?' · '+done+' kept for good':''):'Your evening reviews fill it — one line a night'}</span></span>${pzI('chev',18)}</a>`;
 }
 function pzLessonsHtml(D){

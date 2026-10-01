@@ -423,6 +423,7 @@ $('pTo').addEventListener('change',applyRange);
 $('pClear').addEventListener('click',()=>{ $('pFrom').value=''; $('pTo').value=''; applyRange(); $('rangeFields').classList.add('hide'); $('rangeBtn').classList.remove('on'); });
 $('rangeBtn').addEventListener('click',()=>{ const f=$('rangeFields'); f.classList.toggle('hide'); $('rangeBtn').classList.toggle('on',!f.classList.contains('hide')); });
 
+$('appearBtn').addEventListener('click',()=>{ const cur=APPEARANCES.includes(settings.appearance)?settings.appearance:'auto'; setAppearance(APPEARANCES[(APPEARANCES.indexOf(cur)+1)%3]); });
 $('themeBtn').addEventListener('click',async ()=>{ applyTheme(settings.theme==='bb'?'ink':'bb'); await Store.set(S_KEY,settings); if(allTrades.length)render(); });
 // Coach mode (default on) gates the coaching layer only; the data under it is never touched.
 function coachOn(){ return PZ||settings.coachMode!==false; } // Pulse always shows the coach + game layers

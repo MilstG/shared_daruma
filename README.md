@@ -847,7 +847,12 @@ Treat it as positive visualization of staying the course, nothing more.
   tag, wallet, free-text search, date range; one-click clear.
 - **Timezone (⏱):** toggles all time-of-day and weekday analysis between local
   and UTC — one switch, applied everywhere consistently.
-- **Theme:** two color schemes.
+- **Appearance:** Auto (follows your device's light/dark setting, live), Dark
+  or Light, applied to the full journal and Pulse (Pulse → Settings has the same
+  switch). It syncs with your settings and is applied before the first paint, so
+  a light-mode phone never flashes the dark palette. In light mode, profit/loss
+  colours are deepened to hold contrast on white.
+- **Colors:** two dark-mode colorways, INK and BB (black & amber).
 - **R basis:** what 1R means when a trade has no planned risk journaled —
   average loss, fixed $ amount, or other bases.
 - **Breakeven threshold:** the ±$ band treated as "scratch" rather than

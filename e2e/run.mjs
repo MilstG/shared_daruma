@@ -132,6 +132,18 @@ try {
     ok(/Broke a rule\s*1 trade/.test(card), card);
     eq(errors, [], 'no uncaught errors');
   });
+  await t('Light appearance applies everywhere, survives a reload, and is there before first paint', async () => {
+    await page.evaluate(() => setAppearance('light'));
+    ok(await page.evaluate(() => document.body.classList.contains('light')));
+    await page.reload();
+    // the first-paint script runs before the app's code: check at DOMContentLoaded's earliest point
+    ok(await page.evaluate(() => document.body.classList.contains('light')), 'light on reload');
+    const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    eq(bg, 'rgb(243, 245, 248)', 'the light background');
+    await page.evaluate(() => setAppearance('dark'));
+    ok(!(await page.evaluate(() => document.body.classList.contains('light'))));
+    eq(errors, [], 'no uncaught errors');
+  });
   await page.close();
 
   console.log('\nOffline (service worker)');

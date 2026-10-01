@@ -220,7 +220,7 @@ function pzReviewHtml(D){
     ${slips.length?slips.map(s=>{ const t=tByid.get(s.id); return `<div class="pz-row-t"><span>${t?esc(dispMarket(dcoin(t)))+' · '+esc(String(t.dir||'').toLowerCase())+' · ':''}${esc(s.f.map(k=>PZ_BEH[k]).join(', '))}</span><b style="color:${s.net<0?PZ_COL.low:PZ_COL.good}">${esc(pzSigned(s.net))}</b></div>`; }).join('')
       :day?'<p class="pz-sub" style="font-size:13px">No slips today — every closed trade was clean.</p>':'<p class="pz-sub" style="font-size:13px">No closed trades today.</p>'}
     ${risk.limit>0?`<div class="pz-row-t"><span>Loss limit ${esc(usdPlain(risk.limit))}</span><b style="color:${risk.loss>=risk.limit?PZ_COL.low:PZ_COL.good}">${risk.loss>=risk.limit?'hit':'kept'}</b></div>`:''}
-    ${pc.rules.length?`<span class="pz-lbl" style="color:var(--pz-muted);font-size:11px;margin-top:4px">Your rules · ${pzRuleTally(pc)}</span>${pc.rules.map(r=>`<div class="pz-part"><span class="pz-pc ${r.ok===true?'full':r.ok===false?'miss':''}" style="${r.ok==null?'background:#1B1F25;color:var(--pz-muted)':''}">${pzI(r.ok===true?'check':r.ok===false?'x':'minus',14,3)}</span><span class="pz-pt"><b>${esc(r.label)}</b><span>${esc(r.detail||'')}</span></span></div>`).join('')}`:''}
+    ${pc.rules.length?`<span class="pz-lbl" style="color:var(--pz-muted);font-size:11px;margin-top:4px">Your rules · ${pzRuleTally(pc)}</span>${pc.rules.map(r=>`<div class="pz-part"><span class="pz-pc ${r.ok===true?'full':r.ok===false?'miss':''}" style="${r.ok==null?'background:var(--pz-card2);color:var(--pz-muted)':''}">${pzI(r.ok===true?'check':r.ok===false?'x':'minus',14,3)}</span><span class="pz-pt"><b>${esc(r.label)}</b><span>${esc(r.detail||'')}</span></span></div>`).join('')}`:''}
     ${D.inbox.length?`<a class="pz-next" href="#journal">${D.inbox.length} trade${D.inbox.length===1?'':'s'} to journal first ${pzI('chev',16)}</a>`:''}</section>`;
   const qs=prof.eod.map((q,i)=>`<div class="pz-field"><label for="pzRvQ${i}" style="font-size:14px">${esc(q)}</label><textarea id="pzRvQ${i}" rows="2" data-pz-rvq="${esc(q)}">${esc(rv.answers[q]||'')}</textarea></div>`).join('');
   const rating=`<div role="radiogroup" aria-labelledby="pzRvRate"><p class="pz-q" id="pzRvRate">How well did you trade your plan today?</p><div class="pz-pills">${[1,2,3,4,5].map(n=>`<button type="button" role="radio" class="pz-pill" data-pz-rvrate="${n}" aria-checked="${rv.rating===n}">${n}</button>`).join('')}</div></div>`;
@@ -431,7 +431,7 @@ function socLeagueHtml(g){
   if(!d.league)return `<section class="pz-card pz-kv"><b class="pz-kvh">You’re not in a league yet</b><p class="pz-sub" style="font-size:13px">Find one by name or number and join — you can be in several at once.</p><a class="pz-cta" href="#leagues">Find a league</a></section>`;
   const L=d.league, T=(SOC.cfg&&SOC.cfg.tiers)||PZ_TIERS, b=SOC.board&&SOC.board!=='rank'?SOC.board:'rank';
   const chipsL=`<div class="pz-chiprow" role="group" aria-label="Your leagues">${d.mine.map(x=>`<button type="button" class="pz-chipbtn" data-soc-lg="${esc(x.id)}" aria-pressed="${x.id===L.id}">${esc(x.name)}</button>`).join('')}${find}</div>`;
-  const banner=`<section class="pz-banner"><span class="pz-ico" style="width:40px;height:40px;background:#23272E;color:${L.tiers?SOC_TIER_COL[d.tier]||'#CDD3DA':PZ_COL.xp}">${pzI('shield',22)}</span>
+  const banner=`<section class="pz-banner"><span class="pz-ico" style="width:40px;height:40px;background:var(--pz-tint-n);color:${L.tiers?SOC_TIER_COL[d.tier]||'#CDD3DA':PZ_COL.xp}">${pzI('shield',22)}</span>
     <span style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0"><b style="font-size:14px">${esc(L.name)} <span class="pz-sub" style="font-weight:500">#${L.num}</span></b>
     <span class="pz-sub" style="font-size:12px">${esc(L.metricLabel)} · ${socPeriod(L)} · ${L.members} trader${L.members===1?'':'s'}${L.tiers?' · you’re in '+esc(T[d.tier]):''}</span>
     ${L.season?`<span class="pz-sub" style="font-size:12px;color:var(--pz-soft)">Season: ${esc(L.season.label)} · ${L.season.daysLeft>0?L.season.daysLeft+' day'+(L.season.daysLeft===1?'':'s')+' left':'last day'}</span>`:''}
@@ -465,7 +465,7 @@ function socFindHtml(D){
   const back=`<a class="pz-back" href="#social">${pzI('back',20)}Social</a>`;
   if(!socAvailable()||!SOC.me)return `${back}${socSocialHtml(D)}`;
   const q=SOC.lq||'', c=socGet('lq:'+q,'/leagues'+(q?'?q='+encodeURIComponent(q):''),15000), d=c&&c.d;
-  const card=L=>`<a class="pz-card pz-cardlink pz-lcard" href="#lg/${esc(L.id)}"><span class="pz-ico" style="background:#23272E;color:${PZ_COL.xp}">${pzI('shield',20)}</span>
+  const card=L=>`<a class="pz-card pz-cardlink pz-lcard" href="#lg/${esc(L.id)}"><span class="pz-ico" style="background:var(--pz-tint-n);color:${PZ_COL.xp}">${pzI('shield',20)}</span>
     <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><b style="font-size:15px">${esc(L.name)} <span class="pz-sub" style="font-weight:500">#${L.num}</span></b>
     <span class="pz-sub" style="font-size:12px">${esc(L.metricLabel)} · ${socPeriod(L)}${L.tiers?' · tiers':''} · ${L.members} trader${L.members===1?'':'s'}${L.inviteRequired?' · invite code':''}</span>
     ${L.desc?`<span class="pz-sub" style="font-size:12px">${esc(L.desc)}</span>`:''}</span>${L.joined?'<span class="pz-chipbtn ok" style="cursor:default">Joined</span>':pzI('chev',18)}</a>`;
@@ -653,9 +653,9 @@ function pzTodayExtrasHtml(D){
   let gm=[]; try{ gm=pzGoodMoments(g,D.todayK); }catch(err){}
   const good=gm.length?`<section class="pz-card pz-kv pz-goodcard"><span class="pz-lbl" style="color:${PZ_COL.good}">Done right today</span>${gm.slice(0,3).map(m=>`<div class="pz-moment"><span class="pz-bc done">${pzI('check',12,3)}</span><b style="font-size:13px;font-weight:600">${esc(m.text)}</b></div>`).join('')}</section>`:'';
   const lockR=pzLocked('review',g.level.level);
-  const review=!lockR&&(traded||h>=16)?`<a class="pz-card pz-cardlink" href="#review"><span class="pz-ico" style="background:#1A2A22;color:${PZ_COL.good}">${pzI(done?'check':'pen',20)}</span>
+  const review=!lockR&&(traded||h>=16)?`<a class="pz-card pz-cardlink" href="#review"><span class="pz-ico" style="background:var(--pz-tint-good);color:${PZ_COL.good}">${pzI(done?'check':'pen',20)}</span>
     <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><b style="font-size:15px">${done?'Day reviewed':'End-of-day review'}</b><span class="pz-sub" style="font-size:12px">${done?(e.eod.tomorrow?'Tomorrow: '+esc(e.eod.tomorrow):'Saved — edit any time tonight'):(D.day?'Five minutes, +'+pzXpCfg().review+' XP. ':'Five minutes. ')+'One lesson, one focus for tomorrow.'}</span></span>${pzI('chev',18)}</a>`:'';
-  const coach=pzCoachAvailable()&&!pzLocked('coach',g.level.level)?`<a class="pz-card pz-cardlink" href="#coach"><span class="pz-ico" style="background:#22213A;color:${PZ_COL.xp}">${pzI('coach',20)}</span>
+  const coach=pzCoachAvailable()&&!pzLocked('coach',g.level.level)?`<a class="pz-card pz-cardlink" href="#coach"><span class="pz-ico" style="background:var(--pz-tint-xp);color:${PZ_COL.xp}">${pzI('coach',20)}</span>
     <span style="flex:1;min-width:0"><b style="font-size:15px">Ask your coach</b><span class="pz-sub" style="display:block;font-size:12px">${COACH.status&&COACH.status.remaining!=null?COACH.status.remaining+' message'+(COACH.status.remaining===1?'':'s')+' left today':'About your day, your leaks, your plan'}</span></span>${pzI('chev',18)}</a>`:'';
   pzCoachStatus();
   return good+review+coach;

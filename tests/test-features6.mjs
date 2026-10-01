@@ -50,4 +50,23 @@ t('the replay is wired to the price chart and stops its timer when the chart clo
   ok(w.includes("idbSet('att:'+t.id,arr)") && w.includes('syncAttUp(t.id)'), 'Attach chart saves a screenshot');
 });
 
+console.log('\nLight / dark appearance');
+t('Auto follows the device; Dark and Light are fixed; anything else counts as Auto', () => {
+  const isLight = (0, eval)('(()=>{ const APPEARANCES=["auto","dark","light"]; return ' + grabFn('appearanceIsLight') + '; })()');
+  eq([isLight('auto', true), isLight('auto', false), isLight('dark', true), isLight('light', false), isLight(undefined, true), isLight('sepia', false)],
+    [true, false, false, true, true, false]);
+});
+t('Pulse accents are deepened 40% toward black for light mode', () => {
+  const deepen = evalFn('pzDeepen');
+  eq(deepen('#3FE0A0'), '#268660'); eq(deepen('#FFFFFF'), '#999999'); eq(deepen('nope'), 'nope');
+});
+t('appearance syncs, rides backups, applies before first paint, and follows the device live', () => {
+  ok(html.includes("'playbooks','appearance'];"), 'synced settings field');
+  ok(html.includes('appearance:settings.appearance}'), 'in snapshots/backups');
+  ok(html.includes("localStorage.getItem('ledger_light')") && html.includes("document.body.classList.add('light')"), 'first-paint script');
+  ok(html.includes("matchMedia('(prefers-color-scheme: light)').addEventListener('change'"), 'Auto follows a device switch');
+  ok(grabFn('pzSheetHtml').includes('data-pz-appear'), 'Pulse settings has the switch');
+  ok(html.includes('body.light #pz{--pz-acc:var(--pz-acc-l'), 'Pulse picks the deepened accent in light');
+});
+
 report('features6');

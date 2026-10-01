@@ -74,8 +74,8 @@ t('ticks for another playbook (the setup was renamed) are ignored', () => {
 
 console.log('\nPlaybooks: wiring');
 t('playbooks sync (field-level, merged per playbook) and ride backups', () => {
-  ok(html.includes("'pzLessons','pzGoals','playbooks'];"), 'synced settings field');
-  ok(html.includes('playbooks:settings.playbooks}'), 'in snapshots/backups');
+  ok(html.includes("'pzLessons','pzGoals','playbooks','appearance'];"), 'synced settings field');
+  ok(html.includes('playbooks:settings.playbooks,'), 'in snapshots/backups');
   ok(grabFn('_syncMerge').includes("k==='playbooks'"), 'merged by id on a conflict');
   ok(grabFn('journalRow').includes('pbChecklistHtml(t,j)'), 'the checklist shows in the trade journal');
   ok(grabFn('renderReviewInner').includes('playbooksSectionHtml()'), 'the Review tab shows the section');

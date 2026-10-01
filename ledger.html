@@ -43,6 +43,18 @@ body.bb{
   --text:#F5F5EE; --muted:#9C9C90; --faint:#6E6E62; --lbl:#FF9F1C;
   --profit:#1FDB72; --loss:#FF4759; --gold:#FFB020;
 }
+/* LIGHT (body.light) — the appearance setting: Auto follows the device, or Dark / Light by hand.
+   Light replaces the colorway (INK/BB are dark-room palettes); PnL greens and reds are deepened
+   so they hold contrast on white. */
+body.light td{color:#3A4356}
+body.light .star{color:#C3CAD6}
+body.light{
+  --bg:#F3F5F8; --panel2:#FFFFFF;
+  --line:#D5DBE5; --line2:#E3E7EE;
+  --text:#121826; --muted:#4F596B; --faint:#7A8496; --lbl:#5F6A7D;
+  --profit:#0A8F57; --loss:#CF2E47; --gold:#9A6F12;
+  color-scheme:light;
+}
 *{margin:0;padding:0;box-sizing:border-box;border-radius:0!important}
 html{-webkit-text-size-adjust:100%}
 body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;line-height:1.45;font-variant-numeric:tabular-nums}
@@ -589,9 +601,56 @@ tr.trow:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
 body.pz-mode{background:#0A0C0F}
 body.pz-mode #pz{display:block}
 body.pz-mode .wrap,body.pz-mode #appfoot{display:none!important}
-#pz{--pz-acc:#3FE0A0;--pz-bg:#0A0C0F;--pz-card:#14171C;--pz-line:#1F242B;--pz-line2:#2C333C;--pz-track:#232830;--pz-text:#F3F5F7;--pz-muted:#A1AAB5;--pz-soft:#D5DBE1;
+#pz{--pz-acc:var(--pz-acc-d,#3FE0A0);--pz-bg:#0A0C0F;--pz-card:#14171C;--pz-line:#1F242B;--pz-line2:#2C333C;--pz-track:#232830;--pz-text:#F3F5F7;--pz-muted:#A1AAB5;--pz-soft:#D5DBE1;
   --pz-good:#3FE0A0;--pz-mid:#F4C04E;--pz-low:#FF7A59;--pz-risk:#5AA9FF;--pz-xp:#B69CFF;--pz-streak:#FFB25A;--pz-num:'Barlow Condensed',sans-serif;
   min-height:100vh;background:var(--pz-bg);color:var(--pz-text);font-family:Inter,system-ui,sans-serif;font-size:14px;line-height:1.45;font-variant-numeric:normal;-webkit-tap-highlight-color:transparent}
+#pz{--pz-card2:#1B1F25;--pz-tint-n:#23272E;--pz-tint-xp:#22213A;--pz-tint-good:#1A2A22;--pz-err-t:#FFB39E;--pz-err-b:#6A2E20}
+/* Pulse in light appearance: the same layout on white, signal colours deepened for contrast */
+body.light.pz-mode{background:#F3F5F8}
+body.light #pz{--pz-acc:var(--pz-acc-l,#268660);--pz-bg:#F3F5F8;--pz-card:#FFFFFF;--pz-line:#E1E5EB;--pz-line2:#CDD4DD;--pz-track:#E4E8EE;--pz-text:#111821;--pz-muted:#56606E;--pz-soft:#2A333E;
+  --pz-good:#0A9A63;--pz-mid:#B07D05;--pz-low:#D9481F;--pz-risk:#2F7FD8;--pz-xp:#7656E0;--pz-streak:#C76A00;
+  --pz-card2:#EEF1F5;--pz-tint-n:#EEF1F5;--pz-tint-xp:#F0ECFF;--pz-tint-good:#E6F6EF;--pz-err-t:#A3341E;--pz-err-b:#F3C3B6;color-scheme:light}
+body.light #pz a.pz-chip.streak,body.light .pz-tile.warm{background:#FFF6E3;border-color:#F0DBAE}
+body.light #pz a.pz-chip.pz-jchip{background:#F0ECFF;border-color:#D6CCF7;color:#6D4FD1}
+body.light .pz-coach,body.light .pz-tile.good,body.light .pz-nudge.good,body.light .pz-kudo[aria-pressed="true"]{background:#E6F6EF;border-color:#BFE6D3}
+body.light .pz-coach p{color:#0F3D2A}
+body.light .pz-coach .pz-ico,body.light .pz-part .pz-pc.full,body.light .pz-nudge.good .pz-ico,body.light .pz-moment .pz-bc,body.light .pz-goodcard .pz-bc{background:#CDEFE0}
+body.light .pz-next,body.light .pz-warn{background:#FFF6E3;border:1px solid #F0DBAE;color:#7A5A12}
+body.light #pz a.pz-next{color:#7A5A12}
+body.light .pz-snapsvg,body.light .pz-hs,body.light .pz-focusline,body.light .pz-bcell.next{background:#EEF1F5}
+body.light .pz-quiet{background:rgba(243,245,248,.97)}
+body.light .pz-quiet .pz-qico{background:#FDECE8;color:#D9481F}
+body.light .pz-tipbox,body.light .pz-note,body.light .pz-eqtip{background:#FFFFFF;border:1px solid #E1E5EB;box-shadow:0 8px 24px rgba(17,24,33,.12)}
+body.light .pz-tile.cool{background:#E8F1FB;border-color:#C3D7EE}
+body.light .pz-tile.hot{background:#FDECE8;border-color:#F3C3B6}
+body.light .pz-part .pz-pc.part,body.light .pz-bonus .pz-bc.part{background:#F6E7BF}
+body.light .pz-part .pz-pc.miss{background:#F7D3CA}
+body.light .pz-chart .pz-thr{border-top-color:#AEB7C2}
+body.light .pz-tag.leak,body.light .pz-tag.caution{background:#FDECE8;color:#A3341E}
+body.light .pz-tag.edge,body.light .pz-tag.win{background:#E6F6EF;color:#0A6B44}
+body.light .pz-tag.info{background:#E8F1FB;color:#2F4A6B}
+body.light .pz-pill[aria-checked="true"],body.light .pz-cta,body.light .pz-av,body.light .pz-stars button[aria-checked="true"]{color:#FFFFFF}
+body.light .pz-step button,body.light .pz-badge[aria-pressed="true"],body.light .pz-badge .pz-bc,body.light .pz-stars button,body.light .pz-quote,body.light .pz-bonus .pz-bc,body.light .pz-bcell[aria-pressed="true"]{background:#EEF1F5}
+body.light .pz-cta .pz-xpb{background:rgba(255,255,255,.22);color:#FFFFFF}
+body.light .pz-badge,body.light .pz-badge .pz-bp,body.light #pz input::placeholder,body.light #pz textarea::placeholder{color:#6B7583}
+body.light .pz-badge.on,body.light .pz-new{color:#5B45B8}
+body.light .pz-badge.on .pz-bc,body.light .pz-bonus .pz-bc.done,body.light .pz-new{background:#E9E3FF}
+body.light .pz-nav{background:rgba(255,255,255,.97)}
+body.light .pz-err,body.light .pz-toggle span.risky{color:#A3341E}
+body.light .pz-note.err{border-color:#F3C3B6;color:#A3341E}
+body.light .pz-sheet-bg{background:rgba(17,24,33,.35)}
+body.light .pz-sheet{background:#FFFFFF}
+body.light .pz-div i.up{border-bottom-color:#CDD4DD}
+body.light .pz-code{background:#F3F5F8;border-color:#C3CCD6}
+body.light .pz-li.me,body.light .pz-chipbtn.ok{background:#E6F6EF}
+body.light .pz-chipbtn.ok{border-color:#BFE6D3}
+body.light .pz-banner{background:#FFFFFF;border-color:#E1E5EB}
+body.light .pz-switch{background:#C9D0D9}
+body.light .pz-pbar{background:#E4E8EE}
+body.light .pz-medal::after{background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--tc) 30%,transparent),transparent 70%),#F3F5F8}
+body.light .pz-msg.me p{background:#E6F6EF;border-color:#BFE6D3}
+body.light .pz-nudge.warn{background:#FFF6E3;border-color:#F0DBAE}
+body.light .pz-nudge.warn .pz-ico{background:#F6E7BF;color:#9A5A00}
 #pz *{box-sizing:border-box}
 #pz a{color:var(--pz-acc)}
 #pz button{font-family:inherit}
@@ -998,6 +1057,11 @@ a.pz-chipbtn{display:inline-flex;align-items:center;gap:6px;text-decoration:none
 </style>
 </head>
 <body>
+<script>/* Appearance before first paint: the last choice this browser made (light/dark), else the
+   device setting — so a light-mode phone never flashes the dark palette while the app boots. */
+(function(){ try{ var v=localStorage.getItem('ledger_light'), light=v!=null?v==='1':matchMedia('(prefers-color-scheme: light)').matches;
+  if(light)document.body.classList.add('light'); }catch(e){} })();
+</script>
 <script>/* Pulse view: /pulse (or ?pulse when opened from disk) switches to the simple dial view before
    first paint, and points the install metadata at Pulse so "Add to Home Screen" installs Pulse. */
 (function(){ try{
@@ -1080,7 +1144,8 @@ a.pz-chipbtn{display:inline-flex;align-items:center;gap:6px;text-decoration:none
         <button class="gear" id="gearBtn" data-tip="Clock, colors, R-multiple basis, break-even band and coach mode">⚙ <span>Settings</span></button>
         <div class="settings-pop hide" id="settingsPop">
           <div class="sp-row"><label>Clock</label><button class="gear" id="tzBtn" data-tip="Timezone for all time-of-day analysis — the day×hour heatmap, hour/weekday bars, the miner's session buckets, the daily calendar, and displayed timestamps. Switch between your local time and UTC; everything updates together.">🕓 Local</button></div>
-          <div class="sp-row"><label>Colors</label><button class="gear" id="themeBtn" data-tip="Toggle colorway: INK (midnight terminal) ⇄ BB (black &amp; amber, Bloomberg-style). Charts re-theme too.">◧ INK</button></div>
+          <div class="sp-row"><label>Appearance</label><button class="gear" id="appearBtn" data-tip="Auto follows your device's light/dark setting; or pick Dark or Light. Click to cycle Auto → Dark → Light. Pulse follows it too.">◐ Auto</button></div>
+          <div class="sp-row"><label>Colors</label><button class="gear" id="themeBtn" data-tip="Toggle colorway: INK (midnight terminal) ⇄ BB (black &amp; amber, Bloomberg-style). Charts re-theme too. A dark-mode choice.">◧ INK</button></div>
           <div class="sp-row"><label>1R basis</label>
             <select id="rBasis"><option value="avgloss">Avg loss (auto)</option><option value="fixed">Fixed $</option></select>
             <input type="number" id="riskDefault" placeholder="e.g. 100" min="0" step="any" class="hide">

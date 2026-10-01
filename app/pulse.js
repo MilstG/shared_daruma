@@ -10,7 +10,12 @@
 // every loader, cache and sync path is shared. Pulse always shows the coach and game layers,
 // whatever the full app's coach-mode switch says (coachOn() is true in Pulse).
 const PZ_C=2*Math.PI*52;
-const PZ_COL={good:'#3FE0A0',mid:'#F4C04E',low:'#FF7A59',none:'#2C333C',risk:'#5AA9FF',xp:'#B69CFF'};
+// Pulse's signal colours, per appearance (light uses deeper tones that hold contrast on white).
+// Read through PZ_COL.x at render time, so a re-render after switching appearance recolours
+// everything, SVG attributes included (CSS variables don't reach those).
+const PZ_COL_DARK={good:'#3FE0A0',mid:'#F4C04E',low:'#FF7A59',none:'#2C333C',risk:'#5AA9FF',xp:'#B69CFF'};
+const PZ_COL_LIGHT={good:'#0A9A63',mid:'#B07D05',low:'#D9481F',none:'#CDD4DD',risk:'#2F7FD8',xp:'#7656E0'};
+const PZ_COL=new Proxy({},{get:(_,k)=>((typeof document!=='undefined'&&document.body&&document.body.classList.contains('light'))?PZ_COL_LIGHT:PZ_COL_DARK)[k]});
 const pzBand=v=>v==null?'none':v>=70?'good':v>=40?'mid':'low';
 const PZ_PART={plan:'Plan before the first trade',rules:'Rules kept',planned:'Stops written while open',stops:'Stops honored',limit:'Under the loss limit',journal:'Trades journaled'};
 
@@ -397,7 +402,7 @@ function pzPlanLiveHtml(D,F){
   if(risk.limit>0)rows.push(['Loss limit',usdPlain(risk.loss)+' of '+usdPlain(risk.limit),F.closedT.length?risk.loss<risk.limit:null]);
   if(/^\d{2}:\d{2}$/.test(R.until||'')){ const p=tzParts(F.now), left=(+R.until.slice(0,2))*60+(+R.until.slice(3))-(p.h*60+p.min);
     rows.push(['Stop time',left>0?Math.floor(left/60)+'h '+String(left%60).padStart(2,'0')+'m left':'past '+R.until+' — done for the day',null]); } // graded once, by the 'No new trades after' rule
-  if(!rows.length)return `<a class="pz-card pz-cardlink" href="#checkin"><span class="pz-ico" style="background:#22213A;color:${PZ_COL.xp}">${pzI('pen',20)}</span><span style="flex:1;min-width:0"><b style="font-size:15px">No rules for today</b><span class="pz-sub" style="display:block;font-size:12px">Pick your setups, markets, a stop time and a cap — they’re checked from your fills as you trade.</span></span>${pzI('chev',18)}</a>`;
+  if(!rows.length)return `<a class="pz-card pz-cardlink" href="#checkin"><span class="pz-ico" style="background:var(--pz-tint-xp);color:${PZ_COL.xp}">${pzI('pen',20)}</span><span style="flex:1;min-width:0"><b style="font-size:15px">No rules for today</b><span class="pz-sub" style="display:block;font-size:12px">Pick your setups, markets, a stop time and a cap — they’re checked from your fills as you trade.</span></span>${pzI('chev',18)}</a>`;
   const kept=rows.filter(r=>r[2]===true).length, graded=rows.filter(r=>r[2]!=null).length;
   return `<section class="pz-card pz-kv"><div class="pz-kvrow"><b class="pz-kvh">Your plan, live</b><span class="pz-sub" style="font-size:12px">${graded?kept+' of '+graded+' kept':'nothing tested yet'}</span></div>
     ${rows.map(([l,d,ok])=>`<div class="pz-kvrow pz-planrow"><span style="min-width:0"><b style="font-size:13px">${esc(l)}</b>${d?`<span class="pz-sub" style="display:block;font-size:12px">${esc(d)}</span>`:''}</span>${st(ok)}</div>`).join('')}</section>`;
@@ -1014,6 +1019,9 @@ function pzSheetHtml(){
       ${settings.wallets.map((w,i)=>`<div class="pz-wl"><span>${w.label?esc(w.label)+' · ':''}<code>${esc(walletShort(w.address))}</code></span><button type="button" class="pz-ghost pz-sm" data-pz-rmw="${i}" aria-label="Remove wallet ${esc(labelFor(w))}">Remove</button></div>`).join('')||'<p class="pz-sub">No wallets yet.</p>'}
       <div class="pz-field" style="margin-top:10px"><label for="pzAddr2" style="font-size:13px">Add another address</label><input type="text" id="pzAddr2" placeholder="0x…" autocomplete="off" autocapitalize="off" spellcheck="false">
         <div style="display:flex;gap:8px"><button type="button" class="pz-ghost pz-sm" id="pzAdd2">Add &amp; load</button><button type="button" class="pz-ghost pz-sm" id="pzRefresh">Refresh now</button></div></div></section>
+    <section><span class="pz-lbl" style="color:var(--pz-muted)">Appearance</span>
+      <div class="pz-seg" role="group" aria-label="Appearance" style="margin-top:6px">${[['auto','Auto'],['dark','Dark'],['light','Light']].map(([v,l])=>`<button type="button" data-pz-appear="${v}" aria-pressed="${(settings.appearance||'auto')===v}" style="flex:1">${l}</button>`).join('')}</div>
+      <p class="pz-fine" style="margin-top:6px">Auto follows your phone’s light or dark setting.</p></section>
     ${pzProfilePickHtml()}
     ${pzPushHtml()}
     <section><span class="pz-lbl" style="color:var(--pz-muted)">Your data</span><p class="pz-sub" style="margin-top:6px">${where}</p>
