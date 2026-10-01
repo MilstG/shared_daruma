@@ -5,6 +5,7 @@ import { mkdtempSync, writeFileSync, existsSync, readdirSync, readFileSync } fro
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { readAppSource } from '../app-source.js';
 import { t, ok, eq, report, storedText, makeExtractor } from './harness.mjs';
 
 const require = createRequire(import.meta.url);
@@ -256,9 +257,9 @@ try {
 } finally { await close(app); }
 
 console.log('\nIn the app');
-const X = makeExtractor(readFileSync(htmlPath, 'utf8'));
+const X = makeExtractor(readAppSource(htmlPath)); // ledger.html with its app/*.js inlined
 await t('Today’s cards keep your order: a move swaps neighbours, cards added later go at the end', async () => {
-  const flow = /const PZ_FLOW=(\{[^\n]*\});/.exec(readFileSync(htmlPath, 'utf8'))[1];
+  const flow = /const PZ_FLOW=(\{[^\n]*\});/.exec(readAppSource(htmlPath))[1];
   const M = await X.evalModule(['pzOrdered', 'pzMove'], null, 'export const settings = {};\nconst PZ_FLOW=' + flow + ';');
   eq(M.pzOrdered('today'), null, 'no order until you move something');
   ok(M.pzMove('today', 'next', -1));

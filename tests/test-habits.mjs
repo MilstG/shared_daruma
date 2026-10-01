@@ -7,8 +7,9 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { t, ok, eq, near, report, makeExtractor } from './harness.mjs';
 import { nudgeFrom, zonedDayHour } from '../server.js';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
-const html = readFileSync(new URL('../ledger.html', import.meta.url), 'utf8');
+const html = readAppSource(new URL('../ledger.html', import.meta.url).pathname);
 const { grabFn } = makeExtractor(html);
 // multi-line const literals (arrays / objects) — not brace-extractable as functions
 const grabConst = (name) => {

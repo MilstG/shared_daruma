@@ -32,6 +32,10 @@
 //   GET/PUT/DELETE /api/att/<key>                                     (AUTH_TOKEN)
 //   POST /api/backup , GET /api/backups , GET /api/backups/<name>     (AUTH_TOKEN)
 //        server-held copies of the app's "Backup all" JSON (gzipped, newest 10 kept)
+//   POST /api/offsite/run                                             (AUTH_TOKEN)
+//        ship an encrypted DATA_DIR bundle to the OFFSITE_* bucket now (see offsite.js)
+//   POST /api/cex/relay {venue,host,path,query,headers}               (AUTH_TOKEN or a Pulse member)
+//        forward a browser-signed, read-only Bybit/Binance GET (see cex-relay.js)
 //   GET  /help , GET /docs  -> built-in user guide / technical reference (no auth)
 //
 // Analytics API v1 (read-only; GET = AUTH_TOKEN or READ_TOKEN, POST = AUTH_TOKEN):
@@ -73,6 +77,9 @@ const vm = require('vm');
 const { createSocial } = require('./social.js');
 const Push = require('./push.js');
 const Wear = require('./wear.js');
+const Offsite = require('./offsite.js');
+const CexRelay = require('./cex-relay.js');
+const { readAppSource, appScripts } = require('./app-source.js');
 
 const MAX_BODY = 25 * 1024 * 1024; // journal snapshots are small; this is generous headroom
 
@@ -145,8 +152,8 @@ function grabFn(html, name) {
 // reads those mutable knobs. Don't add settings/_be/_oneR dependence to fetch-path functions.
 function buildEngine(htmlPath, fetchImpl) {
   let html;
-  try { html = fs.readFileSync(htmlPath, 'utf8'); }
-  catch (e) { return { ok: false, missing: ['<ledger.html unreadable: ' + e.message + '>'] }; }
+  try { html = readAppSource(htmlPath); } // the page with its app/*.js inlined: the whole app's source
+  catch (e) { return { ok: false, missing: ['<ledger.html or its app/ scripts unreadable: ' + e.message + '>'] }; }
   const missing = [], blocks = [];
   for (const n of ENGINE_FNS) {
     const b = grabFn(html, n);
@@ -298,6 +305,37 @@ function zonedDayHour(ms, tz) {
   for (const p of f.formatToParts(new Date(ms))) parts[p.type] = p.value;
   return { day: parts.year + '-' + parts.month + '-' + parts.day, hour: parseInt(parts.hour, 10) % 24 };
 }
+// Ops health (the server watching itself), pure like alertsFrom:
+//   h   = {failStreak, lastError, lastOkAt, now, disk: {free, total} | null, offsite: {lastError, lastOkAt} | null}
+//   cfg = {failRuns, diskMinBytes, diskPct}
+// -> [{key, text}]. A refresh that keeps failing means every alert, nudge and bot answer is
+// quietly working from stale data; a full volume means journal saves start failing. Both
+// deserve a human before they're noticed the hard way.
+function healthAlertsFrom(h, cfg) {
+  const out = [];
+  if (!h || !cfg) return out;
+  const mb = n => n >= 1024 ** 3 ? (n / 1024 ** 3).toFixed(1) + ' GB' : Math.round(n / 1024 ** 2) + ' MB';
+  if (cfg.failRuns > 0 && h.failStreak >= cfg.failRuns) {
+    const ago = h.lastOkAt ? Math.round((h.now - h.lastOkAt) / 60000) : null;
+    const agoTxt = ago == null ? 'not since this server started'
+      : ago < 120 ? ago + ' min ago' : ago < 2880 ? Math.round(ago / 60) + ' h ago' : Math.round(ago / 1440) + ' days ago';
+    out.push({ key: 'health:refresh', text: '⚠️ Scheduled refresh has failed ' + h.failStreak + ' runs in a row'
+      + (h.lastError ? ' (last error: ' + String(h.lastError).slice(0, 160) + ')' : '')
+      + '. Alerts, nudges and digests are working from data last refreshed ' + agoTxt + '.' });
+  }
+  const d = h.disk;
+  if (d && d.total > 0 && d.free >= 0) {
+    const used = 1 - d.free / d.total;
+    if ((cfg.diskMinBytes > 0 && d.free < cfg.diskMinBytes) || (cfg.diskPct > 0 && used * 100 >= cfg.diskPct))
+      out.push({ key: 'health:disk', text: '⚠️ Data volume nearly full: ' + mb(d.free) + ' free of ' + mb(d.total)
+        + ' (' + Math.round(used * 100) + '% used). Journal saves fail once it fills — delete old backups/attachments or grow the volume.' });
+  }
+  const o = h.offsite;
+  if (o && o.lastError)
+    out.push({ key: 'health:offsite', text: '⚠️ Off-site backup failed: ' + String(o.lastError).slice(0, 160)
+      + (o.lastOkAt ? '' : ' — no off-site copy has succeeded since this server started') + '. Check the OFFSITE_* settings.' });
+  return out;
+}
 // (state, cfg) -> {key, text} | null. Fires once per day, at or after cfg.hour, only when
 // something is actually missing: trades closed today with nothing journaled, or no review.
 function nudgeFrom(st, cfg) {
@@ -310,7 +348,7 @@ function nudgeFrom(st, cfg) {
     text: '📝 End of day: ' + missing.join(', ') + '. Five minutes now — a setup, a rating, one line of review — is what the pattern miner and your process score run on.' };
 }
 /* ---------------- coach's weekly letter (optional AI, opt-in) ---------------- */
-// COACH_AI=1 lets the Review tab ask Claude for a short plain-language weekly letter. Only an
+// COACH_AI=1 lets the Review tab ask the AI (Claude, or OpenAI with COACH_AI_PROVIDER=openai) for a short plain-language weekly letter. Only an
 // aggregate summary the app builds and shows the user first is ever sent (counts, averages,
 // habit sentences, finding headlines, their own one-line lessons) — never fills, wallet
 // addresses, trade notes or screenshots. sanitizeCoachFacts is the allowlist that enforces it.
@@ -443,6 +481,45 @@ function coachLetterText(msg) {
   const text = (msg.content || []).filter(b => b && b.type === 'text').map(b => b.text).join('\n').trim();
   return text ? { text } : { error: 'the model returned no text' };
 }
+// ---- the same two requests for OpenAI (COACH_AI_PROVIDER=openai, or a gpt-*/o* model) ----
+// The Responses API, called directly (no SDK). store:false keeps OpenAI from retaining the trader's
+// summary as a stored response. Reasoning tokens count toward max_output_tokens, so the caps are
+// roomier than the visible answer needs. The static instructions come first and the trader's data
+// after, so OpenAI's automatic prompt cache reuses the prefix across a member's messages.
+function openaiCoachChatRequest(chat, model, effort) {
+  const req = {
+    model, store: false, max_output_tokens: 6000,
+    instructions: COACH_CHAT_SYSTEM + '\n\nTrader data from their journal app (JSON):\n' + chat.facts
+      + (chat.detail ? '\n\nTheir recent trades and journal notes (they chose to share these):\n' + chat.detail : ''),
+    input: chat.messages.map(m => ({ role: m.role, content: m.content })),
+  };
+  if (effort !== null) req.reasoning = { effort: effort || 'low' }; // conversational: quick answers
+  return req;
+}
+function openaiCoachLetterRequest(facts, model, effort) {
+  const req = {
+    model, store: false, max_output_tokens: 16000,
+    instructions: COACH_SYSTEM,
+    input: [{ role: 'user', content: 'This week\'s summary from my journal:\n\n' + JSON.stringify(facts, null, 1) }],
+  };
+  if (effort !== null) req.reasoning = { effort: effort || 'medium' };
+  return req;
+}
+// A Responses API answer in the shape coachLetterText reads: refusals and cut-off answers stay visible.
+function openaiToCoachMsg(j) {
+  const parts = []; let refused = false;
+  for (const item of (j && j.output) || []) {
+    if (!item || item.type !== 'message') continue;
+    for (const c of item.content || []) { if (c.type === 'output_text' && c.text) parts.push(c.text); else if (c.type === 'refusal') refused = true; }
+  }
+  const cut = j && j.status === 'incomplete';
+  return { model: j && j.model, stop_reason: refused && !parts.length ? 'refusal' : cut ? 'max_tokens' : 'end_turn',
+    incomplete: cut ? ((j.incomplete_details && j.incomplete_details.reason) || 'incomplete') : null,
+    content: parts.length ? [{ type: 'text', text: parts.join('\n') }] : [] };
+}
+const coachProviderOf = (provider, model) => /^(openai|anthropic)$/i.test(provider || '') ? provider.toLowerCase()
+  : /^(gpt-|o\d|chatgpt-)/i.test(model || '') ? 'openai' : 'anthropic';
+
 // Best-effort webhook post; shapes the body for the common receivers.
 async function postWebhook(url, text) {
   let body, headers = { 'Content-Type': 'application/json' };
@@ -485,6 +562,19 @@ function createApp(opts) {
   fs.mkdirSync(backupsDir, { recursive: true });
   const BACKUP_RE = /^backup-[A-Za-z0-9-]+\.json\.gz$/;
   const BACKUP_KEEP = 10;
+  // Encrypted off-site copies (offsite.js): every server backup as it's made, plus a daily
+  // DATA_DIR bundle, to any S3-compatible bucket. Off unless all OFFSITE_* vars are set.
+  const offsiteCfg = opts.offsite ? Object.assign({ enabled: true, partial: false, missing: [] }, opts.offsite) : Offsite.configFrom(process.env);
+  const offsite = offsiteCfg.enabled ? Offsite.createOffsite({ cfg: offsiteCfg, dataDir, fetchImpl: opts.offsiteFetch,
+    maxBundleBytes: (parseFloat(process.env.OFFSITE_MAX_MB) || 256) * 1024 * 1024 }) : null;
+  const offsiteEveryMs = (opts.offsiteEveryH || parseFloat(process.env.OFFSITE_EVERY_H) || 24) * 3600e3;
+  const offsiteStateFile = path.join(dataDir, 'offsite-state.json');
+  if (offsite) { // the daily cadence survives redeploys: a redeploy shouldn't mean another full upload
+    try { const st = JSON.parse(fs.readFileSync(offsiteStateFile, 'utf8')); if (isFinite(st.lastDataAt)) offsite.state.lastDataAt = st.lastDataAt; } catch (e) {}
+  }
+  const saveOffsiteState = () => { try { const tmp = offsiteStateFile + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify({ lastDataAt: offsite.state.lastDataAt, lastOkAt: offsite.state.lastOkAt, lastError: offsite.state.lastError }));
+    fs.renameSync(tmp, offsiteStateFile); } catch (e) {} };
   const ATT_KEY = /^[A-Za-z0-9_-]{1,200}$/;   // base64url of the trade id
   const MAX_ATT = 8 * 1024 * 1024;            // per-trade attachment set
   const MAX_ATT_TOTAL = 512 * 1024 * 1024;    // whole store — Railway volumes are small, and per-key caps alone allow unbounded growth
@@ -497,7 +587,7 @@ function createApp(opts) {
   // the API would work while the app silently ran browser-only (no token prompt, no sync).
   // Detected once at boot, surfaced in the logs and on /api/health.
   let appSyncCapable = false;
-  try { appSyncCapable = fs.readFileSync(htmlPath, 'utf8').includes('initServerSync'); } catch (e) {}
+  try { appSyncCapable = readAppSource(htmlPath).includes('initServerSync'); } catch (e) {}
 
   // Analytics engine — extracted from the same HTML this server serves.
   const engine = buildEngine(htmlPath, opts.fetchImpl || ((...a) => globalThis.fetch(...a)));
@@ -562,15 +652,52 @@ function createApp(opts) {
       });
     } catch (e) { return []; }
   };
+  // Brute-force lockout. The 300ms 401 delay below slows one connection, not a hundred in
+  // parallel, so wrong bearer tokens are also counted per client address: AUTH_FAIL_MAX
+  // wrong guesses inside the window lock that address out of every token-gated route for
+  // AUTH_LOCK_MIN minutes (429, even with the right token — otherwise guessing would carry
+  // on). Only a presented token that matches neither credential counts: a visitor with no
+  // token at all, or a READ_TOKEN script asking for a full-token route, is never a guess.
+  const failMax = opts.authFailMax || parseInt(process.env.AUTH_FAIL_MAX, 10) || 20;
+  const failWindowMs = 10 * 60000;
+  const lockMs = (opts.authLockMin || parseInt(process.env.AUTH_LOCK_MIN, 10) || 15) * 60000;
+  const authFails = new Map(); // ip -> {n, since, until}
+  const failCounted = new WeakSet(); // one request checked twice (authOk then readOk) is one guess
+  let ipOf = req => (req.socket && req.socket.remoteAddress) || ''; // replaced by clientIp once the proxy setting is read
+  const lockedOut = (req) => {
+    const f = authFails.get(ipOf(req));
+    return !!(f && f.until && f.until > Date.now());
+  };
+  const noteBadToken = (req) => {
+    if (failCounted.has(req)) return;
+    failCounted.add(req);
+    const ip = ipOf(req), now = Date.now();
+    let f = authFails.get(ip);
+    if (!f || now - f.since > failWindowMs) { f = { n: 0, since: now, until: 0 }; authFails.set(ip, f); }
+    if (++f.n >= failMax && !f.until) {
+      f.until = now + lockMs;
+      console.warn('[ledger] auth: ' + f.n + ' wrong tokens from ' + (ip || 'unknown address') + ' — locked out for ' + Math.round(lockMs / 60000) + ' min');
+    }
+    if (authFails.size > 5000) { // a sweep from many addresses must not grow this without bound
+      for (const [k, v] of authFails) if ((v.until || v.since + failWindowMs) < now) authFails.delete(k);
+    }
+  };
+  const tokenCheck = (req) => {
+    const h = req.headers['authorization'] || '';
+    const full = timingSafeEq(h, 'Bearer ' + auth);
+    if (!full && h && !(readAuth && timingSafeEq(h, 'Bearer ' + readAuth))) noteBadToken(req);
+    return full;
+  };
   const authOk = (req) => {
     if (!auth) return true;
-    return timingSafeEq(req.headers['authorization'] || '', 'Bearer ' + auth);
+    if (lockedOut(req)) return false;
+    return tokenCheck(req);
   };
   // READ_TOKEN grants exactly one thing: GETs under /api/v1. It never opens /api/data,
   // attachments, snapshots, or any write path. When no AUTH_TOKEN is set at all the whole
   // server is open (unchanged from before) and this distinction is moot.
   const readOk = (req) => authOk(req)
-    || (!!readAuth && timingSafeEq(req.headers['authorization'] || '', 'Bearer ' + readAuth));
+    || (!!readAuth && !lockedOut(req) && timingSafeEq(req.headers['authorization'] || '', 'Bearer ' + readAuth));
   const json = (res, code, obj) => {
     const body = JSON.stringify(obj);
     const write = () => {
@@ -734,6 +861,24 @@ function createApp(opts) {
 
   /* ---------------- trades: rebuilt from caches, memoized ---------------- */
   let _appHtml = null; // the app HTML, its gzip and ETag, rebuilt when the file changes
+  // The app's code lives in app/*.js next to the HTML. Each file is served gzipped with a content
+  // hash; the HTML is sent with every <script src="app/x.js"> rewritten to "app/x.js?v=<hash>", so
+  // browsers can keep those for a year and still pick up a new deploy at once.
+  const appDir = path.join(path.dirname(htmlPath), 'app');
+  const _appFiles = new Map(); // name -> {mtime, size, buf, gz, hash}
+  const appFile = (name) => {
+    if (!/^[a-z0-9.-]+\.js$/.test(name) || name.startsWith('.')) return null; // no paths, no dotfiles
+    const file = path.join(appDir, name);
+    let st; try { st = fs.statSync(file); } catch (e) { return null; }
+    if (!st.isFile()) return null;
+    let f = _appFiles.get(name);
+    if (!f || f.mtime !== st.mtimeMs || f.size !== st.size) {
+      const buf = fs.readFileSync(file);
+      f = { mtime: st.mtimeMs, size: st.size, buf, gz: zlib.gzipSync(buf, { level: 9 }), hash: crypto.createHash('sha1').update(buf).digest('hex').slice(0, 12) };
+      _appFiles.set(name, f);
+    }
+    return f;
+  };
   let _tradesMemo = null; // {sig, trades, builtAt}
   function cacheSig() {
     const parts = [];
@@ -957,9 +1102,37 @@ function createApp(opts) {
 
   const coachCfg = Object.assign({
     enabled: /^(1|on|true|yes)$/i.test(process.env.COACH_AI || ''),
-    model: process.env.COACH_AI_MODEL || 'claude-opus-5-5',
-    client: null, // tests inject a stub with beta.messages.create
+    provider: process.env.COACH_AI_PROVIDER || '',
+    model: process.env.COACH_AI_MODEL || '',
+    effort: process.env.COACH_AI_EFFORT || '', // OpenAI: reasoning effort; 'none' sends none
+    openaiKey: process.env.OPENAI_API_KEY || '',
+    openaiBase: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, ''),
+    client: null, // tests inject a stub with beta.messages.create (Anthropic)
+    fetchImpl: null, // tests inject a fetch for OpenAI
   }, opts.coach || {});
+  coachCfg.provider = coachProviderOf(coachCfg.provider, coachCfg.model);
+  if (!coachCfg.model) coachCfg.model = coachCfg.provider === 'openai' ? 'gpt-5.6-luna' : 'claude-opus-5-5';
+  if (coachCfg.enabled && coachCfg.provider === 'openai' && !coachCfg.openaiKey && !coachCfg.fetchImpl)
+    console.warn('[ledger] COACH_AI uses OpenAI (' + coachCfg.model + ') but OPENAI_API_KEY is not set — the coach will answer with an error');
+  // one OpenAI Responses call -> the Anthropic-shaped message the rest of the coach reads.
+  // A model that doesn't take a reasoning setting gets the request again without one.
+  async function openaiCoach(build) {
+    if (!coachCfg.openaiKey && !coachCfg.fetchImpl) throw { kind: 'auth', msg: 'OPENAI_API_KEY is not set' };
+    const f = coachCfg.fetchImpl || ((...a) => globalThis.fetch(...a));
+    const eff = /^none$/i.test(coachCfg.effort) ? null : coachCfg.effort || undefined;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const body = build(attempt ? null : eff);
+      let r;
+      try { r = await f(coachCfg.openaiBase + '/responses', { method: 'POST', signal: AbortSignal.timeout(120000),
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + coachCfg.openaiKey }, body: JSON.stringify(body) }); }
+      catch (e) { throw { kind: 'net', msg: (e && e.message) || String(e) }; }
+      let j = null; try { j = await r.json(); } catch (e) {}
+      if (r.ok) return openaiToCoachMsg(j);
+      const em = (j && j.error && j.error.message) || ('HTTP ' + r.status);
+      if (r.status === 400 && !attempt && body.reasoning && /reasoning|effort/i.test(em)) continue;
+      throw { kind: r.status === 401 || r.status === 403 ? 'auth' : r.status === 429 ? 'rate' : 'api', status: r.status, msg: em };
+    }
+  }
   let _coachClient = null;
   function coachClient() {
     if (coachCfg.client) return coachCfg.client;
@@ -972,8 +1145,21 @@ function createApp(opts) {
     return _coachClient;
   }
   async function writeCoachLetter(facts) {
-    const client = coachClient();
     let msg;
+    if (coachCfg.provider === 'openai') {
+      try { msg = await openaiCoach(eff => openaiCoachLetterRequest(facts, coachCfg.model, eff)); }
+      catch (e) {
+        if (e.kind === 'auth') throw { code: 502, msg: 'OpenAI rejected the key — check OPENAI_API_KEY (' + e.msg + ')' };
+        if (e.kind === 'rate') throw { code: 429, msg: 'OpenAI rate limit — try again in a minute' };
+        if (e.kind === 'api') throw { code: 502, msg: 'OpenAI API error ' + (e.status || '') + ': ' + e.msg };
+        throw { code: 502, msg: 'OpenAI API unreachable: ' + e.msg };
+      }
+      if (msg.incomplete && !(msg.content || []).length) throw { code: 502, msg: 'the model ran out of room before writing (' + msg.incomplete + ')' };
+      const r = coachLetterText(msg);
+      if (r.error) throw { code: 502, msg: r.error };
+      return { text: r.text, model: msg.model || coachCfg.model };
+    }
+    const client = coachClient();
     try { msg = await client.beta.messages.create(coachLetterRequest(facts, coachCfg.model)); }
     catch (e) {
       const SDK = (() => { try { const m = require('@anthropic-ai/sdk'); return m.default || m; } catch (e2) { return null; } })();
@@ -987,8 +1173,21 @@ function createApp(opts) {
     return { text: r.text, model: (msg && msg.model) || coachCfg.model }; // a fallback may have served it
   }
   async function coachChat(chat) {
-    const client = coachClient();
     let msg;
+    if (coachCfg.provider === 'openai') {
+      try { msg = await openaiCoach(eff => openaiCoachChatRequest(chat, coachCfg.model, eff)); }
+      catch (e) {
+        if (e.kind === 'auth') throw { code: 502, msg: 'The server’s OpenAI API key was rejected.' };
+        if (e.kind === 'rate') throw { code: 429, msg: 'The coach is busy — try again in a minute.' };
+        if (e.kind === 'api') throw { code: 502, msg: 'The coach hit an error (' + (e.status || '') + ').' };
+        throw { code: 502, msg: 'The coach couldn’t be reached.' };
+      }
+      if (msg.stop_reason === 'refusal') throw { code: 422, msg: 'The coach can’t help with that one. Try asking about your own trading process.' };
+      const r = coachLetterText(msg);
+      if (r.error) throw { code: 502, msg: 'The coach returned an empty answer — try again.' };
+      return { text: r.text, model: msg.model || coachCfg.model };
+    }
+    const client = coachClient();
     try { msg = await client.beta.messages.create(coachChatRequest(chat, coachCfg.model)); }
     catch (e) {
       const SDK = (() => { try { const m = require('@anthropic-ai/sdk'); return m.default || m; } catch (e2) { return null; } })();
@@ -1200,6 +1399,49 @@ function createApp(opts) {
     try { await deliver(n.text); }
     catch (e) { _alertSent.delete(n.key); saveAlertState(); console.warn('[ledger] nudge delivery failed: ' + e.message); }
   }
+  // HEALTH_FAIL_RUNS consecutive failed scheduled refreshes, or a data volume past
+  // HEALTH_DISK_PCT used / under HEALTH_DISK_MIN_MB free, goes to the alert channels
+  // (once a day while it lasts; a recovered refresh says so once).
+  const healthCfg = Object.assign({
+    failRuns: process.env.HEALTH_FAIL_RUNS !== undefined ? parseInt(process.env.HEALTH_FAIL_RUNS, 10) || 0 : 3,
+    diskMinBytes: (process.env.HEALTH_DISK_MIN_MB !== undefined ? parseFloat(process.env.HEALTH_DISK_MIN_MB) || 0 : 100) * 1024 * 1024,
+    diskPct: process.env.HEALTH_DISK_PCT !== undefined ? parseFloat(process.env.HEALTH_DISK_PCT) || 0 : 90,
+    cooldownMs: 24 * 3600e3,
+  }, opts.health || {});
+  const _health = { failStreak: 0, lastError: null, lastOkAt: 0 };
+  const diskOf = () => {
+    if (opts.diskStat) return opts.diskStat();
+    try { if (typeof fs.statfsSync !== 'function') return null; // node < 18.15
+      const st = fs.statfsSync(dataDir); return { free: st.bavail * st.bsize, total: st.blocks * st.bsize }; }
+    catch (e) { return null; }
+  };
+  function noteRefreshOutcome(err, summary) {
+    if (err && (err.code === 400 || err.code === 409)) return; // no wallets saved yet / superseded: not a failure
+    const ws = summary && Array.isArray(summary.wallets) ? summary.wallets : [];
+    const allFailed = !err && ws.length > 0 && ws.every(w => w.error);
+    if (err || allFailed) {
+      _health.failStreak++;
+      _health.lastError = err ? ((err.msg || err.message) || String(err)) : ws[0].error;
+    } else { _health.failStreak = 0; _health.lastError = null; _health.lastOkAt = Date.now(); }
+  }
+  async function maybeHealthAlert() {
+    const now = Date.now();
+    const due = healthAlertsFrom({ ..._health, now, disk: diskOf(), offsite: offsite && offsite.state }, healthCfg);
+    for (const a of due) if (!_alertSent.has(a.key)) console.warn('[ledger] health: ' + a.text);
+    // the refresh is healthy again after we told someone it wasn't: close the loop
+    if (!due.some(a => a.key === 'health:refresh') && _alertSent.has('health:refresh') && _health.failStreak === 0) {
+      _alertSent.delete('health:refresh'); saveAlertState();
+      if (hasDelivery()) { try { await deliver('✅ Scheduled refresh is working again.'); } catch (e) {} }
+      return;
+    }
+    if (!hasDelivery()) return;
+    const send = due.filter(a => now - (_alertSent.get(a.key) || 0) >= healthCfg.cooldownMs);
+    if (!send.length) return;
+    for (const a of send) _alertSent.set(a.key, now);
+    saveAlertState();
+    try { await deliver(send.map(a => a.text).join('\n')); }
+    catch (e) { for (const a of send) _alertSent.delete(a.key); saveAlertState(); console.warn('[ledger] health alert delivery failed: ' + e.message); }
+  }
   async function runScheduledRefresh() {
     if (_refreshing) return;
     _refreshing = true;
@@ -1213,11 +1455,13 @@ function createApp(opts) {
         }, 5 * 60000); if (watchdog.unref) watchdog.unref(); }),
       ]);
       _lastRefreshAt = Date.now(); _lastRefreshSummary = summary;
+      noteRefreshOutcome(null, summary);
     }
-    catch (e) { console.warn('[ledger] scheduled refresh failed: ' + ((e && (e.msg || e.message)) || e)); }
+    catch (e) { console.warn('[ledger] scheduled refresh failed: ' + ((e && (e.msg || e.message)) || e)); noteRefreshOutcome(e); }
     finally { clearTimeout(watchdog); _refreshing = false; }
     await maybeAlert();
     await maybeNudge();
+    await maybeHealthAlert();
   }
   /* ---------------- weekly digest ---------------- */
   // Once per ISO week (first scheduled run after Monday 00:00 UTC) a digest of the PREVIOUS
@@ -1305,6 +1549,19 @@ function createApp(opts) {
       + (nudgeCfg.hour != null && hasDelivery() ? '; journaling nudge after ' + nudgeCfg.hour + ':00 (app time zone, fallback ' + nudgeCfg.tz + ')' : ''));
   } else if (nudgeCfg.hour != null) {
     console.warn('[ledger] NUDGE_HOUR is set but REFRESH_INTERVAL_MIN is not — the nudge runs on the refresh schedule, so it will never fire');
+  }
+
+  // off-site: checked hourly, ships a DATA_DIR bundle once per OFFSITE_EVERY_H (24); runs on
+  // its own timer so it works without REFRESH_INTERVAL_MIN, and reports through health
+  if (offsite && opts.offsiteTimer !== false) {
+    const tick = () => offsite.maybeShipData(offsiteEveryMs).then(r => { if (r !== null || offsite.state.lastError) saveOffsiteState(); })
+      .then(() => maybeHealthAlert()).catch(() => {});
+    const ot = setInterval(tick, 3600e3); if (ot.unref) ot.unref();
+    const ob = setTimeout(tick, 120000); if (ob.unref) ob.unref();
+    console.log('[ledger] off-site backups on: ' + offsiteCfg.endpoint.replace(/^https?:\/\//, '') + '/' + offsiteCfg.bucket + '/' + offsiteCfg.prefix
+      + ' — every server backup, plus a DATA_DIR bundle every ' + Math.round(offsiteEveryMs / 3600e3) + ' h (newest ' + offsiteCfg.keep + ' of each kept)');
+  } else if (offsiteCfg.partial) {
+    console.warn('[ledger] WARNING: off-site backups are half-configured and OFF — missing ' + offsiteCfg.missing.join(', '));
   }
 
   /* ---------------- v1 endpoint docs (served at GET /api/v1) ---------------- */
@@ -1468,7 +1725,11 @@ function createApp(opts) {
             accountValue: market.accountValue, spotAccountValue: market.spotAccountValue, hlPnl: market.hlPnl } : null,
           settings: (() => { const s = Object.assign({}, S_DEFAULTS, snap.settings || {});
             return { beThreshold: s.beThreshold, rBasis: s.rBasis, riskDefault: s.riskDefault, tz: s.tz }; })(),
-          refresh: { running: _refreshing, lastAt: _lastRefreshAt || null },
+          refresh: { running: _refreshing, lastAt: _lastRefreshAt || null,
+            failStreak: _health.failStreak, lastError: _health.lastError, lastOkAt: _health.lastOkAt || null },
+          disk: diskOf(),
+          offsite: offsite ? { enabled: true, lastOkAt: offsite.state.lastOkAt || null, lastError: offsite.state.lastError,
+            lastKey: offsite.state.lastKey, lastBundleAt: offsite.state.lastDataAt || null } : { enabled: false },
         });
       }
 
@@ -1954,6 +2215,7 @@ function createApp(opts) {
   const clientIp = req => { const xf = trustProxy && req.headers['x-forwarded-for'];
     if (xf) { const last = String(xf).split(',').map(x => x.trim()).filter(Boolean).pop(); if (last) return last.slice(0, 64); }
     return (req.socket && req.socket.remoteAddress) || ''; };
+  ipOf = clientIp;
   // web push: the server's own VAPID identity, made once in DATA_DIR (PUSH=0 switches it off)
   let pushCfg = null;
   if (opts.push !== false && process.env.PUSH !== '0') {
@@ -1964,6 +2226,8 @@ function createApp(opts) {
     } catch (e) { console.warn('[ledger] push reminders off: ' + e.message); }
   }
   const wearRef = {}; // filled in below, once the wearables store exists
+  const cexRelay = CexRelay.createCexRelay({ env: opts.cexEnv || process.env, fetchImpl: opts.cexFetch || opts.fetchImpl, now: opts.now });
+  if (cexRelay.relayOnly && !cexRelay.secretSet) console.warn('[ledger] CEX_RELAY_ONLY is on but CEX_RELAY_SECRET is not set — the relay will refuse every request');
   const social = createSocial({ dataDir, json, authOk, adminConfigured: !!auth, fetchImpl: opts.fetchImpl, now: opts.now, push: pushCfg, onDrop: id => wearRef.forget && wearRef.forget('m:' + id),
     behaviorFor, tradeCheck: opts.tradeCheck || tradeCheck, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled });
   // readiness from WHOOP, Oura or Apple Health: the owner (AUTH_TOKEN) or a member (Pulse key)
@@ -1992,6 +2256,27 @@ function createApp(opts) {
       if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
     }
 
+    // a locked-out address gets a clear 429 for anything carrying a bearer token (see noteBadToken)
+    if (auth && req.headers['authorization'] && lockedOut(req)) {
+      const f = authFails.get(ipOf(req));
+      res.setHeader('Retry-After', String(Math.max(1, Math.ceil((f.until - Date.now()) / 1000))));
+      return json(res, 429, { error: 'too many wrong tokens from this address — try again in a few minutes' });
+    }
+
+    // --- exchange relay (Bybit, Binance): the browser signs, this forwards — see cex-relay.js
+    if (url === '/api/cex/relay') {
+      if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
+      const who = cexRelay.relayCaller(req) || (cexRelay.relayOnly ? null
+        : (auth ? (req.headers['authorization'] && authOk(req) ? 'owner' : null) : 'owner') || (social.memberOf(req) ? 'm:' + social.memberOf(req).id : null));
+      readBody(req, 64 * 1024).then(raw => {
+        let body; try { body = JSON.parse(raw); } catch (e) { return json(res, 400, { error: 'invalid JSON' }); }
+        return cexRelay.handle(body, who).then(([code, out]) => json(res, code, out));
+      }, e => json(res, 413, { error: e.message })).catch(e => json(res, 500, { error: e.message }));
+      return;
+    }
+    // a relay-only copy (CEX_RELAY_ONLY=1) answers nothing else but its health check
+    if (cexRelay.relayOnly && url !== '/api/health') return json(res, 404, { error: 'this server is an exchange relay only' });
+
     // --- static: the app itself ---
     // /pulse is the same app opened in its simple dial view (the page switches on its own path);
     // /pulse/ redirects so the page's relative links (help, sw.js, api/v1) resolve from the root.
@@ -2000,13 +2285,18 @@ function createApp(opts) {
       return res.end();
     }
     if (req.method === 'GET' && (url === '/' || url === '/index.html' || url === '/ledger.html' || url === '/pulse')) {
-      // the app is ~1.4 MB: sent gzipped (~0.55 MB), and a browser that already has this
+      // the page is ~0.3 MB (its code is in app/*.js, below): sent gzipped, and a browser that already has this
       // version gets a 304 instead of the whole file on every open
       let st; try { st = fs.statSync(htmlPath); } catch (e) { return json(res, 500, { error: 'app HTML not found on server' }); }
-      if (!_appHtml || _appHtml.mtime !== st.mtimeMs || _appHtml.size !== st.size) {
-        try { const buf = fs.readFileSync(htmlPath);
-          _appHtml = { mtime: st.mtimeMs, size: st.size, buf, gz: zlib.gzipSync(buf, { level: 9 }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 20) + '"' };
-        } catch (e) { return json(res, 500, { error: 'app HTML not found on server' }); }
+      let raw; try { raw = _appHtml && _appHtml.mtime === st.mtimeMs && _appHtml.size === st.size ? _appHtml.raw : fs.readFileSync(htmlPath, 'utf8'); }
+      catch (e) { return json(res, 500, { error: 'app HTML not found on server' }); }
+      const names = appScripts(raw).map(r => r.slice(4)), files = names.map(appFile);
+      if (files.some(f => !f)) return json(res, 500, { error: 'app scripts missing on server: deploy the app/ folder next to ledger.html' });
+      const sig = st.mtimeMs + ':' + st.size + ':' + files.map(f => f.hash).join(',');
+      if (!_appHtml || _appHtml.sig !== sig) {
+        let i = 0;
+        const buf = Buffer.from(raw.replace(/<script src="app\/([a-z0-9.-]+\.js)"><\/script>/g, (m, n) => '<script src="app/' + n + '?v=' + files[i++].hash + '"></script>'));
+        _appHtml = { mtime: st.mtimeMs, size: st.size, raw, sig, buf, gz: zlib.gzipSync(buf, { level: 9 }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 20) + '"' };
       }
       const head = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'ETag': _appHtml.etag, 'Vary': 'Accept-Encoding',
         'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
@@ -2016,6 +2306,19 @@ function createApp(opts) {
       const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
       res.writeHead(200, gz ? Object.assign(head, { 'Content-Encoding': 'gzip' }) : head);
       return res.end(gz ? _appHtml.gz : _appHtml.buf);
+    }
+
+    // --- the app's scripts (app/*.js): long-lived when asked for by their current hash
+    if (req.method === 'GET' && url.startsWith('/app/')) {
+      const f = appFile(url.slice(5));
+      if (!f) return json(res, 404, { error: 'not found' });
+      const etag = '"' + f.hash + '"';
+      const head = { 'Content-Type': 'text/javascript; charset=utf-8', 'ETag': etag, 'Vary': 'Accept-Encoding', 'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': query.v === f.hash ? 'public, max-age=31536000, immutable' : 'no-cache' };
+      if ((req.headers['if-none-match'] || '') === etag) { res.writeHead(304, head); return res.end(); }
+      const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+      res.writeHead(200, gz ? Object.assign(head, { 'Content-Encoding': 'gzip' }) : head);
+      return res.end(gz ? f.gz : f.buf);
     }
 
     // --- built-in documentation: /help (user guide) and /docs (technical reference).
@@ -2046,14 +2349,18 @@ function createApp(opts) {
       return res.end(
         // Only the app shell is cached: '/' and '/pulse' serve the same file, so either one
         // refreshes the copy; other pages (help, docs) pass through and never overwrite it.
-        "const C='ledger-v3',S=['/','/index.html','/ledger.html','/pulse'];" +
+        "const C='ledger-v4',S=['/','/index.html','/ledger.html','/pulse'];" +
         "self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.add('/')))});" +
         "self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C).map(x=>caches.delete(x)))).then(()=>clients.claim()))});" +
         "self.addEventListener('fetch',e=>{const u=new URL(e.request.url);" +
         "if(u.origin!==location.origin||u.pathname.startsWith('/api/')||e.request.method!=='GET')return;" +
         "if(S.includes(u.pathname)){const net=fetch(e.request).then(r=>{if(r.ok){const cp=r.clone();caches.open(C).then(c=>c.put('/',cp));}return r;});" +
         "e.waitUntil(net.then(()=>{},()=>{}));" +
-        "e.respondWith(caches.match('/').then(c=>c||net).catch(()=>net));}});" +
+        "e.respondWith(caches.match('/').then(c=>c||net).catch(()=>net));return;}" +
+        // the app's scripts: versioned URLs never change, so cache first; a new version replaces the old copy
+        "if(u.pathname.startsWith('/app/')){e.respondWith(caches.open(C).then(c=>c.match(e.request).then(hit=>hit||fetch(e.request).then(r=>{" +
+        "if(r.ok&&u.search){const cp=r.clone();c.keys().then(ks=>Promise.all(ks.filter(k=>{const x=new URL(k.url);return x.pathname===u.pathname&&x.search!==u.search}).map(k=>c.delete(k)))).then(()=>c.put(e.request,cp));}" +
+        "return r;}))));}});" +
         // reminders, nudges and mentor notes arrive as web push; a tap opens (or focuses) Pulse there
         "self.addEventListener('push',e=>{let d={};try{d=e.data?e.data.json():{}}catch(x){d={body:e.data&&e.data.text()}}" +
         "e.waitUntil(self.registration.showNotification(d.title||'Pulse',{body:d.body||'',tag:d.tag||'pulse',data:{url:d.url||'/pulse'},icon:'/pulse-icon.svg',badge:'/pulse-icon.svg'}))});" +
@@ -2178,8 +2485,21 @@ function createApp(opts) {
           const files = fs.readdirSync(backupsDir).filter(f => BACKUP_RE.test(f)).sort();
           while (files.length > BACKUP_KEEP) fs.unlinkSync(path.join(backupsDir, files.shift()));
         } catch (e) {}
-        return json(res, 200, { ok: true, name });
+        if (offsite) { // the off-site copy uploads in the background: the local copy is already safe
+          let gz = null; try { gz = fs.readFileSync(path.join(backupsDir, name)); } catch (e) {}
+          if (gz) offsite.shipBackup(gz).then(saveOffsiteState, saveOffsiteState);
+        }
+        return json(res, 200, { ok: true, name, offsite: offsite ? 'uploading' : 'off' });
       });
+      return;
+    }
+    if (url === '/api/offsite/run') {
+      if (!authOk(req)) return json(res, 401, { error: 'unauthorized' });
+      if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
+      if (!offsite) return json(res, 409, { error: offsiteCfg.partial ? 'off-site backups half-configured — missing ' + offsiteCfg.missing.join(', ') : 'off-site backups are off (set the OFFSITE_* variables)' });
+      if (offsite.state.busy) return json(res, 409, { error: 'an upload is already running' });
+      offsite.shipData().then(r => { saveOffsiteState(); json(res, 200, { ok: true, ...r }); },
+        e => { saveOffsiteState(); json(res, 502, { error: e.message }); });
       return;
     }
     if (url === '/api/backups') {
@@ -2196,7 +2516,7 @@ function createApp(opts) {
     // --- coach's weekly letter (opt-in AI): everything here needs the full token ---
     if (url === '/api/coach/status') {
       if (!authOk(req)) return json(res, 401, { error: 'unauthorized' });
-      return json(res, 200, { enabled: !!coachCfg.enabled, model: coachCfg.enabled ? coachCfg.model : null,
+      return json(res, 200, { enabled: !!coachCfg.enabled, model: coachCfg.enabled ? coachCfg.model : null, provider: coachCfg.enabled ? coachCfg.provider : null,
         share: !!(telegramCfg.token && telegramCfg.shareChats.length) });
     }
     // --- share a weekly card's text with an accountability partner (TELEGRAM_SHARE_CHAT_ID) ---
@@ -2222,7 +2542,7 @@ function createApp(opts) {
         detail: st.detail, detailAllowed: st.detailAllowed, who: st.who };
       if (req.method === 'GET') return json(res, 200, pub);
       if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
-      if (!coachCfg.enabled) return json(res, 404, { error: 'The AI coach isn’t switched on for this server yet. The owner turns it on with COACH_AI=1 and an Anthropic API key.' });
+      if (!coachCfg.enabled) return json(res, 404, { error: 'The AI coach isn’t switched on for this server yet. The owner turns it on with COACH_AI=1 and an Anthropic or OpenAI API key.' });
       if (!st.allowed) return json(res, 429, Object.assign(pub, { error: st.reason }));
       (async () => {
         let body; try { body = JSON.parse(await readBody(req, 256 * 1024)); } catch (e) { return json(res, e.message === 'payload too large' ? 413 : 400, { error: e.message === 'payload too large' ? 'That’s too much to send at once.' : 'invalid JSON' }); }
@@ -2364,6 +2684,8 @@ function createApp(opts) {
   server._weeklyDigest = weeklyDigest;       // exposed for tests — generation is time-gated in production
   server._gatherAlertState = gatherAlertState; // exposed for tests
   server._buildBotState = buildBotState;       // exposed for tests — the loop itself needs a live bot
+  server._runScheduledRefresh = runScheduledRefresh; // exposed for tests — the schedule itself is a timer
+  server._offsite = offsite; // exposed for tests
   server._social = social; // tests reach the coach allowance through this
   server.pushTick = () => social.tick(); // the reminder pass, for tests and one-off runs
   server.on('close', () => social.close());
@@ -2413,5 +2735,5 @@ function fillsMatchTrade(fills, t) {
   return !!t.closedAt && t.exit > 0 && near(t.closedAt, !long, t.exit);
 }
 
-module.exports = { fillsMatchTrade, sanitizeCoachChat, coachChatRequest, scrubCoachData, createApp, buildEngine, ENGINE_FNS, alertsFrom, postWebhook, telegramReply, nudgeFrom, zonedDayHour,
+module.exports = { fillsMatchTrade, sanitizeCoachChat, coachChatRequest, openaiCoachChatRequest, openaiCoachLetterRequest, openaiToCoachMsg, coachProviderOf, scrubCoachData, createApp, buildEngine, ENGINE_FNS, alertsFrom, healthAlertsFrom, postWebhook, telegramReply, nudgeFrom, zonedDayHour,
   sanitizeCoachFacts, coachLetterRequest, coachLetterText };

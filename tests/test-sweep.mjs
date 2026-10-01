@@ -5,6 +5,7 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { readAppSource } from '../app-source.js';
 import { t, ok, eq, near, report, makeExtractor } from './harness.mjs';
 
 const require = createRequire(import.meta.url);
@@ -12,7 +13,7 @@ const server = require('../server.js');
 const SC = require('../social-config.js');
 const Wear = require('../wear.js');
 const htmlPath = new URL('../ledger.html', import.meta.url).pathname;
-const html = readFileSync(htmlPath, 'utf8');
+const html = readAppSource(htmlPath); // ledger.html with its app/*.js inlined, in load order
 const { evalModule } = makeExtractor(html);
 const listen = app => new Promise(res => app.listen(0, () => res('http://127.0.0.1:' + app.address().port)));
 const close = app => new Promise(res => app.close(res));
@@ -106,7 +107,7 @@ await t('disconnecting during a sync stays disconnected, and a member removed mi
 
 console.log('\nJournal');
 const PRE = "const _be=50;const isWin=n=>n>_be,isLoss=n=>n<-_be,isBE=n=>Math.abs(n)<=_be;let spotMaps={nameByCoin:{}};";
-const R = await evalModule(['isPerp', 'newTrade', 'tallyFill', 'reconstructTrades', 'csvParseRows', 'csvNum', 'parseFillsCsv'], ['reconstructTrades', 'parseFillsCsv'], PRE);
+const R = await evalModule(['isPerp', 'newTrade', 'tallyFill', 'reconstructTrades', 'csvParseRows', 'csvNum', 'deriveFillPositions', 'parseFillsCsv'], ['reconstructTrades', 'parseFillsCsv'], PRE);
 const fill = (t, side, px, sz, start, pnl) => ({ coin: 'BTC', time: t, side, px: String(px), sz: String(sz), startPosition: String(start), closedPnl: String(pnl || 0), fee: '0', tid: t + side + start });
 t('fills in the same millisecond are put in position order (a close and a reopen)', () => {
   const tr = R.reconstructTrades([fill(1, 'B', 100, 1, 0), fill(2, 'B', 111, 1, 0), fill(2, 'A', 110, 1, 1, 10)], '0xa', 'perp');

@@ -22,7 +22,8 @@
 //   - A member is identified by random keys kept in their browsers (header X-Pulse-Key);
 //     only their SHA-256 is stored. A new device gets its own key by signing in with the
 //     claimed wallet, or with a one-time code from a signed-in device. The owner's
-//     AUTH_TOKEN gates the admin endpoints.
+//     AUTH_TOKEN gates the admin endpoints; the owner can also make members admins, who reach
+//     them with their own member key (never the token, so never the owner's journal or server).
 //   - The journal sync (vault) is end-to-end encrypted: the browser encrypts with a key from
 //     the member's passphrase before sending, so this server only ever stores ciphertext.
 //
@@ -35,6 +36,9 @@ const Store = require('./db.js');
 const Push = require('./push.js');
 // Ethereum signature recovery for wallet claims (vendored noble libraries, no install needed)
 let ethSig = null; try { ethSig = require('./vendor/eth-sig.js'); } catch (e) { /* claims and wallet sign-in answer 501 */ }
+// Passkeys (WebAuthn): sign in on any device with Face ID, a fingerprint or a security key
+const WebAuthn = require('./webauthn.js');
+const PASSKEY_MAX = 10;
 
 const TIERS = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'];
 const LEVELS = ['Rookie', 'Apprentice', 'Journeyman', 'Disciplined', 'Consistent', 'Professional', 'Veteran', 'Master', 'Grandmaster', 'Legend'];
@@ -56,7 +60,7 @@ const B64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 const MAX_MEMBERS = 5000;
 const STREAK_MARKS = [7, 14, 21, 30, 50, 75, 100, 150, 200, 365];
 const COMP_TYPES = ['discipline', 'survivor', 'journal', 'return'];
-const DEFAULT_CONFIG = { open: true, inviteCode: '', unlocksOn: true, requireClaim: false, vaultOn: true,
+const DEFAULT_CONFIG = { open: true, inviteCode: '', unlocksOn: true, requireClaim: false, approveWallets: false, vaultOn: true,
   unlocks: { trends: 2, share: 3, compete: 4 } };
 const SHARE_KEYS = ['profile', 'boards', 'global', 'page', 'feed', 'habits', 'verify', 'ret', 'usd', 'addr', 'mentor'];
 // mentor: the league's mentors can see your trading days (scores, slips, the lesson you wrote) and comment on them — opt-in
@@ -258,7 +262,8 @@ function weeksIn(start, end) { const out = []; let k = start;
 // ---- competitions ----
 function compStatus(c, todayKey) { return todayKey < c.start ? 'upcoming' : todayKey > c.end ? 'finished' : 'live'; }
 // members: an array, or the members object keyed by id (no lookup map to build per call)
-function compStandings(c, members, todayKey, requireClaim) {
+// walletGate (optional): m -> a reason the member's wallet doesn't count yet (owner approval), or null
+function compStandings(c, members, todayKey, requireClaim, walletGate) {
   const byId = Array.isArray(members) ? new Map(members.map(m => [m.id, m])) : { get: id => Object.prototype.hasOwnProperty.call(members, id) ? members[id] : undefined };
   const rows = [];
   for (const id of Object.keys(c.entrants || {})) {
@@ -274,7 +279,7 @@ function compStandings(c, members, todayKey, requireClaim) {
       const vd = m.share && m.share.verify && Array.isArray(m.vdays) ? m.vdays.filter(d => d.k >= c.start && d.k <= c.end && d.k <= todayKey) : null;
       if (!vd) { rows.push({ id, handle: m.handle, score: null, out: false,
         note: !(m.share && m.share.verify) ? 'Needs verification: switch on “Verify my discipline”' : !m.address ? 'Needs a wallet to verify'
-          : requireClaim && m.claimed !== m.address ? 'Needs a claimed wallet' : 'Verifying from fills…' }); continue; }
+          : requireClaim && m.claimed !== m.address ? 'Needs a claimed wallet' : (walletGate && walletGate(m)) || 'Verifying from fills…' }); continue; }
       const d = disciplineOver(vd, c.start, c.end, c.minDays || 3);
       if (d.avg == null) note = d.n + ' of ' + (c.minDays || 3) + ' trading days so far'; else { score = Math.round(d.avg); note = d.n + ' trading days'; }
     } else if (c.type === 'survivor') {
@@ -400,7 +405,9 @@ function createSocial(opts) {
       if (!old || old.v !== 1) throw new Error(legacyFile + ' could not be read, so the league was not imported. Fix or move the file, then start again.'); }
     if (old) { Store.importJson(store, old); try { fs.renameSync(legacyFile, legacyFile + '.migrated'); } catch (e) {} }
   }
-  const KV_KEYS = ['config', 'follows', 'comps', 'league', 'leagues', 'badges', 'ownerCoach', 'partners', 'comments', 'leagueSeq'];
+  // every section kept as a kv row: one missing here is never loaded or saved (wallet decisions and
+  // the admin log would vanish on the next restart)
+  const KV_KEYS = ['config', 'follows', 'comps', 'league', 'leagues', 'badges', 'ownerCoach', 'partners', 'comments', 'leagueSeq', 'wallets', 'adminLog'];
   let S = { v: 1, members: {} };
   const loadedRaw = new Map(); // what each row held, so the first save writes only what loading changed
   for (const r of q('SELECT k, v FROM kv').all()) if (KV_KEYS.includes(r.k)) try { S[r.k] = JSON.parse(r.v); loadedRaw.set(r.k, r.v); } catch (e) {}
@@ -420,7 +427,12 @@ function createSocial(opts) {
   S.config.profiles = SC.sanitizeProfiles(S.config.profiles, null);
   S.config.posts = sanitizePostCfg(S.config.posts, null);
   if (!S.badges || typeof S.badges !== 'object') S.badges = {};
+  // the owner's wallet decisions, by address (so a new profile can't launder a rejected wallet):
+  // { '0x…': { s: 'approved' | 'rejected', at, by: 'owner' | 'existing', note } }
+  if (!S.wallets || typeof S.wallets !== 'object') S.wallets = {};
   if (!S.ownerCoach) S.ownerCoach = { k: null, n: 0 };
+  // what admins did in the panel, newest last: {at, by, what}
+  if (!Array.isArray(S.adminLog)) S.adminLog = [];
   if (!S.partners || typeof S.partners !== 'object') S.partners = {};
   if (!S.comments || typeof S.comments !== 'object') S.comments = {};
   if (!S.leagues || typeof S.leagues !== 'object') { // one league for everyone until the owner makes more
@@ -468,11 +480,33 @@ function createSocial(opts) {
     m.keyHashes = [...(Array.isArray(m.keyHashes) ? m.keyHashes : []), sha(key)].slice(-MAX_KEYS); reindex(); return key; };
   // the wallet whose on-chain numbers count for this member: any address they gave, or, when the
   // owner requires claims, only a wallet they proved is theirs by signing
-  const walletFor = m => !m.address ? null : S.config.requireClaim && m.claimed !== m.address ? null : m.address;
+  // … and, when the owner approves wallets, only an address the owner approved
+  const walletReview = addr => addr && Object.prototype.hasOwnProperty.call(S.wallets, addr) ? S.wallets[addr] : null;
+  const walletStatus = addr => !addr ? null : (walletReview(addr) || {}).s || 'pending';
+  const walletFor = m => !m.address ? null : S.config.requireClaim && m.claimed !== m.address ? null
+    : S.config.approveWallets && walletStatus(m.address) !== 'approved' ? null : m.address;
+  // why walletFor(m) is null: 'no-wallet' | 'claim' | 'approval' | 'rejected' (null when it isn't)
+  const walletBlock = m => !m.address ? 'no-wallet' : S.config.requireClaim && m.claimed !== m.address ? 'claim'
+    : S.config.approveWallets && walletStatus(m.address) !== 'approved' ? (walletStatus(m.address) === 'rejected' ? 'rejected' : 'approval') : null;
+  // numbers read from a wallet that stopped counting go at once, and come back when it counts again
+  const dropWalletNumbers = m => { m.vdays = null; m.money = null; for (const cc of Object.values(S.comps)) if (cc.money) delete cc.money[m.id]; };
+  const recheckWallet = m => { m.vAt = 0; m.vFailAt = 0; m.moneyFailAt = 0; if (!walletFor(m)) dropWalletNumbers(m); };
   const claimedBy = (addr, notId) => addr ? members().find(o => o.id !== notId && o.claimed === addr) || null : null;
   // simple per-IP rate limits: n requests per window
   const ipOf = opts.clientIp || (req => (req.socket && req.socket.remoteAddress) || '');
   const origins = (opts.publicOrigins || []).map(o => { try { const u = new URL(o); return { host: u.host.toLowerCase(), origin: u.origin }; } catch (e) { return null; } }).filter(Boolean);
+  // the site a passkey belongs to: {origin, rpId} — the pinned PUBLIC_ORIGIN that matches this
+  // request's Host, or (unpinned) the address this page was served from
+  const siteOf = req => {
+    const reqHost = String(req.headers.host || '').toLowerCase();
+    if (origins.length) { const o = origins.find(x => x.host === reqHost);
+      if (!o) return { error: 'Open Pulse at ' + origins[0].origin + '/pulse to use a passkey.' };
+      return { origin: o.origin, rpId: o.host.replace(/:\d+$/, '') }; }
+    const host = reqHost.slice(0, 100).replace(/[^a-z0-9.:\-\[\]]/g, '');
+    if (!host) return { error: 'Missing Host header.' };
+    const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https' || (req.socket && req.socket.encrypted) ? 'https' : 'http';
+    return { origin: proto + '://' + host, rpId: host.replace(/:\d+$/, '').replace(/^\[|\]$/g, '') };
+  };
   const limits = new Map();
   // byMember: count per member wherever they connect from (an IP is easy to change)
   const limited = (req, bucket, n, windowMs, byMember) => { const k = byMember ? bucket : bucket + '|' + ipOf(req);
@@ -610,7 +644,10 @@ function createSocial(opts) {
   const dropComment = c => tx(() => { q('DELETE FROM reports WHERE comment = ?').run(c.id);
     if (q('DELETE FROM comments WHERE id = ?').run(c.id).changes) q('UPDATE events SET comments = max(0, comments - 1) WHERE id = ?').run(c.event); });
   const dropMember = (id) => { const gone = own(S.members, id) ? S.members[id].address : null;
-    const hadVault = own(S.members, id) && !!S.members[id].vault;
+    const hadVault = own(S.members, id) && !!S.members[id].vault, goneHandle = own(S.members, id) ? '@' + S.members[id].handle : null;
+    // a deleted profile leaves nothing behind: the admin log keeps what was done, not who to
+    S.adminLog = S.adminLog.map(x => (x.what.includes(id) || x.by === goneHandle) ? Object.assign({}, x, { what: x.what.split(id).join('(deleted member)'), by: x.by === goneHandle ? '(deleted admin)' : x.by }) : x); touch('adminLog');
+    if (goneHandle) for (const w of Object.values(S.wallets)) if (w && w.by === goneHandle) { w.by = '(deleted admin)'; touch('wallets'); }
     delete S.members[id]; delete S.follows[id]; dropPairsOf(id); delete S.comments[id]; reindex();
     if (opts.onDrop) try { opts.onDrop(id); } catch (e) {}
     for (const k in S.comments) S.comments[k] = S.comments[k].filter(c => c.by !== id);
@@ -720,6 +757,8 @@ function createSocial(opts) {
       claimed: !!m.claimed, av: avUrl(m), bio: m.bio || '' };
     if (out.isMe) Object.assign(out, { claimedAddress: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
       vault: m.vault ? { rev: m.vault.rev, size: m.vault.size, at: m.vault.at } : null, requireClaim: !!S.config.requireClaim, vaultOn: !!S.config.vaultOn,
+      walletStatus: S.config.approveWallets && m.address ? walletStatus(m.address) : null, admin: !!m.admin,
+      passkeys: (m.passkeys || []).map(k => ({ id: k.id, name: k.name, at: k.at, lastUsed: k.lastUsed || null })),
       unlocked: !!m.unlocked, grants: (m.grants || []).map(g => ({ id: g.id, xp: g.xp, why: g.why, at: g.at })), coach: coachStatusFor(m), coachDetail: !!m.coachDetail,
       leagues: leaguesOf(m).map(L => ({ id: L.id, name: L.name, tier: leagueTier(L, m) })), mentor: !!m.mentor,
       push: { on: !!(m.push && m.push.subs && m.push.subs.length), prefs: sanitizePrefs(null, m.push && m.push.prefs), available: !!push },
@@ -806,7 +845,7 @@ function createSocial(opts) {
   // and served from then on: members' later days and their history being trimmed can't move them.
   const compRows = c => {
     if (c.final) return c.final.filter(r => own(S.members, r.id) && !S.members[r.id].banned); // as members stand today
-    const rows = compStandings(c, S.members, todayKey(), !!S.config.requireClaim);
+    const rows = compStandings(c, S.members, todayKey(), !!S.config.requireClaim, m => ({ approval: 'Wallet waiting for approval', rejected: 'Wallet not accepted' })[walletBlock(m)] || null);
     // return and discipline results come from the chain: freeze once every entrant's numbers were
     // read after the end (or a week late at most, for a wallet that can't be read)
     const endMs = Date.parse(c.end + 'T23:59:59Z'), fresh = () => Object.keys(c.entrants).every(id => { const m = own(S.members, id) ? S.members[id] : null;
@@ -1003,7 +1042,7 @@ function createSocial(opts) {
     if (head === 'config' && M === 'GET')
       return json(res, 200, { enabled: adminConfigured, open: S.config.open, inviteRequired: !!S.config.inviteCode, unlocksOn: S.config.unlocksOn,
         unlocks: S.config.unlocks, tiers: TIERS, week: S.league.week, members: members().filter(m => !m.banned).length,
-        claims: !!sig, requireClaim: !!S.config.requireClaim, vaultOn: !!S.config.vaultOn,
+        claims: !!sig, passkeys: true, requireClaim: !!S.config.requireClaim, approveWallets: !!S.config.approveWallets, vaultOn: !!S.config.vaultOn,
         modules: S.config.modules, levels: S.config.levels, xp: S.config.xp, profiles: S.config.profiles,
         coach: { members: S.config.coach.members, daily: S.config.coach.daily, detail: S.config.coach.detail }, posts: postCfgOut(),
         badges: Object.values(S.badges).map(b => ({ id: b.id, name: b.name, icon: b.icon, desc: b.desc, metric: b.metric, metricLabel: b.metric ? SC.BADGE_METRICS[b.metric] : null, op: b.op, value: b.value, xp: b.xp })),
@@ -1013,13 +1052,22 @@ function createSocial(opts) {
     if (head === 'admin') {
       // an open server (no AUTH_TOKEN) would make everyone an admin: refuse until a token is set
       if (!adminConfigured) return json(res, 403, { error: 'Set AUTH_TOKEN on the server to use the admin panel.' });
-      if (!authOk(req)) return json(res, 401, { error: 'unauthorized' });
+      // the owner (AUTH_TOKEN), or a member the owner made an admin (their own Pulse key)
+      let who = null;
+      if (req.headers['authorization'] && authOk(req)) who = { owner: true, by: 'owner', name: 'Owner' };
+      else { const am = byKey(req); if (am && am.admin && !am.banned) { who = { owner: false, id: am.id, by: '@' + am.handle, name: '@' + am.handle }; am.lastSeen = now(); } }
+      if (!who) return json(res, 401, { error: 'unauthorized' });
       const sub = parts[1] || '';
+      if (sub === 'me' && M === 'GET') return json(res, 200, { owner: who.owner, id: who.id || null, name: who.name });
+      if (sub === 'log' && M === 'GET') return json(res, 200, { log: S.adminLog.slice(-200).reverse() });
+      if (M !== 'GET') { S.adminLog.push({ at: now(), by: who.by, what: (M + ' ' + parts.slice(1).join('/') + (body && body.action ? ' · ' + String(body.action).slice(0, 20) : '')).slice(0, 120) });
+        if (S.adminLog.length > 500) S.adminLog = S.adminLog.slice(-400); touch('adminLog'); }
       if (sub === 'overview' && M === 'GET') {
         const wk = S.league.week, act = members().filter(m => now() - (m.lastSeen || 0) < 7 * 86400000);
         return json(res, 200, { adminConfigured, members: members().length, banned: members().filter(m => m.banned).length, active7: act.length,
           events: q('SELECT count(*) AS n FROM events').get().n, posts: q("SELECT count(*) AS n FROM events WHERE type = 'post'").get().n,
           reports: q('SELECT count(*) AS n FROM reports WHERE open = 1').get().n, mediaBytes: q('SELECT sum(size) AS n FROM media').get().n || 0, comps: Object.keys(S.comps).length, week: wk, config: S.config,
+          walletsPending: S.config.approveWallets ? new Set(members().filter(m => m.address && walletStatus(m.address) === 'pending').map(m => m.address)).size : 0,
           claimed: members().filter(m => m.claimed).length, vaults: members().filter(m => m.vault).length, vaultBytes: vaultTotal(), claims: !!sig,
           originPinned: origins.length > 0 || !!opts.hostVetted,
           leagues: Object.keys(S.leagues).length, badges: Object.keys(S.badges).length, coachAi: !!opts.coachAvailable,
@@ -1030,13 +1078,15 @@ function createSocial(opts) {
       if (sub === 'members' && M === 'GET' && !parts[2])
         return json(res, 200, { members: members().sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0)).map(m => ({ id: m.id, handle: m.handle,
           tier: m.tier || 0, level: (m.stats && m.stats.level) || 1, xp: (m.stats && m.stats.xp) || 0, streak: (m.stats && m.stats.streak) || 0,
-          address: m.address || null, claimed: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
+          passkeys: (m.passkeys || []).length,
+          address: m.address || null, walletStatus: m.address ? walletStatus(m.address) : null, joinedWith: m.joinedWith || (m.adminMade ? 'admin' : null), claimed: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
           vault: m.vault ? m.vault.size : 0, share: m.share, banned: !!m.banned, unlocked: !!m.unlocked, coachDaily: m.coachDaily != null ? m.coachDaily : null,
           coachUsed: coachUsed(m), coachLimit: coachLimitFor(m), grants: m.grants || [], awards: Object.keys(m.awards || {}).filter(id => own(S.badges, id)),
-          leagues: leaguesOf(m).map(L => ({ id: L.id, tier: leagueTier(L, m) })), adminMade: !!m.adminMade, mentor: !!m.mentor, keys: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0), verified: !!(m.share.verify && Array.isArray(m.vdays)), createdAt: m.createdAt, lastSeen: m.lastSeen || null,
+          leagues: leaguesOf(m).map(L => ({ id: L.id, tier: leagueTier(L, m) })), adminMade: !!m.adminMade, mentor: !!m.mentor, admin: !!m.admin, keys: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0), verified: !!(m.share.verify && Array.isArray(m.vdays)), createdAt: m.createdAt, lastSeen: m.lastSeen || null,
           av: avUrl(m), bio: m.bio || '',
           money: m.money && m.money.ret != null ? { ret: m.money.ret, dd: m.money.dd } : null })) });
       if (sub === 'members' && !parts[2] && M === 'POST') { // the owner adds someone; they sign in with the code it returns
+        if (body.admin && !who.owner) return json(res, 403, { error: 'Only the owner can add admins.' });
         const handle = cleanText(body.handle, 20).replace(/^@/, '');
         if (!HANDLE_RE.test(handle)) return json(res, 400, { error: 'A name is 3–20 letters, numbers or underscores.' });
         if (byHandle(handle)) return json(res, 409, { error: 'That name is taken.' });
@@ -1045,6 +1095,8 @@ function createSocial(opts) {
         const id = crypto.randomBytes(6).toString('hex'), A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let code = ''; for (const x of crypto.randomBytes(10)) code += A[x % 32];
         const m = { id, handle, keyHash: null, keyHashes: [], createdAt: now(), lastSeen: 0, tier: 0, share: sanitizeShare(body.share), address, stats: null, weekXp: {}, money: null,
           banned: false, adminMade: true, unlocked: !!body.unlocked, pendingCodes: [{ h: sha(code), exp: now() + 7 * 86400000 }] };
+        if (body.admin) { m.admin = true; m.adminSince = now(); }
+        if (address && S.config.approveWallets && !walletReview(address)) S.wallets[address] = { s: 'approved', at: now(), by: who.owner ? 'owner' : who.by, note: '' }; // the owner (or an admin) attached it: that's an approval
         S.members[id] = m; S.follows[id] = []; reindex();
         const ls = body.leagues != null ? [].concat(body.leagues) : Object.values(S.leagues).filter(L => L.autoJoin).map(L => L.id);
         for (const lid of ls) if (own(S.leagues, lid)) joinLeague(S.leagues[lid], m);
@@ -1054,7 +1106,11 @@ function createSocial(opts) {
       if (sub === 'members' && parts[2] && M === 'POST') {
         const m = own(S.members, parts[2]) ? S.members[parts[2]] : null; if (!m) return json(res, 404, { error: 'no such member' });
         const a = body.action; let extra = {};
-        if (a === 'ban' || a === 'unban') m.banned = a === 'ban';
+        // admins run the league; only the owner makes or removes admins, or acts on another admin's profile
+        if ((a === 'admin' || a === 'unadmin') && !who.owner) return json(res, 403, { error: 'Only the owner can add or remove admins.' });
+        if (m.admin && !who.owner && m.id !== who.id) return json(res, 403, { error: 'Only the owner can change another admin.' });
+        if (a === 'admin' || a === 'unadmin') { m.admin = a === 'admin'; if (m.admin) m.adminSince = now(); else delete m.adminSince; }
+        else if (a === 'ban' || a === 'unban') m.banned = a === 'ban';
         else if (a === 'tier') { const t = clampNum(body.tier, 0, TIERS.length - 1); if (t == null) return json(res, 400, { error: 'bad tier' });
           const L = own(S.leagues, body.league || 'main') ? S.leagues[body.league || 'main'] : null; if (!L || !own(L.members, m.id)) return json(res, 400, { error: 'not in that league' });
           L.members[m.id].tier = Math.round(t); if (L.id === 'main') m.tier = Math.round(t); }
@@ -1065,6 +1121,7 @@ function createSocial(opts) {
             const o = byHandle(h); if (o && o.id !== m.id) return json(res, 409, { error: 'That name is taken.' }); m.handle = h; reindex(); }
           if (body.address !== undefined && !m.claimed) { const ad = typeof body.address === 'string' && ADDR_RE.test(body.address) ? body.address.toLowerCase() : null;
             if (ad && claimedBy(ad, m.id)) return json(res, 409, { error: 'That wallet is claimed by another profile.' });
+            if (ad && S.config.approveWallets && !walletReview(ad)) S.wallets[ad] = { s: 'approved', at: now(), by: who.owner ? 'owner' : who.by, note: '' };
             if (ad !== m.address) { m.address = ad; m.vdays = null; m.vAt = 0; m.money = null; refreshAll(m); } }
           if (body.share && typeof body.share === 'object') m.share = sanitizeShare(body.share, m.share);
         }
@@ -1093,6 +1150,36 @@ function createSocial(opts) {
         else return json(res, 400, { error: 'unknown action' });
         save(); return json(res, 200, Object.assign({ ok: true }, extra));
       }
+      // ---- wallets: the owner approves or rejects each address ----
+      if (sub === 'wallets' && M === 'GET') {
+        const rows = new Map();
+        for (const m of members()) if (m.address) {
+          const r = rows.get(m.address) || { address: m.address, members: [] };
+          r.members.push({ id: m.id, handle: m.handle, claimed: m.claimed === m.address, banned: !!m.banned,
+            joinedWith: m.joinedWith || (m.adminMade ? 'admin' : null), createdAt: m.createdAt || null, lastSeen: m.lastSeen || null });
+          rows.set(m.address, r);
+        }
+        for (const a of Object.keys(S.wallets)) if (!rows.has(a)) rows.set(a, { address: a, members: [] }); // decided, nobody uses it now
+        const rank = { pending: 0, rejected: 1, approved: 2 };
+        const wallets = [...rows.values()].map(r => { const rv = walletReview(r.address);
+          return Object.assign(r, { status: walletStatus(r.address), reviewedAt: rv ? rv.at : null, by: rv ? rv.by : null, note: rv ? rv.note || '' : '' }); })
+          .sort((a, b) => rank[a.status] - rank[b.status] || Math.max(0, ...b.members.map(x => x.createdAt || 0)) - Math.max(0, ...a.members.map(x => x.createdAt || 0)));
+        return json(res, 200, { approveWallets: !!S.config.approveWallets, wallets,
+          counts: { pending: wallets.filter(w => w.status === 'pending' && w.members.length).length, approved: wallets.filter(w => w.status === 'approved').length, rejected: wallets.filter(w => w.status === 'rejected').length } });
+      }
+      if (sub === 'wallets' && M === 'POST') { // {action: approve|reject|clear, addresses: [...] , note?} — or one address in the path
+        const action = body.action;
+        if (!['approve', 'reject', 'clear'].includes(action)) return json(res, 400, { error: 'action is approve, reject or clear' });
+        const list = (parts[2] ? [parts[2]] : [].concat(body.addresses || [])).map(a => String(a).toLowerCase());
+        if (!list.length || list.length > 1000 || list.some(a => !ADDR_RE.test(a))) return json(res, 400, { error: 'Give one or more wallet addresses (0x + 40 hex).' });
+        const note = cleanText(body.note, 120);
+        for (const a of new Set(list)) {
+          if (action === 'clear') delete S.wallets[a];
+          else S.wallets[a] = { s: action === 'approve' ? 'approved' : 'rejected', at: now(), by: who.owner ? 'owner' : who.by, note };
+          for (const m of members()) if (m.address === a) { recheckWallet(m); if (walletFor(m)) refreshAll(m); }
+        }
+        save(); return json(res, 200, { ok: true, n: new Set(list).size });
+      }
       if (sub === 'config' && M === 'PUT') {
         const c = S.config;
         if (typeof body.open === 'boolean') c.open = body.open;
@@ -1109,9 +1196,15 @@ function createSocial(opts) {
         if (typeof body.requireClaim === 'boolean' && body.requireClaim !== c.requireClaim) {
           c.requireClaim = body.requireClaim;
           // numbers read from wallets nobody signed for stop counting at once, and come back after a claim
-          for (const m of members()) { m.vAt = 0; m.vFailAt = 0; m.moneyFailAt = 0;
-            if (c.requireClaim && !walletFor(m)) { m.vdays = null; m.money = null;
-              for (const cc of Object.values(S.comps)) if (cc.money) delete cc.money[m.id]; } }
+          for (const m of members()) recheckWallet(m);
+        }
+        if (typeof body.approveWallets === 'boolean' && body.approveWallets !== c.approveWallets) {
+          c.approveWallets = body.approveWallets;
+          // switching approval on doesn't pull the rug from current members: wallets already in
+          // use count as approved (marked 'existing', so the owner can still review and reject them)
+          if (c.approveWallets && body.grandfather !== false)
+            for (const m of members()) if (m.address && !walletReview(m.address)) S.wallets[m.address] = { s: 'approved', at: now(), by: 'existing', note: '' };
+          for (const m of members()) { recheckWallet(m); if (walletFor(m)) refreshAll(m); }
         }
         c.unlocks = { trends: c.modules.trends, share: c.modules.share, compete: c.modules.compete };
         save(); return json(res, 200, { ok: true, config: c });
@@ -1249,7 +1342,7 @@ function createSocial(opts) {
       if (claimedBy(address)) address = null; // someone proved that wallet is theirs; joining still works, without it
       const key = crypto.randomBytes(24).toString('hex'), id = crypto.randomBytes(6).toString('hex');
       const m = { id, handle, keyHash: sha(key), createdAt: now(), lastSeen: now(), tier: 0, share: sanitizeShare(body.share),
-        address, stats: null, weekXp: {}, money: null, banned: false };
+        address, stats: null, weekXp: {}, money: null, banned: false, joinedWith: S.config.inviteCode ? 'invite' : 'open' };
       S.members[id] = m; S.follows[id] = []; reindex();
       for (const L of Object.values(S.leagues)) if (L.autoJoin) joinLeague(L, m);
       recent.push(now()); joinTimes.set(ip, recent);
@@ -1316,6 +1409,36 @@ function createSocial(opts) {
       const key = addKey(m); m.lastSeen = now(); save(m);
       return json(res, 200, { key, me: publicMember(m, m), share: m.share });
     }
+    // ---------- passkeys: sign in ----------
+    // The RP ID is the site's hostname: pinned by PUBLIC_ORIGIN when set (a passkey made for one
+    // site never works on another), else the address this page was served from.
+    if (head === 'passkey' && parts[1] === 'login' && M === 'POST') {
+      if (!adminConfigured) return json(res, 403, { error: 'The owner needs to set an access token on the server first.' });
+      if (limited(req, 'passkey', 30, 600000)) return json(res, 429, { error: 'Too many sign-in attempts from here. Try again in a few minutes.' });
+      const site = siteOf(req); if (site.error) return json(res, 400, { error: site.error });
+      if (parts[2] === 'start') {
+        const challenge = WebAuthn.newChallenge(); sweep(pending);
+        pending.set('pk:' + challenge, { purpose: 'pk-login', site, exp: now() + 5 * 60000 });
+        return json(res, 200, { challenge, rpId: site.rpId, timeout: 300000, userVerification: 'preferred' });
+      }
+      if (parts[2] === 'finish') {
+        const cred = body.credential; let cd = null;
+        try { cd = JSON.parse(WebAuthn.fromB64u(cred && cred.response && cred.response.clientDataJSON).toString('utf8')); } catch (e) {}
+        const p = cd && typeof cd.challenge === 'string' ? pending.get('pk:' + cd.challenge) : null;
+        if (!p || p.purpose !== 'pk-login' || p.exp < now()) return json(res, 400, { error: 'That sign-in request expired. Try again.' });
+        pending.delete('pk:' + cd.challenge);
+        const id = cred && typeof cred.id === 'string' ? cred.id : '';
+        const m = id && members().find(x => (x.passkeys || []).some(k => k.id === id));
+        if (!m) return json(res, 404, { error: 'This passkey isn’t linked to a profile here. Sign in another way, then add it under Account.' });
+        if (m.banned) return json(res, 403, { error: 'This profile was removed from the league.' });
+        const pk = m.passkeys.find(k => k.id === id);
+        try { const r = WebAuthn.verifyAssertion(cred, { challenge: cd.challenge, origin: p.site.origin, rpId: p.site.rpId }, pk); pk.signCount = r.signCount; }
+        catch (e) { return json(res, 403, { error: 'That passkey didn’t check out (' + e.message + ').' }); }
+        pk.lastUsed = now();
+        const key = addKey(m); m.lastSeen = now(); save();
+        return json(res, 200, { key, me: publicMember(m, m), share: m.share });
+      }
+    }
     // a one-time code from a signed-in device (Profile & privacy → Add a device)
     if (head === 'link' && parts[1] === 'finish' && M === 'POST') {
       if (limited(req, 'link', 20, 600000)) return json(res, 429, { error: 'Too many tries from here. Try again in a few minutes.' });
@@ -1337,6 +1460,38 @@ function createSocial(opts) {
     const me = byKey(req);
     if (!me) return json(res, 401, { error: 'not a member' });
     if (me.banned) return json(res, 403, { error: 'This profile was removed from the league.' });
+
+    // ---------- passkeys: add one on this device, list, remove ----------
+    if (head === 'passkey' && parts[1] === 'register' && M === 'POST') {
+      const site = siteOf(req); if (site.error) return json(res, 400, { error: site.error });
+      if (parts[2] === 'start') {
+        if ((me.passkeys || []).length >= PASSKEY_MAX) return json(res, 409, { error: 'You have ' + PASSKEY_MAX + ' passkeys already. Remove one first.' });
+        const challenge = WebAuthn.newChallenge(); sweep(pending);
+        pending.set('pk:' + challenge, { purpose: 'pk-reg', memberId: me.id, site, exp: now() + 5 * 60000 });
+        return json(res, 200, { challenge, rp: { name: 'Pulse', id: site.rpId }, user: { id: WebAuthn.b64u(Buffer.from('pulse:' + me.id)), name: me.handle, displayName: '@' + me.handle },
+          pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -8 }, { type: 'public-key', alg: -257 }],
+          authenticatorSelection: { residentKey: 'required', requireResidentKey: true, userVerification: 'preferred' }, attestation: 'none', timeout: 300000,
+          excludeCredentials: (me.passkeys || []).map(k => ({ type: 'public-key', id: k.id })) });
+      }
+      if (parts[2] === 'finish') {
+        const cred = body.credential; let cd = null;
+        try { cd = JSON.parse(WebAuthn.fromB64u(cred && cred.response && cred.response.clientDataJSON).toString('utf8')); } catch (e) {}
+        const p = cd && typeof cd.challenge === 'string' ? pending.get('pk:' + cd.challenge) : null;
+        if (!p || p.purpose !== 'pk-reg' || p.memberId !== me.id || p.exp < now()) return json(res, 400, { error: 'That request expired. Try again.' });
+        pending.delete('pk:' + cd.challenge);
+        let r; try { r = WebAuthn.verifyRegistration(cred, { challenge: cd.challenge, origin: p.site.origin, rpId: p.site.rpId }); }
+        catch (e) { return json(res, 400, { error: 'That passkey couldn’t be added (' + e.message + ').' }); }
+        if (members().some(x => (x.passkeys || []).some(k => k.id === r.id))) return json(res, 409, { error: 'That passkey is already linked to a profile.' });
+        me.passkeys = [...(me.passkeys || []), { id: r.id, alg: r.alg, jwk: r.jwk, signCount: r.signCount, rpId: p.site.rpId, name: cleanText(body.name, 40) || 'Passkey', at: now(), lastUsed: null }].slice(-PASSKEY_MAX);
+        save(); return json(res, 200, { me: publicMember(me, me) });
+      }
+    }
+    if (head === 'passkey' && parts[1] && parts[1] !== 'register' && parts[1] !== 'login' && M === 'DELETE') {
+      const before = (me.passkeys || []).length;
+      me.passkeys = (me.passkeys || []).filter(k => k.id !== parts[1]);
+      if (me.passkeys.length === before) return json(res, 404, { error: 'No such passkey.' });
+      save(); return json(res, 200, { me: publicMember(me, me) });
+    }
     me.lastSeen = now();
     if (now() - (me.seenSaved || 0) > 600000) { me.seenSaved = now(); save(me); } // last seen is written at most every ten minutes
 
@@ -1587,7 +1742,7 @@ function createSocial(opts) {
       return json(res, 200, { board, label: BOARDS[board].label, scope: global ? 'global' : 'league', league: L ? { id: L.id, name: L.name } : null,
         rows: rows.slice(0, 50).map(r => ({ rank: r.rank, handle: r.handle, av: avUrl(S.members[r.id]), tier: r.tier, value: r.value, sub: r.sub, me: r.id === me.id })),
         me: mine, total: rows.length, optedIn: !needKey, need: needKey,
-        verifyState: !BOARDS[board].verified || !me.share.verify ? null : !canVerify ? 'unavailable' : !me.address ? 'no-wallet' : !walletFor(me) ? 'claim' : !Array.isArray(me.vdays) ? 'pending' : 'ok' });
+        verifyState: !BOARDS[board].verified || !me.share.verify ? null : !canVerify ? 'unavailable' : !me.address ? 'no-wallet' : !walletFor(me) ? walletBlock(me) : !Array.isArray(me.vdays) ? 'pending' : 'ok' });
     }
     if (head === 'feed' && M === 'GET') {
       const scope = query.scope === 'discover' ? 'discover' : 'following', postsOnly = query.kind === 'posts';
@@ -1705,7 +1860,9 @@ function createSocial(opts) {
         const need = S.config.unlocksOn && !me.unlocked && S.config.modules.compete > 1 ? S.config.modules.compete : 0;
         if (need && ((me.stats && me.stats.level) || 1) < need) return json(res, 403, { error: 'Competitions unlock at level ' + need + '.' });
         if (c.type === 'return' && !(me.address && me.share.ret)) return json(res, 400, { error: 'Return competitions read your wallet on chain: add your address and switch on “Show % return” in What you share.' });
-        if (c.type === 'return' && !walletFor(me)) return json(res, 400, { error: 'This league only counts claimed wallets. Claim yours under Profile & privacy first.' });
+        if (c.type === 'return' && !walletFor(me)) return json(res, 400, { error: walletBlock(me) === 'approval' ? 'Your wallet is waiting for the league owner’s approval. You can join return competitions once it’s approved.'
+          : walletBlock(me) === 'rejected' ? 'The league owner hasn’t accepted this wallet, so it can’t enter return competitions.'
+          : 'This league only counts claimed wallets. Claim yours under Profile & privacy first.' });
         c.entrants[me.id] = { joinedAt: now() };
         if (me.share.feed) pushEvent(me, { type: 'compete', text: 'joined ' + c.title });
         if (c.type === 'return') refreshMoney(me, true);

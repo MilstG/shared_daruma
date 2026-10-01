@@ -7,9 +7,10 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { t, ok, eq, near, report, makeExtractor } from './harness.mjs';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
 const here = dirname(fileURLToPath(import.meta.url));
-const html = readFileSync(join(here, '..', 'ledger.html'), 'utf8');
+const html = readAppSource(join(here, '..', 'ledger.html'));
 const { evalFn } = makeExtractor(html);
 
 const _wilson = evalFn('_wilson');

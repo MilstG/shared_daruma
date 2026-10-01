@@ -7,10 +7,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import vm from 'node:vm';
 import { t, ok, eq, near, report, makeExtractor } from './harness.mjs';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
 const require = createRequire(import.meta.url);
 const server = require('../server.js');
-const html = readFileSync(new URL('../ledger.html', import.meta.url), 'utf8');
+const html = readAppSource(new URL('../ledger.html', import.meta.url).pathname);
 const { grabFn } = makeExtractor(html);
 const grabConst = (name) => {
   const i = html.indexOf('const ' + name + '=');
@@ -162,7 +163,7 @@ t('coach mode defaults on and only an explicit false turns it off', () => {
 t('every coaching surface checks the switch; sync and backups carry it', () => {
   for (const fn of ['renderCoach', 'habitsSectionHtml', 'processSectionHtml', 'lastWeekFocusHtml', 'loadCoachLetter', 'findingCardHtml'])
     ok(grabFn(fn).includes('coachOn()'), fn + ' ignores coach mode');
-  ok(html.includes("'calWeeks','coachMode','pzPlugs','pzProfile','pzMarket','pzLayout','pzLessons','pzGoals'];"), 'synced settings field');
+  ok(html.includes("'calWeeks','coachMode','pzPlugs','pzProfile','pzMarket','pzLayout','pzLessons','pzGoals','playbooks','appearance'];"), 'synced settings field');
   ok(html.includes('coachMode:settings.coachMode, pzPlugs'), 'in backups');
   ok(html.includes("typeof data.settings.coachMode==='boolean'"), 'restored from backups/sync');
 });
@@ -198,7 +199,7 @@ await t('POST writes the letter through the client, stores it, GET returns it; o
   const b = await listen(app);
   try {
     eq((await fetch(b + '/api/coach/status')).status, 401, 'needs the token');
-    eq(await (await fetch(b + '/api/coach/status', { headers: H })).json(), { enabled: true, model: 'claude-opus-5-5', share: false });
+    eq(await (await fetch(b + '/api/coach/status', { headers: H })).json(), { enabled: true, model: 'claude-opus-5-5', provider: 'anthropic', share: false });
     eq((await fetch(b + '/api/coach/letter/2026-W39', { headers: H })).status, 404);
     const r = await fetch(b + '/api/coach/letter/2026-W39', { method: 'POST', headers: H, body: JSON.stringify({ facts: { trades: 3, net: 10, wallet: '0xabc' } }) });
     eq(r.status, 200); eq((await r.json()).text, 'A steady week.');

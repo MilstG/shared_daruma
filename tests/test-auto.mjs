@@ -4,8 +4,9 @@
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { t, ok, eq, report, makeExtractor } from './harness.mjs';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
-const html = readFileSync(new URL('../ledger.html', import.meta.url).pathname, 'utf8');
+const html = readAppSource(new URL('../ledger.html', import.meta.url).pathname);
 const { grabFn } = makeExtractor(html);
 const ctx = { Math, Object, Array, String, JSON, Set, Map };
 vm.createContext(ctx);

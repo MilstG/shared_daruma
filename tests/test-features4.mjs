@@ -5,9 +5,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { t, ok, eq, near, report, makeExtractor } from './harness.mjs';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
 const here = dirname(fileURLToPath(import.meta.url));
-const html = readFileSync(join(here, '..', 'ledger.html'), 'utf8');
+const html = readAppSource(join(here, '..', 'ledger.html'));
 const { evalModule } = makeExtractor(html);
 
 const PRELUDE = `
@@ -17,7 +18,7 @@ const _avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
 
 const { setupScorecards } = await evalModule(['setupScorecards'], ['setupScorecards'], PRELUDE);
 const { csvParseRows, csvNum, parseFillsCsv, reconstructTrades } = await evalModule(
-  ['csvParseRows', 'csvNum', 'parseFillsCsv', 'isPerp', 'newTrade', 'tallyFill', 'reconstructTrades'],
+  ['csvParseRows', 'csvNum', 'parseFillsCsv', 'deriveFillPositions', 'isPerp', 'newTrade', 'tallyFill', 'reconstructTrades'],
   ['csvParseRows', 'csvNum', 'parseFillsCsv', 'reconstructTrades'], PRELUDE);
 
 const DAY = 86400000, T0 = 1700000000000;

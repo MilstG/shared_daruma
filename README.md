@@ -5,10 +5,11 @@ turns it into something you can actually learn from: a journal, a statistics
 engine that knows the difference between edge and noise, a pattern miner with
 proper multiple-comparison correction, and candle-based stop/exit analysis.
 
-It is one HTML file. No build step, no framework, no account, no tracking. All
-computation happens in your browser, talking directly to Hyperliquid's public
-API. Open `ledger.html` from disk and it works; serve it with the included
-companion server and your journal persists across devices and reboots.
+It is one HTML page and its scripts in `app/`. No build step, no framework, no
+account, no tracking. All computation happens in your browser, talking directly to
+Hyperliquid's public API. Open `ledger.html` from disk (keep the `app/` folder next
+to it) and it works; serve it with the included companion server and your journal
+persists across devices and reboots.
 
 ---
 
@@ -38,7 +39,9 @@ companion server and your journal persists across devices and reboots.
 ## Getting started
 
 1. Open `ledger.html` in a modern browser (Chrome/Edge recommended — the
-   optional link-a-data-file feature needs the File System Access API).
+   optional link-a-data-file feature needs the File System Access API). Copy or
+   download it together with the `app/` folder beside it; the page loads its code
+   from there.
 2. Paste a wallet address (0x…) and click **Add**. Add as many as you like;
    each can be labeled.
 3. Click **Load all**. Ledger pages through your fill history, reconstructs
@@ -74,6 +77,40 @@ wallet. Nothing is fetched and nothing is saved; reload or add a real address
 to clear it.
 
 ## Loading your data
+
+**Exchanges.** Ledger reads four venues, and pools them into one journal:
+
+| Venue | What you give it | How it's read | History |
+|---|---|---|---|
+| **Hyperliquid** | a 0x wallet address | its public API, from the browser | the latest 10,000 fills, then everything Ledger keeps |
+| **Lighter** | the same kind of 0x address | its public API, from the browser | everything (paged back to the first trade) |
+| **Bybit** | a **read-only** API key | signed in your browser, relayed by your server | 2 years |
+| **Binance** (USD-M futures) | a **read-only** API key | signed in your browser, relayed by your server | 3 months, then everything Ledger keeps |
+
+Paste an address in **Add** (or Pulse's first screen) and Ledger checks both
+Hyperliquid and Lighter for it, adding each one that has an account: no choice to
+make, no file to export. A Lighter account's sub-accounts are each their own position
+stream. Lighter reports each fill's prior position and entry cost, so its P&L is exact;
+funding comes from Lighter's public hourly rates times the position you held (its
+per-payment history needs a login), which matches Lighter's own funding totals.
+
+For **Bybit or Binance**, use **Connect exchange** (Pulse: *Connect a read-only API key*)
+and paste an API key and secret. Ledger refuses a key that can trade, transfer or
+withdraw. The secret never leaves your browser: it's kept in this browser's storage
+(never in settings, sync, backups or the encrypted journal), each request is signed
+there, and your server only passes the signed, seconds-long request on, because
+neither exchange accepts calls from a web page directly. So each device connects the
+key once, and the server must be reachable (see README-deploy, *Exchange APIs*, on
+which regions the exchanges answer). Positions held from before the history begins
+are worked out from today's position. Binance hedge-mode legs are separate trades;
+Bybit's history doesn't say which hedge-mode side a fill was on, so those read as
+one-way (the data-health strip says so). Binance BNB-paid fees are priced at today's
+BNB price; fees in other coins aren't counted and are named.
+
+Trades from other venues carry a small venue tag in the trade list. Price
+excursions and replay use that exchange's own candles. The server's scheduled
+refresh, alerts, digests, wallet claims and verified Discipline still read
+Hyperliquid only.
 
 **What gets fetched per wallet:** the full fill history (paginated), funding
 payment history (paginated too — heavy accounts get complete funding, not one
@@ -185,8 +222,8 @@ The Diagnostic's recommendations fall back to a plain list. Nothing is deleted:
 switch it back on and everything returns as it was; the setting syncs across
 devices and travels in backups.
 
-**Coach's letter (optional AI).** With `COACH_AI=1` and an Anthropic API key on
-the companion server, the weekly review gets a "Write my letter" button: Claude
+**Coach's letter (optional AI).** With `COACH_AI=1` and an Anthropic or OpenAI API key on
+the companion server, the weekly review gets a "Write my letter" button: the AI coach
 writes a short plain-language note on the week (what went well, the one thing
 to work on, tied to your focus habit). Only an aggregate summary is sent —
 counts, averages, habit sentences, finding headlines and your own one-line
@@ -272,8 +309,11 @@ results, the period's best and worst trade, slips and what they cost, and how
 it compares with the previous period; shareable as an image.
 
 **Building habits.** Progress shows a **leak map** (each recurring slip, what it
-cost, and whether it's shrinking), a one-tap **plug it** loop that turns a leak
-into a two-week habit and graduates to a badge, **per-habit streaks** with
+cost, and whether it's shrinking), a one-tap **plug this leak** loop that turns a leak
+into a habit checked from your fills: three clean trading weeks in a row plug it
+and earn a badge (only weeks you traded in count: a week traded without that slip
+adds one, a week with the slip starts the count again, and a week with no trading
+is skipped), **per-habit streaks** with
 shields, **good moments** (the times you followed a rule that usually costs you)
 and **saved you** estimates. Today shows **live nudges** when a trigger you
 tend to slip after is happening right now (a fresh loss, a fast re-entry).
@@ -343,7 +383,7 @@ leaks; trades and notes are added only when the member switches that on (and
 the owner allows it). Wallet addresses are scrubbed. Messages aren't stored on
 the server, only the daily count.
 
-Pulse is the same `ledger.html`: the page switches on its own path (or `?pulse`
+Pulse is the same page (`ledger.html` and its `app/` scripts): it switches on its own path (or `?pulse`
 when opened from disk), so every loader, cache and sync path is shared. It
 always shows the coach and progress layers, whatever the full app's coach-mode
 switch says. It has its own install metadata (`/pulse.webmanifest`), so "Add to
@@ -457,6 +497,31 @@ and only another signature from that wallet moves it. The owner can switch on
 **Only count claimed wallets**, after which verified Discipline, returns and return
 competitions only use claimed wallets. Smart-contract wallets (which can't produce a
 plain signature) and email-login wallets without an exportable key can't claim yet.
+
+**Passkeys.** Under Account, a signed-in member can **Add a passkey on this
+device**. After that, "Sign in with a passkey" works on any device where that
+passkey is available: Face ID, a fingerprint or the device PIN, synced through
+iCloud Keychain, Google Password Manager and the like. No code and no wallet
+needed. The server checks everything the WebAuthn spec requires of a site
+(`webauthn.js`, no dependencies): the ceremony, a single-use challenge, this
+site's origin and RP ID, user presence, the signature (ES256, Ed25519 or
+RS256), and a signature counter that never goes backwards. It stores only the
+public key. Passkeys belong to one site: set `PUBLIC_ORIGIN` when self-hosting so
+they're tied to your real address. A member can hold up to 10, and remove any of
+them. Each sign-in issues a fresh device key, like the other sign-in methods.
+
+**Wallet approval.** Under Admin → **Wallets** the owner can switch on **Wallets need
+my approval**. From then on, a member's wallet counts for returns, verified Discipline
+and return competitions only after the owner approves its address. Until then the
+server doesn't read it on chain at all. Members can still join and use Pulse, and are
+told their wallet is waiting (or wasn't accepted). Decisions are stored per address, so
+a rejected wallet stays rejected under a new profile. Wallets the owner attaches to a
+member count as approved, and switching approval on approves the wallets already in
+use, so nobody's numbers disappear (each stays reviewable). The Wallets tab lists
+waiting wallets first, shows whether the member joined with your invite code, and takes
+single or bulk approve/reject decisions with an optional note (e.g. "paid"). It is the
+manual base for automatic rules like "approve wallets that joined with my code" or
+"approve paying subscribers".
 The sign-in message names the site it's for. When self-hosting, set `PUBLIC_ORIGIN` to
 your Pulse address so the server only writes messages for that site and a look-alike
 page can't collect a usable signature (on Railway the edge already guarantees the
@@ -485,7 +550,16 @@ map every feature (insights, in-depth stats, share cards, competitions, AI coach
 end-of-day review, report cards) to a level, switch unlocks off, or **fully unlock**
 chosen members. Sample data shows everything. The full journal at `/` is never locked.
 
-**Admin panel (`/admin`).** Sign in with `AUTH_TOKEN`. Tabs:
+**Admins.** You can share the panel without sharing your access token. Members →
+**Add admin**, type a name, and send them the link it shows (good for 7 days): opening it
+signs them in to the panel, and to Pulse, with their own profile. An existing member becomes
+an admin by ticking **Admin** under Access on their page. Admins can do everything in the
+panel except add or remove admins or change another admin's profile; their key never
+opens your journal, backups or the server's other routes. Removing or suspending an admin
+closes the panel to them at once. The Admins card lists who did what recently, and
+wallet decisions record who made them.
+
+**Admin panel (`/admin`).** Sign in with `AUTH_TOKEN` (the owner) or as an admin. Tabs:
 
 - **Overview** — members, activity, tiers, top XP, coach use and setup warnings.
 - **Members** — search and filter; **add a member** (you get a 7-day sign-in code and a
@@ -505,6 +579,8 @@ chosen members. Sample data shows everything. The full journal at `/` is never l
 - **Coach** — on/off for members, daily allowances, your own limit, whether members
   may share trades and notes, today's usage.
 - **Routines** — replace the built-in profiles' questions and add your own profiles.
+- **Wallets** — wallet approval on/off, and approve or reject each member's wallet
+  (single or in bulk, with a note); waiting wallets come first.
 - **Feed** — announcements and moderation. **Settings** — open/closed, invite code,
   claimed wallets only, encrypted sync.
 
@@ -531,7 +607,11 @@ The main dashboard:
 Every trade row expands into a journal entry:
 
 - **Tags** — freeform, autocompleted from your existing tags.
-- **Setup** — what the trade was (breakout, fade, news…).
+- **Setup** — what the trade was (breakout, fade, news…). Your playbook names
+  are suggested as you type.
+- **Playbook checklist** — when the setup names one of your playbooks, its rules
+  appear as a checklist. Tick the ones you followed: before you enter (open
+  trades have journal rows) or when you review. Ticks save at once.
 - **Rating** — 1–5 stars for execution quality, independent of outcome.
 - **Mistake flags** — chased, oversized, no-stop, revenge, fomo, early-exit…
 - **Planned risk ($)** — what 1R was for this trade. Powers R-multiples
@@ -543,13 +623,38 @@ Every trade row expands into a journal entry:
   Perp positions opened in the last 7 days with no written stop get a
   dashboard nudge.
 - **Notes** — free text.
-- **Attachments** — paste or drop screenshots; stored in this browser.
+- **Attachments** — paste or drop screenshots; stored in this browser (and on
+  the server when synced). The ✎ on a thumbnail opens a mark-up editor: arrows,
+  lines, boxes, a pen and text labels in four colours, with undo. **Save**
+  replaces the screenshot; **Save as a copy** keeps the original and adds the
+  marked-up version next to it.
+
+**Playbooks** (Review → Playbooks) are your setups with their rules written down:
+a name ("Breakout retest") and one rule per line ("Wait for the retest", "Stop
+under the range"). For each playbook, the section compares trades that kept
+every rule with trades that broke at least one: count, win rate and result per
+trade (in R where the risk is known, else in dollars). It also shows the gap
+between them ("following the playbook is worth +0.6R per trade") and, per rule,
+how often you keep it and what breaking it cost. Only trades with a ticked
+checklist are graded. A rule you add later doesn't grade older trades, and
+rewording a rule starts its history fresh. Gaps built on fewer than 10 trades a
+side are marked *early*. Playbooks sync across devices and ride backups, and
+Pulse offers their names first when you tag a setup.
 
 **Price chart** on the expanded row draws the trade on real candles: every
 entry/add and close fill, average entry/exit, your planned stop and target as
 dotted lines, and ✕ marks at the worst and best prices while the trade was on.
 When price traded through your planned stop and the position stayed open, the
 chart says so.
+
+**Replay** plays that chart forward one candle at a time, from just before the
+entry, so you can watch the trade unfold the way you lived it. Fills appear when
+they happened. The exit line and the worst/best marks appear only at the end. A
+readout shows the position, average entry and P&L so far at each bar (gross,
+before fees, and in R when the risk is known), and your journal note sits
+underneath. You can play, pause, step a bar back or forward, scrub, and switch
+between 1×, 3× and 8×. **📎 Attach chart** saves the chart as it looks right now
+to the trade's screenshots, ready to mark up with ✎.
 
 Everything you journal becomes analytical fuel: tags, setups, ratings, and
 mistake flags are all mined as pattern-miner families, and the Review view
@@ -787,6 +892,46 @@ rules from findings) and **no stop written** (a recent perp position with no
 trade plan). If notifications were granted (asked only when you save a loss limit),
 the tripwire also fires a desktop notification when the tab is backgrounded.
 
+### Routine vs results
+
+**Review → Routine vs results** answers the long-run question: does your
+discipline actually pay? Over your whole history in the current view it shows:
+
+- **Week by week.** Average result per trade as bars, with your routine score
+  as a line.
+- **Two curves.** Cumulative results of trades on disciplined days (routine
+  score 70+) and on all other days.
+- **The numbers.**
+  - Same-week link: Spearman correlation with a 1,000-shuffle permutation
+    p-value.
+  - Next-week link: does a disciplined week predict the *following* week? That's
+    closer to cause and effect, because it can't run backwards.
+  - Per-trade result on disciplined days vs the rest, with a bootstrapped 90%
+    range for the difference.
+  - Whether the link is growing, over a rolling 12-week window.
+- **Which habits pay.** Plan before the first trade, rules kept, stops written,
+  check-in, end-of-day review, journaling, and no revenge entries, sizing up,
+  adding to losers or overtrading. Each shows days kept vs missed and the
+  difference per trade, marked *holds up* (it survives a false-discovery check
+  across all the habits), *suggestive* or *could be chance*.
+
+Two choices keep it honest:
+
+- **The routine score here is outcome-blind.** It's the share of the day's
+  trades free of revenge entries, sizing up after a loss, adding to a loser and
+  overtrading. The two Discipline checks that can only fail on a losing trade
+  (holding a loser, trading on after two losses) are left out, so a red day
+  can't lower the score by itself and manufacture a link. For the same reason,
+  habits that follow from the result ("stayed under the loss limit", "stops
+  honored") are listed but not tested.
+- **Results are in R** (or % return on notional when most trades have no
+  planned risk), so trading bigger never counts as trading better.
+
+It needs 8 weeks of trading before it claims anything, and it says so when your
+score never varied. Pulse's "Does discipline pay?" card adds a one-line
+whole-history summary with the habit that pays most. Every number is seeded, so
+it reproduces.
+
 ## The Project view
 
 Forward visualization of your current performance — explicitly a *what-if*,
@@ -830,7 +975,12 @@ Treat it as positive visualization of staying the course, nothing more.
   tag, wallet, free-text search, date range; one-click clear.
 - **Timezone (⏱):** toggles all time-of-day and weekday analysis between local
   and UTC — one switch, applied everywhere consistently.
-- **Theme:** two color schemes.
+- **Appearance:** Auto (follows your device's light/dark setting, live), Dark
+  or Light, applied to the full journal and Pulse (Pulse → Settings has the same
+  switch). It syncs with your settings and is applied before the first paint, so
+  a light-mode phone never flashes the dark palette. In light mode, profit/loss
+  colours are deepened to hold contrast on white.
+- **Colors:** two dark-mode colorways, INK and BB (black & amber).
 - **R basis:** what 1R means when a trade has no planned risk journaled —
   average loss, fixed $ amount, or other bases.
 - **Breakeven threshold:** the ±$ band treated as "scratch" rather than
@@ -847,6 +997,7 @@ switches moved into **Settings**).
 | **Tax CSV** | Clean 14-column, ISO-8601, CRLF file of realized results — importable into tax tooling. |
 | **Tax PDF** | Bank-statement-style PDF for your accountant: cover summary per tax year, monthly subtotals, and every realized trade with a running balance and page footers. Generated entirely client-side by a built-in dependency-free PDF writer (base-14 Courier fonts) — nothing leaves your machine, and the strict CSP stays intact. |
 | **Spot lots** | 8949-style lot-level CSV for spot: FIFO cost basis, one row per lot consumed by each sale — quantity, acquired/disposed dates, proceeds, basis, gain, short/long term. Sales of tokens that were transferred or airdropped in (no on-exchange purchase) are emitted at zero cost with an explicit `UNKNOWN BASIS` note for your accountant to resolve. Built from the locally cached fills. |
+| **Tax export by country…** | Tax exports set up for your country, with a preview per tax year before you download. **US**: FIFO lots, short vs long term. **UK**: HMRC's matching for cryptoassets (same day, then the next 30 days, then the Section 104 pool), on the 6 April tax year. **Germany**: FIFO, with coins held more than a year marked tax-free and the year's tax-free total shown. **Australia**: FIFO, flagging gains that may get the 50% CGT discount, on the 1 July income year. **Canada**: adjusted cost base (average cost), flagging possible superficial losses. **Other**: FIFO by calendar year. Set a report currency and paste a daily rate table (`YYYY-MM-DD,rate`, units per 1 USD, e.g. from your central bank). Each fill converts at its own date, and the download stays disabled until every fill has a rate. Two CSVs: spot disposals (asset, quantity, dates, proceeds, costs including fees, gain, matching rule, flag) and closed perp trades (realized P&L, fees, funding and net, each converted at the close date). Every wallet is pooled, since tax is per person. It computes gains, not tax. **Not tax advice.** |
 | **Export journal** | Journal entries as JSON. |
 | **Backup all** | Everything portable in one JSON: journal, wallets, settings, saved MAE/MFE measurements, and per-wallet fill caches (which preserve history beyond the API's pagination cap — keep these). Restore via **Open existing** or by importing on another device. |
 | **Backup to server** | (shown when server sync is connected) The same full backup, stored gzipped on the companion server under `DATA_DIR/backups/` — newest 10 kept. List and fetch them back via `GET /api/backups`. |
@@ -865,8 +1016,10 @@ switches moved into **Settings**).
    important auto-saves to it (~1s after each edit) and loads on every visit —
    survives reboots and redeploys, works across devices. The status bar shows
    `☁ Server sync · rev N · saved`. Concurrent edits from two devices are
-   revision-checked: a stale write is refused and that client loads the newer
-   state instead of silently clobbering it.
+   revision-checked: a stale write is refused, and that client loads the newer
+   state, re-applies the journal entries and settings fields it changed since
+   its last sync on top, and saves the merge — neither device's edit to a
+   different entry is lost.
 
 In all modes, image attachments and the fill/candle caches stay in the browser
 (large; re-fetchable or re-attachable). "Backup all" is the full portable copy.
@@ -923,6 +1076,21 @@ All opt-in via environment variables, still zero dependencies:
   Messages from chats outside the allowlist are ignored silently; the bot can
   never write journal data. Get a token from @BotFather; your chat id from
   e.g. @userinfobot.
+- **Ops health.** With the schedule on, the server also watches itself: when
+  `HEALTH_FAIL_RUNS` (default 3) scheduled refreshes fail in a row — every
+  alert and nudge is then quietly working from stale data — or the data volume
+  passes `HEALTH_DISK_PCT` (default 90) percent full or drops under
+  `HEALTH_DISK_MIN_MB` (default 100) free, one message goes to the delivery
+  channels (repeated at most daily while it lasts), plus a one-line "working
+  again" when the refresh recovers. `GET /api/v1/meta` reports the current
+  failure streak, last error, and disk free/total.
+- `OFFSITE_*` — **encrypted off-site backups** to any S3-compatible bucket
+  (R2, S3, B2, MinIO). Every server backup is mirrored, and a bundle of
+  `DATA_DIR` ships daily. Both are encrypted with AES-256-GCM from the
+  `OFFSITE_KEY` passphrase before upload, and the newest `OFFSITE_KEEP` (30) of
+  each are kept. A failed upload is sent to the delivery channels. Restore
+  with `node offsite.js restore <key> <dir>`. Setup and the full variable list
+  are in [README-deploy.md](README-deploy.md#off-site-backups).
 - `NUDGE_HOUR=18` — an **end-of-day journaling nudge**: once a day, on the
   first scheduled run after that hour — in the app's own day-journal time zone
   (UTC when the app's clock toggle is on UTC, otherwise the browser zone the app
@@ -931,13 +1099,18 @@ All opt-in via environment variables, still zero dependencies:
   not journaled, no end-of-day review yet"). Deduped per day across restarts;
   needs `REFRESH_INTERVAL_MIN`. "Today" is the same calendar day the day
   journal uses, so a review you wrote is always found.
-- `COACH_AI=1` + `ANTHROPIC_API_KEY` — the **coach's weekly letter** (see
+- `COACH_AI=1` + `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`, see below) — the **coach's weekly letter** (see
   The coach) and the **AI coach chat** in Pulse (`/api/coach/chat`: a member's
   key or the owner token; per-day allowances from the admin panel; low effort
   for quick replies). Uses the official `@anthropic-ai/sdk`, installed as an *optional*
   dependency: without `COACH_AI` the server never loads it and stays
   dependency-free. Model `COACH_AI_MODEL` (default `claude-opus-5-5`), medium
-  effort, with the API's default refusal fallback. `POST /api/share` (full
+  effort, with the API's default refusal fallback. **OpenAI instead:** set
+  `COACH_AI_PROVIDER=openai` (or just a `gpt-…` model) and `OPENAI_API_KEY`; the
+  server calls the Responses API directly (no package), with `store: false` so OpenAI
+  keeps no stored copy, reasoning effort low for chat and medium for letters
+  (`COACH_AI_EFFORT` overrides, `none` sends none), default model `gpt-5.6-luna`.
+  `OPENAI_BASE_URL` points it at a compatible endpoint (Azure, Bedrock). `POST /api/share` (full
   token) posts a text to `TELEGRAM_SHARE_CHAT_ID` for accountability sharing.
   `POST /api/coach/letter/<week>`
   (full token) takes `{facts}` — re-filtered through a server-side allowlist —
@@ -1017,6 +1190,12 @@ behavior.
   to scripts and dashboards, and only to people you'd show the journal to.
 - `CORS_ORIGIN` (optional, exact origin) — lets a browser app on another
   origin call `/api/*`. Off by default.
+- **Brute-force lockout.** Every 401 is delayed 300 ms, and wrong tokens are
+  counted per client address: `AUTH_FAIL_MAX` (default 20) wrong guesses inside
+  10 minutes lock that address out of every token-gated route for
+  `AUTH_LOCK_MIN` (default 15) minutes — a 429 with `Retry-After`, even for the
+  right token. A request with no token at all, or a `READ_TOKEN` asking for a
+  full-token route, never counts as a guess.
 
 ```bash
 # examples
@@ -1061,6 +1240,12 @@ curl -H "Authorization: Bearer $READ_TOKEN" -o trades.csv 'https://your.app/api/
 
 ## Limitations, stated honestly
 
+- Bybit and Binance only answer from countries they serve, and they decide by the
+  IP address of whatever calls them, which here is your server. A server in the US
+  is refused by both. The app says so in plain words when it happens, and
+  README-deploy (*Exchange APIs*) shows how to put a small relay somewhere they
+  serve. Binance's API only returns the last 3 months; Ledger keeps everything it
+  has loaded from then on, so load regularly.
 - The exchange serves only the **10,000 most recent fills** per wallet. A wallet
   with more can't be fully backfilled from scratch: the data-health strip flags
   it, and trades whose opening fills fall before that window are marked partial.
@@ -1082,8 +1267,11 @@ curl -H "Authorization: Bearer $READ_TOKEN" -o trades.csv 'https://your.app/api/
 - The miner is correlational and in-sample. "Validated" means it survived
   multiple-comparison correction on *your past data* — a hypothesis to trade
   deliberately and re-test, never a guarantee.
-- Server sync is last-writer-wins with conflict detection (no silent
-  clobbering), not field-level merge.
+- Server sync merges at the level of journal entries and settings fields:
+  when two devices edit *different* entries or fields, both edits survive a
+  conflict. When both edit the *same* journal entry before syncing, the device
+  that syncs second keeps its version of that entry — there is no
+  character-level merge inside one note.
 - Open-position monitoring compares against your full winner history; if you
   mix long-horizon spot bags with perp scalps in Combined view, that baseline
   comparison is apples-to-oranges — read those flags with judgment.
@@ -1091,10 +1279,11 @@ curl -H "Authorization: Bearer $READ_TOKEN" -o trades.csv 'https://your.app/api/
 ## Development and testing
 
 ```
-npm test         # or: node tests/run-all.mjs
+npm test           # or: node tests/run-all.mjs — offline, no dependencies
+npm run test:e2e   # browser smoke tests (needs Playwright, see below)
 ```
 
-428 tests across twenty-two suites cover reconstruction (flips, funding
+About 620 tests across 33 suites cover reconstruction (flips, funding
 windows, spot/perp separation, partial-history flagging), the Web Worker
 dispatcher end-to-end with byte-parity against the synchronous fallback,
 excursion math and the retention/ratchet behavior, miner families and
@@ -1111,12 +1300,39 @@ values, a whole-file parse check of every script block, and the server over
 real HTTP (auth, revision conflicts, restart survival, the capital endpoint,
 digest lifecycle, server-held backups, the metrics endpoint). The suites extract functions **directly from `ledger.html`**, so
 they test exactly what ships — there is no second copy of the code to drift
-out of sync.
+out of sync. `tests/test-budget.mjs` adds a size budget: the build fails if
+app (`ledger.html` plus every `app/` script, what a visitor downloads) grows past
+its raw or gzipped budget, so growth is a choice rather than a drift.
 
-Architecture in one paragraph: everything is in `ledger.html` — UI, engine,
-and a Web Worker built at runtime from a Blob of the page's own function
-sources (single-file constraint, no separate worker script). Chart.js and fonts
-are inlined; the CSP allows network access to `api.hyperliquid.xyz` and the
-app's own origin only. Heavy compute (reconstruction, permutation mining) runs
+**Browser smoke tests** (`e2e/run.mjs`) run the real app in Chromium against the
+real server, fully offline (every request off the local server is blocked). They
+boot the full journal with a token, load sample data, open every tab, save a journal
+note and check it reaches the server and survives a reload, check that a reload
+takes every `app/` script from cache, open the app offline through the service
+worker, open `ledger.html` straight from disk, open Pulse at phone width (no
+sideways scroll), and open every admin tab, failing on any uncaught page error. Each step also has a time budget (boot 3 s, sample data 4 s, a tab switch
+2.5 s; `E2E_SLOW=2` doubles them for slow machines, and CI uses that). Playwright is
+deliberately not a dependency of the repo: install it with
+`npm i --no-save playwright && npx playwright install chromium`. CI runs these in a
+separate job on every push.
+
+Architecture in one paragraph: `ledger.html` holds the markup, styles and fonts,
+and loads its code from `app/` as ordinary scripts, in order: vendored Chart.js,
+then fifteen parts from `core.js` (storage, sync, the exchange API) and
+`engine.js` (reconstruction and analytics) through the views and Pulse to
+`boot.js`, which runs last. The parts share one global scope, the way the single
+inline script did. **The one rule:** code that runs *while a part loads* (as
+opposed to inside a function called later) may only use names from that part or
+an earlier one. The browser smoke tests catch a break, since every part loads on
+every page. No build step: edit a part, reload. The server sends each part
+gzipped under a content hash (`app/engine.js?v=…`), so browsers keep them for a
+year and still pick up a deploy at once, and the offline cache stores them. The
+server's analytics engine and the test suites read the app through
+`app-source.js`, which returns the page with every part inlined in load order,
+so they still extract the exact code that ships. The Web Worker is built at
+runtime from a Blob of the app's own function sources (no separate worker
+script). The CSP allows network access to `api.hyperliquid.xyz`,
+`mainnet.zklighter.elliot.ai` and the app's own origin only (Bybit and Binance go
+through the server's relay, `cex-relay.js`). Heavy compute (reconstruction, permutation mining) runs
 in the worker with a synchronous fallback; fills and candles cache in
 IndexedDB with incremental refresh.

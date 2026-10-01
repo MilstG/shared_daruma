@@ -9,9 +9,10 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const here = dirname(fileURLToPath(import.meta.url));
 const { createApp } = require(join(here, '..', 'server.js'));
-const html = readFileSync(join(here, '..', 'ledger.html'), 'utf8');
+const html = readAppSource(join(here, '..', 'ledger.html'));
 
 import { t, ok, eq, near, report } from './harness.mjs';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
 function listen(app){ return new Promise(res => app.listen(0, () => res('http://127.0.0.1:' + app.address().port))); }
 function makeServer(auth){
@@ -33,7 +34,23 @@ await t('serves the app HTML at / with no-cache and nosniff', async () => {
   ok((r.headers.get('content-type') || '').includes('text/html'));
   ok((r.headers.get('x-content-type-options') || '') === 'nosniff');
   const body = await r.text();
-  ok(body.includes('initServerSync'), 'served file is the sync-capable app');
+  const srcs = [...body.matchAll(/<script src="(app\/[a-z0-9.-]+\.js\?v=[0-9a-f]{12})"><\/script>/g)].map(m => m[1]);
+  ok(srcs.length >= 10, 'the page loads its app/ scripts by content hash: ' + srcs.length);
+  let code = '';
+  for (const s of srcs) {
+    const a = await fetch(base + '/' + s);
+    eq(a.status, 200, s);
+    ok(/immutable/.test(a.headers.get('cache-control') || ''), 'hashed scripts are cached long-term');
+    code += await a.text();
+  }
+  ok(code.includes('initServerSync'), 'the served app is the sync-capable one');
+});
+await t('app scripts: only real app/*.js files are served; a stale hash revalidates; 304 on a known ETag', async () => {
+  for (const p of ['/app/../server.js', '/app/.hidden.js', '/app/nope.js', '/app/core.json', '/app/%2e%2e%2fserver.js'])
+    eq((await fetch(base + p)).status, 404, p);
+  const r = await fetch(base + '/app/core.js?v=000000000000');
+  eq(r.status, 200); eq(r.headers.get('cache-control'), 'no-cache');
+  eq((await fetch(base + '/app/core.js', { headers: { 'If-None-Match': r.headers.get('etag') } })).status, 304);
 });
 await t('health is unauthenticated and reports auth mode + app sync capability', async () => {
   const r = await fetch(base + '/api/health');
@@ -67,6 +84,25 @@ await t('data API accepts the right token', async () => {
   const r = await fetch(base + '/api/data', { headers: authH });
   eq(r.status, 200);
   eq(await r.json(), { rev: 0, snapshot: null });
+});
+
+await t('wrong tokens lock the address out (429, right token included); no-token and READ_TOKEN calls never count', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'ledger-lock-'));
+  const app = createApp({ dataDir, auth: 'secret', readAuth: 'reader', authFailMax: 3, htmlPath: join(here, '..', 'ledger.html') });
+  const b = await listen(app);
+  // a tokenless visitor and a READ_TOKEN script on a full-token route are not guesses
+  for (let i = 0; i < 5; i++) eq((await fetch(b + '/api/data')).status, 401);
+  for (let i = 0; i < 5; i++) eq((await fetch(b + '/api/data', { headers: { Authorization: 'Bearer reader' } })).status, 401);
+  eq((await fetch(b + '/api/data', { headers: authH })).status, 200, 'still open after 10 non-guesses');
+  // parallel guesses: the 300ms delay alone wouldn't stop these
+  const rs = await Promise.all([1, 2, 3].map(i => fetch(b + '/api/data', { headers: { Authorization: 'Bearer guess' + i } })));
+  eq(rs.map(r => r.status), [401, 401, 401]);
+  const locked = await fetch(b + '/api/data', { headers: authH });
+  eq(locked.status, 429, 'even the right token is refused while locked');
+  ok(+locked.headers.get('retry-after') > 0, 'Retry-After set');
+  eq((await fetch(b + '/api/v1/stats', { headers: { Authorization: 'Bearer reader' } })).status, 429, 'read token locked too');
+  eq((await fetch(b + '/api/health')).status, 200, 'tokenless public routes still answer');
+  await new Promise(res => app.close(res));
 });
 
 console.log('\nServer: persistence round-trip');

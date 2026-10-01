@@ -5,9 +5,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { t, ok, eq, near, report, makeExtractor } from './harness.mjs';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
 const here = dirname(fileURLToPath(import.meta.url));
-const html = readFileSync(join(here, '..', 'ledger.html'), 'utf8');
+const html = readAppSource(join(here, '..', 'ledger.html'));
 const { evalModule } = makeExtractor(html);
 const { capitalFlows, capitalModel, xirrFromFlows } = await evalModule(
   ['capitalFlows', 'capitalModel', 'xirrFromFlows'], ['capitalFlows', 'capitalModel', 'xirrFromFlows']);

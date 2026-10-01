@@ -9,13 +9,14 @@ import { webcrypto } from 'node:crypto';
 import http from 'node:http';
 import vm from 'node:vm';
 import { t, ok, eq, report, makeExtractor, storedText } from './harness.mjs';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
 const require = createRequire(import.meta.url);
 const S = require('../social.js');
 const sig = require('../vendor/eth-sig.js');
 const server = require('../server.js');
 const htmlPath = new URL('../ledger.html', import.meta.url).pathname;
-const html = readFileSync(htmlPath, 'utf8');
+const html = readAppSource(htmlPath);
 const vectors = JSON.parse(readFileSync(new URL('./eth-vectors.json', import.meta.url), 'utf8'));
 
 console.log('\nSignatures');
@@ -303,7 +304,7 @@ await t('the journal is encrypted in the browser: the server-bound blob is ciphe
 });
 await t('a merge keeps only what this device changed: other settings and wallets come from the newer copy', async () => {
   const src = [line(/const _SYNC_S_FIELDS=[^\n]*/), line(/const vb64=[^\n]*/), line(/const unvb64=[^\n]*/), 'var VAULT_ITER=310000;',
-    ...['snapshot', 'applySnapshot', '_snapS', '_syncMerge', 'pzLessonsNorm', 'vaultMark', 'vaultMarkAll', 'vaultMerge', 'vaultOpen', 'vaultSeal', 'vaultForget', 'vaultSaveLocal', 'vaultSnapS'].map(grabFn),
+    ...['snapshot', 'applySnapshot', '_snapS', '_syncMerge', 'pzLessonsNorm', 'pbNorm', 'vaultMark', 'vaultMarkAll', 'vaultMerge', 'vaultOpen', 'vaultSeal', 'vaultForget', 'vaultSaveLocal', 'vaultSnapS'].map(grabFn),
     'var VAULT={key:null,salt:null,rev:0,mid:"m1",dirty:new Map(),base:null,sGen:0,sSent:0};'].join('\n').replace(/^const /gm, 'var ');
   const dev = () => { const c = { crypto: webcrypto, TextEncoder, TextDecoder, btoa, atob, JSON, Uint8Array, Map, Set, Object, Array, String,
       localStorage: { setItem() {}, removeItem() {}, getItem() { return null; } }, _applying: false, _jrev: 0, J_KEY: 'j', S_KEY: 's',
