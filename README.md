@@ -426,6 +426,19 @@ and only another signature from that wallet moves it. The owner can switch on
 **Only count claimed wallets**, after which verified Discipline, returns and return
 competitions only use claimed wallets. Smart-contract wallets (which can't produce a
 plain signature) and email-login wallets without an exportable key can't claim yet.
+
+**Wallet approval.** Under Admin → **Wallets** the owner can switch on **Wallets need
+my approval**. From then on, a member's wallet counts for returns, verified Discipline
+and return competitions only after the owner approves its address. Until then the
+server doesn't read it on chain at all. Members can still join and use Pulse, and are
+told their wallet is waiting (or wasn't accepted). Decisions are stored per address, so
+a rejected wallet stays rejected under a new profile. Wallets the owner attaches to a
+member count as approved, and switching approval on approves the wallets already in
+use, so nobody's numbers disappear (each stays reviewable). The Wallets tab lists
+waiting wallets first, shows whether the member joined with your invite code, and takes
+single or bulk approve/reject decisions with an optional note (e.g. "paid"). It is the
+manual base for automatic rules like "approve wallets that joined with my code" or
+"approve paying subscribers".
 The sign-in message names the site it's for. When self-hosting, set `PUBLIC_ORIGIN` to
 your Pulse address so the server only writes messages for that site and a look-alike
 page can't collect a usable signature (on Railway the edge already guarantees the
@@ -475,6 +488,8 @@ chosen members. Sample data shows everything. The full journal at `/` is never l
 - **Coach** — on/off for members, daily allowances, your own limit, whether members
   may share trades and notes, today's usage.
 - **Routines** — replace the built-in profiles' questions and add your own profiles.
+- **Wallets** — wallet approval on/off, and approve or reject each member's wallet
+  (single or in bulk, with a note); waiting wallets come first.
 - **Feed** — announcements and moderation. **Settings** — open/closed, invite code,
   claimed wallets only, encrypted sync.
 

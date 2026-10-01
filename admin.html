@@ -52,6 +52,7 @@ th{color:var(--muted);font-weight:600;font-size:12px;white-space:nowrap}
 .pill.ban{background:#3A1E16;color:#FFB39E}
 .pill.ok{background:#12301F;color:var(--good)}
 .pill.xp{background:#231C3A;color:var(--xp)}
+.pill.wait{background:#2B2413;color:#F9DC8E}
 .note{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1B1F25;border:1px solid var(--line2);border-radius:14px;padding:10px 16px;color:var(--soft);max-width:92vw;z-index:20}
 .note.err{border-color:#6A2E20;color:#FFB39E}
 .note:empty{display:none}
@@ -135,7 +136,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   const XP_LABELS={discipline:['Per Discipline point','× each day’s 0–100 score'],checkin:['Morning check-in',''],plan:['Plan set before trading',''],
     journal:['Every trade journaled',''],stops:['A stop on every trade',''],limit:['Stayed inside the loss limit',''],review:['End-of-day review',''],
     achievement:['Achievement','The base: badge tiers pay ×0.1 to ×3.2 of it'],challenge:['Weekly challenge kept',''],focus:['Focus habit kept','Per kept day']};
-  const TABS=[['overview','Overview'],['members','Members'],['leagues','Leagues'],['competitions','Competitions'],['badges','Badges'],['levels','Levels & XP'],
+  const TABS=[['overview','Overview'],['members','Members'],['wallets','Wallets'],['leagues','Leagues'],['competitions','Competitions'],['badges','Badges'],['levels','Levels & XP'],
     ['features','Features'],['coach','Coach'],['routines','Routines'],['feed','Feed'],['settings','Settings']];
   let tok=''; try{ tok=localStorage.getItem('srv_token')||''; }catch(e){}
   let noteT=null;
@@ -158,16 +159,17 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   const pager=(key,list,size)=>{ size=size||10; const n=list.length, pages=Math.max(1,Math.ceil(n/size)), p=Math.max(0,Math.min(UI.pages[key]||0,pages-1)); UI.pages[key]=p;
     return {items:list.slice(p*size,(p+1)*size), html:n>size?`<div class="pager"><button class="sm" data-pg="${esc(key)}" data-d="-1"${p?'':' disabled'} aria-label="Previous page">‹ Prev</button><span class="muted small">${p*size+1}–${Math.min(n,(p+1)*size)} of ${n}</span><button class="sm" data-pg="${esc(key)}" data-d="1"${p<pages-1?'':' disabled'} aria-label="Next page">Next ›</button></div>`:''}; };
   const mlink=m=>`#members/${esc(encodeURIComponent(m.id))}`;
-  const D={ov:null,members:[],leagues:[],badges:[],comps:[],events:[]};
-  const UI={tab:'overview',member:null,q:'',filter:'all',leagueEdit:null,badgeEdit:null,addOpen:false,code:null,levelDraft:null,custom:null,overrides:null,pages:{}};
+  const D={ov:null,members:[],leagues:[],badges:[],comps:[],events:[],wallets:{approveWallets:false,wallets:[],counts:{pending:0,approved:0,rejected:0}}};
+  const UI={tab:'overview',member:null,q:'',filter:'all',wq:'',wfilter:'pending',wsel:new Set(),leagueEdit:null,badgeEdit:null,addOpen:false,code:null,levelDraft:null,custom:null,overrides:null,pages:{}};
   const linkFor=code=>location.origin+'/pulse#link='+encodeURIComponent(code);
   const leagueName=id=>{ const L=D.leagues.find(x=>x.id===id); return L?L.name:id; };
   // level n starts at base·n·(n−1) XP, or at a table entry — mirrors social-config.js levelStart
   const levelStart=(c,n)=>n<=1?0:c.mode==='table'?(n-2<c.thresholds.length?c.thresholds[n-2]:Infinity):c.base*n*(n-1);
 
   async function load(){
-    const [ov,ms,ls,bs,cs,ev]=await Promise.all([api('/overview'),api('/members'),api('/leagues'),api('/badges'),api('/competitions'),api('/events')]);
-    Object.assign(D,{ov,members:ms.members,leagues:ls.leagues,badges:bs.badges,comps:cs.competitions,events:ev.events});
+    const [ov,ms,ls,bs,cs,ev,ws]=await Promise.all([api('/overview'),api('/members'),api('/leagues'),api('/badges'),api('/competitions'),api('/events'),api('/wallets')]);
+    Object.assign(D,{ov,members:ms.members,leagues:ls.leagues,badges:bs.badges,comps:cs.competitions,events:ev.events,wallets:ws});
+    for(const a of [...UI.wsel])if(!ws.wallets.some(w=>w.address===a))UI.wsel.delete(a);
     $('login').classList.add('hide'); $('app').classList.remove('hide'); $('signout').classList.remove('hide');
     render();
   }
@@ -193,7 +195,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     lastView=view; UI.submitted=null; UI.fresh=false;
     $('tabs').innerHTML=TABS.map(([k,l])=>`<a href="#${k}"${k===UI.tab?' aria-current="page"':''}>${l}</a>`).join('');
     const tabs=$('tabs'), cur=tabs.querySelector('[aria-current]'); if(cur)tabs.scrollLeft=Math.max(0,cur.offsetLeft-(tabs.clientWidth-cur.offsetWidth)/2);
-    const f={overview:vOverview,members:vMembers,leagues:vLeagues,competitions:vComps,badges:vBadges,levels:vLevels,features:vFeatures,coach:vCoach,routines:vRoutines,feed:vFeed,settings:vSettings}[UI.tab];
+    const f={overview:vOverview,members:vMembers,wallets:vWallets,leagues:vLeagues,competitions:vComps,badges:vBadges,levels:vLevels,features:vFeatures,coach:vCoach,routines:vRoutines,feed:vFeed,settings:vSettings}[UI.tab];
     $('view').innerHTML=f();
     for(const [id,v] of keep){ const el=$(id); if(!el)continue; if(el.type==='checkbox')el.checked=v; else el.value=v; }
     const back=foc&&$(foc); if(back&&$('view').contains(back))back.focus({preventScroll:true});
@@ -203,6 +205,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   function vOverview(){
     const o=D.ov, c=o.config, warn=[];
     if(!c.open)warn.push('The league is closed to new members (Settings).');
+    if(c.approveWallets&&o.walletsPending)warn.push(`<a href="#wallets">${o.walletsPending} wallet${o.walletsPending===1?' is':'s are'} waiting for your approval.</a> Until you approve them, they don’t count for returns, verified Discipline or return competitions.`);
     if(o.claims&&!o.originPinned)warn.push('Wallet sign-in isn’t pinned to your address yet. Set <code>PUBLIC_ORIGIN</code> on the server so a look-alike site can’t collect members’ signatures.');
     if(!o.coachAi)warn.push('The AI coach is off. Set <code>COACH_AI=1</code> and <code>ANTHROPIC_API_KEY</code> on the server to switch it on.');
     const main=D.leagues.find(L=>L.id==='main'), live=Math.max(1,o.members-o.banned);
@@ -223,7 +226,8 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   }
 
   // ---------------- members ----------------
-  const pills=m=>[m.claimed?'<span class="pill ok">claimed ✓</span>':'',m.verified?'<span class="pill ok">verified</span>':'',m.unlocked?'<span class="pill xp">unlocked</span>':'',
+  const wpill=s=>s==='pending'?'<span class="pill wait">wallet waiting</span>':s==='rejected'?'<span class="pill ban">wallet rejected</span>':'';
+  const pills=m=>[m.claimed?'<span class="pill ok">claimed ✓</span>':'',D.wallets.approveWallets?wpill(m.walletStatus):'',m.verified?'<span class="pill ok">verified</span>':'',m.unlocked?'<span class="pill xp">unlocked</span>':'',
     m.adminMade&&!m.keys?'<span class="pill">not signed in yet</span>':'',m.banned?'<span class="pill ban">suspended</span>':''].filter(Boolean).join(' ');
   const codeBox=c=>`<div class="okbox" style="margin-top:12px"><div class="row" style="justify-content:space-between;align-items:center"><div><div class="small">Sign-in code for @${esc(c.handle)} · good for 7 days</div><div class="code">${esc(c.code)}</div></div>
       <div class="fit row" style="align-items:center"><button class="sm fit" data-copy="${esc(linkFor(c.code))}">Copy link</button><button class="sm fit" data-copy="${esc(c.code)}">Copy code</button><button class="sm fit" id="codeDone">Done</button></div></div>
@@ -277,6 +281,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       <section class="card"><h2>Profile</h2>
         ${field('mHandle','Name',`<input id="mHandle" maxlength="20" value="${esc(m.handle)}">`)}
         ${field('mAddr','Wallet',`<input id="mAddr" maxlength="42" placeholder="0x…" value="${esc(m.address||'')}"${m.claimed?' disabled':''}>`,m.claimed?'Claimed by signature — only the member can change it.':'Used for verified Discipline and returns. Leave empty to remove it.')}
+        ${m.address&&D.wallets.approveWallets?`<div class="row" style="align-items:center;margin:-4px 0 10px">${walletStatusPill(m.walletStatus)}${m.walletStatus!=='approved'?`<button class="sm fit" data-wact="approve" data-addr="${esc(m.address)}">Approve wallet</button>`:''}${m.walletStatus!=='rejected'?`<button class="sm fit" data-wact="reject" data-addr="${esc(m.address)}">Reject wallet</button>`:''}</div>`:''}
         <div style="margin-top:12px"><button class="primary" data-m="edit">Save profile</button></div>
       </section>
       <section class="card"><h2>Boost XP</h2>
@@ -374,7 +379,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       <section class="card"><h2>All competitions</h2><div class="scroll"><table><thead><tr><th>Title</th><th>Dates</th><th>Entrants</th><th>Leader</th><th></th></tr></thead><tbody>
       ${pager('comps',D.comps).items.map(x=>`<tr><td><b>${esc(x.title)}</b><div class="muted small">${esc(x.type)} · ${esc(x.status)}${x.league?' · '+esc(x.league.name||leagueName(x.league)):''}</div>${x.rule?`<div class="muted small">${esc(x.rule)}</div>`:''}</td><td class="small">${esc(x.start)} → ${esc(x.end)}</td><td>${x.entrants}</td>
         <td class="small">${x.standings&&x.standings[0]?'@'+esc(x.standings[0].handle)+' · '+esc(x.standings[0].note):'<span class="muted">—</span>'}</td>
-        <td><button class="sm danger" data-delcomp="${esc(x.id)}" data-t="${esc(x.title)}">Delete</button></td></tr>`).join('')||'<tr><td colspan="5" class="muted">None yet.</td></tr>'}
+        <td><button class="sm danger" data-delcomp="${esc(x.id)}" data-t="${esc(x.title)}">Delete</button></td></tr>`).join('')||'<tr><td colspan="3" class="muted">None yet.</td></tr>'}
       </tbody></table></div>${pager('comps',D.comps).html}</section></div>`;
   }
 
@@ -493,6 +498,51 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       </div>${pager('events',D.events).html}</section></div>`;
   }
 
+  // ---------------- wallets ----------------
+  const walletStatusPill=s=>s==='approved'?'<span class="pill ok fit">approved</span>':s==='rejected'?'<span class="pill ban fit">rejected</span>':'<span class="pill wait fit">waiting</span>';
+  const JOINED={invite:'with your invite code',open:'with the open link',admin:'added by you'};
+  function walletPg(){
+    const q=UI.wq.toLowerCase(), f=UI.wfilter;
+    return pager('wallets',D.wallets.wallets.filter(w=>(f==='all'||w.status===f)&&(f!=='pending'||w.members.length)
+      &&(!q||w.address.includes(q)||w.members.some(m=>m.handle.toLowerCase().includes(q)))),20);
+  }
+  function walletRows(){
+    const list=walletPg().items;
+    if(!list.length)return `<tr><td colspan="3" class="muted">${UI.wfilter==='pending'?'Nothing waiting.':'No wallets here.'}</td></tr>`;
+    const short=a=>a.slice(0,8)+'…'+a.slice(-6);
+    return list.map(w=>`<tr>
+      <td style="vertical-align:top"><input type="checkbox" data-wsel="${esc(w.address)}" aria-label="Select ${esc(w.address)}"${UI.wsel.has(w.address)?' checked':''}></td>
+      <td style="vertical-align:top"><div class="row" style="align-items:center;flex-wrap:nowrap;gap:6px"><code class="small fit" title="${esc(w.address)}">${esc(short(w.address))}</code><button class="sm fit" data-copy="${esc(w.address)}" aria-label="Copy address">Copy</button></div>
+        ${w.members.length?w.members.map(m=>`<div style="margin-top:6px"><a href="${mlink(m)}">@${esc(m.handle)}</a> ${m.claimed?'<span class="pill ok">claimed ✓</span>':''}${m.banned?' <span class="pill ban">suspended</span>':''}<div class="muted small">${m.joinedWith?'joined '+esc(JOINED[m.joinedWith]||''):'joined'}${m.createdAt?' · '+esc(ago(m.createdAt)):''}</div></div>`).join(''):'<div class="muted small" style="margin-top:6px">no profile uses it now</div>'}
+        ${w.note?`<div class="muted small" style="margin-top:4px">Note: ${esc(w.note)}</div>`:''}</td>
+      <td style="vertical-align:top">${walletStatusPill(w.status)}${w.reviewedAt?`<div class="muted small">${w.by==='existing'?'already in use when approval went on':'by you · '+esc(ago(w.reviewedAt))}</div>`:''}
+        <div class="row" style="align-items:center;margin-top:8px;gap:6px">${w.status!=='approved'?`<button class="sm fit primary" data-wact="approve" data-addr="${esc(w.address)}">Approve</button>`:''}${w.status!=='rejected'?`<button class="sm fit" data-wact="reject" data-addr="${esc(w.address)}">Reject</button>`:''}${w.status!=='pending'?`<button class="sm fit" data-wact="clear" data-addr="${esc(w.address)}" title="Forget the decision: back to waiting">Undo</button>`:''}</div></td></tr>`).join('');
+  }
+  function vWallets(){
+    const W=D.wallets, c=W.counts;
+    return `<section class="card"><h2>Wallet approval</h2>
+      ${box('wOn','Wallets need my approval',W.approveWallets,'A member’s wallet counts for returns, verified Discipline and return competitions only once you approve it. Members can still join and use Pulse; they see that their wallet is waiting. Decisions follow the address, so a rejected wallet stays rejected under a new profile. Wallets you attach to a member yourself count as approved.')}
+      ${!W.approveWallets?'<p class="hint" style="margin-left:26px">Switching it on approves the wallets already in use (marked “already in use”), so nobody’s numbers vanish. You can still reject any of them.</p>':''}
+      <div><button class="primary" id="wSave">Save</button></div></section>
+    <section class="card">
+      <div class="row" style="justify-content:space-between;align-items:center"><h2 class="fit" style="margin:0">Wallets</h2>
+        <span class="fit muted small">${c.pending} waiting · ${c.approved} approved · ${c.rejected} rejected</span></div>
+      <div class="row" style="margin-top:12px;align-items:center">
+        <input id="wq" placeholder="Search by address or name" aria-label="Search wallets" value="${esc(UI.wq)}">
+        <div class="fit">${sel('wFilter',[['pending','Waiting'],['approved','Approved'],['rejected','Rejected'],['all','All']],UI.wfilter,' aria-label="Filter"')}</div>
+      </div>
+      <div class="row" style="margin-top:10px;align-items:center">
+        <button class="sm fit" id="wBulkApprove"${UI.wsel.size?'':' disabled'}>Approve selected (${UI.wsel.size})</button>
+        <button class="sm fit" id="wBulkReject"${UI.wsel.size?'':' disabled'}>Reject selected</button>
+        ${UI.wfilter==='pending'&&c.pending?`<button class="sm fit" id="wAllPending">Approve all ${c.pending} waiting</button>`:''}
+        <input id="wNote" maxlength="120" placeholder="Note for this decision (optional), e.g. paid · referral" aria-label="Note" style="flex:1;min-width:180px">
+      </div>
+      <div class="scroll"><table><thead><tr><th></th><th>Wallet and member</th><th>Status</th></tr></thead><tbody id="wRows">${walletRows()}</tbody></table></div><div id="wPager">${walletPg().html}</div></section>`;
+  }
+  const walletDecide=(action,addresses)=>{ const n=addresses.length, note=val('wNote').trim();
+    const word={approve:'Approved',reject:'Rejected',clear:'Back to waiting'}[action];
+    return act(async()=>{ const r=await api('/wallets',{body:{action,addresses,note}}); addresses.forEach(a=>UI.wsel.delete(a)); return r; },word+(n>1?' ('+n+' wallets).':'.')); };
+
   // ---------------- settings ----------------
   function vSettings(){
     const o=D.ov, c=o.config;
@@ -502,6 +552,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       <h3>Wallets</h3>
       <label class="inline"><input type="checkbox" id="sClaim"${c.requireClaim?' checked':''}${o.claims?'':' disabled'}>Only count claimed wallets</label>
       <p class="hint" style="margin:-6px 0 6px 26px">Verified Discipline, returns and return competitions then only use wallets a member proved are theirs by signing with them.${o.claims?'':' (Wallet sign-in isn’t available on this server.)'}</p>
+      <p class="hint">Approving or rejecting individual wallets is on the <a href="#wallets">Wallets</a> tab.</p>
       ${o.claims&&!o.originPinned?'<p class="warn small">Wallet sign-in isn’t pinned to your address yet. Set <code>PUBLIC_ORIGIN</code> on the server (e.g. <code>https://pulse.example.com</code>) so a look-alike site can’t collect members’ signatures.</p>':''}
       <h3>Sync</h3>
       ${box('sVault','Encrypted journal sync for members',c.vaultOn!==false,'Members’ journals are encrypted in their browser with their own passphrase. This server stores ciphertext only — you can’t read them.')}
@@ -513,8 +564,12 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   // number fields left empty keep their saved value instead of becoming 0
   const nums=(keys,pre)=>{ const o={}; for(const k of keys){ const v=val(pre+k).trim(); if(v!=='')o[k]=+v; } return o; };
   document.addEventListener('input',ev=>{ const t=ev.target;
-    if(t.id==='q'){ UI.q=t.value; UI.pages.members=0; $('mRows').innerHTML=memberRows(); $('mPager').innerHTML=memberPg().html; } });
+    if(t.id==='q'){ UI.q=t.value; UI.pages.members=0; $('mRows').innerHTML=memberRows(); $('mPager').innerHTML=memberPg().html; }
+    if(t.id==='wq'){ UI.wq=t.value; UI.pages.wallets=0; $('wRows').innerHTML=walletRows(); $('wPager').innerHTML=walletPg().html; } });
   document.addEventListener('change',ev=>{ const t=ev.target;
+    if(t.id==='wFilter'){ UI.wfilter=t.value; UI.pages.wallets=0; UI.wsel.clear(); UI.fresh=false; return render(); }
+    if(t.dataset&&t.dataset.wsel){ if(t.checked)UI.wsel.add(t.dataset.wsel); else UI.wsel.delete(t.dataset.wsel);
+      $('wBulkApprove').disabled=$('wBulkReject').disabled=!UI.wsel.size; $('wBulkApprove').textContent='Approve selected ('+UI.wsel.size+')'; return; }
     if(t.id==='mFilter'){ UI.filter=t.value; UI.pages.members=0; $('mRows').innerHTML=memberRows(); $('mPager').innerHTML=memberPg().html; }
     else if(t.id==='lvMode'){ UI.levelDraft=levelDraft(); render(); }
     else if(t.id&&/^rc_\d+_b$/.test(t.id)){ keepRoutines(); UI.fresh=true; render(); } });
@@ -527,6 +582,17 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     if(d.pg){ UI.pages[d.pg]=Math.max(0,(UI.pages[d.pg]||0)+(+d.d||0)); if(d.pg==='members'&&$('mRows')){ $('mRows').innerHTML=memberRows(); $('mPager').innerHTML=memberPg().html; return; } UI.fresh=false; return render(); }
     if(id==='addToggle'){ UI.addOpen=!UI.addOpen; UI.code=null; return render(); }
     if(id==='codeDone'){ UI.code=null; return render(); }
+    // wallets
+    if(id==='wSave'){ const on=chk('wOn'); if(on===D.wallets.approveWallets)return note('Nothing changed.');
+      if(!on&&!confirm('Switch approval off? Every wallet then counts again, including rejected ones. Your decisions are kept for if you switch it back on.'))return;
+      return act(()=>put({approveWallets:on}),on?'Approval is on. New wallets now wait for you.':'Approval is off. Every wallet counts.'); }
+    if(d.wact){ if(d.wact==='reject'&&!confirm('Reject '+d.addr.slice(0,6)+'…'+d.addr.slice(-4)+'? Its returns and verified scores stop counting right away.'))return;
+      return walletDecide(d.wact,[d.addr]); }
+    if(id==='wBulkApprove'||id==='wBulkReject'){ const list=[...UI.wsel]; if(!list.length)return;
+      if(id==='wBulkReject'&&!confirm('Reject '+list.length+' wallet'+(list.length===1?'':'s')+'?'))return;
+      return walletDecide(id==='wBulkApprove'?'approve':'reject',list); }
+    if(id==='wAllPending'){ const list=D.wallets.wallets.filter(w=>w.status==='pending'&&w.members.length).map(w=>w.address);
+      if(!confirm('Approve all '+list.length+' waiting wallets?'))return; return walletDecide('approve',list); }
     if(d.copy){ try{ await navigator.clipboard.writeText(d.copy); note('Copied.'); }catch(e){ note('Couldn’t copy — select it by hand.',true); } return; }
     if(id==='nmCreate'){ const handle=val('nmHandle').trim().replace(/^@/,''); if(!handle)return note('Give them a name.',true);
       if(val('nmAddr').trim()&&!ADDR.test(val('nmAddr').trim()))return note('That isn’t a wallet address (0x and 40 hex characters).',true);

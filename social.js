@@ -50,7 +50,7 @@ const MAX_EVENTS = 2000;
 const MAX_MEMBERS = 5000;
 const STREAK_MARKS = [7, 14, 21, 30, 50, 75, 100, 150, 200, 365];
 const COMP_TYPES = ['discipline', 'survivor', 'journal', 'return'];
-const DEFAULT_CONFIG = { open: true, inviteCode: '', unlocksOn: true, requireClaim: false, vaultOn: true,
+const DEFAULT_CONFIG = { open: true, inviteCode: '', unlocksOn: true, requireClaim: false, approveWallets: false, vaultOn: true,
   unlocks: { trends: 2, share: 3, compete: 4 }, themes: { ember: 3, aurora: 5, gold: 8 } };
 const SHARE_KEYS = ['profile', 'boards', 'global', 'page', 'feed', 'habits', 'verify', 'ret', 'usd', 'addr', 'mentor'];
 // mentor: the league's mentors can see your trading days (scores, slips, the lesson you wrote) and comment on them — opt-in
@@ -248,7 +248,8 @@ function weeksIn(start, end) { const out = []; let k = start;
 
 // ---- competitions ----
 function compStatus(c, todayKey) { return todayKey < c.start ? 'upcoming' : todayKey > c.end ? 'finished' : 'live'; }
-function compStandings(c, members, todayKey, requireClaim) {
+// walletGate (optional): m -> a reason the member's wallet doesn't count yet (owner approval), or null
+function compStandings(c, members, todayKey, requireClaim, walletGate) {
   const byId = new Map(members.map(m => [m.id, m]));
   const rows = [];
   for (const id of Object.keys(c.entrants || {})) {
@@ -260,7 +261,7 @@ function compStandings(c, members, todayKey, requireClaim) {
       const vd = m.share && m.share.verify && Array.isArray(m.vdays) ? m.vdays.filter(d => d.k >= c.start && d.k <= c.end && d.k <= todayKey) : null;
       if (!vd) { rows.push({ id, handle: m.handle, score: null, out: false,
         note: !(m.share && m.share.verify) ? 'Needs verification: switch on “Verify my discipline”' : !m.address ? 'Needs a wallet to verify'
-          : requireClaim && m.claimed !== m.address ? 'Needs a claimed wallet' : 'Verifying from fills…' }); continue; }
+          : requireClaim && m.claimed !== m.address ? 'Needs a claimed wallet' : (walletGate && walletGate(m)) || 'Verifying from fills…' }); continue; }
       const d = disciplineOver(vd, c.start, c.end, c.minDays || 3);
       if (d.avg == null) note = d.n + ' of ' + (c.minDays || 3) + ' trading days so far'; else { score = Math.round(d.avg); note = d.n + ' trading days'; }
     } else if (c.type === 'survivor') {
@@ -328,6 +329,9 @@ function createSocial(opts) {
   S.config.coach = SC.sanitizeCoachCfg(S.config.coach, null);
   S.config.profiles = SC.sanitizeProfiles(S.config.profiles, null);
   if (!S.badges || typeof S.badges !== 'object') S.badges = {};
+  // the owner's wallet decisions, by address (so a new profile can't launder a rejected wallet):
+  // { '0x…': { s: 'approved' | 'rejected', at, by: 'owner' | 'existing', note } }
+  if (!S.wallets || typeof S.wallets !== 'object') S.wallets = {};
   if (!S.ownerCoach) S.ownerCoach = { k: null, n: 0 };
   if (!S.partners || typeof S.partners !== 'object') S.partners = {};
   if (!S.comments || typeof S.comments !== 'object') S.comments = {};
@@ -351,7 +355,17 @@ function createSocial(opts) {
     m.keyHashes = [...(Array.isArray(m.keyHashes) ? m.keyHashes : []), sha(key)].slice(-MAX_KEYS); return key; };
   // the wallet whose on-chain numbers count for this member: any address they gave, or, when the
   // owner requires claims, only a wallet they proved is theirs by signing
-  const walletFor = m => !m.address ? null : S.config.requireClaim && m.claimed !== m.address ? null : m.address;
+  // … and, when the owner approves wallets, only an address the owner approved
+  const walletReview = addr => addr && Object.prototype.hasOwnProperty.call(S.wallets, addr) ? S.wallets[addr] : null;
+  const walletStatus = addr => !addr ? null : (walletReview(addr) || {}).s || 'pending';
+  const walletFor = m => !m.address ? null : S.config.requireClaim && m.claimed !== m.address ? null
+    : S.config.approveWallets && walletStatus(m.address) !== 'approved' ? null : m.address;
+  // why walletFor(m) is null: 'no-wallet' | 'claim' | 'approval' | 'rejected' (null when it isn't)
+  const walletBlock = m => !m.address ? 'no-wallet' : S.config.requireClaim && m.claimed !== m.address ? 'claim'
+    : S.config.approveWallets && walletStatus(m.address) !== 'approved' ? (walletStatus(m.address) === 'rejected' ? 'rejected' : 'approval') : null;
+  // numbers read from a wallet that stopped counting go at once, and come back when it counts again
+  const dropWalletNumbers = m => { m.vdays = null; m.money = null; for (const cc of Object.values(S.comps)) if (cc.money) delete cc.money[m.id]; };
+  const recheckWallet = m => { m.vAt = 0; m.vFailAt = 0; m.moneyFailAt = 0; if (!walletFor(m)) dropWalletNumbers(m); };
   const claimedBy = (addr, notId) => addr ? members().find(o => o.id !== notId && o.claimed === addr) || null : null;
   // simple per-IP rate limits: n requests per window
   const ipOf = opts.clientIp || (req => (req.socket && req.socket.remoteAddress) || '');
@@ -551,6 +565,7 @@ function createSocial(opts) {
       claimed: !!m.claimed };
     if (out.isMe) Object.assign(out, { claimedAddress: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
       vault: m.vault ? { rev: m.vault.rev, size: m.vault.size, at: m.vault.at } : null, requireClaim: !!S.config.requireClaim, vaultOn: !!S.config.vaultOn,
+      walletStatus: S.config.approveWallets && m.address ? walletStatus(m.address) : null,
       unlocked: !!m.unlocked, grants: (m.grants || []).map(g => ({ id: g.id, xp: g.xp, why: g.why, at: g.at })), coach: coachStatusFor(m), coachDetail: !!m.coachDetail,
       leagues: leaguesOf(m).map(L => ({ id: L.id, name: L.name, tier: leagueTier(L, m) })), mentor: !!m.mentor,
       push: { on: !!(m.push && m.push.subs && m.push.subs.length), prefs: sanitizePrefs(null, m.push && m.push.prefs), available: !!push },
@@ -571,7 +586,7 @@ function createSocial(opts) {
     return { id: e.id, at: e.at, type: e.type, text: e.text, quote: e.quote, handle: m ? m.handle : null, tier: m ? m.tier || 0 : null,
       admin: !e.member, kudos: e.kudos.length, liked: !!viewer && e.kudos.includes(viewer.id), mine: !!viewer && e.member === viewer.id }; };
   const compOut = (c, viewer, full) => { const st = compStatus(c, todayKey());
-    const rows = compStandings(c, members(), todayKey(), !!S.config.requireClaim);
+    const rows = compStandings(c, members(), todayKey(), !!S.config.requireClaim, m => ({ approval: 'Wallet waiting for approval', rejected: 'Wallet not accepted' })[walletBlock(m)] || null);
     const mine = viewer ? rows.find(r => r.id === viewer.id) || null : null;
     const o = { id: c.id, title: c.title, type: c.type, rule: c.rule, start: c.start, end: c.end, minDays: c.minDays, ddCap: c.ddCap,
       league: c.league && own(S.leagues, c.league) ? { id: c.league, name: S.leagues[c.league].name } : null,
@@ -718,7 +733,7 @@ function createSocial(opts) {
     if (head === 'config' && M === 'GET')
       return json(res, 200, { enabled: adminConfigured, open: S.config.open, inviteRequired: !!S.config.inviteCode, unlocksOn: S.config.unlocksOn,
         unlocks: S.config.unlocks, themes: S.config.themes, tiers: TIERS, week: S.league.week, members: members().filter(m => !m.banned).length,
-        claims: !!sig, requireClaim: !!S.config.requireClaim, vaultOn: !!S.config.vaultOn,
+        claims: !!sig, requireClaim: !!S.config.requireClaim, approveWallets: !!S.config.approveWallets, vaultOn: !!S.config.vaultOn,
         modules: S.config.modules, levels: S.config.levels, xp: S.config.xp, profiles: S.config.profiles,
         coach: { members: S.config.coach.members, daily: S.config.coach.daily, detail: S.config.coach.detail },
         badges: Object.values(S.badges).map(b => ({ id: b.id, name: b.name, icon: b.icon, desc: b.desc, metric: b.metric, metricLabel: b.metric ? SC.BADGE_METRICS[b.metric] : null, op: b.op, value: b.value, xp: b.xp })),
@@ -734,6 +749,7 @@ function createSocial(opts) {
         const wk = S.league.week, act = members().filter(m => now() - (m.lastSeen || 0) < 7 * 86400000);
         return json(res, 200, { adminConfigured, members: members().length, banned: members().filter(m => m.banned).length, active7: act.length,
           events: S.events.length, comps: Object.keys(S.comps).length, week: wk, config: S.config,
+          walletsPending: S.config.approveWallets ? new Set(members().filter(m => m.address && walletStatus(m.address) === 'pending').map(m => m.address)).size : 0,
           claimed: members().filter(m => m.claimed).length, vaults: members().filter(m => m.vault).length, vaultBytes: vaultTotal(), claims: !!sig,
           originPinned: origins.length > 0 || !!opts.hostVetted,
           leagues: Object.keys(S.leagues).length, badges: Object.keys(S.badges).length, coachAi: !!opts.coachAvailable,
@@ -744,7 +760,7 @@ function createSocial(opts) {
       if (sub === 'members' && M === 'GET' && !parts[2])
         return json(res, 200, { members: members().sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0)).map(m => ({ id: m.id, handle: m.handle,
           tier: m.tier || 0, level: (m.stats && m.stats.level) || 1, xp: (m.stats && m.stats.xp) || 0, streak: (m.stats && m.stats.streak) || 0,
-          address: m.address || null, claimed: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
+          address: m.address || null, walletStatus: m.address ? walletStatus(m.address) : null, joinedWith: m.joinedWith || (m.adminMade ? 'admin' : null), claimed: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
           vault: m.vault ? m.vault.size : 0, share: m.share, banned: !!m.banned, unlocked: !!m.unlocked, coachDaily: m.coachDaily != null ? m.coachDaily : null,
           coachUsed: coachUsed(m), coachLimit: coachLimitFor(m), grants: m.grants || [], awards: Object.keys(m.awards || {}).filter(id => own(S.badges, id)),
           leagues: leaguesOf(m).map(L => ({ id: L.id, tier: leagueTier(L, m) })), adminMade: !!m.adminMade, mentor: !!m.mentor, keys: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0), verified: !!(m.share.verify && Array.isArray(m.vdays)), createdAt: m.createdAt, lastSeen: m.lastSeen || null,
@@ -758,6 +774,7 @@ function createSocial(opts) {
         const id = crypto.randomBytes(6).toString('hex'), A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let code = ''; for (const x of crypto.randomBytes(10)) code += A[x % 32];
         const m = { id, handle, keyHash: null, keyHashes: [], createdAt: now(), lastSeen: 0, tier: 0, share: sanitizeShare(body.share), address, stats: null, weekXp: {}, money: null,
           banned: false, adminMade: true, unlocked: !!body.unlocked, pendingCodes: [{ h: sha(code), exp: now() + 7 * 86400000 }] };
+        if (address && S.config.approveWallets && !walletReview(address)) S.wallets[address] = { s: 'approved', at: now(), by: 'owner', note: '' }; // the owner attached it: that's an approval
         S.members[id] = m; S.follows[id] = [];
         const ls = body.leagues != null ? [].concat(body.leagues) : Object.values(S.leagues).filter(L => L.autoJoin).map(L => L.id);
         for (const lid of ls) if (own(S.leagues, lid)) joinLeague(S.leagues[lid], m);
@@ -778,6 +795,7 @@ function createSocial(opts) {
             const o = byHandle(h); if (o && o.id !== m.id) return json(res, 409, { error: 'That name is taken.' }); m.handle = h; }
           if (body.address !== undefined && !m.claimed) { const ad = typeof body.address === 'string' && ADDR_RE.test(body.address) ? body.address.toLowerCase() : null;
             if (ad && claimedBy(ad, m.id)) return json(res, 409, { error: 'That wallet is claimed by another profile.' });
+            if (ad && S.config.approveWallets && !walletReview(ad)) S.wallets[ad] = { s: 'approved', at: now(), by: 'owner', note: '' };
             if (ad !== m.address) { m.address = ad; m.vdays = null; m.vAt = 0; m.money = null; refreshAll(m); } }
           if (body.share && typeof body.share === 'object') m.share = sanitizeShare(body.share, m.share);
         }
@@ -804,6 +822,36 @@ function createSocial(opts) {
         else return json(res, 400, { error: 'unknown action' });
         save(); return json(res, 200, Object.assign({ ok: true }, extra));
       }
+      // ---- wallets: the owner approves or rejects each address ----
+      if (sub === 'wallets' && M === 'GET') {
+        const rows = new Map();
+        for (const m of members()) if (m.address) {
+          const r = rows.get(m.address) || { address: m.address, members: [] };
+          r.members.push({ id: m.id, handle: m.handle, claimed: m.claimed === m.address, banned: !!m.banned,
+            joinedWith: m.joinedWith || (m.adminMade ? 'admin' : null), createdAt: m.createdAt || null, lastSeen: m.lastSeen || null });
+          rows.set(m.address, r);
+        }
+        for (const a of Object.keys(S.wallets)) if (!rows.has(a)) rows.set(a, { address: a, members: [] }); // decided, nobody uses it now
+        const rank = { pending: 0, rejected: 1, approved: 2 };
+        const wallets = [...rows.values()].map(r => { const rv = walletReview(r.address);
+          return Object.assign(r, { status: walletStatus(r.address), reviewedAt: rv ? rv.at : null, by: rv ? rv.by : null, note: rv ? rv.note || '' : '' }); })
+          .sort((a, b) => rank[a.status] - rank[b.status] || Math.max(0, ...b.members.map(x => x.createdAt || 0)) - Math.max(0, ...a.members.map(x => x.createdAt || 0)));
+        return json(res, 200, { approveWallets: !!S.config.approveWallets, wallets,
+          counts: { pending: wallets.filter(w => w.status === 'pending' && w.members.length).length, approved: wallets.filter(w => w.status === 'approved').length, rejected: wallets.filter(w => w.status === 'rejected').length } });
+      }
+      if (sub === 'wallets' && M === 'POST') { // {action: approve|reject|clear, addresses: [...] , note?} — or one address in the path
+        const action = body.action;
+        if (!['approve', 'reject', 'clear'].includes(action)) return json(res, 400, { error: 'action is approve, reject or clear' });
+        const list = (parts[2] ? [parts[2]] : [].concat(body.addresses || [])).map(a => String(a).toLowerCase());
+        if (!list.length || list.length > 1000 || list.some(a => !ADDR_RE.test(a))) return json(res, 400, { error: 'Give one or more wallet addresses (0x + 40 hex).' });
+        const note = cleanText(body.note, 120);
+        for (const a of new Set(list)) {
+          if (action === 'clear') delete S.wallets[a];
+          else S.wallets[a] = { s: action === 'approve' ? 'approved' : 'rejected', at: now(), by: 'owner', note };
+          for (const m of members()) if (m.address === a) { recheckWallet(m); if (walletFor(m)) refreshAll(m); }
+        }
+        save(); return json(res, 200, { ok: true, n: new Set(list).size });
+      }
       if (sub === 'config' && M === 'PUT') {
         const c = S.config;
         if (typeof body.open === 'boolean') c.open = body.open;
@@ -819,9 +867,15 @@ function createSocial(opts) {
         if (typeof body.requireClaim === 'boolean' && body.requireClaim !== c.requireClaim) {
           c.requireClaim = body.requireClaim;
           // numbers read from wallets nobody signed for stop counting at once, and come back after a claim
-          for (const m of members()) { m.vAt = 0; m.vFailAt = 0; m.moneyFailAt = 0;
-            if (c.requireClaim && !walletFor(m)) { m.vdays = null; m.money = null;
-              for (const cc of Object.values(S.comps)) if (cc.money) delete cc.money[m.id]; } }
+          for (const m of members()) recheckWallet(m);
+        }
+        if (typeof body.approveWallets === 'boolean' && body.approveWallets !== c.approveWallets) {
+          c.approveWallets = body.approveWallets;
+          // switching approval on doesn't pull the rug from current members: wallets already in
+          // use count as approved (marked 'existing', so the owner can still review and reject them)
+          if (c.approveWallets && body.grandfather !== false)
+            for (const m of members()) if (m.address && !walletReview(m.address)) S.wallets[m.address] = { s: 'approved', at: now(), by: 'existing', note: '' };
+          for (const m of members()) { recheckWallet(m); if (walletFor(m)) refreshAll(m); }
         }
         for (const [grp, keys] of [['themes', ['ember', 'aurora', 'gold']]])
           if (body[grp] && typeof body[grp] === 'object') for (const k of keys) { const v = clampNum(body[grp][k], 1, 100); if (v != null) c[grp][k] = Math.round(v); }
@@ -924,7 +978,7 @@ function createSocial(opts) {
       if (claimedBy(address)) address = null; // someone proved that wallet is theirs; joining still works, without it
       const key = crypto.randomBytes(24).toString('hex'), id = crypto.randomBytes(6).toString('hex');
       const m = { id, handle, keyHash: sha(key), createdAt: now(), lastSeen: now(), tier: 0, share: sanitizeShare(body.share),
-        address, stats: null, weekXp: {}, money: null, banned: false };
+        address, stats: null, weekXp: {}, money: null, banned: false, joinedWith: S.config.inviteCode ? 'invite' : 'open' };
       S.members[id] = m; S.follows[id] = [];
       for (const L of Object.values(S.leagues)) if (L.autoJoin) joinLeague(L, m);
       recent.push(now()); joinTimes.set(ip, recent);
@@ -1249,7 +1303,7 @@ function createSocial(opts) {
       return json(res, 200, { board, label: BOARDS[board].label, scope: global ? 'global' : 'league', league: L ? { id: L.id, name: L.name } : null,
         rows: rows.slice(0, 50).map(r => ({ rank: r.rank, handle: r.handle, tier: r.tier, value: r.value, sub: r.sub, me: r.id === me.id })),
         me: mine, total: rows.length, optedIn: !needKey, need: needKey,
-        verifyState: !BOARDS[board].verified || !me.share.verify ? null : !canVerify ? 'unavailable' : !me.address ? 'no-wallet' : !walletFor(me) ? 'claim' : !Array.isArray(me.vdays) ? 'pending' : 'ok' });
+        verifyState: !BOARDS[board].verified || !me.share.verify ? null : !canVerify ? 'unavailable' : !me.address ? 'no-wallet' : !walletFor(me) ? walletBlock(me) : !Array.isArray(me.vdays) ? 'pending' : 'ok' });
     }
     if (head === 'feed' && M === 'GET') {
       const scope = query.scope === 'discover' ? 'discover' : 'following';
@@ -1296,7 +1350,9 @@ function createSocial(opts) {
         const need = S.config.unlocksOn && !me.unlocked && S.config.modules.compete > 1 ? S.config.modules.compete : 0;
         if (need && ((me.stats && me.stats.level) || 1) < need) return json(res, 403, { error: 'Competitions unlock at level ' + need + '.' });
         if (c.type === 'return' && !(me.address && me.share.ret)) return json(res, 400, { error: 'Return competitions read your wallet on chain: add your address and switch on “Show % return” in What you share.' });
-        if (c.type === 'return' && !walletFor(me)) return json(res, 400, { error: 'This league only counts claimed wallets. Claim yours under Profile & privacy first.' });
+        if (c.type === 'return' && !walletFor(me)) return json(res, 400, { error: walletBlock(me) === 'approval' ? 'Your wallet is waiting for the league owner’s approval. You can join return competitions once it’s approved.'
+          : walletBlock(me) === 'rejected' ? 'The league owner hasn’t accepted this wallet, so it can’t enter return competitions.'
+          : 'This league only counts claimed wallets. Claim yours under Profile & privacy first.' });
         c.entrants[me.id] = { joinedAt: now() };
         if (me.share.feed) pushEvent(me, { type: 'compete', text: 'joined ' + c.title });
         if (c.type === 'return') refreshMoney(me, true);

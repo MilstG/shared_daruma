@@ -11320,6 +11320,8 @@ function socSharingHtml(D){
     <div class="pz-field"><label for="socHandle2">Public name</label><input type="text" id="socHandle2" maxlength="20" value="${esc(SOC.draftHandle!=null?SOC.draftHandle:SOC.me.handle)}" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
     ${socToggles(SOC.draft,'data-soc-draft')}</div>
   <div class="pz-col">
+    ${SOC.me.walletStatus==='pending'?'<p class="pz-warn">Your wallet is waiting for the league owner’s approval. Until then it doesn’t count for returns, verified Discipline or return competitions.</p>'
+      :SOC.me.walletStatus==='rejected'?'<p class="pz-warn">The league owner hasn’t accepted this wallet. It doesn’t count for returns, verified Discipline or return competitions here.</p>':''}
     <p class="pz-fine">${SOC.me.claimed?`Returns and verified Discipline are read on chain from your claimed wallet (${esc(walletShort(SOC.me.claimedAddress||''))}).`:w?`Returns are read on chain from your first wallet (${esc(walletShort(w.address))}) when “Show % return” or “Show dollar P&L” is on. The server owner can see that address.`:'Add a wallet to take part in return boards and competitions.'}</p>
     <button type="button" class="pz-cta" id="socSaveShare">Save</button>
     <a class="pz-card pz-cardlink" href="#account"><span class="pz-ico" style="background:#23272E;color:var(--pz-soft)">${pzI('shield',20)}</span>
@@ -12124,6 +12126,8 @@ function socOptHtml(d){
   return d&&d.optedIn===false&&d.need!=='global'?`<p class="pz-warn">You’re not on this board. Switch on “${need[d.need]||'Show % return'}” in <a href="#sharing">What you share</a> to appear.</p>`
     :d&&d.verifyState==='no-wallet'?'<p class="pz-warn">Add a wallet so the server can verify your Discipline from your fills.</p>'
     :d&&d.verifyState==='claim'?'<p class="pz-warn">This league only counts claimed wallets. Claim yours under <a href="#account">Account</a>.</p>'
+    :d&&d.verifyState==='approval'?'<p class="pz-warn">Your wallet is waiting for the league owner’s approval. You’ll appear here once it’s approved.</p>'
+    :d&&d.verifyState==='rejected'?'<p class="pz-warn">The league owner hasn’t accepted this wallet, so it can’t be verified here.</p>'
     :d&&d.verifyState==='pending'?'<p class="pz-sub" style="font-size:12px"><span class="pz-spin"></span>Verifying your Discipline from your fills — you’ll appear here shortly.</p>'
     :d&&d.verifyState==='unavailable'?'<p class="pz-sub" style="font-size:12px">This server can’t verify scores right now, so the discipline board is paused.</p>':'';
 }
