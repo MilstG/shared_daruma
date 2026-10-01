@@ -1,4 +1,4 @@
-// Ledger app · part 14 of 14: boot: runs last, once every part above is loaded.
+// Ledger app · part 15 of 15: boot: runs last, once every part above is loaded.
 // ledger.html loads the parts in order as classic scripts sharing one global scope. Code that
 // runs while a part loads (not inside a function called later) may only use names declared in
 // this part or an earlier one; the boot part runs last. See "Development and testing" in README.md.

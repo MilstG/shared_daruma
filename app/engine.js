@@ -1,4 +1,4 @@
-// Ledger app · part 2 of 14: trade reconstruction, state, formatting, risk/R, projection, edge decay, the pattern miner, analytics.
+// Ledger app · part 3 of 15: trade reconstruction, state, formatting, risk/R, projection, edge decay, the pattern miner, analytics.
 // ledger.html loads the parts in order as classic scripts sharing one global scope. Code that
 // runs while a part loads (not inside a function called later) may only use names declared in
 // this part or an earlier one; the boot part runs last. See "Development and testing" in README.md.
@@ -51,7 +51,8 @@ function reconstructTrades(fills, addr, market){
     lastAfter[coin]=after;
     let t=open[coin];
     if(spot&&t&&signed>0&&t.closeSz>0&&Math.abs(before)>EPS)t=open[coin]=realize(t,coin,f,Math.abs(before));
-    if(!t){ t=open[coin]=newTrade(coin,f,after>0?'Long':'Short',0,0,0); }
+    // a fill that closes a position opened before the history began reads the way it was held
+    if(!t){ t=open[coin]=newTrade(coin,f,(Math.abs(after)<EPS?before>0:after>0)?'Long':'Short',0,0,0); }
     const flipped=Math.abs(before)>EPS&&Math.abs(after)>EPS&&(before>0)!==(after>0);
     // a flip fill's notional and fee are split by size between the closing and opening trade —
     // counting the whole fill on both inflated volume, taker share and the fee-tier model
@@ -638,6 +639,126 @@ function spotFifoLots(fills, nameByCoin){
     const b=byYear[y]=byYear[y]||{n:0,proceeds:0,basis:0,gain:0};
     b.n++; b.proceeds+=r.proceeds; b.basis+=r.basis; b.gain+=r.gain; }
   return {rows, open, byYear, unknownQty};
+}
+/* ---- other venues: Lighter, Bybit, Binance → Hyperliquid-shaped fills (pure) ---- */
+// Every venue's fills are normalized to the fill shape the reconstruction already takes:
+// {coin, side:'B'|'A', px, sz, time, fee (USD, + = paid), feeToken, startPosition, closedPnl,
+// crossed (taker), tid, oid, liquidation?}. Coins are plain base symbols ("BTC") for USD(T)-margined
+// perps and "BASE/QUOTE" for spot, so stats group the same asset across venues; the venue rides
+// on each trade (t.venue) and picks its own candles.
+// Derive startPosition and closedPnl per coin where a venue doesn't give them: running position
+// plus average-cost realization on each reducing fill's closing portion. `initial` seeds the
+// position each coin held before the first fill (from today's position minus the window's net,
+// when a venue's history is shorter than the account's) — the first trade then reads as partial
+// instead of a phantom position the other way. Fills must be sorted by time. Mutates and returns.
+function deriveFillPositions(fills, initial){
+  const pos=Object.assign({},initial||{}), avg={}; let derived=false;
+  for(const f of fills){
+    const c=f.coin, q=parseFloat(f.sz), px=parseFloat(f.px);
+    const p=pos[c]||0, signed=f.side==='B'?q:-q;
+    if(f.startPosition==null){ f.startPosition=String(+p.toFixed(10)); derived=true; }
+    const sameDir=p===0||(p>0)===(signed>0);
+    if(f.closedPnl==null){
+      if(sameDir)f.closedPnl='0';
+      else{ const closeQty=Math.min(Math.abs(p),q);
+        f.closedPnl=String(+(((px-(avg[c]||px))*closeQty*(p>0?1:-1))).toFixed(8)); derived=true; }
+    }
+    if(sameDir){ const tot=Math.abs(p)+q; avg[c]=tot>0?((Math.abs(p)*(avg[c]||px)+q*px)/tot):px; }
+    else if(q>Math.abs(p)){ avg[c]=px; } // flip: the remainder opens at this price
+    pos[c]=p+signed;
+    if(Math.abs(pos[c])<1e-9){ pos[c]=0; avg[c]=0; }
+  }
+  return {fills,derived,end:pos};
+}
+// Position each coin held before `fills` began: today's position minus the net of the fills.
+function initialPositions(fills, nowPos){
+  const net={}; for(const f of fills){ const q=parseFloat(f.sz); net[f.coin]=(net[f.coin]||0)+(f.side==='B'?q:-q); }
+  const out={}; for(const c of new Set([...Object.keys(net),...Object.keys(nowPos||{})])){ const v=((nowPos||{})[c]||0)-(net[c]||0); if(Math.abs(v)>1e-9)out[c]=v; }
+  return out;
+}
+// Lighter trade (as /api/v1/trades returns it) → fill for account `idx`. The trade carries each
+// side's position before it (exact startPosition) and its entry cost (exact closedPnl); fees are
+// in millionths of notional. symbolOf(market_id) -> 'BTC' | 'ETH/USDC'.
+function ltNormTrade(tr, idx, symbolOf){
+  const isBid=+tr.bid_account_id===+idx, isAsk=+tr.ask_account_id===+idx; if(!isBid&&!isAsk)return null;
+  const maker=isBid?!tr.is_maker_ask:!!tr.is_maker_ask, coin=symbolOf(tr.market_id); if(!coin)return null;
+  const px=parseFloat(tr.price), sz=parseFloat(tr.size); if(!(px>0)||!(sz>0))return null;
+  const before=parseFloat(maker?tr.maker_position_size_before:tr.taker_position_size_before);
+  const entryQ=parseFloat(maker?tr.maker_entry_quote_before:tr.taker_entry_quote_before);
+  const rate=+(maker?tr.maker_fee:tr.taker_fee)||0, notional=parseFloat(tr.usd_amount)||px*sz;
+  const f={coin,side:isBid?'B':'A',px:String(px),sz:String(sz),time:+tr.timestamp,fee:String(+(notional*rate/1e6).toFixed(8)),feeToken:'USDC',
+    crossed:!maker,tid:String(tr.trade_id_str||tr.trade_id),oid:String(isBid?(tr.bid_id_str||tr.bid_id):(tr.ask_id_str||tr.ask_id)),hash:tr.tx_hash||''};
+  if(!coin.includes('/')&&isFinite(before)){
+    f.startPosition=String(before);
+    const signed=isBid?sz:-sz, reducing=before!==0&&(before>0)!==(signed>0);
+    const exch=tr[(isBid?'bid':'ask')+'_account_pnl'];
+    if(exch!=null&&isFinite(parseFloat(exch)))f.closedPnl=String(parseFloat(exch));
+    else if(reducing&&isFinite(entryQ)&&Math.abs(before)>0){ const entry=entryQ/Math.abs(before), q=Math.min(sz,Math.abs(before));
+      f.closedPnl=String(+((px-entry)*q*(before>0?1:-1)).toFixed(8)); }
+    else f.closedPnl='0';
+  }
+  if(tr.type&&/liquidat|deleverage/i.test(tr.type))f.liquidation={method:tr.type};
+  return f;
+}
+// Estimated funding for Lighter (its per-payment history needs a login): the hourly public rate
+// times the position held at that hour. fundings: {coin: [{timestamp (s), value (USD per unit),
+// direction:'long'|'short' = the side that pays}]}; fills: this account's sorted perp fills.
+function ltFundingEstimate(fills, fundings){
+  const out=[]; const by={};
+  for(const f of fills){ if(f.coin.includes('/'))continue; (by[f.coin]=by[f.coin]||[]).push(f); }
+  for(const c in by){ const F=by[c], rows=(fundings[c]||[]).slice().sort((a,b)=>a.timestamp-b.timestamp); let i=0, pos=0;
+    for(const r of rows){ const t=r.timestamp*1000;
+      while(i<F.length&&F[i].time<t){ const q=parseFloat(F[i].sz); pos=parseFloat(F[i].startPosition)+(F[i].side==='B'?q:-q); i++; }
+      if(i===0&&F.length&&F[0].time>=t)pos=parseFloat(F[0].startPosition)||0; // before this coin's first fill in the window
+      if(Math.abs(pos)<1e-12)continue;
+      const v=parseFloat(r.value); if(!(v>0))continue;
+      const usdc=(r.direction==='long'?-1:1)*pos*v;
+      out.push({time:t,coin:c,usdc:+usdc.toFixed(8),est:true}); } }
+  return out.sort((a,b)=>a.time-b.time);
+}
+// Exchange symbols ↔ coins. USDT-margined perps read as the base ("BTCUSDT" → "BTC"); other
+// settle coins keep a suffix so two contracts on one asset never merge ("BTCUSDC" → "BTC-USDC",
+// Bybit's "BTCPERP" → "BTC-PERP"); spot reads "BASE/QUOTE".
+const CEX_QUOTES=['USDT','USDC','FDUSD','BUSD','USD','EUR','BTC','ETH','BNB'];
+function cexCoin(symbol, kind){
+  const s=String(symbol||'').toUpperCase();
+  if(kind==='spot'){ for(const q of CEX_QUOTES) if(s.endsWith(q)&&s.length>q.length)return s.slice(0,-q.length)+'/'+q; return s; }
+  if(s.endsWith('PERP'))return s.slice(0,-4)+'-PERP';
+  if(s.endsWith('USDT'))return s.slice(0,-4);
+  for(const q of ['USDC','FDUSD','BUSD']) if(s.endsWith(q))return s.slice(0,-q.length)+'-'+q;
+  return s;
+}
+function cexSymbol(coin){
+  const c=String(coin||'');
+  if(c.includes('/'))return c.replace('/','');
+  const m=c.match(/^(.+)-(PERP|USDC|FDUSD|BUSD)$/); if(m)return m[1]+m[2];
+  return c+'USDT';
+}
+const STABLES=new Set(['USDT','USDC','FDUSD','BUSD','USD']);
+// Bybit v5 execution (/v5/execution/list item) → fill. Funding and other non-trade executions are
+// skipped (funding comes from the transaction log). Fees: + paid, − rebate, in feeCurrency.
+function bybitNormExec(e, category){
+  if(!e||!['Trade','BustTrade','AdlTrade','Delivery','Settle'].includes(e.execType||'Trade'))return null;
+  const px=parseFloat(e.execPrice), sz=parseFloat(e.execQty); if(!(px>0)||!(sz>0))return null;
+  const spot=category==='spot', fc=String(e.feeCurrency||(spot?'':'USDT')).toUpperCase();
+  const f={coin:cexCoin(e.symbol,spot?'spot':'perp'),side:e.side==='Buy'?'B':'A',px:String(px),sz:String(sz),time:+e.execTime,
+    fee:String(parseFloat(e.execFee)||0),feeToken:STABLES.has(fc)||!fc?'USDC':fc,crossed:!(e.isMaker===true||e.isMaker==='true'),
+    tid:String(e.execId),oid:String(e.orderId||'')};
+  if(e.execType==='BustTrade'||e.execType==='AdlTrade')f.liquidation={method:e.execType};
+  return f;
+}
+// Binance USD-M futures trade (/fapi/v1/userTrades item) → fill. realizedPnl is the exchange's own
+// (gross of commission), used as closedPnl. Hedge mode legs (positionSide LONG/SHORT) are tagged so
+// each leg is reconstructed on its own. bnbUsd prices BNB-paid commissions (approximate).
+function binanceNormTrade(tr, bnbUsd){
+  const px=parseFloat(tr.price), sz=parseFloat(tr.qty); if(!(px>0)||!(sz>0))return null;
+  const ca=String(tr.commissionAsset||'USDT').toUpperCase(), com=parseFloat(tr.commission)||0;
+  const fee=STABLES.has(ca)?com:ca==='BNB'&&bnbUsd>0?com*bnbUsd:0;
+  const f={coin:cexCoin(tr.symbol,'perp'),side:tr.side==='BUY'?'B':'A',px:String(px),sz:String(sz),time:+tr.time,fee:String(+fee.toFixed(8)),feeToken:'USDC',
+    crossed:!tr.maker,tid:String(tr.id),oid:String(tr.orderId||''),closedPnl:String(parseFloat(tr.realizedPnl)||0)};
+  if(tr.positionSide&&tr.positionSide!=='BOTH')f.leg=tr.positionSide; // LONG | SHORT
+  if(!STABLES.has(ca)&&!(ca==='BNB'&&bnbUsd>0))f.feeUnpriced=ca;
+  return f;
 }
 /* ---- tax presets by country: the matching method, the tax year, and the flags that matter ---- */
 // Not tax advice: these reproduce each country's standard cost-basis METHOD and tax-year

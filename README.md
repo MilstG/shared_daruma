@@ -78,6 +78,40 @@ to clear it.
 
 ## Loading your data
 
+**Exchanges.** Ledger reads four venues, and pools them into one journal:
+
+| Venue | What you give it | How it's read | History |
+|---|---|---|---|
+| **Hyperliquid** | a 0x wallet address | its public API, from the browser | the latest 10,000 fills, then everything Ledger keeps |
+| **Lighter** | the same kind of 0x address | its public API, from the browser | everything (paged back to the first trade) |
+| **Bybit** | a **read-only** API key | signed in your browser, relayed by your server | 2 years |
+| **Binance** (USD-M futures) | a **read-only** API key | signed in your browser, relayed by your server | 3 months, then everything Ledger keeps |
+
+Paste an address in **Add** (or Pulse's first screen) and Ledger checks both
+Hyperliquid and Lighter for it, adding each one that has an account: no choice to
+make, no file to export. A Lighter account's sub-accounts are each their own position
+stream. Lighter reports each fill's prior position and entry cost, so its P&L is exact;
+funding comes from Lighter's public hourly rates times the position you held (its
+per-payment history needs a login), which matches Lighter's own funding totals.
+
+For **Bybit or Binance**, use **Connect exchange** (Pulse: *Connect a read-only API key*)
+and paste an API key and secret. Ledger refuses a key that can trade, transfer or
+withdraw. The secret never leaves your browser: it's kept in this browser's storage
+(never in settings, sync, backups or the encrypted journal), each request is signed
+there, and your server only passes the signed, seconds-long request on, because
+neither exchange accepts calls from a web page directly. So each device connects the
+key once, and the server must be reachable (see README-deploy, *Exchange APIs*, on
+which regions the exchanges answer). Positions held from before the history begins
+are worked out from today's position. Binance hedge-mode legs are separate trades;
+Bybit's history doesn't say which hedge-mode side a fill was on, so those read as
+one-way (the data-health strip says so). Binance BNB-paid fees are priced at today's
+BNB price; fees in other coins aren't counted and are named.
+
+Trades from other venues carry a small venue tag in the trade list. Price
+excursions and replay use that exchange's own candles. The server's scheduled
+refresh, alerts, digests, wallet claims and verified Discipline still read
+Hyperliquid only.
+
 **What gets fetched per wallet:** the full fill history (paginated), funding
 payment history (paginated too — heavy accounts get complete funding, not one
 capped page), the capital-flow ledger (deposits, withdrawals, vault and
@@ -1157,6 +1191,12 @@ curl -H "Authorization: Bearer $READ_TOKEN" -o trades.csv 'https://your.app/api/
 
 ## Limitations, stated honestly
 
+- Bybit and Binance only answer from countries they serve, and they decide by the
+  IP address of whatever calls them, which here is your server. A server in the US
+  is refused by both. The app says so in plain words when it happens, and
+  README-deploy (*Exchange APIs*) shows how to put a small relay somewhere they
+  serve. Binance's API only returns the last 3 months; Ledger keeps everything it
+  has loaded from then on, so load regularly.
 - The exchange serves only the **10,000 most recent fills** per wallet. A wallet
   with more can't be fully backfilled from scratch: the data-health strip flags
   it, and trades whose opening fills fall before that window are marked partial.
@@ -1229,7 +1269,7 @@ separate job on every push.
 
 Architecture in one paragraph: `ledger.html` holds the markup, styles and fonts,
 and loads its code from `app/` as ordinary scripts, in order: vendored Chart.js,
-then fourteen parts from `core.js` (storage, sync, the exchange API) and
+then fifteen parts from `core.js` (storage, sync, the exchange API) and
 `engine.js` (reconstruction and analytics) through the views and Pulse to
 `boot.js`, which runs last. The parts share one global scope, the way the single
 inline script did. **The one rule:** code that runs *while a part loads* (as
@@ -1242,7 +1282,8 @@ server's analytics engine and the test suites read the app through
 `app-source.js`, which returns the page with every part inlined in load order,
 so they still extract the exact code that ships. The Web Worker is built at
 runtime from a Blob of the app's own function sources (no separate worker
-script). The CSP allows network access to `api.hyperliquid.xyz` and the app's own
-origin only. Heavy compute (reconstruction, permutation mining) runs
+script). The CSP allows network access to `api.hyperliquid.xyz`,
+`mainnet.zklighter.elliot.ai` and the app's own origin only (Bybit and Binance go
+through the server's relay, `cex-relay.js`). Heavy compute (reconstruction, permutation mining) runs
 in the worker with a synchronous fallback; fills and candles cache in
 IndexedDB with incremental refresh.

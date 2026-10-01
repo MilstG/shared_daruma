@@ -1,4 +1,4 @@
-// Ledger app · part 6 of 14: extra analytics, journal editing, render(), goals, the day journal, the Project tab.
+// Ledger app · part 7 of 15: extra analytics, journal editing, render(), goals, the day journal, the Project tab.
 // ledger.html loads the parts in order as classic scripts sharing one global scope. Code that
 // runs while a part loads (not inside a function called later) may only use names declared in
 // this part or an earlier one; the boot part runs last. See "Development and testing" in README.md.
@@ -259,7 +259,7 @@ function renderTable(){
     const side=(t.isOpen?`<span class="pill open" data-tip="Position still open in this reconstruction (or emptied via a transfer/withdrawal). Net shown is realized so far.">OPEN</span>`:(isBE(t.net)?`<span class="pill be" data-tip="Break-even scratch: net PnL within ±${esc(fmtUsd(_be))} of zero. Not counted as a win or a loss.">B/E</span> <span class="pill ${t.dir.toLowerCase()}" style="opacity:.7">${t.dir}</span>`:`<span class="pill ${t.dir.toLowerCase()}">${t.dir}</span>`))+liqBadge;
     return `<tr class="trow ${expandedId===t.id?'expanded':''}" data-id="${esc(t.id)}" tabindex="0" role="button" aria-expanded="${expandedId===t.id?'true':'false'}" aria-label="${esc(dispMarket(dcoin(t)))} ${t.dir}${t.isOpen?' open':''}, net ${fmtUsd(t.net)}. Activate to ${expandedId===t.id?'collapse':'expand'} journal.">
       <td class="l num">${fmtDate(t.openTime)}</td>
-      <td class="l" style="font-weight:600">${esc(dispMarket(dcoin(t)))}${multi&&t.wallet?`<div style="margin-top:3px"><span class="tagchip">${esc(labelFor(t.wallet))}</span></div>`:''}</td><td class="l">${side}</td>
+      <td class="l" style="font-weight:600">${esc(dispMarket(dcoin(t)))}${(multi&&t.wallet)||candleVenue(t)?`<div style="margin-top:3px">${candleVenue(t)&&!(t.wallet&&!t.wallet.label&&multi)?`<span class="tagchip">${esc(VENUE_NAMES[t.venue])}</span>`:''}${multi&&t.wallet?`<span class="tagchip">${esc(labelFor(t.wallet))}</span>`:''}</div>`:''}</td><td class="l">${side}</td>
       <td class="num">${fmtNum(t.avgEntry)}</td><td class="num">${fmtNum(t.avgExit)}</td>
       <td class="num">${fmtNum(t.maxSize)}</td>
       <td class="num ${outClass(t.net)}" style="font-weight:600">${fmtUsd(t.net)}</td>

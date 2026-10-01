@@ -18,7 +18,7 @@ const _avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
 
 const { setupScorecards } = await evalModule(['setupScorecards'], ['setupScorecards'], PRELUDE);
 const { csvParseRows, csvNum, parseFillsCsv, reconstructTrades } = await evalModule(
-  ['csvParseRows', 'csvNum', 'parseFillsCsv', 'isPerp', 'newTrade', 'tallyFill', 'reconstructTrades'],
+  ['csvParseRows', 'csvNum', 'parseFillsCsv', 'deriveFillPositions', 'isPerp', 'newTrade', 'tallyFill', 'reconstructTrades'],
   ['csvParseRows', 'csvNum', 'parseFillsCsv', 'reconstructTrades'], PRELUDE);
 
 const DAY = 86400000, T0 = 1700000000000;

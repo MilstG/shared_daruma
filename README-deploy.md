@@ -10,7 +10,7 @@ measurements — so they survive reboots, redeploys, and device switches.
 
 ```
 ledger.html     the app's page (markup, styles, fonts) — still works from file:// with app/ beside it
-app/            the app's code: chart.umd.js + 14 parts loaded in order (core.js … boot.js)
+app/            the app's code: chart.umd.js + 15 parts loaded in order (core.js, venues.js … boot.js)
 app-source.js   the page with app/ inlined — what the analytics engine and the tests read
 server.js       companion server: persistence + read-only analytics API (/api/v1),
                 scheduled refresh, webhook alerts, weekly digests, server backups
@@ -24,6 +24,7 @@ tech.html       technical reference, served at /docs
 package.json    start script + node version (one optional dependency, the Anthropic SDK, used only with COACH_AI)
 webauthn.js     passkey (WebAuthn) checks for Pulse sign-in, no dependencies
 offsite.js      encrypted off-site backups to any S3-compatible bucket, plus the restore CLI
+cex-relay.js    forwards browser-signed, read-only Bybit/Binance requests (POST /api/cex/relay)
 tests/          test suites (`npm test`; CI runs them on every push)
 ```
 
@@ -154,6 +155,51 @@ node offsite.js get ledger/backup/<stamp>.json.gz.enc backup.json  # an app back
 ```
 
 Point `DATA_DIR` at the restored folder (or copy it onto a fresh volume) and start the server.
+
+## Exchange APIs (Bybit, Binance)
+
+Hyperliquid and Lighter are read straight from the browser and need nothing here.
+Bybit and Binance don't accept calls from a web page, so the browser signs each
+request with the member's read-only key and posts it to this server's
+`POST /api/cex/relay`, which forwards it. The relay only forwards `GET`s to the
+exchanges' own hosts, on the read-only endpoints the app uses, with only the signing
+headers. It never sees an API secret. It's open to the owner's token and to Pulse
+members, and each caller gets `CEX_RELAY_PER_MIN` requests a minute.
+
+**Region matters.** The exchanges refuse some countries by the caller's IP, and the
+caller is your server. Both refuse the **US**, which rules out Railway's US regions.
+Railway's EU West region is in the Netherlands, which Binance doesn't serve, and its
+Southeast Asia region is in Singapore, which Bybit doesn't serve. The lists change, so check
+each exchange's restricted-countries page. When an exchange refuses, the app tells the
+member exactly that, not "bad key".
+
+Two ways to fix it:
+
+1. **Run the whole server in a region both serve** (e.g. a VPS in Japan or
+   Germany, whatever the current lists allow).
+2. **Keep the server where it is and add a relay** in a region the exchange serves:
+   deploy this same repository a second time (another Railway service in a different
+   region, or any small VM) with
+   `CEX_RELAY_ONLY=1` and a long random `CEX_RELAY_SECRET`. It then answers nothing
+   but `/api/health` and the relay, and only to callers that present the secret. On
+   the main server set `CEX_RELAY_URL` to the relay's address and the same
+   `CEX_RELAY_SECRET`. Per-exchange overrides (`CEX_RELAY_URL_BYBIT`,
+   `CEX_RELAY_URL_BINANCE`) let each exchange use a relay in a region it serves.
+
+| Var | Default | Notes |
+|---|---|---|
+| `CEX_RELAY_URL` | *(unset)* | Pass Bybit/Binance requests to a relay copy at this address instead of calling the exchange from here |
+| `CEX_RELAY_URL_BYBIT` / `CEX_RELAY_URL_BINANCE` | *(unset)* | The same, per exchange (wins over `CEX_RELAY_URL`) |
+| `CEX_RELAY_SECRET` | *(unset)* | Shared by the main server and the relay copy |
+| `CEX_RELAY_ONLY` | *(off)* | `1` on the relay copy: relay and health check only |
+| `CEX_RELAY_PER_MIN` | `1200` | Relayed requests per caller per minute (a first two-year Bybit load is a few hundred) |
+| `BYBIT_API_HOST` | `api.bybit.com` | Another Bybit API host if your account lives on one (e.g. a regional entity's) |
+
+If a member puts an IP restriction on their Binance key, it must include the IP the
+exchange sees: the relay's, or this server's if there is no relay. Railway's outbound
+IPs aren't fixed unless you enable a static IP, so a key without an IP restriction is
+simpler. Bybit expires keys with no IP restriction after 90 days, and the app shows the
+expiry date when the key is connected.
 
 ## Verifying persistence
 

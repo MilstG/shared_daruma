@@ -1,4 +1,4 @@
-// Ledger app · part 8 of 14: tax PDF, fee tiers, the weekly review, variance, risk creep, guardrails, demo mode, notifications, PWA.
+// Ledger app · part 9 of 15: tax PDF, fee tiers, the weekly review, variance, risk creep, guardrails, demo mode, notifications, PWA.
 // ledger.html loads the parts in order as classic scripts sharing one global scope. Code that
 // runs while a part loads (not inside a function called later) may only use names declared in
 // this part or an earlier one; the boot part runs last. See "Development and testing" in README.md.

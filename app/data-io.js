@@ -1,4 +1,4 @@
-// Ledger app · part 7 of 14: wallets and loading, CSV import, UI events.
+// Ledger app · part 8 of 15: wallets and loading, CSV import, UI events.
 // ledger.html loads the parts in order as classic scripts sharing one global scope. Code that
 // runs while a part loads (not inside a function called later) may only use names declared in
 // this part or an earlier one; the boot part runs last. See "Development and testing" in README.md.
@@ -6,21 +6,30 @@
 /* ============================ wallets + load ============================ */
 function renderWallets(){
   $('wallets').innerHTML=settings.wallets.map((w,i)=>
-    `<span class="wchip">${w.label?`<span class="lbl">${esc(w.label)}</span>`:''}<span class="ad">${esc(walletShort(w.address))}</span><button class="rm" data-rm="${i}" title="Remove" aria-label="Remove wallet ${esc(w.label||walletShort(w.address))}">×</button></span>`
+    `<span class="wchip">${w.label?`<span class="lbl">${esc(w.label)}</span>`:''}<span class="ad">${esc(walletShort(w.address))}</span>${isCexVenue(venueOf(w))?`<button class="rm" data-cexkey="${i}" title="Enter this account’s API key on this device" aria-label="API key for ${esc(labelFor(w))}">key</button>`:''}<button class="rm" data-rm="${i}" title="Remove" aria-label="Remove wallet ${esc(w.label||walletShort(w.address))}">×</button></span>`
   ).join('');
 }
+// One address, every venue it trades on: Hyperliquid and Lighter are both checked and each one
+// with an account is added (venues.js: walletIdsFor). "lighter:0x…" adds the Lighter one only.
 async function addWalletFromInput(){
-  const address=$('walletAddr').value.trim(), label=$('walletLabel').value.trim();
-  if(!/^0x[0-9a-fA-F]{40}$/.test(address)){ setErr('That doesn\u2019t look like a 0x wallet address (42 chars).'); return false; }
-  if(settings.wallets.some(w=>w.address.toLowerCase()===address.toLowerCase())){ setErr('That wallet is already in the list.'); return false; }
-  settings.wallets.push({address,label}); await Store.set(S_KEY,settings);
+  const raw=$('walletAddr').value.trim(), label=$('walletLabel').value.trim();
+  const forced=/^lighter:/i.test(raw), address=raw.replace(/^lighter:/i,'');
+  if(!/^0x[0-9a-fA-F]{40}$/.test(address)){ setErr('That doesn\u2019t look like a 0x wallet address (42 chars). For Bybit or Binance, use \u201cConnect exchange\u201d.'); return false; }
+  setStatus('Looking for '+walletShort(address)+' on Hyperliquid and Lighter\u2026',true);
+  const ids=await walletIdsFor(address,forced?['lighter']:null);
+  const have=new Set(settings.wallets.map(w=>String(w.address).toLowerCase()));
+  const add=ids.filter(id=>!have.has(id.toLowerCase()));
+  if(!add.length){ setErr('That wallet is already in the list.'); return false; }
+  for(const id of add)settings.wallets.push({address:id,label});
+  await Store.set(S_KEY,settings);
   $('walletAddr').value=''; $('walletLabel').value=''; renderWallets();
-  setStatus(settings.wallets.length+' wallet'+(settings.wallets.length===1?'':'s')+' in the list · hit Load all.');
+  const names=add.map(id=>VENUE_NAMES[venueOfAddr(id)]);
+  setStatus('Added on '+names.join(' and ')+' · '+settings.wallets.length+' wallet'+(settings.wallets.length===1?'':'s')+' in the list · hit Load all.');
   return true;
 }
 async function removeWallet(i){
   const w=settings.wallets[i]; if(!w)return;
-  settings.wallets.splice(i,1); await Store.set(S_KEY,settings); renderWallets();
+  settings.wallets.splice(i,1); await Store.set(S_KEY,settings); renderWallets(); forgetVenueWallet(w);
   allTrades=allTrades.filter(t=>!t.wallet||t.wallet.address!==w.address);
   openPositions=openPositions.filter(p=>!p.wallet||p.wallet.address!==w.address);
   spotHoldings=spotHoldings.filter(p=>!p.wallet||p.wallet.address!==w.address);
@@ -59,6 +68,7 @@ async function bootFromCache(){
     const [view,sm0]=await Promise.all([idbGet(VIEW_KEY),idbGet('spotMaps')]);
     const sm=sm0&&sm0.nameByCoin?sm0:{nameByCoin:{},markBySym:{USDC:1}};
     const per=await Promise.all(settings.wallets.map(async w=>{ const a=w.address;
+      if(venueOf(w)!=='hyperliquid')return venueBootTrades(w);
       const [fc,fd]=await Promise.all([idbGet('flc:'+a).then(unpackFillCache).catch(()=>null),idbGet('fnd:'+a).catch(()=>null)]);
       if(!fc||!Array.isArray(fc.fills)||!fc.fills.length)return null;
       const frows=fd&&fd.v===1&&Array.isArray(fd.rows)?fd.rows:[], lastF=fd&&fd.last||0;
@@ -92,6 +102,7 @@ const fundKey=r=>r.time+'|'+r.coin;
 var _recMemo={};
 const recSig=(fills,lastF,frows,lastR)=>fills.length+'|'+lastF+'|'+frows.length+'|'+lastR;
 async function loadWallet(w,fresh,spotP){
+  if(venueOf(w)!=='hyperliquid')return loadVenueWallet(w,fresh); // Lighter, Bybit, Binance: venues.js
   const a=w.address, fcKey='flc:'+a, fdKey='fnd:'+a, lgKey='lgu:'+a;
   const [fc0,fd0,lg0]=fresh?[null,null,null]:await Promise.all([idbGet(fcKey).then(unpackFillCache).catch(()=>null),idbGet(fdKey).catch(()=>null),idbGet(lgKey).catch(()=>null)]);
   let fcache=fc0&&fc0.v===2&&Array.isArray(fc0.fills)?fc0:null;
@@ -161,10 +172,11 @@ async function loadAll(opts){ opts=opts||{}; const fresh=!!opts.fresh, auto=!!op
     // stays inside the exchange's rate limit
     setStatus('Loading '+settings.wallets.length+' wallet'+(settings.wallets.length===1?'':'s')+'…',true);
     const spotP=fetchSpotMaps().then(m=>{ if(m&&Object.keys(m.nameByCoin||{}).length)idbSet('spotMaps',m); return m; });
-    const results=await mapLimit(settings.wallets,2,w=>loadWallet(w,fresh,spotP).catch(e=>{ console.warn('wallet load',e); return {failed:true}; }));
+    const results=await mapLimit(settings.wallets,2,w=>loadWallet(w,fresh,spotP).catch(e=>{ console.warn('wallet load',e); return {failed:true,error:e&&e.message}; }));
     spotMaps=await spotP;
     results.forEach((r,i)=>{ const w=settings.wallets[i];
-      if(r.failed){ failed.push(labelFor(w)); return; }
+      // another venue's reason is worth reading (a key to add on this device, a region the exchange refuses)
+      if(r.failed){ failed.push(labelFor(w)+(r.error&&venueOf(w)!=='hyperliquid'?' — '+r.error:'')); return; }
       newFills+=r.added; if(r.cached)cachedN++; if(r.truncNote)truncated.push(r.truncNote);
       for(const f of r.flows)flowsAcc.push(f); skippedAcc+=r.skipped; totalFills+=r.nFills;
       trades=trades.concat(r.trades); positions=positions.concat(r.positions);
@@ -199,7 +211,7 @@ async function loadAll(opts){ opts=opts||{}; const fresh=!!opts.fresh, auto=!!op
     // a background refresh failing (offline laptop, transient outage) is not banner-worthy —
     // it retries in 3 minutes; only a user-initiated load earns the error treatment
     if(auto) setStatus('Auto-refresh failed ('+e.message+') — retrying on the next cycle.');
-    else setErr('Couldn\u2019t reach Hyperliquid from the browser ('+e.message+'). Use “Paste data” instead.'); }
+    else setErr('Couldn\u2019t reach the exchange from the browser ('+e.message+'). Use “Paste data” instead.'); }
   finally{ $('loadAll').disabled=false; }
 
   } finally { _loading=false; _pzQuiet=false; if(PZ&&pzS.note&&pzS.note.kind==='busy')pzS.note=null;
@@ -319,23 +331,7 @@ function parseFillsCsv(text){
   fills.sort((a,b)=>a.time-b.time||(desc?b.oid-a.oid:a.oid-b.oid));
   // derive startPosition and closedPnl per coin where absent: running position, and
   // average-cost realization on the closing portion of each reducing fill
-  let derived=false;
-  const pos={}, avg={};
-  for(const f of fills){
-    const c=f.coin, q=parseFloat(f.sz), px=parseFloat(f.px);
-    const p=pos[c]||0, signed=f.side==='B'?q:-q;
-    if(f.startPosition==null){ f.startPosition=String(p); derived=true; }
-    const sameDir=p===0||(p>0)===(signed>0);
-    if(f.closedPnl==null){
-      if(sameDir)f.closedPnl='0';
-      else{ const closeQty=Math.min(Math.abs(p),q);
-        f.closedPnl=String(+(((px-(avg[c]||px))*closeQty*(p>0?1:-1))).toFixed(8)); derived=true; }
-    }
-    if(sameDir){ const tot=Math.abs(p)+q; avg[c]=tot>0?((Math.abs(p)*(avg[c]||px)+q*px)/tot):px; }
-    else if(q>Math.abs(p)){ avg[c]=px; } // flip: remainder opens at this price
-    pos[c]=p+signed;
-    if(Math.abs(pos[c])<1e-9){ pos[c]=0; avg[c]=0; }
-  }
+  const {derived}=deriveFillPositions(fills);
   const note=fills.length+' rows mapped ('+['time','coin','side','px','sz'].map(k=>k+'←'+rows[0][col[k]]).join(', ')
     +(col.fee!=null?', fee←'+rows[0][col.fee]:', no fee column')
     +(skipped?', '+skipped+' rows skipped':'')+')';
@@ -371,7 +367,38 @@ $('addWallet').onclick=addWalletFromInput;
 $('loadAll').onclick=e=>loadAll({fresh:!!(e&&(e.shiftKey||e.altKey))});
 $('walletAddr').addEventListener('keydown',e=>{ if(e.key==='Enter')loadAll(); });
 $('walletLabel').addEventListener('keydown',e=>{ if(e.key==='Enter')$('walletAddr').focus(); });
-$('wallets').addEventListener('click',e=>{ const b=e.target.closest('[data-rm]'); if(b)removeWallet(+b.dataset.rm); });
+$('wallets').addEventListener('click',e=>{ const b=e.target.closest('[data-rm]'); if(b)removeWallet(+b.dataset.rm);
+  const k=e.target.closest('[data-cexkey]'); if(k){ const w=settings.wallets[+k.dataset.cexkey]; if(w)openCexConnect(venueOf(w),w.label); } });
+$('cexBtn').onclick=()=>openCexConnect();
+// Bybit / Binance: a read-only API key, checked, kept on this device (venues.js: cexConnect)
+function openCexConnect(venue, label){
+  const bg=document.createElement('div'); bg.className='modal-bg show'; bg.setAttribute('role','dialog'); bg.setAttribute('aria-modal','true'); bg.setAttribute('aria-label','Connect an exchange');
+  venue=isCexVenue(venue)?venue:'bybit';
+  bg.innerHTML=`<div class="modal cexbox"><h2>Connect an exchange</h2>
+    <div class="seg" role="group" aria-label="Exchange">${['bybit','binance'].map(v=>`<button type="button" data-cexv="${v}" aria-pressed="${v===venue}">${VENUE_NAMES[v]}</button>`).join('')}</div>
+    <p id="cexSteps"></p>
+    <div class="field"><label for="cexKey">API key</label><input type="text" id="cexKey" autocomplete="off" spellcheck="false"></div>
+    <div class="field"><label for="cexSecret">API secret</label><input type="password" id="cexSecret" autocomplete="off" spellcheck="false"></div>
+    <div class="field"><label for="cexLabel">Label (optional)</label><input type="text" id="cexLabel" maxlength="40" value="${esc(label||'')}" autocomplete="off"></div>
+    <p class="mini-note">Read-only keys only — a key that can trade or withdraw is refused. The secret stays in this browser: each request is signed here and your server only passes it on. Lighter needs no key: add its 0x address like a Hyperliquid wallet.</p>
+    <p class="lead neg-t" id="cexErr" role="alert"></p>
+    <div class="modal-actions"><button class="btn ghost" data-cex="close">Cancel</button><button class="btn" data-cex="go">Connect</button></div></div>`;
+  document.body.appendChild(bg);
+  const show=()=>{ $('cexSteps').innerHTML=CEX_HELP[venue].steps+` <a href="${CEX_HELP[venue].url}" target="_blank" rel="noopener">Open ${VENUE_NAMES[venue]} API settings</a>`;
+    bg.querySelectorAll('[data-cexv]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.cexv===venue))); };
+  show(); setTimeout(()=>{ const f=$('cexKey'); if(f)f.focus(); },0);
+  const close=()=>{ bg.remove(); document.removeEventListener('keydown',onKey); };
+  const onKey=e=>{ if(e.key==='Escape')close(); }; document.addEventListener('keydown',onKey);
+  bg.addEventListener('click',async e=>{
+    if(e.target===bg)return close();
+    const v=e.target.closest('[data-cexv]'); if(v){ venue=v.dataset.cexv; show(); return; }
+    const a=e.target.closest('[data-cex]'); if(!a)return;
+    if(a.dataset.cex==='close')return close();
+    a.disabled=true; $('cexErr').textContent=''; const old=a.textContent; a.textContent='Checking the key…';
+    try{ const r=await cexConnect(venue,$('cexKey').value,$('cexSecret').value,$('cexLabel').value);
+      close(); renderWallets(); setStatus(VENUE_NAMES[venue]+' connected'+(r.note?' · key '+r.note:'')+' · loading…',true); loadAll(); }
+    catch(err){ $('cexErr').textContent=err.message; a.disabled=false; a.textContent=old; } });
+}
 // debounced: these fire per keystroke, and each render() destroys and rebuilds all nine
 // dashboard charts — typing "1500" used to trigger four full re-renders
 let _setRenderTimer=null;

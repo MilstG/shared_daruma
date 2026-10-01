@@ -1,4 +1,4 @@
-// Ledger app · part 5 of 14: price excursions (MAE/MFE), trade replay, the benchmark, auto-refresh.
+// Ledger app · part 6 of 15: price excursions (MAE/MFE), trade replay, the benchmark, auto-refresh.
 // ledger.html loads the parts in order as classic scripts sharing one global scope. Code that
 // runs while a part loads (not inside a function called later) may only use names declared in
 // this part or an earlier one; the boot part runs last. See "Development and testing" in README.md.
@@ -32,7 +32,9 @@ function chunkRanges(ranges,maxSpan){ const out=[];
     while(r[1]-a>maxSpan){ out.push([a,a+maxSpan]); a+=maxSpan; }
     out.push([a,r[1]]); }
   return out; }
-const excKey=(coin,itvName)=>coin+'|'+itvName;
+// candles are per venue: a Lighter or Bybit trade is measured on its own exchange's prices
+const venueCoin=(venue,coin)=>(venue?VENUE_NAMES[venue]+' ':'')+coin;
+const excKey=(coin,itvName,venue)=>(venue?venue+':':'')+coin+'|'+itvName;
 function mergeRanges(wins,gap){ const s=[...wins].sort((a,b)=>a[0]-b[0]); const out=[];
   for(const w of s){ const L=out[out.length-1];
     if(L&&w[0]<=L[1]+(gap||0)){ if(w[1]>L[1])L[1]=w[1]; } else out.push([w[0],w[1]]); }
@@ -50,8 +52,8 @@ function planExcursions(trades,now,pass){
   const plan=new Map();
   for(const t of trades){
     if(t.isOpen||!(t.avgEntry>0)||!(t.closeTime>t.openTime))continue;
-    const itv=chooseItv(t,now,pass), k=excKey(t.coin,itv.name);
-    let e=plan.get(k); if(!e){ e={coin:t.coin,itv,windows:[]}; plan.set(k,e); }
+    const itv=chooseItv(t,now,pass), venue=candleVenue(t), k=excKey(t.coin,itv.name,venue);
+    let e=plan.get(k); if(!e){ e={coin:t.coin,venue,itv,windows:[]}; plan.set(k,e); }
     e.windows.push([t.openTime-itv.ms,t.closeTime+itv.ms]);
   }
   // merge windows closer than 30 candles apart — one request instead of many tiny ones —
@@ -184,7 +186,7 @@ async function runExcursions(closed,openTrades){
     const plan=planExcursions(pending,now,pass);
     const jobs=[]; let reqTotal=0;
     for(const [k,e] of plan){
-      if(skippedCoins.has(e.coin))continue;
+      if(skippedCoins.has(venueCoin(e.venue,e.coin)))continue;
       let cache=null; try{ cache=await idbGet('cnd:'+k); }catch(err){}
       if(!cache||cache.v!==1||!Array.isArray(cache.candles)||!Array.isArray(cache.ranges))cache={v:1,candles:[],ranges:[]};
       const missing=[]; for(const r of e.ranges)for(const u of uncoveredRanges(r,cache.ranges))if(u[1]-u[0]>e.itv.ms)missing.push(u);
@@ -196,19 +198,19 @@ async function runExcursions(closed,openTrades){
       for(const u of j.missing){
         req++; grandReq++;
         setStatus(`Fetching candles… ${req}/${reqTotal}${pass?` (retry pass ${pass})`:''} (${j.e.coin} ${j.e.itv.name})`,true);
-        try{ const c=await fetchCandles(j.e.coin,j.e.itv.name,u[0],u[1]);
+        try{ const c=await venueFetchCandles(j.e.venue,j.e.coin,j.e.itv.name,u[0],u[1]);
           j.cache.candles=mergeCandles(j.cache.candles,c.rows);
           if(c.coveredTo>u[0]) j.cache.ranges=mergeRanges([...j.cache.ranges,[u[0],c.coveredTo]],1);
           await sleep(90);
-        }catch(err){ skippedCoins.add(j.e.coin); } // no candles for this coin (some HIP-3/spot names) — skip, don't sink the run
+        }catch(err){ skippedCoins.add(venueCoin(j.e.venue,j.e.coin)); } // no candles for this coin (some HIP-3/spot names) — skip, don't sink the run
       }
       try{ await idbSet('cnd:'+j.k,j.cache); }catch(err){}
       store.set(j.k,{candles:j.cache.candles,ms:j.e.itv.ms});
     }
     const still=[];
     for(const t of pending){
-      if(skippedCoins.has(t.coin))continue; // coin-level failure: retrying coarser won't help
-      const itv=chooseItv(t,now,pass), s=store.get(excKey(t.coin,itv.name));
+      if(skippedCoins.has(venueCoin(candleVenue(t),t.coin)))continue; // coin-level failure: retrying coarser won't help
+      const itv=chooseItv(t,now,pass), s=store.get(excKey(t.coin,itv.name,candleVenue(t)));
       const ex=s?computeExcursion(t,s.candles,s.ms):null;
       if(ex){ ex.itvMs=itv.ms; measured.set(t.id,{t,ex}); }
       else still.push(t); // likely beyond this interval's retention — coarser candles next pass
@@ -365,13 +367,13 @@ async function ensureTradeCandles(t){
   // fetch (cache-aware) candles for one trade's window, falling back coarser like the main scan
   const now=Date.now();
   for(let pass=0;pass<3;pass++){
-    const itv=chooseItv(t,now,pass), k=excKey(t.coin,itv.name);
+    const itv=chooseItv(t,now,pass), k=excKey(t.coin,itv.name,candleVenue(t));
     let cache=null; try{ cache=await idbGet('cnd:'+k); }catch(e){}
     if(!cache||cache.v!==1||!Array.isArray(cache.candles)||!Array.isArray(cache.ranges))cache={v:1,candles:[],ranges:[]};
     const want=[t.openTime-itv.ms,(t.isOpen?now:t.closeTime)+itv.ms];
     for(const u of uncoveredRanges(want,cache.ranges)){
       if(u[1]-u[0]<=itv.ms)continue;
-      try{ const c=await fetchCandles(t.coin,itv.name,u[0],u[1]);
+      try{ const c=await venueFetchCandles(candleVenue(t),t.coin,itv.name,u[0],u[1]);
         cache.candles=mergeCandles(cache.candles,c.rows);
         if(c.coveredTo>u[0]) cache.ranges=mergeRanges([...cache.ranges,[u[0],c.coveredTo]],1);
       }catch(e){ return null; }

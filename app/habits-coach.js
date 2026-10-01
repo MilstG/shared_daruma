@@ -1,4 +1,4 @@
-// Ledger app · part 9 of 14: leverage, rules and the tripwire, plan adherence, leaderboard, funding carry, habits, the coach.
+// Ledger app · part 10 of 15: leverage, rules and the tripwire, plan adherence, leaderboard, funding carry, habits, the coach.
 // ledger.html loads the parts in order as classic scripts sharing one global scope. Code that
 // runs while a part loads (not inside a function called later) may only use names declared in
 // this part or an earlier one; the boot part runs last. See "Development and testing" in README.md.

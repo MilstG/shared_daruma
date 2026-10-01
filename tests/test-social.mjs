@@ -361,9 +361,11 @@ t('only process numbers go out: no trades, notes, P&L or addresses in the stats 
   eq(p.badges, [{ id: 'x', t: 'X' }]); eq(p.lastChallenge, 'When a, b.');
 });
 t('the wallet address goes to the server only when a money toggle or “show address” needs it', () => {
-  const c2 = { settings: { wallets: [{ address: '0xabc' }] } }; vm.createContext(c2); vm.runInContext(grabFn('socAddressFor'), c2);
+  const c2 = { settings: { wallets: [{ address: '0xabc' }] } }; vm.createContext(c2); vm.runInContext(grabFn('socWallet') + grabFn('socAddressFor'), c2);
   eq(c2.socAddressFor({ profile: true, boards: true }), null);
   eq(c2.socAddressFor({ ret: true }), '0xabc'); eq(c2.socAddressFor({ addr: true }), '0xabc');
+  c2.settings.wallets = [{ address: 'lighter:0xdef' }, { address: 'bybit:0123456789ab' }, { address: '0xabc' }];
+  eq(c2.socAddressFor({ ret: true }), '0xabc', 'the server reads Hyperliquid: other venues are skipped');
   c2.settings.wallets = []; eq(c2.socAddressFor({ ret: true }), null);
   ok(!/address:w\?w\.address/.test(grabFn('socAction')), 'join and save go through socAddressFor');
 });

@@ -1,4 +1,4 @@
-// Ledger app · part 11 of 14: Pulse: the simple, gamified view at /pulse.
+// Ledger app · part 12 of 15: Pulse: the simple, gamified view at /pulse.
 // ledger.html loads the parts in order as classic scripts sharing one global scope. Code that
 // runs while a part loads (not inside a function called later) may only use names declared in
 // this part or an earlier one; the boot part runs last. See "Development and testing" in README.md.
@@ -997,18 +997,36 @@ function pzConnectHtml(){
   if(acctWantsUnlock()&&SOC.cfg&&SOC.cfg.enabled)return `<div class="pz-connect">${pzRing('',0.72,PZ_COL.good,{size:64})}<h1>Pulse</h1>${acctConnectHtml()}
     ${err?`<p class="pz-fine pz-err" role="alert">${esc(err)}</p>`:''}</div>`;
   return `<div class="pz-connect">${pzRing('',0.72,PZ_COL.good,{size:64})}
-    <h1>Pulse</h1><p class="pz-sub" style="font-size:16px">Three dials for your trading day — readiness, discipline and risk — built from your own Hyperliquid trades.</p>
+    <h1>Pulse</h1><p class="pz-sub" style="font-size:16px">Three dials for your trading day — readiness, discipline and risk — built from your own trades on Hyperliquid, Lighter, Bybit or Binance.</p>
     ${pzLinkCardHtml()}
     ${settings.wallets.length&&!busy?`<p class="pz-sub">No closed trades found yet for ${settings.wallets.map(w=>esc(labelFor(w))).join(', ')}. Add another address, or look around with sample data.</p>`:''}
-    <div class="pz-field"><label for="pzAddr">Your Hyperliquid wallet address</label><input type="text" id="pzAddr" placeholder="0x…" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+    <div class="pz-field"><label for="pzAddr">Your wallet address (Hyperliquid or Lighter)</label><input type="text" id="pzAddr" placeholder="0x…" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
     ${err?`<p class="pz-fine pz-err" role="alert">${esc(err)}</p>`:''}
     <button type="button" class="pz-cta" id="pzConnect"${busy?' disabled':''}>${busy?'<span class="pz-spin"></span>Loading your trades…':'Connect'}</button>
+    ${pzS.cex?pzCexFormHtml():`<button type="button" class="pz-ghost" data-pz-cex="bybit">Trade on Bybit or Binance? Connect a read-only API key</button>`}
     <button type="button" class="pz-ghost" id="pzDemo">Try it with sample data</button>
-    <p class="pz-fine">Read-only: you paste a public address — no wallet connection or keys needed to see your trades. Your trades come straight from Hyperliquid’s public API${synced?' and your journal syncs to this server.':' and your journal stays in this browser.'}</p>
+    <p class="pz-fine">Read-only: you paste a public address — no wallet connection or keys needed to see your trades. Your trades come straight from the exchange’s public API${synced?' and your journal syncs to this server.':' and your journal stays in this browser.'}</p>
     ${pzLinkCardHtml()?'':acctConnectHtml()}
     ${tokenAsk?`<details><summary class="pz-fine" style="cursor:pointer">Own this server? Sign in to sync</summary>${pzTokenHtml()}</details>`:''}
     <p class="pz-fine"><a href="${esc(pzFullHref())}">Open the full journal instead</a></p></div>`;
 }
+// Bybit / Binance: a read-only API key (venues.js: cexConnect, CEX_HELP)
+function pzCexFormHtml(){ const v=pzS.cex.venue||'bybit';
+  return `<div class="pz-cex" style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+    <div class="pz-seg" role="group" aria-label="Exchange">${['bybit','binance'].map(x=>`<button type="button" data-pz-cex="${x}" aria-pressed="${x===v}" style="flex:1">${VENUE_NAMES[x]}</button>`).join('')}</div>
+    <p class="pz-fine">${CEX_HELP[v].steps} <a href="${CEX_HELP[v].url}" target="_blank" rel="noopener">Open ${VENUE_NAMES[v]}</a></p>
+    <div class="pz-field"><label for="pzCexKey">API key</label><input type="text" id="pzCexKey" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+    <div class="pz-field"><label for="pzCexSecret">API secret</label><input type="password" id="pzCexSecret" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+    ${pzS.cex.err?`<p class="pz-fine pz-err" role="alert">${esc(pzS.cex.err)}</p>`:''}
+    <div style="display:flex;gap:8px"><button type="button" class="pz-cta" id="pzCexGo"${pzS.cex.busy?' disabled':''}>${pzS.cex.busy?'<span class="pz-spin"></span>Checking the key…':'Connect '+VENUE_NAMES[v]}</button><button type="button" class="pz-ghost" id="pzCexX">Cancel</button></div>
+    <p class="pz-fine">Read-only keys only — a key that can trade or withdraw is refused. The secret stays on this device; your server only passes the signed requests on.</p></div>`; }
+async function pzCexGo(){
+  const k=$('pzCexKey'), sct=$('pzCexSecret'); pzS.cex.busy=true; pzS.cex.err=''; pzRender();
+  try{ const r=await cexConnect(pzS.cex.venue||'bybit',k?k.value:'',sct?sct.value:'','');
+    const name=VENUE_NAMES[pzS.cex.venue||'bybit']; pzS.cex=null; pzS.sheet=false;
+    ['pzCexKey','pzCexSecret'].forEach(id=>{ const el=$(id); if(el)el.value=''; });
+    pzNote(name+' connected'+(r.note?' · key '+r.note:'')+' — loading your trades…','busy'); return loadAll(); }
+  catch(e){ if(pzS.cex){ pzS.cex.busy=false; pzS.cex.err=e.message; } pzRender(); } }
 function pzLoadingHtml(){
   const m=pzS.note&&pzS.note.m||'Loading your trades…';
   return `<div class="pz-connect" style="align-items:center;text-align:center">${pzRing('',0.3,PZ_COL.good,{size:88})}
@@ -1029,7 +1047,8 @@ function pzSheetHtml(){
     <section><span class="pz-lbl" style="color:var(--pz-muted)">Wallets</span>
       ${settings.wallets.map((w,i)=>`<div class="pz-wl"><span>${w.label?esc(w.label)+' · ':''}<code>${esc(walletShort(w.address))}</code></span><button type="button" class="pz-ghost pz-sm" data-pz-rmw="${i}" aria-label="Remove wallet ${esc(labelFor(w))}">Remove</button></div>`).join('')||'<p class="pz-sub">No wallets yet.</p>'}
       <div class="pz-field" style="margin-top:10px"><label for="pzAddr2" style="font-size:13px">Add another address</label><input type="text" id="pzAddr2" placeholder="0x…" autocomplete="off" autocapitalize="off" spellcheck="false">
-        <div style="display:flex;gap:8px"><button type="button" class="pz-ghost pz-sm" id="pzAdd2">Add &amp; load</button><button type="button" class="pz-ghost pz-sm" id="pzRefresh">Refresh now</button></div></div></section>
+        <div style="display:flex;gap:8px"><button type="button" class="pz-ghost pz-sm" id="pzAdd2">Add &amp; load</button><button type="button" class="pz-ghost pz-sm" id="pzRefresh">Refresh now</button></div></div>
+      ${pzS.cex?pzCexFormHtml():`<button type="button" class="pz-ghost pz-sm" data-pz-cex="bybit" style="margin-top:8px">Connect Bybit or Binance</button>`}</section>
     <section><span class="pz-lbl" style="color:var(--pz-muted)">Appearance</span>
       <div class="pz-seg" role="group" aria-label="Appearance" style="margin-top:6px">${[['auto','Auto'],['dark','Dark'],['light','Light']].map(([v,l])=>`<button type="button" data-pz-appear="${v}" aria-pressed="${(settings.appearance||'auto')===v}" style="flex:1">${l}</button>`).join('')}</div>
       <p class="pz-fine" style="margin-top:6px">Auto follows your phone’s light or dark setting.</p></section>
@@ -1081,7 +1100,7 @@ function pzRender(){
 }
 async function pzConnect(inputId){
   const el=$(inputId); const a=(el&&el.value||'').trim();
-  if(!/^0x[0-9a-fA-F]{40}$/.test(a)){ pzNote('That doesn’t look like a wallet address — it starts with 0x and is 42 characters long.','err'); const f=$(inputId); if(f)f.focus(); return; }
+  if(!/^(lighter:)?0x[0-9a-fA-F]{40}$/i.test(a)){ pzNote('That doesn’t look like a wallet address — it starts with 0x and is 42 characters long. For Bybit or Binance, connect an API key instead.','err'); const f=$(inputId); if(f)f.focus(); return; }
   if(el)el.value=''; pzS.sheet=false; pzNote('Loading your trades…','busy');
   for(let i=0;_loading&&i<240;i++)await sleep(250); // a background refresh is running: let it finish, then load
   $('walletAddr').value=a;
@@ -1121,10 +1140,13 @@ function wirePulse(){
     if(ds.pzSect){ const [sc,id]=ds.pzSect.split(':'), L=settings.pzLayout=settings.pzLayout||{}, M=L[sc]=L[sc]||{}; M[id]=!pzShow(sc,id); await Store.set(S_KEY,settings); pzRender(); return; }
     if(ds.pzSectreset){ if(settings.pzLayout)delete settings.pzLayout[ds.pzSectreset]; await Store.set(S_KEY,settings); pzRender(); return; }
     if(ds.pzRmw!==undefined){ await removeWallet(+ds.pzRmw); pzRender(); return; }
+    if(ds.pzCex){ pzS.cex={venue:ds.pzCex}; pzRender(); const f=$('pzCexKey'); if(f)f.focus(); return; }
     if(await socAction(t))return;
     switch(t.id){
       case 'pzConnect': return pzConnect('pzAddr');
       case 'pzAdd2': return pzConnect('pzAddr2');
+      case 'pzCexGo': return pzCexGo();
+      case 'pzCexX': pzS.cex=null; pzRender(); return;
       case 'pzDemo': pzS.demo=true; pzNote('Generating sample data…','busy'); await loadDemo();
         if(allTrades.length)pzNote('Sample trades come with no journal, so discipline starts low. Do a check-in and journal a couple to watch the dials move.');
         return;
@@ -1160,6 +1182,7 @@ function wirePulse(){
   root.addEventListener('keydown',ev=>{
     if(ev.key==='Enter'&&(ev.target.id==='pzAddr'||ev.target.id==='pzAddr2')){ ev.preventDefault(); pzConnect(ev.target.id); }
     else if(ev.key==='Enter'&&ev.target.id==='pzTok'){ ev.preventDefault(); pzToken(); }
+    else if(ev.key==='Enter'&&ev.target.id==='pzCexSecret'){ ev.preventDefault(); pzCexGo(); }
     else if(ev.key==='Enter'&&ev.target.id==='socHandle'){ ev.preventDefault(); const b=$('socJoin'); if(b)b.click(); }
     else if(ev.key==='Enter'&&!ev.shiftKey&&ev.target.id==='pzCoachIn'){ ev.preventDefault(); const b=$('pzCoachSend'); if(b)b.click(); }
     else if(ev.key==='Enter'&&ev.target.id==='pzSetupAdd'){ ev.preventDefault(); const b=$('pzSetupAddGo'); if(b)b.click(); }

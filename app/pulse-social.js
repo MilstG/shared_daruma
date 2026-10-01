@@ -1,4 +1,4 @@
-// Ledger app · part 12 of 14: Pulse social (leagues, competitions, following) and accounts (wallet claims, sign-in, encrypted sync).
+// Ledger app · part 13 of 15: Pulse social (leagues, competitions, following) and accounts (wallet claims, sign-in, encrypted sync).
 // ledger.html loads the parts in order as classic scripts sharing one global scope. Code that
 // runs while a part loads (not inside a function called later) may only use names declared in
 // this part or an earlier one; the boot part runs last. See "Development and testing" in README.md.
@@ -60,7 +60,9 @@ function pzSocialStats(g, habits, J, withLessons){
 }
 // The server only gets a wallet address when a toggle needs it — Verify my discipline (fills),
 // % return or dollar P&L (portfolio), or Show wallet address; otherwise it never leaves the browser.
-function socAddressFor(share){ const w=settings.wallets[0]; return w&&share&&(share.verify||share.ret||share.usd||share.addr)?w.address:null; }
+// (the first Hyperliquid wallet: the server reads returns and fills from Hyperliquid only)
+function socWallet(){ return settings.wallets.find(w=>!/^(lighter|bybit|binance):/.test(String(w.address))); }
+function socAddressFor(share){ const w=socWallet(); return w&&share&&(share.verify||share.ret||share.usd||share.addr)?w.address:null; }
 // The IANA zone the app's day keys use, so the server scores the same calendar days.
 function pzClockZone(){ try{ return settings&&settings.tz==='utc'?'UTC':Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'; }catch(e){ return 'UTC'; } }
 // "When X, Y." -> a self-graded habit spec (kept via the day journal's "I followed the plan").
@@ -241,7 +243,7 @@ function socSharingHtml(D){
   const back=`<a class="pz-back" href="#social">${pzI('back',20)}Social</a>`;
   if(!socAvailable()||!SOC.me)return `${back}${socSocialHtml(D)}`;
   SOC.draft=SOC.draft||{...SOC.share};
-  const w=settings.wallets[0];
+  const w=socWallet();
   return `${back}${pzHead('Profile & privacy','What you share')}
   <p class="pz-sub" style="margin-top:-6px">Your journal, notes and trades never leave this device. Only the numbers switched on below are sent.</p>
   <div class="pz-wide"><div class="pz-col">

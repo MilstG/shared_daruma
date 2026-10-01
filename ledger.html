@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' https://api.hyperliquid.xyz; manifest-src 'self' data:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' https://api.hyperliquid.xyz https://mainnet.zklighter.elliot.ai; manifest-src 'self' data:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ledger — Hyperliquid Trade Journal</title>
 <meta name="theme-color" content="#0A0E14">
@@ -335,6 +335,12 @@ body.bb .chk.on{border-color:var(--lbl)}
 .rvtbl td,.rvtbl th{font-size:11.5px}
 .rvtbl .rvn{color:var(--faint);font-size:10.5px}
 .rvtbl tr.rvmech td{color:var(--faint)}
+.modal.cexbox .seg{margin-bottom:10px}
+.modal.cexbox .seg button{width:auto;padding:0 16px;height:30px}
+.modal.cexbox .seg button[aria-pressed="true"]{color:var(--text);background:var(--panel2);box-shadow:inset 0 -2px 0 var(--accent,var(--text))}
+.modal.cexbox .field{margin-bottom:10px}
+.modal.cexbox .field input{width:100%}
+.modal.cexbox #cexErr:empty{display:none}
 .modal.taxbox{max-width:min(980px,96vw);max-height:92vh}
 .taxgrid{display:grid;grid-template-columns:2fr 1fr;gap:10px}
 .taxbox textarea{min-height:90px;font-size:11.5px}
@@ -1097,7 +1103,7 @@ a.pz-chipbtn{display:inline-flex;align-items:center;gap:6px;text-decoration:none
     <div class="hdr-right">
       <span id="hdrsum" class="hdrsum hide"></span>
       <button class="btn ghost" id="walletsBtn">Wallets ▾</button>
-      <button class="btn" id="loadAll" data-tip="Load / refresh from Hyperliquid. Fills are cached locally, so a refresh only fetches what's new since last time. Shift-click to force a full re-fetch.">Load all</button>
+      <button class="btn" id="loadAll" data-tip="Load / refresh every wallet and exchange. Fills are cached locally, so a refresh only fetches what's new since last time. Shift-click to force a full re-fetch.">Load all</button>
     </div>
   </header>
   <div id="setupPanel" class="setup hide">
@@ -1105,6 +1111,7 @@ a.pz-chipbtn{display:inline-flex;align-items:center;gap:6px;text-decoration:none
       <input type="text" class="lblin" id="walletLabel" placeholder="label (optional)" autocomplete="off">
       <input type="text" class="addr" id="walletAddr" placeholder="0x wallet address — add one or more" spellcheck="false" autocomplete="off">
       <button class="btn ghost" id="addWallet">Add</button>
+      <button class="btn ghost" id="cexBtn" data-tip="Bybit or Binance: connect a read-only API key. Lighter needs no key — paste its 0x address.">Connect exchange</button>
       <button class="btn ghost" id="importBtn">Paste data</button>
       <button class="btn ghost" id="demoBtn2" data-tip="Seeded synthetic history for a look around — replaces the current in-memory view only; your journal and wallets are untouched.">Sample data</button>
     </div>
@@ -1115,7 +1122,7 @@ a.pz-chipbtn{display:inline-flex;align-items:center;gap:6px;text-decoration:none
 
   <div id="empty" class="empty">
     <h2>Your trades, reconstructed and ready to reflect on.</h2>
-    <p>Add one or more wallet addresses you trade with on Hyperliquid, then hit <strong>Load all</strong>. Everything is pulled read-only from Hyperliquid's public API — nothing leaves your browser — and every wallet's history is pooled into one combined view.</p>
+    <p>Add one or more wallet addresses you trade with on Hyperliquid or Lighter, then hit <strong>Load all</strong>. Everything is pulled read-only from the exchanges' public APIs — nothing leaves your browser — and every wallet's history is pooled into one combined view. Trade on Bybit or Binance? <strong>Connect exchange</strong> takes a read-only API key.</p>
     <p>Then attach notes, tags, a setup, a rating, mistakes, and your planned risk to any trade. Your journal is saved locally on this device.</p>
     <div class="steps"><span>1 · Load fills &amp; positions</span><span>2 · Rebuild trades + funding</span><span>3 · Read the analytics</span><span>4 · Journal each trade</span></div>
     <p style="margin-top:14px"><button class="btn ghost" id="demoBtn" data-tip="Loads a seeded, synthetic 5-month fill history (perps + spot) through the normal import pipeline so every panel is populated. Nothing is fetched and no wallet is involved — reload or add a real address to clear it.">Just looking? Load sample data</button>
@@ -1326,6 +1333,7 @@ a.pz-chipbtn{display:inline-flex;align-items:center;gap:6px;text-decoration:none
 </div>
 
 <script src="app/core.js"></script>
+<script src="app/venues.js"></script>
 <script src="app/engine.js"></script>
 <script src="app/dashboard.js"></script>
 <script src="app/diagnostic.js"></script>

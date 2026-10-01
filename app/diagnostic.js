@@ -1,4 +1,4 @@
-// Ledger app · part 4 of 14: the Diagnostic view, what-if, the forward tracker, deep scan, the compute worker.
+// Ledger app · part 5 of 15: the Diagnostic view, what-if, the forward tracker, deep scan, the compute worker.
 // ledger.html loads the parts in order as classic scripts sharing one global scope. Code that
 // runs while a part loads (not inside a function called later) may only use names declared in
 // this part or an earlier one; the boot part runs last. See "Development and testing" in README.md.

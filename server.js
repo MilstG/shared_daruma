@@ -32,6 +32,8 @@
 //        server-held copies of the app's "Backup all" JSON (gzipped, newest 10 kept)
 //   POST /api/offsite/run                                             (AUTH_TOKEN)
 //        ship an encrypted DATA_DIR bundle to the OFFSITE_* bucket now (see offsite.js)
+//   POST /api/cex/relay {venue,host,path,query,headers}               (AUTH_TOKEN or a Pulse member)
+//        forward a browser-signed, read-only Bybit/Binance GET (see cex-relay.js)
 //   GET  /help , GET /docs  -> built-in user guide / technical reference (no auth)
 //
 // Analytics API v1 (read-only; GET = AUTH_TOKEN or READ_TOKEN, POST = AUTH_TOKEN):
@@ -74,6 +76,7 @@ const { createSocial } = require('./social.js');
 const Push = require('./push.js');
 const Wear = require('./wear.js');
 const Offsite = require('./offsite.js');
+const CexRelay = require('./cex-relay.js');
 const { readAppSource, appScripts } = require('./app-source.js');
 
 const MAX_BODY = 25 * 1024 * 1024; // journal snapshots are small; this is generous headroom
@@ -2072,6 +2075,8 @@ function createApp(opts) {
     } catch (e) { console.warn('[ledger] push reminders off: ' + e.message); }
   }
   const wearRef = {}; // filled in below, once the wearables store exists
+  const cexRelay = CexRelay.createCexRelay({ env: opts.cexEnv || process.env, fetchImpl: opts.cexFetch || opts.fetchImpl, now: opts.now });
+  if (cexRelay.relayOnly && !cexRelay.secretSet) console.warn('[ledger] CEX_RELAY_ONLY is on but CEX_RELAY_SECRET is not set — the relay will refuse every request');
   const social = createSocial({ dataDir, json, authOk, adminConfigured: !!auth, fetchImpl: opts.fetchImpl, now: opts.now, push: pushCfg, onDrop: id => wearRef.forget && wearRef.forget('m:' + id),
     behaviorFor, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled });
   // readiness from WHOOP, Oura or Apple Health: the owner (AUTH_TOKEN) or a member (Pulse key)
@@ -2104,6 +2109,20 @@ function createApp(opts) {
       res.setHeader('Retry-After', String(Math.max(1, Math.ceil((f.until - Date.now()) / 1000))));
       return json(res, 429, { error: 'too many wrong tokens from this address — try again in a few minutes' });
     }
+
+    // --- exchange relay (Bybit, Binance): the browser signs, this forwards — see cex-relay.js
+    if (url === '/api/cex/relay') {
+      if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
+      const who = cexRelay.relayCaller(req) || (cexRelay.relayOnly ? null
+        : (auth ? (req.headers['authorization'] && authOk(req) ? 'owner' : null) : 'owner') || (social.memberOf(req) ? 'm:' + social.memberOf(req).id : null));
+      readBody(req, 64 * 1024).then(raw => {
+        let body; try { body = JSON.parse(raw); } catch (e) { return json(res, 400, { error: 'invalid JSON' }); }
+        return cexRelay.handle(body, who).then(([code, out]) => json(res, code, out));
+      }, e => json(res, 413, { error: e.message })).catch(e => json(res, 500, { error: e.message }));
+      return;
+    }
+    // a relay-only copy (CEX_RELAY_ONLY=1) answers nothing else but its health check
+    if (cexRelay.relayOnly && url !== '/api/health') return json(res, 404, { error: 'this server is an exchange relay only' });
 
     // --- static: the app itself ---
     // /pulse is the same app opened in its simple dial view (the page switches on its own path);

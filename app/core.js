@@ -1,4 +1,4 @@
-// Ledger app · part 1 of 14: storage, the linked data file, server sync, the Hyperliquid API.
+// Ledger app · part 1 of 15: storage, the linked data file, server sync, the Hyperliquid API.
 // ledger.html loads the parts in order as classic scripts sharing one global scope. Code that
 // runs while a part loads (not inside a function called later) may only use names declared in
 // this part or an earlier one; the boot part runs last. See "Development and testing" in README.md.
@@ -27,7 +27,10 @@ const Store = {
 };
 const J_KEY='hl_journal_v1', S_KEY='hl_settings_v3';
 let journal={}, settings={wallets:[],riskDefault:null};
-const walletShort=a=>a.slice(0,6)+'…'+a.slice(-4);
+// "0x1234…abcd"; other venues read "Lighter 0x1234…abcd", "Bybit key 3f9a…"
+const walletShort=a=>{ a=String(a||''); const m=/^(lighter|bybit|binance):(.+)$/.exec(a);
+  if(!m)return a.slice(0,6)+'…'+a.slice(-4);
+  return m[1]==='lighter'?'Lighter '+m[2].slice(0,6)+'…'+m[2].slice(-4):(m[1]==='bybit'?'Bybit':'Binance')+' key '+m[2].slice(0,4)+'…'; };
 const labelFor=w=>w&&(w.label||walletShort(w.address))||'';
 
 /* ============================ linked data file (persistence) ============================ */
@@ -67,7 +70,8 @@ async function idbKeys(prefix){ try{ const db=await idb(); return new Promise((r
 // caches keyed by a plausible EVM address pass, so a malformed backup can't poison
 // IndexedDB or reconstruction.
 function validFillCache(addr,c){
-  if(typeof addr!=='string' || !/^0x[0-9a-fA-F]{40}$/.test(addr) || !c) return false;
+  // a Hyperliquid 0x address, a Lighter one ("lighter:0x…"), or an exchange key's id ("bybit:<12 hex>") — venues.js
+  if(typeof addr!=='string' || !/^(?:(?:lighter:)?0x[0-9a-fA-F]{40}|(?:bybit|binance):[0-9a-f]{12})$/.test(addr) || !c) return false;
   if(c.v===2) return Array.isArray(c.fills) && typeof c.last==='number'
     && c.fills.every(f=>f&&typeof f.time==='number'&&typeof f.coin==='string');
   if(c.v===3) return typeof c.last==='number' && !!c.gz
@@ -90,6 +94,9 @@ async function gunzipStr(bytes){
   const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
   return await new Response(stream).text();
 }
+// exchange-key wallets keep two small extras beside the fills: the symbols traded (Binance asks
+// per symbol) and the positions held before the history begins (venues.js)
+const cacheExtras=(to,from)=>{ if(from&&from.syms)to.syms=from.syms; if(from&&from.seed)to.seed=from.seed; return to; };
 async function packFillCache(fills,last){
   const gz=await gzipBytes(JSON.stringify(fills));
   return gz ? {v:3,gz,last,count:fills.length,savedAt:Date.now()}
@@ -99,7 +106,8 @@ async function unpackFillCache(c){
   if(!c)return null;
   if(c.v===2&&Array.isArray(c.fills))return c;
   if(c.v===3&&c.gz){ try{ const fills=JSON.parse(await gunzipStr(c.gz));
-    return Array.isArray(fills)?{v:2,fills,last:c.last,savedAt:c.savedAt}:null;
+    if(!Array.isArray(fills))return null;
+    const out={v:2,fills,last:c.last,savedAt:c.savedAt}; if(c.syms)out.syms=c.syms; if(c.seed)out.seed=c.seed; return out;
   }catch(e){ return null; } }
   return null;
 }
@@ -121,7 +129,7 @@ async function applySnapshot(data){ if(!data)return false; _applying=true;
     // v9+ backups may carry per-wallet fill caches (see backupAll) — restore the valid ones.
     if(data.fillCaches && typeof data.fillCaches==='object'){
       for(const addr in data.fillCaches){ const c=data.fillCaches[addr];
-        if(validFillCache(addr,c)) await idbSet('flc:'+addr, c.v===2 ? await packFillCache(c.fills,c.last) : c); }
+        if(validFillCache(addr,c)) await idbSet('flc:'+addr, c.v===2 ? cacheExtras(await packFillCache(c.fills,c.last),c) : c); }
     }
     if(data.excRows && data.excRows.v===1 && data.excRows.rows && typeof data.excRows.rows==='object')
       await idbSet('excRows',data.excRows); // saved MAE/MFE measurements survive device moves too

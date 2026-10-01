@@ -222,6 +222,51 @@ try {
     await p.close();
   });
 
+  console.log('\nOther venues');
+  await t('a Lighter address is found and loaded with nothing but the address', async () => {
+    const { page: p, errors: errs } = await openPage({ width: 1366, height: 900 });
+    const L1 = '0x' + 'ab'.repeat(20), T0 = Date.parse('2026-09-01T00:00:00Z');
+    const tr = (id, ms, side, sz, px, before, eq) => ({ trade_id: id, type: 'trade', market_id: 1, size: String(sz), price: String(px), usd_amount: String(sz * px),
+      ask_id: 9, bid_id: 8, ask_account_id: side === 'A' ? 5 : 1, bid_account_id: side === 'B' ? 5 : 1, is_maker_ask: true, timestamp: ms,
+      maker_fee: 20, taker_fee: 200, taker_position_size_before: before, taker_entry_quote_before: eq, maker_position_size_before: before, maker_entry_quote_before: eq });
+    const answers = {
+      '/api/v1/accountsByL1Address': { code: 200, sub_accounts: [{ index: 5 }] },
+      '/api/v1/orderBooks': { code: 200, order_books: [{ symbol: 'BTC', market_id: 1, market_type: 'perp' }] },
+      '/api/v1/trades': { code: 200, trades: [tr(2, T0 + 3600e3, 'A', 1, 120, '1', '100'), tr(1, T0, 'B', 1, 100, '0', '0')], next_cursor: '' },
+      '/api/v1/fundings': { code: 200, fundings: [] },
+      '/api/v1/account': { code: 200, accounts: [{ index: 5, collateral: '500', positions: [] }] },
+    };
+    await p.route('https://api.hyperliquid.xyz/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+    await p.route('https://mainnet.zklighter.elliot.ai/**', r => { const a = answers[new URL(r.request().url()).pathname];
+      return r.fulfill({ status: a ? 200 : 404, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(a || { code: 404 }) }); });
+    await p.goto(BASE + '/');
+    await p.waitForSelector('#walletsBtn');
+    if (await p.$eval('#setupPanel', e => e.classList.contains('hide'))) await p.click('#walletsBtn');
+    await p.fill('#walletAddr', L1); await p.click('#addWallet');
+    await p.waitForFunction(() => /Added on Lighter/.test(document.getElementById('status').textContent));
+    ok(/Lighter 0xabab/.test(await p.textContent('#wallets')), 'the chip names the venue');
+    await p.click('#loadAll');
+    await p.waitForSelector('#tbody tr.trow');
+    const row = await p.textContent('#tbody tr.trow');
+    ok(/BTC/.test(row) && /Lighter/.test(row), row.replace(/\s+/g, ' ').slice(0, 120));
+    ok(/2 fills → 1 perp/.test(await p.textContent('#status')), await p.textContent('#status'));
+    // Bybit / Binance: the dialog checks the key's shape here, then asks the exchange through the server
+    if (await p.$eval('#setupPanel', e => e.classList.contains('hide'))) await p.click('#walletsBtn');
+    await p.click('#cexBtn');
+    await p.waitForSelector('.modal.cexbox');
+    await p.click('[data-cexv="binance"]');
+    ok(/Enable Reading/.test(await p.textContent('#cexSteps')));
+    await p.fill('#cexKey', 'short'); await p.click('[data-cex="go"]');
+    await p.waitForFunction(() => /doesn’t look right/.test(document.getElementById('cexErr').textContent));
+    await p.fill('#cexKey', 'A'.repeat(64)); await p.fill('#cexSecret', 'B'.repeat(64)); await p.click('[data-cex="go"]');
+    // this test server is offline, so the relay reports it can't reach Binance — the request went browser → server → exchange
+    await p.waitForFunction(() => /reach Binance/.test(document.getElementById('cexErr').textContent));
+    await p.keyboard.press('Escape');
+    eq(await p.$('.modal.cexbox'), null);
+    eq(errs, []);
+    await p.close();
+  });
+
   console.log('\nAdmin panel');
   await t('every admin tab renders for the owner, inside the budget', async () => {
     const { page: p, errors: errs } = await openPage({ width: 1280, height: 900 });
