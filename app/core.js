@@ -96,7 +96,7 @@ async function gunzipStr(bytes){
 }
 // exchange-key wallets keep two small extras beside the fills: the symbols traded (Binance asks
 // per symbol) and the positions held before the history begins (venues.js)
-const cacheExtras=(to,from)=>{ if(from&&from.syms)to.syms=from.syms; if(from&&from.seed)to.seed=from.seed; return to; };
+const cacheExtras=(to,from)=>{ if(from&&from.syms)to.syms=from.syms; if(from&&from.seed)to.seed=from.seed; if(from&&from.more)to.more=from.more; return to; };
 async function packFillCache(fills,last){
   const gz=await gzipBytes(JSON.stringify(fills));
   return gz ? {v:3,gz,last,count:fills.length,savedAt:Date.now()}
@@ -107,7 +107,7 @@ async function unpackFillCache(c){
   if(c.v===2&&Array.isArray(c.fills))return c;
   if(c.v===3&&c.gz){ try{ const fills=JSON.parse(await gunzipStr(c.gz));
     if(!Array.isArray(fills))return null;
-    const out={v:2,fills,last:c.last,savedAt:c.savedAt}; if(c.syms)out.syms=c.syms; if(c.seed)out.seed=c.seed; return out;
+    const out={v:2,fills,last:c.last,savedAt:c.savedAt}; if(c.syms)out.syms=c.syms; if(c.seed)out.seed=c.seed; if(c.more)out.more=c.more; return out;
   }catch(e){ return null; } }
   return null;
 }

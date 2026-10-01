@@ -67,15 +67,17 @@ async function ltMarkets(){
     _ltMarkets={at:Date.now(),byId,bySym}; idbSet('lt:markets',_ltMarkets); }
   catch(e){ if(!_ltMarkets)throw e; } // a stale map beats no map
   return _ltMarkets; }
-// newest first, page by page, until the cache's watermark — so a returning user fetches one page
-async function ltFetchTrades(idx, since){
-  const out=[]; let cursor='', pages=0, truncated=false;
+// newest first, page by page, until the cache's watermark — so a returning user fetches one page.
+// A very long history stops after 40k trades and hands back where it stopped (cursor), so the
+// next load carries on from there, further back, instead of starting from the top again.
+async function ltFetchTrades(idx, since, from){
+  const out=[]; let cursor=from||'', pages=0, truncated=false;
   for(;;){ const j=await ltGet('/api/v1/trades?account_index='+idx+'&sort_by=timestamp&sort_dir=desc&limit=100'+(cursor?'&cursor='+encodeURIComponent(cursor):''));
     const T=j.trades||[]; out.push(...T); pages++;
     if(!T.length||!j.next_cursor||T.length<100||T[T.length-1].timestamp<since)break;
-    if(pages>=400){ truncated=true; break; } // 40k trades per load; the next load continues from the cache
-    cursor=j.next_cursor; }
-  return {trades:out.filter(t=>t.timestamp>=since),truncated}; }
+    cursor=j.next_cursor;
+    if(pages>=400){ truncated=true; break; } }
+  return {trades:out.filter(t=>t.timestamp>=since),truncated,cursor:truncated?cursor:null}; }
 // hourly funding rates for one market, cached and topped up per market (shared by every wallet)
 async function ltFundingRates(marketId, fromMs, cachedOnly){
   const key='lt:fund:'+marketId; let c=null; try{ c=await idbGet(key); }catch(e){}
@@ -83,7 +85,7 @@ async function ltFundingRates(marketId, fromMs, cachedOnly){
   if(cachedOnly)return c.rows.filter(r=>r.timestamp*1000>=fromMs);
   const now=Date.now(), want=Math.floor(fromMs/3600e3)*3600e3, spans=[];
   if(want<c.first)spans.push([want,Math.min(c.first,now)]);
-  if(c.last<now-3600e3)spans.push([Math.max(c.last+1,want),now]);
+  if(c.rows.length&&c.last<now-3600e3)spans.push([Math.max(c.last+1,want),now]); // an empty cache: the span above already runs to now
   for(const [a,b] of spans) for(let s=Math.floor(a/1000);s<b/1000;s+=500*3600){
     const j=await ltGet('/api/v1/fundings?market_id='+marketId+'&resolution=1h&start_timestamp='+s+'&end_timestamp='+Math.min(s+500*3600,Math.floor(b/1000))+'&count_back=500');
     for(const r of j.fundings||[])c.rows.push({timestamp:+r.timestamp,value:r.value,direction:r.direction}); }
@@ -108,12 +110,21 @@ async function loadLighterWallet(w, fresh){
   if(!idxs.length)throw new Error('No Lighter account for this address');
   const key='flc:'+w.address, cache=fresh?null:await venueCache(key);
   let fills=cache?cache.fills.slice():[], added=0, trunc=false;
+  // where a long history stopped last time, per sub-account: {cursor, since}
+  const more=Object.assign({},(cache&&cache.more)||{}), moreWas=JSON.stringify(more);
+  const norm=(T,idx)=>T.map(t=>{ const f=ltNormTrade(t,idx,id=>(M.byId[id]||{}).symbol); if(f)f.acct=idx; return f; }).filter(Boolean);
   for(const idx of idxs){
     const since=cache?Math.max(0,...cache.fills.filter(f=>+f.acct===idx).map(f=>f.time),0):0;
-    const r=await ltFetchTrades(idx,since); if(r.truncated)trunc=true;
-    const nf=r.trades.map(t=>{ const f=ltNormTrade(t,idx,id=>(M.byId[id]||{}).symbol); if(f)f.acct=idx; return f; }).filter(Boolean);
-    const m=mergeFills(fills,nf,f=>f.acct+'|'+f.tid); fills=m.fills; added+=m.added; }
-  if(!cache||added)await venueSave(key,fills,null,null);
+    const r=await ltFetchTrades(idx,since);
+    let m=mergeFills(fills,norm(r.trades,idx),f=>f.acct+'|'+f.tid); fills=m.fills; added+=m.added;
+    const left=more[idx]; if(r.truncated)more[idx]={cursor:r.cursor,since}; // (40k new trades since the last load: that gap is the one to fill now)
+    else if(left){ // carry on below where the last load stopped
+      try{ const o=await ltFetchTrades(idx,left.since||0,left.cursor);
+        m=mergeFills(fills,norm(o.trades,idx),f=>f.acct+'|'+f.tid); fills=m.fills; added+=m.added;
+        if(o.truncated)more[idx]={cursor:o.cursor,since:left.since||0}; else delete more[idx]; }
+      catch(e){ delete more[idx]; trunc=true; } } // the cursor expired: the gap stays noted, the trades we have stay
+    if(more[idx])trunc=true; }
+  if(!cache||added||JSON.stringify(more)!==moreWas)await venueSave(key,fills,Object.keys(more).length?{more}:null,null);
   ltDeriveSpot(fills,idxs);
   const frows=await ltFundingRows(fills,idxs,M,false);
   // positions and equity, live
