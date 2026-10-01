@@ -661,9 +661,24 @@ function pzTodayExtrasHtml(D){
   return good+review+coach;
 }
 // ---- the morning: your profile's questions, last night's focus, today's rules ----
+// Your usual answers to one morning question, once you've answered it on enough days to have usuals:
+// answers you gave at least twice (case and spacing aside), most used first, then most recent. For a
+// question about setups, your playbooks and most-journaled setups are offered too.
+const PZ_USUAL_AFTER=5;
+function pzUsualAnswers(J, q, todayK, setups){
+  const days=Object.keys(J||{}).filter(k=>k.startsWith('day:')&&k.slice(4)<todayK).sort().reverse();
+  const said=[]; for(const k of days){ const a=J[k]&&J[k].am&&J[k].am[q]; if(typeof a==='string'&&a.trim())said.push(a.trim().replace(/\s+/g,' ')); if(said.length>=90)break; }
+  if(said.length<PZ_USUAL_AFTER)return [];
+  const by=new Map(); said.forEach((a,i)=>{ const k=a.toLowerCase(), o=by.get(k); if(o)o.n++; else by.set(k,{text:a,n:1,last:i}); });
+  const out=[...by.values()].filter(x=>x.n>=2).sort((a,b)=>b.n-a.n||a.last-b.last).slice(0,4).map(x=>({text:x.text,n:x.n}));
+  if(/setup/i.test(q))for(const s of (setups||[]).slice(0,3))if(out.length<5&&!out.some(x=>x.text.toLowerCase()===s.toLowerCase()))out.push({text:s,n:0,setup:true});
+  return out;
+}
 function pzMorningHtml(D, ck){
   const prof=pzProfile(D.ctx.closed), prevK=D.g.days.filter(d=>d.key<D.todayK).slice(-1)[0], pe=prevK?((journal['day:'+prevK.key]||{}).eod||null):null;
-  const qs=prof.morning.map((q,i)=>`<div class="pz-field"><label for="pzAm${i}" style="font-size:13px">${esc(q)}</label><input type="text" id="pzAm${i}" data-pz-am="${esc(q)}" maxlength="300" value="${esc((ck.am||{})[q]||'')}"></div>`).join('');
+  const qs=prof.morning.map((q,i)=>{ const cur=(ck.am||{})[q]||'', us=pzUsualAnswers(journal,q,D.todayK,/setup/i.test(q)?pzSetups():null);
+    return `<div class="pz-field"><label for="pzAm${i}" style="font-size:13px">${esc(q)}</label><input type="text" id="pzAm${i}" data-pz-am="${esc(q)}" maxlength="300" value="${esc(cur)}">
+    ${us.length?`<div class="pz-usual" role="group" aria-label="Your usual answers"><span class="pz-fine">Your usuals:</span>${us.map(u=>`<button type="button" class="pz-chipbtn${cur.trim().toLowerCase()===u.text.toLowerCase()?' ok':''}" data-pz-amfill="${i}" data-v="${esc(u.text)}" title="${esc(u.text)}${u.n?' · used '+u.n+' times':' · one of your setups'}">${esc(u.text.length>48?u.text.slice(0,46)+'…':u.text)}</button>`).join('')}</div>`:''}</div>`; }).join('');
   return `<section class="pz-card pz-kv"><div class="pz-kvrow"><span class="pz-lbl" style="color:var(--pz-acc)">${esc(prof.name)} routine</span><button type="button" class="pz-linkbtn" data-pz-sheet>Change</button></div>
     <span class="pz-sub" style="font-size:13px">${esc(prof.tip)}</span>
     ${pe&&pe.tomorrow?`<div class="pz-focusline"><span class="pz-lbl" style="font-size:11px;color:var(--pz-muted)">Last night you said</span><b>${esc(pe.tomorrow)}</b></div>`:''}

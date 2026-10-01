@@ -300,7 +300,9 @@ read by any model; only these structured fields are compared with results.
 
 **Routines.** Pulse detects how you trade from the last 90 days (scalper, day,
 swing or position trader; you can override it, and the league owner can add
-profiles of their own) and adapts the morning questions and the **end-of-day
+profiles of their own) and adapts the morning questions (after five days of
+answers, the ones you keep giving show as one-tap **usuals** under each question,
+plus your setups under the setup question) and the **end-of-day
 review**: a rating, a few profile-specific questions, the lesson and tomorrow's
 one thing. The review pays XP and feeds the report cards and the coach.
 
