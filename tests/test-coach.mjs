@@ -199,7 +199,7 @@ await t('POST writes the letter through the client, stores it, GET returns it; o
   const b = await listen(app);
   try {
     eq((await fetch(b + '/api/coach/status')).status, 401, 'needs the token');
-    eq(await (await fetch(b + '/api/coach/status', { headers: H })).json(), { enabled: true, model: 'claude-opus-5-5', share: false });
+    eq(await (await fetch(b + '/api/coach/status', { headers: H })).json(), { enabled: true, model: 'claude-opus-5-5', provider: 'anthropic', share: false });
     eq((await fetch(b + '/api/coach/letter/2026-W39', { headers: H })).status, 404);
     const r = await fetch(b + '/api/coach/letter/2026-W39', { method: 'POST', headers: H, body: JSON.stringify({ facts: { trades: 3, net: 10, wallet: '0xabc' } }) });
     eq(r.status, 200); eq((await r.json()).text, 'A steady week.');

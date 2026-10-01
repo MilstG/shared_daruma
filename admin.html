@@ -207,7 +207,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     if(!c.open)warn.push('The league is closed to new members (Settings).');
     if(c.approveWallets&&o.walletsPending)warn.push(`<a href="#wallets">${o.walletsPending} wallet${o.walletsPending===1?' is':'s are'} waiting for your approval.</a> Until you approve them, they don’t count for returns, verified Discipline or return competitions.`);
     if(o.claims&&!o.originPinned)warn.push('Wallet sign-in isn’t pinned to your address yet. Set <code>PUBLIC_ORIGIN</code> on the server so a look-alike site can’t collect members’ signatures.');
-    if(!o.coachAi)warn.push('The AI coach is off. Set <code>COACH_AI=1</code> and <code>ANTHROPIC_API_KEY</code> on the server to switch it on.');
+    if(!o.coachAi)warn.push('The AI coach is off. Set <code>COACH_AI=1</code> and <code>ANTHROPIC_API_KEY</code> (or <code>OPENAI_API_KEY</code>) on the server to switch it on.');
     const main=D.leagues.find(L=>L.id==='main'), live=Math.max(1,o.members-o.banned);
     const top=D.members.filter(m=>!m.banned).sort((a,b)=>b.xp-a.xp).slice(0,5);
     return `${tiles([['Members',fmt(o.members),o.banned?o.banned+' suspended':''],['Active this week',fmt(o.active7)],['Leagues',o.leagues],['Reward badges',o.badges],
@@ -450,7 +450,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   // ---------------- coach ----------------
   function vCoach(){
     const o=D.ov, c=o.config.coach, users=D.members.filter(m=>m.coachUsed>0).sort((a,b)=>b.coachUsed-a.coachUsed);
-    return `${o.coachAi?'':'<p class="warn">The AI coach is off on this server. Set <code>COACH_AI=1</code> and <code>ANTHROPIC_API_KEY</code>, then restart. These settings apply once it’s on.</p>'}
+    return `${o.coachAi?'':'<p class="warn">The AI coach is off on this server. Set <code>COACH_AI=1</code> and <code>ANTHROPIC_API_KEY</code> (or <code>OPENAI_API_KEY</code>), then restart. These settings apply once it’s on.</p>'}
       <div class="two"><section class="card"><h2>AI coach</h2>
         ${box('cMembers','Members can use the coach',c.members)}
         <div class="row">${field('cDaily','Messages a day, per member',`<input id="cDaily" type="number" min="0" max="500" value="${c.daily}">`)}${field('cDailyU','…for fully unlocked members',`<input id="cDailyU" type="number" min="0" max="1000" value="${c.dailyUnlocked}">`)}</div>
@@ -460,7 +460,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
         <div style="margin-top:14px"><button class="primary" id="cSave">Save coach settings</button></div></section>
       <section class="card"><h2>Today</h2>${tiles([['Messages today',fmt(o.coachToday)],['Members who asked',users.length]])}
         ${users.length?`<div class="scroll" style="margin-top:12px"><table><tbody>${pager('coachusers',users).items.map(m=>`<tr><td><a href="${mlink(m)}">@${esc(m.handle)}</a></td><td>${m.coachUsed}${m.coachLimit!=null?' / '+m.coachLimit:''}</td></tr>`).join('')}</tbody></table></div>${pager('coachusers',users).html}`:''}
-        <p class="hint">Messages go to Claude and aren’t stored on this server; only the count is.</p></section></div>`;
+        <p class="hint">Messages go to the AI provider (Anthropic or OpenAI, whichever the server uses) and aren’t stored on this server; only the count is.</p></section></div>`;
   }
 
   // ---------------- routines ----------------

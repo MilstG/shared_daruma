@@ -1240,7 +1240,7 @@ async function loadCoachLetter(force){
     _letterCache={wk,letter}; }
   if(!$('coachLetter'))return; // Review re-rendered meanwhile
   if(!st.enabled&&!letter){ box.innerHTML=''; return; }
-  const head=`<h3 data-tip="Written by Claude on your companion server from the summary below \u2014 aggregate numbers, your habits and your own lessons only. Switched on by COACH_AI=1 on the server.">Coach\u2019s letter \u00b7 ${esc(wk)}</h3>`;
+  const head=`<h3 data-tip="Written by the AI coach on your companion server from the summary below \u2014 aggregate numbers, your habits and your own lessons only. Switched on by COACH_AI=1 on the server.">Coach\u2019s letter \u00b7 ${esc(wk)}</h3>`;
   if(letter&&letter.text){
     box.innerHTML=`<div class="diag-card letter">${head}<div class="letter-body">${esc(letter.text).split(/\n{2,}/).map(p=>`<p>${p.replace(/\n/g,'<br>')}</p>`).join('')}</div>
       <div class="letter-foot"><span class="mini-note" style="margin:0">Written ${esc(fmtDate(letter.writtenAt))}${letter.model?' \u00b7 '+esc(letter.model):''}</span>${st.enabled?'<button class="btn ghost" id="letterRedo">Rewrite</button>':''}</div></div>`;

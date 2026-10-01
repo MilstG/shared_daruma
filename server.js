@@ -339,7 +339,7 @@ function nudgeFrom(st, cfg) {
     text: '📝 End of day: ' + missing.join(', ') + '. Five minutes now — a setup, a rating, one line of review — is what the pattern miner and your process score run on.' };
 }
 /* ---------------- coach's weekly letter (optional AI, opt-in) ---------------- */
-// COACH_AI=1 lets the Review tab ask Claude for a short plain-language weekly letter. Only an
+// COACH_AI=1 lets the Review tab ask the AI (Claude, or OpenAI with COACH_AI_PROVIDER=openai) for a short plain-language weekly letter. Only an
 // aggregate summary the app builds and shows the user first is ever sent (counts, averages,
 // habit sentences, finding headlines, their own one-line lessons) — never fills, wallet
 // addresses, trade notes or screenshots. sanitizeCoachFacts is the allowlist that enforces it.
@@ -472,6 +472,45 @@ function coachLetterText(msg) {
   const text = (msg.content || []).filter(b => b && b.type === 'text').map(b => b.text).join('\n').trim();
   return text ? { text } : { error: 'the model returned no text' };
 }
+// ---- the same two requests for OpenAI (COACH_AI_PROVIDER=openai, or a gpt-*/o* model) ----
+// The Responses API, called directly (no SDK). store:false keeps OpenAI from retaining the trader's
+// summary as a stored response. Reasoning tokens count toward max_output_tokens, so the caps are
+// roomier than the visible answer needs. The static instructions come first and the trader's data
+// after, so OpenAI's automatic prompt cache reuses the prefix across a member's messages.
+function openaiCoachChatRequest(chat, model, effort) {
+  const req = {
+    model, store: false, max_output_tokens: 6000,
+    instructions: COACH_CHAT_SYSTEM + '\n\nTrader data from their journal app (JSON):\n' + chat.facts
+      + (chat.detail ? '\n\nTheir recent trades and journal notes (they chose to share these):\n' + chat.detail : ''),
+    input: chat.messages.map(m => ({ role: m.role, content: m.content })),
+  };
+  if (effort !== null) req.reasoning = { effort: effort || 'low' }; // conversational: quick answers
+  return req;
+}
+function openaiCoachLetterRequest(facts, model, effort) {
+  const req = {
+    model, store: false, max_output_tokens: 16000,
+    instructions: COACH_SYSTEM,
+    input: [{ role: 'user', content: 'This week\'s summary from my journal:\n\n' + JSON.stringify(facts, null, 1) }],
+  };
+  if (effort !== null) req.reasoning = { effort: effort || 'medium' };
+  return req;
+}
+// A Responses API answer in the shape coachLetterText reads: refusals and cut-off answers stay visible.
+function openaiToCoachMsg(j) {
+  const parts = []; let refused = false;
+  for (const item of (j && j.output) || []) {
+    if (!item || item.type !== 'message') continue;
+    for (const c of item.content || []) { if (c.type === 'output_text' && c.text) parts.push(c.text); else if (c.type === 'refusal') refused = true; }
+  }
+  const cut = j && j.status === 'incomplete';
+  return { model: j && j.model, stop_reason: refused && !parts.length ? 'refusal' : cut ? 'max_tokens' : 'end_turn',
+    incomplete: cut ? ((j.incomplete_details && j.incomplete_details.reason) || 'incomplete') : null,
+    content: parts.length ? [{ type: 'text', text: parts.join('\n') }] : [] };
+}
+const coachProviderOf = (provider, model) => /^(openai|anthropic)$/i.test(provider || '') ? provider.toLowerCase()
+  : /^(gpt-|o\d|chatgpt-)/i.test(model || '') ? 'openai' : 'anthropic';
+
 // Best-effort webhook post; shapes the body for the common receivers.
 async function postWebhook(url, text) {
   let body, headers = { 'Content-Type': 'application/json' };
@@ -1034,9 +1073,37 @@ function createApp(opts) {
 
   const coachCfg = Object.assign({
     enabled: /^(1|on|true|yes)$/i.test(process.env.COACH_AI || ''),
-    model: process.env.COACH_AI_MODEL || 'claude-opus-5-5',
-    client: null, // tests inject a stub with beta.messages.create
+    provider: process.env.COACH_AI_PROVIDER || '',
+    model: process.env.COACH_AI_MODEL || '',
+    effort: process.env.COACH_AI_EFFORT || '', // OpenAI: reasoning effort; 'none' sends none
+    openaiKey: process.env.OPENAI_API_KEY || '',
+    openaiBase: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, ''),
+    client: null, // tests inject a stub with beta.messages.create (Anthropic)
+    fetchImpl: null, // tests inject a fetch for OpenAI
   }, opts.coach || {});
+  coachCfg.provider = coachProviderOf(coachCfg.provider, coachCfg.model);
+  if (!coachCfg.model) coachCfg.model = coachCfg.provider === 'openai' ? 'gpt-5.6-luna' : 'claude-opus-5-5';
+  if (coachCfg.enabled && coachCfg.provider === 'openai' && !coachCfg.openaiKey && !coachCfg.fetchImpl)
+    console.warn('[ledger] COACH_AI uses OpenAI (' + coachCfg.model + ') but OPENAI_API_KEY is not set — the coach will answer with an error');
+  // one OpenAI Responses call -> the Anthropic-shaped message the rest of the coach reads.
+  // A model that doesn't take a reasoning setting gets the request again without one.
+  async function openaiCoach(build) {
+    if (!coachCfg.openaiKey && !coachCfg.fetchImpl) throw { kind: 'auth', msg: 'OPENAI_API_KEY is not set' };
+    const f = coachCfg.fetchImpl || ((...a) => globalThis.fetch(...a));
+    const eff = /^none$/i.test(coachCfg.effort) ? null : coachCfg.effort || undefined;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const body = build(attempt ? null : eff);
+      let r;
+      try { r = await f(coachCfg.openaiBase + '/responses', { method: 'POST', signal: AbortSignal.timeout(120000),
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + coachCfg.openaiKey }, body: JSON.stringify(body) }); }
+      catch (e) { throw { kind: 'net', msg: (e && e.message) || String(e) }; }
+      let j = null; try { j = await r.json(); } catch (e) {}
+      if (r.ok) return openaiToCoachMsg(j);
+      const em = (j && j.error && j.error.message) || ('HTTP ' + r.status);
+      if (r.status === 400 && !attempt && body.reasoning && /reasoning|effort/i.test(em)) continue;
+      throw { kind: r.status === 401 || r.status === 403 ? 'auth' : r.status === 429 ? 'rate' : 'api', status: r.status, msg: em };
+    }
+  }
   let _coachClient = null;
   function coachClient() {
     if (coachCfg.client) return coachCfg.client;
@@ -1049,8 +1116,21 @@ function createApp(opts) {
     return _coachClient;
   }
   async function writeCoachLetter(facts) {
-    const client = coachClient();
     let msg;
+    if (coachCfg.provider === 'openai') {
+      try { msg = await openaiCoach(eff => openaiCoachLetterRequest(facts, coachCfg.model, eff)); }
+      catch (e) {
+        if (e.kind === 'auth') throw { code: 502, msg: 'OpenAI rejected the key — check OPENAI_API_KEY (' + e.msg + ')' };
+        if (e.kind === 'rate') throw { code: 429, msg: 'OpenAI rate limit — try again in a minute' };
+        if (e.kind === 'api') throw { code: 502, msg: 'OpenAI API error ' + (e.status || '') + ': ' + e.msg };
+        throw { code: 502, msg: 'OpenAI API unreachable: ' + e.msg };
+      }
+      if (msg.incomplete && !(msg.content || []).length) throw { code: 502, msg: 'the model ran out of room before writing (' + msg.incomplete + ')' };
+      const r = coachLetterText(msg);
+      if (r.error) throw { code: 502, msg: r.error };
+      return { text: r.text, model: msg.model || coachCfg.model };
+    }
+    const client = coachClient();
     try { msg = await client.beta.messages.create(coachLetterRequest(facts, coachCfg.model)); }
     catch (e) {
       const SDK = (() => { try { const m = require('@anthropic-ai/sdk'); return m.default || m; } catch (e2) { return null; } })();
@@ -1064,8 +1144,21 @@ function createApp(opts) {
     return { text: r.text, model: (msg && msg.model) || coachCfg.model }; // a fallback may have served it
   }
   async function coachChat(chat) {
-    const client = coachClient();
     let msg;
+    if (coachCfg.provider === 'openai') {
+      try { msg = await openaiCoach(eff => openaiCoachChatRequest(chat, coachCfg.model, eff)); }
+      catch (e) {
+        if (e.kind === 'auth') throw { code: 502, msg: 'The server’s OpenAI API key was rejected.' };
+        if (e.kind === 'rate') throw { code: 429, msg: 'The coach is busy — try again in a minute.' };
+        if (e.kind === 'api') throw { code: 502, msg: 'The coach hit an error (' + (e.status || '') + ').' };
+        throw { code: 502, msg: 'The coach couldn’t be reached.' };
+      }
+      if (msg.stop_reason === 'refusal') throw { code: 422, msg: 'The coach can’t help with that one. Try asking about your own trading process.' };
+      const r = coachLetterText(msg);
+      if (r.error) throw { code: 502, msg: 'The coach returned an empty answer — try again.' };
+      return { text: r.text, model: msg.model || coachCfg.model };
+    }
+    const client = coachClient();
     try { msg = await client.beta.messages.create(coachChatRequest(chat, coachCfg.model)); }
     catch (e) {
       const SDK = (() => { try { const m = require('@anthropic-ai/sdk'); return m.default || m; } catch (e2) { return null; } })();
@@ -2361,7 +2454,7 @@ function createApp(opts) {
     // --- coach's weekly letter (opt-in AI): everything here needs the full token ---
     if (url === '/api/coach/status') {
       if (!authOk(req)) return json(res, 401, { error: 'unauthorized' });
-      return json(res, 200, { enabled: !!coachCfg.enabled, model: coachCfg.enabled ? coachCfg.model : null,
+      return json(res, 200, { enabled: !!coachCfg.enabled, model: coachCfg.enabled ? coachCfg.model : null, provider: coachCfg.enabled ? coachCfg.provider : null,
         share: !!(telegramCfg.token && telegramCfg.shareChats.length) });
     }
     // --- share a weekly card's text with an accountability partner (TELEGRAM_SHARE_CHAT_ID) ---
@@ -2387,7 +2480,7 @@ function createApp(opts) {
         detail: st.detail, detailAllowed: st.detailAllowed, who: st.who };
       if (req.method === 'GET') return json(res, 200, pub);
       if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
-      if (!coachCfg.enabled) return json(res, 404, { error: 'The AI coach isn’t switched on for this server yet. The owner turns it on with COACH_AI=1 and an Anthropic API key.' });
+      if (!coachCfg.enabled) return json(res, 404, { error: 'The AI coach isn’t switched on for this server yet. The owner turns it on with COACH_AI=1 and an Anthropic or OpenAI API key.' });
       if (!st.allowed) return json(res, 429, Object.assign(pub, { error: st.reason }));
       (async () => {
         let body; try { body = JSON.parse(await readBody(req, 256 * 1024)); } catch (e) { return json(res, e.message === 'payload too large' ? 413 : 400, { error: e.message === 'payload too large' ? 'That’s too much to send at once.' : 'invalid JSON' }); }
@@ -2565,5 +2658,5 @@ if (require.main === module) {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-module.exports = { sanitizeCoachChat, coachChatRequest, scrubCoachData, createApp, buildEngine, ENGINE_FNS, alertsFrom, healthAlertsFrom, postWebhook, telegramReply, nudgeFrom, zonedDayHour,
+module.exports = { sanitizeCoachChat, coachChatRequest, openaiCoachChatRequest, openaiCoachLetterRequest, openaiToCoachMsg, coachProviderOf, scrubCoachData, createApp, buildEngine, ENGINE_FNS, alertsFrom, healthAlertsFrom, postWebhook, telegramReply, nudgeFrom, zonedDayHour,
   sanitizeCoachFacts, coachLetterRequest, coachLetterText };

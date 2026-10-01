@@ -222,8 +222,8 @@ The Diagnostic's recommendations fall back to a plain list. Nothing is deleted:
 switch it back on and everything returns as it was; the setting syncs across
 devices and travels in backups.
 
-**Coach's letter (optional AI).** With `COACH_AI=1` and an Anthropic API key on
-the companion server, the weekly review gets a "Write my letter" button: Claude
+**Coach's letter (optional AI).** With `COACH_AI=1` and an Anthropic or OpenAI API key on
+the companion server, the weekly review gets a "Write my letter" button: the AI coach
 writes a short plain-language note on the week (what went well, the one thing
 to work on, tied to your focus habit). Only an aggregate summary is sent —
 counts, averages, habit sentences, finding headlines and your own one-line
@@ -1060,13 +1060,18 @@ All opt-in via environment variables, still zero dependencies:
   not journaled, no end-of-day review yet"). Deduped per day across restarts;
   needs `REFRESH_INTERVAL_MIN`. "Today" is the same calendar day the day
   journal uses, so a review you wrote is always found.
-- `COACH_AI=1` + `ANTHROPIC_API_KEY` — the **coach's weekly letter** (see
+- `COACH_AI=1` + `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`, see below) — the **coach's weekly letter** (see
   The coach) and the **AI coach chat** in Pulse (`/api/coach/chat`: a member's
   key or the owner token; per-day allowances from the admin panel; low effort
   for quick replies). Uses the official `@anthropic-ai/sdk`, installed as an *optional*
   dependency: without `COACH_AI` the server never loads it and stays
   dependency-free. Model `COACH_AI_MODEL` (default `claude-opus-5-5`), medium
-  effort, with the API's default refusal fallback. `POST /api/share` (full
+  effort, with the API's default refusal fallback. **OpenAI instead:** set
+  `COACH_AI_PROVIDER=openai` (or just a `gpt-…` model) and `OPENAI_API_KEY`; the
+  server calls the Responses API directly (no package), with `store: false` so OpenAI
+  keeps no stored copy, reasoning effort low for chat and medium for letters
+  (`COACH_AI_EFFORT` overrides, `none` sends none), default model `gpt-5.6-luna`.
+  `OPENAI_BASE_URL` points it at a compatible endpoint (Azure, Bedrock). `POST /api/share` (full
   token) posts a text to `TELEGRAM_SHARE_CHAT_ID` for accountability sharing.
   `POST /api/coach/letter/<week>`
   (full token) takes `{facts}` — re-filtered through a server-side allowlist —

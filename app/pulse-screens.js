@@ -381,7 +381,7 @@ function pzCoachHtml(D){
   if(!socAvailable()||(!SOC.me&&!owner))return `${back}${pzHead('Coach','Your AI coach')}<section class="pz-card"><p class="pz-sub">The coach runs on the league server this page comes from. ${socAvailable()?'Join the league under <a href="#social">Social</a> to use it.':'Open Pulse from your server’s /pulse link.'}</p></section>`;
   const st=COACH.status;
   if(!st)return `${back}${pzHead('Coach','Your AI coach')}<p class="pz-sub"><span class="pz-spin"></span>Loading…</p>`;
-  if(!st.enabled)return `${back}${pzHead('Coach','Your AI coach')}<section class="pz-card pz-kv"><p class="pz-sub">The AI coach isn’t switched on for this server yet.${owner?' Set <code>COACH_AI=1</code> and an <code>ANTHROPIC_API_KEY</code> on the server, then restart it.':' Ask the league owner.'}</p></section>`;
+  if(!st.enabled)return `${back}${pzHead('Coach','Your AI coach')}<section class="pz-card pz-kv"><p class="pz-sub">The AI coach isn’t switched on for this server yet.${owner?' Set <code>COACH_AI=1</code> and an <code>ANTHROPIC_API_KEY</code> (or <code>OPENAI_API_KEY</code>) on the server, then restart it.':' Ask the league owner.'}</p></section>`;
   const msgs=pzCoachLoad();
   const list=msgs.length?msgs.map(m=>`<div class="pz-msg ${m.role==='user'?'me':'co'}"><p>${esc(m.content).replace(/\n/g,'<br>')}</p></div>`).join('')
     :`<div class="pz-msg co"><p>Hi${SOC.me?' @'+esc(SOC.me.handle):''}. I can see your scores, slips, habits and today’s plan${SOC.me&&SOC.me.coachDetail?', plus your recent trades and notes':''}. Ask me anything about your trading process — or pick one below.</p></div>`;

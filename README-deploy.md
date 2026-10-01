@@ -21,7 +21,7 @@ admin.html      the owner's admin panel, served at /admin
 badges.html     a member's public badge page, served at /b/<name>
 vendor/         eth-sig.js — signature recovery for wallet claims (bundled, no install)
 tech.html       technical reference, served at /docs
-package.json    start script + node version (one optional dependency, the Anthropic SDK, used only with COACH_AI)
+package.json    start script + node version (one optional dependency, the Anthropic SDK, used only with COACH_AI on Anthropic)
 webauthn.js     passkey (WebAuthn) checks for Pulse sign-in, no dependencies
 offsite.js      encrypted off-site backups to any S3-compatible bucket, plus the restore CLI
 cex-relay.js    forwards browser-signed, read-only Bybit/Binance requests (POST /api/cex/relay)
@@ -124,9 +124,13 @@ tests/          test suites (`npm test`; CI runs them on every push)
 | `NUDGE_HOUR`           | *(unset = off)*                  | End-of-day journaling nudge after this hour (0–23); needs `REFRESH_INTERVAL_MIN` and a delivery channel |
 | `NUDGE_TZ`             | `UTC`                            | Fallback IANA zone for `NUDGE_HOUR` and "today" until the app reports its own (it follows the app's clock setting) |
 | `TELEGRAM_SHARE_CHAT_ID` | *(unset)*                     | Accountability partner/group chat(s) for Review → Progress → "Send to partner" (needs `TELEGRAM_BOT_TOKEN`) |
-| `COACH_AI`             | *(unset = off)*                  | `1` enables the AI weekly letter in Review and the AI coach chat in Pulse (needs `ANTHROPIC_API_KEY`; Railway's `npm install` pulls the optional SDK). Chat allowances are set in `/admin` → Coach |
+| `COACH_AI`             | *(unset = off)*                  | `1` enables the AI weekly letter in Review and the AI coach chat in Pulse (needs `ANTHROPIC_API_KEY`, or `OPENAI_API_KEY` with OpenAI; Railway's `npm install` pulls the optional SDK). Chat allowances are set in `/admin` → Coach |
 | `ANTHROPIC_API_KEY`    | *(unset)*                        | Claude API key, only read when `COACH_AI=1` |
-| `COACH_AI_MODEL`       | `claude-opus-5-5`                | Model for the weekly letter and the coach chat |
+| `COACH_AI_PROVIDER`    | `anthropic` (`openai` for a `gpt-…` model) | Which AI runs the coach: `anthropic` or `openai` |
+| `COACH_AI_MODEL`       | `claude-opus-5-5`, or `gpt-5.6-luna` with OpenAI | Model for the weekly letter and the coach chat |
+| `OPENAI_API_KEY`       | *(unset)*                        | OpenAI API key, read when the coach uses OpenAI (no package to install) |
+| `COACH_AI_EFFORT`      | `low` chat, `medium` letter      | OpenAI reasoning effort for both; `none` sends no setting. Lower is cheaper |
+| `OPENAI_BASE_URL`      | `https://api.openai.com/v1`      | A compatible endpoint instead (Azure OpenAI, AWS Bedrock's `/openai/v1`) |
 | `PUSH`                 | *(on)*                           | `0` switches web push reminders off. On by default: the server makes its own push keys (VAPID) once, in `DATA_DIR/vapid.json` |
 | `PUSH_SUBJECT`         | `mailto:pulse@localhost`         | Contact the browsers' push services can reach you at — set a real `mailto:` or `https://` address |
 | `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET` | *(unset)*  | Lets people connect WHOOP for readiness. Register an app at developer.whoop.com with the redirect URL `<PUBLIC_ORIGIN>/api/wear/whoop/callback` |

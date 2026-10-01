@@ -196,11 +196,11 @@ html{scroll-behavior:smooth}
   <h3>Leaks, habits and badges</h3>
   <p>Progress shows your <b>leaks</b> — slips that keep costing you, and whether they're shrinking. <b>Plug this leak</b> turns one into a habit that's checked from your fills: three clean trading weeks in a row plug it and earn a badge. Only weeks you traded in count: a week traded without that slip adds one, a week with the slip starts the count again, and a week with no trading is skipped. Each habit has its own streak with shields, and Today nudges you when a trigger you tend to slip after is happening right now. There are about 280 badges in six tiers, revealed as you go; switch on your public <b>badge page</b> to share it.</p>
   <h3>AI coach (optional)</h3>
-  <p>When the server runs with <code>COACH_AI=1</code>, the <b>Coach</b> tab lets you ask Claude about your trading, a few messages a day. It sees a summary of your numbers, habits and leaks; your trades and notes only if you switch that on. Wallet addresses are removed, and the server keeps only a count of messages.</p>
+  <p>When the server runs with <code>COACH_AI=1</code>, the <b>Coach</b> tab lets you ask the AI coach (Claude or OpenAI's GPT, whichever the server uses) about your trading, a few messages a day. It sees a summary of your numbers, habits and leaks; your trades and notes only if you switch that on. Wallet addresses are removed, and the server keeps only a count of messages.</p>
   <h3>Admin panel</h3>
   <p>The server owner signs in at <code>/admin</code> with the access token to manage members (add, edit, boost XP, unlock, sign-in codes), leagues, reward badges, levels and XP, feature levels, the coach's allowances, routines, competitions and announcements.</p>
   <h3>Coach's letter (optional)</h3>
-  <p>If your server runs with <code>COACH_AI=1</code> and an Anthropic API key, the weekly review offers <b>Write my letter</b>: a short note from Claude on last week — what went well and the one thing to work on. Open <b>Exactly what gets sent</b> first: it's an aggregate summary (counts, averages, habits, finding headlines, your lessons). No fills, wallet addresses, trade notes or screenshots are sent.</p>
+  <p>If your server runs with <code>COACH_AI=1</code> and an Anthropic or OpenAI API key, the weekly review offers <b>Write my letter</b>: a short note from the AI coach on last week — what went well and the one thing to work on. Open <b>Exactly what gets sent</b> first: it's an aggregate summary (counts, averages, habits, finding headlines, your lessons). No fills, wallet addresses, trade notes or screenshots are sent.</p>
 </section>
 
 <section id="diagnostic">
@@ -333,7 +333,7 @@ html{scroll-behavior:smooth}
     <tr><td><code>ALERT_LIQ_PCT</code></td><td>Alert when a position is within this % of liquidation (default 10).</td></tr>
     <tr><td><code>ALERT_DAILY_LOSS</code></td><td>$ daily-loss alert; falls back to your saved in-app rule.</td></tr>
     <tr><td><code>ALERT_FUNDING_24H</code></td><td>Alert when funding paid per 24h exceeds this $.</td></tr>
-    <tr><td><code>COACH_AI</code> + <code>ANTHROPIC_API_KEY</code></td><td>Turns on the coach's weekly letter in Review (see The coach; only an aggregate summary is sent) and the AI coach chat in Pulse. <code>COACH_AI_MODEL</code> picks the model (default <code>claude-opus-5-5</code>).</td></tr>
+    <tr><td><code>COACH_AI</code> + <code>ANTHROPIC_API_KEY</code> (or <code>OPENAI_API_KEY</code>)</td><td>Turns on the coach's weekly letter in Review (see The coach; only an aggregate summary is sent) and the AI coach chat in Pulse. <code>COACH_AI_MODEL</code> picks the model (default <code>claude-opus-5-5</code>).</td></tr>
     <tr><td><code>NUDGE_HOUR</code> + <code>NUDGE_TZ</code></td><td>End-of-day journaling nudge: once a day after this hour (0–23), if trades closed today are unjournaled or the day has no end-of-day review, a reminder goes out on the alert channels. The hour and "today" follow the app's own clock setting (UTC, or your browser's zone), so it always looks for the review under the date you wrote it; <code>NUDGE_TZ</code> is only a fallback. Runs on the refresh schedule, so it needs <code>REFRESH_INTERVAL_MIN</code>.</td></tr>
   </table></div>
   <p>Alerts also fire on a drawdown deeper than the 95th percentile expectation for your own return stream — statistically unusual, not routine variance. Everything dedupes with a cooldown, and once a week a <b>weekly digest</b> (trades, net, win rate, expectancy, fees, best/worst, prior-week comparison) is written and delivered.</p>
