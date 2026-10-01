@@ -20,7 +20,7 @@ const BADGE_METRICS = {
 };
 const DEFAULT_LEVEL_TITLES = ['Rookie', 'Apprentice', 'Journeyman', 'Disciplined', 'Consistent', 'Professional', 'Veteran', 'Master', 'Grandmaster', 'Legend'];
 const DEFAULTS = {
-  modules: { trends: 2, deep: 1, share: 3, compete: 4, coach: 1, review: 1, reports: 1, peers: 1, duels: 1 }, // peers, duels: free for now; set a level to make them an unlock
+  modules: { trends: 2, deep: 1, share: 3, compete: 4, coach: 1, review: 1, reports: 1, peers: 1, duels: 3 }, // peers: free for now; duels from level 3 (1,200 XP), so there's a record to compete on and XP to stake
   levels: { mode: 'curve', base: 200, thresholds: [], titles: DEFAULT_LEVEL_TITLES },
   xp: { discipline: 1, checkin: 10, plan: 15, journal: 15, stops: 10, limit: 10, review: 15, achievement: 50, challenge: 150, focus: 25 },
   coach: { members: true, daily: 3, dailyUnlocked: 3, ownerDaily: 0, detail: true },

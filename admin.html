@@ -649,7 +649,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
         ${box('dStakes','Members can stake XP',c.stakes!==false,'Both sides put up the same XP and the winner takes the other’s; a draw gives both back. It moves XP between members, it never creates it. Backing out before a duel starts costs nothing.')}
         <div class="row">${field('dMaxStake','Most XP per duel','<input id="dMaxStake" type="number" min="0" max="100000" step="50" value="'+(c.maxStake??500)+'">','The biggest stake one duel can carry.')}
           ${field('dStakePct','Most of a member’s XP at stake','<input id="dStakePct" type="number" min="1" max="100" value="'+(c.stakePct??25)+'">','Percent, across all their open duels, so one bad week can’t cost more than this share of anyone’s XP.')}</div>
-        <p class="hint">Unlock level: under Features (“Duels”, free at level 1). Members switch off “Accept duel challenges” under Profile & privacy.</p>
+        <p class="hint">Unlock level: under Features (“Duels”, level 3 by default). Members switch off “Accept duel challenges” under Profile & privacy.</p>
         <div><button class="primary" id="dSave">Save</button></div></section>
       <section class="card"><h2>Running and waiting</h2>
         ${X.open.length?`<div class="scroll"><table><thead><tr><th>Who</th><th>On</th><th>Dates</th><th>Status</th><th></th></tr></thead><tbody>${X.open.map(row).join('')}</tbody></table></div>
