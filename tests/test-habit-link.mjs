@@ -7,7 +7,8 @@ const html = readAppSource(new URL('../ledger.html', import.meta.url).pathname);
 const { evalModule } = makeExtractor(html);
 const pre = html.match(/const RV_BLIND=\[[^\]]*\];/)[0] + '\n' + html.slice(html.indexOf('const RV_HABITS=['), html.indexOf('];', html.indexOf('const RV_HABITS=[')) + 2)
   + '\n' + html.match(/const HL_MIN=\{[^}]*\};/)[0] + '\n' + html.match(/const HL_BANDS=\[.*\];/)[0];
-const { habitLink, hlLinkWords } = await evalModule(['habitLink', 'hlLinkWords', '_spearmanWith', '_seededRnd'], null, pre);
+const pre2 = pre + '\n' + html.match(/const HL_SURE=\{.*\};/)[0];
+const { habitLink, hlLinkWords, hlSummary } = await evalModule(['habitLink', 'hlLinkWords', 'hlSummary', '_spearmanWith', '_seededRnd'], null, pre2);
 
 // n days; each day's habits decided by keep(i) → {plan, checkin, review, revenge}; result by res(i, kept)
 function history(n, keep, res) {
@@ -86,6 +87,39 @@ t('days without trades aren’t points, and the same input always gives the same
   H.days.push({ key: '2026-08-30', score: 100, n: 0, behavior: { n: 0, slips: [] }, parts: {} });
   const a = habitLink(H.days, H.byDay, H.opts), b = habitLink(H.days, H.byDay, H.opts);
   eq(a.points.length, 10); eq(JSON.stringify(a), JSON.stringify(b));
+});
+
+console.log('\nThe plain-language read (Pulse)');
+const pays = () => history(30, i => ({ plan: i % 3 !== 0, checkin: i % 4 !== 0, review: i % 2 === 0, revenge: i % 5 === 0 }),
+  (i, k) => -200 + 60 * [k.plan, k.checkin, k.review, !k.revenge].filter(Boolean).length + ((i * 37) % 11 - 5) * 4);
+t('when habits pay: “yes”, how sure, the dollar difference and the habit to protect', () => {
+  const H = pays(), L = habitLink(H.days, H.byDay, H.opts), S = hlSummary(L);
+  eq(S.verdict, 'pays'); ok(S.sure >= 2, 'at least “looks real”'); ok(/Looks real|Clear pattern/.test(S.sureText));
+  near(S.d, L.good.avg - L.rest.avg, 1e-9); ok(S.d > 0);
+  ok(S.top && !S.top.mechanical && S.top.diff > 0, 'a real habit to protect');
+  eq(S.top.key, L.habits.find(h => !h.mechanical && h.diff > 0 && h.kept.n >= 3 && h.missed.n >= 3).key, 'the one worth most');
+});
+t('before 8 days: too early, no claims, no habit named', () => {
+  const H = history(6, i => ({ plan: i % 2 === 0, checkin: true, review: false, revenge: false }), (i, k) => (k.plan ? 300 : -300));
+  const S = hlSummary(habitLink(H.days, H.byDay, H.opts));
+  eq([S.verdict, S.sure, S.sureText, S.top], ['early', 0, 'Too early to tell', null]);
+});
+t('no link: “not clear yet”, one bar of sure, and no habit to protect', () => {
+  const H = history(30, i => ({ plan: i % 2 === 0, checkin: i % 3 !== 0, review: i % 4 === 0, revenge: i % 5 === 0 }), i => ((i * 53) % 17 - 8) * 25);
+  const L = habitLink(H.days, H.byDay, H.opts), S = hlSummary(L);
+  ok(!L.corr || L.corr.p >= 0.05, 'fixture has no real link');
+  eq([S.verdict, S.sure, S.top], ['unclear', 1, null]); eq(S.sureText, 'Not clear yet — could be luck');
+});
+t('habits kept every day (or never): nothing to compare, said plainly', () => {
+  const H = history(12, allKept, i => (i % 2 ? 50 : -20));
+  const S = hlSummary(habitLink(H.days, H.byDay, H.opts));
+  eq([S.verdict, S.sure, S.both, S.top], ['flat', 0, false, null]); eq(S.sureText, 'Nothing to compare yet');
+});
+t('when sloppier days did better, it says so rather than claiming habits pay', () => {
+  const H = history(30, i => ({ plan: i % 3 !== 0, checkin: i % 4 !== 0, review: i % 2 === 0, revenge: i % 5 === 0 }),
+    (i, k) => 200 - 60 * [k.plan, k.checkin, k.review, !k.revenge].filter(Boolean).length + ((i * 37) % 11 - 5) * 4);
+  const S = hlSummary(habitLink(H.days, H.byDay, H.opts));
+  eq(S.verdict, 'reverse'); ok(S.d < 0); eq(S.top, null);
 });
 
 report('habit link');

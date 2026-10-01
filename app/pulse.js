@@ -208,7 +208,7 @@ const PZ_SECTIONS={
     ['xp','Today’s XP','What earns XP today, and what’s due this week',1],['week','Last 7 trading days','Discipline and net, day by day',1],
     ['level','Level and league','Level progress, XP today, league standing',0],['yesterday','Last trading day','Its score, net and lesson in full',0]],
   stats:[['tiles','Headline numbers','Net, win rate, average trade and more',1],['daily','Daily P&L','',1],['findings','What moves your results','Your biggest edges and leaks',1],
-    ['insights','Does discipline pay?','Results on good-discipline days vs the rest',1],['habits','Habits vs results','Each day’s routine against its P&L, and which habits pay',1],['markets','Markets and time of day','Best and worst markets and hours',1]],
+    ['insights','Does discipline pay?','Results on good-discipline days vs the rest',1],['habits','Do your habits pay?','Your habit days against your other days, in dollars',1],['markets','Markets and time of day','Best and worst markets and hours',1]],
   progress:[['goals','Process goals','Targets you set for your process, with progress',1],['xpsources','Where your XP came from','',1],['challenge','Weekly challenge','',1],['habits','Your habits','Streaks for each habit you run',1],['reports','Report cards','Last week and this month',1],
     ['leaks','Your leaks','What your slips cost, and plugging them',1],['lessons','Lessons library','Everything your reviews taught you',1],['moments','Good moments','',1],['badges','Badges','Your latest badges',1],['bests','Personal bests','',1]],
 };
@@ -638,78 +638,53 @@ function pzLongViewHtml(){
   const holds=dv.lo>0, against=dv.hi<0, top=r.habits.filter(h=>!h.mechanical&&h.q!=null&&h.q<0.1&&h.diff>0)[0];
   return `<div class="pz-tile ${holds?'good':against?'hot':'cool'}"><span class="pz-t" style="font-size:13px;line-height:1.45">Over all ${r.weeks.length} weeks: disciplined days made <b>${esc(f(dv.diff))}</b> more per trade than the rest${holds?' — and it holds up':against?' — the other way round':' — not clear yet'} (90% range ${esc(f(dv.lo))} to ${esc(f(dv.hi))}).${top?` The habit that pays most: <b>${esc(top.label.toLowerCase())}</b> (${esc(f(top.diff))}/trade).`:''} <a href="${esc(pzFullHref())}">Full analysis</a></span></div>`;
 }
-// ---- habits vs results: each trading day's routine score against its result ----
-// The scatter answers "do my cleaner days make more?" at a glance; the bands and the habit rows
-// say by how much. Same outcome-blind score as Review → Routine vs results, so a red day can't
-// pull its own score down. Every mark explains itself on hover (or tap on a phone).
+// ---- "Do your habits pay?": the simple version, for people getting started ----
+// Pulse answers in plain words: a verdict, how sure it is, the two kinds of days side by side
+// and the one habit to protect, in dollars. A tap opens a plain breakdown (a three-step
+// staircase and the habits, each worth so much a day). The scatter and the statistics live in
+// the full journal (Review → Routine vs results); this is the same model (habitLink), told simply.
 let _pzHL={key:null,v:null};
 function pzHabitModel(g, ctx, fromKey){
-  const unit=pzS.hlu||'$', days=g.days.filter(d=>d.key>=fromKey&&(byd=>byd.some(pzInMk))(ctx.byDay[d.key]||[]));
-  const key=[fromKey,unit,pzMk(),days.length,_coachMemo.key,_jrev].join('|');
+  const days=g.days.filter(d=>d.key>=fromKey&&(byd=>byd.some(pzInMk))(ctx.byDay[d.key]||[]));
+  const key=[fromKey,pzMk(),days.length,_coachMemo.key,_jrev].join('|');
   if(_pzHL.key===key)return _pzHL.v;
   const byDay={}; for(const d of days)byDay[d.key]=(ctx.byDay[d.key]||[]).filter(pzInMk);
   const entryOf=k=>{ const e=journal['day:'+k]; return {checkin:typeof pzReadinessManual==='function'&&pzReadinessManual(e)!=null, review:!!(e&&e.eod&&e.eod.at)}; };
-  let v=null; try{ v=habitLink(days,byDay,{unit,rOf:rFor,pctOf:retPct,entryOf,seed:_hashSeed('hl|'+fromKey)}); }catch(e){ console.warn('habits vs results',e); }
+  let v=null; try{ v=habitLink(days,byDay,{unit:'$',rOf:rFor,pctOf:retPct,entryOf,seed:_hashSeed('hl|'+fromKey)}); }catch(e){ console.warn('habits vs results',e); }
   _pzHL={key,v}; return v;
 }
 const pzHlFmt=(v,u,exact)=>v==null||!isFinite(v)?'—':u==='$'?(exact?signedPlain(v):pzSigned(v)):u==='%'?(v>=0?'+':'')+v.toFixed(2)+'%':(v>=0?'+':'')+v.toFixed(2)+'R';
-const PZ_HL_UNIT={'$':'P&L in dollars','%':'% return on the size you traded','R':'R — result ÷ the risk you planned'};
-function pzHabitScatterSvg(L){
-  const P=L.points, u=L.unit, vw=typeof innerWidth==='number'?innerWidth:800, W=Math.round(Math.max(300,Math.min(980,vw<900?vw-56:vw-360)));
-  const Lm=58, R=14, T=14, CH=Math.round(Math.max(170,Math.min(240,W*0.32))), B=40, H=T+CH+B, pw=W-Lm-R;
-  let lo=Math.min(0,...P.map(p=>p.v)), hi=Math.max(0,...P.map(p=>p.v)); if(hi-lo<1e-9){ hi+=1; lo-=1; }
-  const st=pzNiceStep(hi-lo,4); lo=Math.floor(lo/st)*st; hi=Math.ceil(hi/st)*st;
-  const xMin=Math.max(0,Math.min(60,Math.floor((Math.min(...P.map(p=>p.score))-8)/10)*10)); // zoom in on where the days are
-  const x=sc=>Lm+(sc-xMin)/(100-xMin)*pw, y=v=>T+(hi-v)/(hi-lo)*CH, f1=n=>n.toFixed(1);
-  // a little sideways spread, the same every time, so days with the same score don't hide each other
-  const jit=k=>{ let h=0; for(const c of k)h=(h*31+c.charCodeAt(0))|0; return ((h>>>0)%1000/1000-0.5)*3; };
-  const yt=[]; for(let v=lo;v<=hi+st/2;v+=st)yt.push(v);
-  const fmtY=v=>u==='$'?(v<0?'−':'')+pzShort(Math.abs(v)):u==='%'?(+v.toFixed(2))+'%':(+v.toFixed(2))+'R';
-  const dot=p=>{ const cx=x(Math.max(0,Math.min(100,p.score+jit(p.key)))), cy=y(p.v), col=p.v>0?PZ_COL.good:p.v<0?PZ_COL.low:'var(--pz-muted)';
-    const tip=[dayLabel(p.key),'Habit score '+p.score+' · '+p.kept.length+' of '+(p.kept.length+p.missed.length)+' habits kept'+(p.discipline!=null?' · Discipline '+p.discipline:''),'Result '+pzHlFmt(p.v,u,true)+(u!=='$'?' ('+signedPlain(p.usd)+')':''),
-      p.n+' trade'+(p.n===1?'':'s')+' · '+p.wins+' W · '+p.losses+' L',p.missed.length?'Missed: '+p.missed.join(', '):'Every habit kept'].join('\n');
-    return `<g class="pz-hld" data-pz-tip="${esc(tip)}" tabindex="0"><circle cx="${f1(cx)}" cy="${f1(cy)}" r="11" fill="transparent"/><circle cx="${f1(cx)}" cy="${f1(cy)}" r="5" fill="${col}" fill-opacity=".85" stroke="var(--pz-card)" stroke-width="1.5"/></g>`; };
-  const fit=L.fit, x0=Math.min(...P.map(p=>p.score));
-  const line=fit&&x0<100?`<line x1="${f1(x(x0))}" y1="${f1(y(fit.icpt+fit.slope*x0))}" x2="${f1(x(100))}" y2="${f1(y(fit.icpt+fit.slope*100))}" stroke="${PZ_COL.xp}" stroke-width="2" stroke-dasharray="6 4" clip-path="url(#pzHlClip)"/>
-    <line class="pz-hlfit" x1="${f1(x(x0))}" y1="${f1(y(fit.icpt+fit.slope*x0))}" x2="${f1(x(100))}" y2="${f1(y(fit.icpt+fit.slope*100))}" stroke="transparent" stroke-width="14" clip-path="url(#pzHlClip)" data-pz-tip="${esc('Trend line\nThe straight line that best fits the dots: about '+pzHlFmt(fit.per10,u,true)+' a day for every 10 points of routine score.\nA guide for the eye — the link sentence above is the real test.')}"/>`:'';
-  return `<svg class="pz-hlsvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Each trading day's routine score against its result: ${P.length} days">
-    <defs><clipPath id="pzHlClip"><rect x="${Lm}" y="${T}" width="${pw}" height="${CH}"/></clipPath></defs>
-    <rect x="${f1(x(70))}" y="${T}" width="${f1(x(100)-x(70))}" height="${CH}" fill="${PZ_COL.good}" fill-opacity=".05" data-pz-tip="${esc('70+ zone\nDays you kept at least 70% of your habits.')}"/>
-    ${yt.map(v=>`<line x1="${Lm}" x2="${W-R}" y1="${f1(y(v))}" y2="${f1(y(v))}" stroke="${Math.abs(v)<st/1e6?'#4A535E':'var(--pz-line)'}"${Math.abs(v)<st/1e6?' stroke-dasharray="4 4"':''}/><text x="${Lm-8}" y="${f1(y(v)+4)}" font-size="11" text-anchor="end" fill="var(--pz-muted)">${esc(fmtY(v))}</text>`).join('')}
-    ${[...new Set([xMin,...[10,20,30,40,50,60,70,80,90].filter(v=>v>xMin&&(100-xMin<=50||v%20===0||v===70)),100])].map(sc=>`<line x1="${f1(x(sc))}" x2="${f1(x(sc))}" y1="${T}" y2="${T+CH}" stroke="${sc===70?PZ_COL.good:'var(--pz-line)'}"${sc===70?' stroke-dasharray="3 3" stroke-opacity=".7"':''}/><text x="${f1(x(sc))}" y="${T+CH+15}" font-size="11" text-anchor="${sc===xMin?'start':sc===100?'end':'middle'}" fill="var(--pz-muted)">${sc}</text>`).join('')}
-    <text x="${f1(Lm+pw/2)}" y="${H-4}" font-size="11" text-anchor="middle" fill="var(--pz-muted)">Habit score · share of your habits kept that day</text>
-    ${line}
-    ${P.map(dot).join('')}
-  </svg>`;
-}
+const PZ_HL_DAY='A “habit day” is a day you kept most of your habits (7 in 10 or more): plan, check-in, journaling, review, and no revenge trades, sizing up after a loss, adding to losers or overtrading. Only the habits you actually use count.';
 function pzHabitLinkHtml(g, ctx, fromKey){
-  const L=pzHabitModel(g,ctx,fromKey);
-  const head=`<b style="font-size:15px">Habits vs results</b>`;
-  if(!L)return '';
-  const u=L.unit, seg=L.units.length>1?`<div class="pz-seg" role="group" aria-label="Result in">${L.units.map(k=>`<button type="button" data-pz-hlu="${k}" aria-pressed="${k===u}" data-pz-tip="${esc(PZ_HL_UNIT[k])}">${k==='$'?'$ P&amp;L':k}</button>`).join('')}</div>`:'';
-  const top=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">${head}${seg}</div>`;
-  if(L.points.length<L.need.days)return `<section class="pz-card pz-span" data-sec="stats:habits" style="display:flex;flex-direction:column;gap:10px">${top}<p class="pz-sub" style="font-size:13px">Each trading day becomes a dot: how many of your habits you kept against what you made. It needs ${L.need.days} trading days in this range — you have ${L.points.length}.</p></section>`;
-  const W=hlLinkWords(L.corr), gd=L.good, rs=L.rest;
-  const lead=!L.spread?`Every day here has the same habit score (${L.points[0].score}), so there’s nothing to compare yet. As some days go better or worse on your habits, the dots spread out and the link shows. `
-    :(gd.n&&rs.n?`Days you kept 70%+ of your habits averaged <b style="color:${pzSignCol(gd.avg)};white-space:nowrap">${esc(pzHlFmt(gd.avg,u))}</b> (${gd.n} day${gd.n===1?'':'s'}); days under 70 averaged <b style="color:${pzSignCol(rs.avg)};white-space:nowrap">${esc(pzHlFmt(rs.avg,u))}</b> (${rs.n}). `
-      :gd.n?`Every day here scored 70+ (average ${esc(pzHlFmt(gd.avg,u))}). `:`No day here scored 70+ yet (average ${esc(pzHlFmt(rs.avg,u))}). `)
-    +(!L.spread?'':W?`<b>${esc(W.text)}</b> <span class="pz-fine" data-pz-tip="${esc('Rank correlation across '+L.corr.n+' days\nρ (rho) runs from −1 to +1: above 0, higher routine scores come with better days. p is the chance of a link this strong if there were none (1,000 shuffles); under 0.05 is unlikely to be luck.')}" tabindex="0">ρ ${L.corr.rho.toFixed(2)} · p ${L.corr.p.toFixed(3)}</span>`
-       :`<span class="pz-fine">${L.points.length} days so far — the link is stated from ${L.need.corr}.</span>`);
-  const bands=L.bands.map(b=>({l:b.label.replace('Under 50','<50').replace('90–100','90+'),v:b.avg||0,
-    tip:b.n?`Habit score ${b.label} · ${b.n} day${b.n===1?'':'s'}\nAverage day ${pzHlFmt(b.avg,u,true)}\n${b.green} of ${b.n} days green · ${b.trades} trades\nAll together ${pzHlFmt(b.total,u,true)}`:`Habit score ${b.label}\nNo days in this band`}));
-  const hab=L.habits.slice(0,8), hmax=Math.max(1e-9,...hab.map(h=>Math.abs(h.diff)));
-  const habRows=hab.map(h=>{ const w=Math.round(Math.abs(h.diff)/hmax*50), col=h.mechanical?'var(--pz-muted)':h.diff>=0?PZ_COL.good:PZ_COL.low;
-    const tip=`${h.label}\nKept: ${pzHlFmt(h.kept.avg,u,true)} a day over ${h.kept.n} day${h.kept.n===1?'':'s'}\nMissed: ${pzHlFmt(h.missed.avg,u,true)} a day over ${h.missed.n} day${h.missed.n===1?'':'s'}\nDifference ${pzHlFmt(h.diff,u,true)}${h.mechanical?'\nThis one can only fail on a losing day, so it follows from the result rather than causing it.':''}`;
-    return `<div class="pz-hlrow" data-pz-tip="${esc(tip)}" tabindex="0"><span>${esc(h.label)}</span><span class="pz-hlbar"><i style="${h.diff>=0?'left:50%':'right:50%'};width:${w}%;background:${col}"></i></span><b style="color:${col}">${esc(pzHlFmt(h.diff,u))}</b></div>`; }).join('');
-  return `<section class="pz-card pz-span pz-viz" data-sec="stats:habits" style="display:flex;flex-direction:column;gap:12px">${top}
-    <p class="pz-sub" style="font-size:13px;line-height:1.5;margin:0">${lead}</p>
-    ${pzHabitScatterSvg(L)}
-    <div class="pz-legend"><span><i style="background:${PZ_COL.good}"></i>green day</span><span><i style="background:${PZ_COL.low}"></i>red day</span>${L.fit?`<span><i style="background:${PZ_COL.xp}"></i>trend</span>`:''}<span class="pz-fine">Hover or tap a dot for the day</span></div>
-    <div class="pz-hlgrid">
-      <div style="display:flex;flex-direction:column;gap:6px"><b style="font-size:14px" data-pz-tip="${esc('Average day by habit score\nYour days grouped by how many of your habits you kept, and what an average day in each group made. If your habits pay, the bars climb to the right.')}" tabindex="0">Average day by habit score</b>${pzDivBars(bands,96)}</div>
-      <div style="display:flex;flex-direction:column;gap:6px"><b style="font-size:14px" data-pz-tip="${esc('Which habits pay\nFor each habit: your average day when you kept it minus your average day when you didn’t. Right and green: keeping it went with better days.')}" tabindex="0">Which habits pay</b>${habRows||'<p class="pz-sub" style="font-size:13px">Every habit was either always kept or never tracked in this range — nothing to compare yet.</p>'}</div>
-    </div>
-    <p class="pz-fine" style="margin:0">One dot per trading day in this range. ${esc(PZ_HL_UNIT[u])}. Habits counted: ${esc(L.tracked.join(', ').toLowerCase())}. A link isn’t proof of cause — but a habit that keeps showing up green is worth protecting.</p></section>`;
+  const L=pzHabitModel(g,ctx,fromKey); if(!L)return '';
+  const S=hlSummary(L), gd=L.good, rs=L.rest, n=S.n, open=!!pzS.hlOpen, abs=v=>pzShort(Math.abs(v)), dd=k=>k+' day'+(k===1?'':'s');
+  const pill={early:'Early read',flat:'Not yet',pays:'Yes',unclear:'Not clear yet',reverse:'Not yet'}[S.verdict];
+  const line=S.verdict==='early'?(n?`After ${dd(n)} it’s too early to tell. Keep logging your habits; this fills in around day ${L.need.corr}.`:'No trading days in this range yet.')
+    :S.verdict==='flat'?(!gd.n?'You haven’t had a day with most of your habits kept yet. Try one and see how it goes.':!rs.n?'You kept most of your habits every single day here, so there’s nothing to compare against. A good problem to have.':'Your days all looked the same on habits, so there’s nothing to compare yet.')
+    :S.verdict==='pays'?`On days you kept most of your habits, you made <b style="color:${PZ_COL.good};white-space:nowrap">${esc(abs(S.d))} more</b> a day on average.`
+    :S.verdict==='reverse'?`So far your days with fewer habits kept did a bit better (${esc(abs(S.d))} a day). That can happen early on, from the market or plain luck. Keep logging and check back.`
+    :(Math.abs(S.d)<1?'So far your habit days and your other days end up about the same.':`So far your habit days did a bit ${S.d>0?'better':'worse'} (${esc(abs(S.d))} a day), but it’s not clear yet; it could be luck.`)+' Keep going; it gets clearer with more days.';
+  const tile=(cls,lbl,x,tip)=>`<div class="pz-tile ${cls}" data-pz-tip="${esc(tip)}" tabindex="0"><span class="pz-t">${lbl}</span><span class="pz-n" style="color:${pzSignCol(x.avg)}">${esc(pzHlFmt(x.avg,'$'))}</span><span class="pz-t">average day · ${x.green} of ${dd(x.n)} green</span></div>`;
+  const tiles=gd.n>=2&&rs.n>=2&&n>=L.need.days?`<div class="pz-grid2">${tile('good','Habit days',gd,'Habit days: '+dd(gd.n)+'\nAverage day '+pzHlFmt(gd.avg,'$',true)+', '+gd.green+' of them green.\n'+PZ_HL_DAY)}${tile('cool','Other days',rs,'Other days: '+dd(rs.n)+'\nAverage day '+pzHlFmt(rs.avg,'$',true)+', '+rs.green+' of them green.\nDays you kept fewer than 7 in 10 of your habits.')}</div>`:'';
+  const protect=S.top?`<div class="pz-hlprot" data-pz-tip="${esc(S.top.label+'\nDays you kept it: '+pzHlFmt(S.top.kept.avg,'$',true)+' on average ('+dd(S.top.kept.n)+').\nDays you didn’t: '+pzHlFmt(S.top.missed.avg,'$',true)+' ('+dd(S.top.missed.n)+').')}" tabindex="0"><span class="pz-hlk">1</span><span>Protect this one: <b>${esc(S.top.label)}</b><span class="pz-sub" style="display:block;font-size:12px">worth about ${esc(abs(S.top.diff))} a day for you</span></span></div>`:'';
+  const meter=`<div class="pz-hlmeter" data-pz-tip="${esc('How sure we are\nIt gets surer as you log more days and the pattern keeps holding. Until then, treat it as a hint, not a fact.')}" tabindex="0"><i aria-hidden="true">${[1,2,3].map(k=>`<s class="${S.sure>=k?'on':''}"></s>`).join('')}</i>${esc(S.sureText)} · ${dd(n)}</div>`;
+  // the breakdown: three steps and the habits, in dollars a day
+  let more='';
+  if(open){
+    const steps=[['Few','under half',p=>p.score<50],['Some','half or more',p=>p.score>=50&&p.score<70],['Most','7 in 10 or more',p=>p.score>=70]].map(([l,sub,f])=>{ const ps=L.points.filter(f), avg=ps.length?ps.reduce((a,p)=>a+p.v,0)/ps.length:null;
+      return {l,v:avg||0,tip:ps.length?`${l} habits kept (${sub}): ${dd(ps.length)}\nAverage day ${pzHlFmt(avg,'$',true)}\n${ps.filter(p=>p.v>0).length} of them green`:`${l} habits kept (${sub})\nNo days like this yet`}; });
+    const hab=L.habits.filter(h=>!h.mechanical).slice(0,5);
+    more=`<div class="pz-hlmore-body">
+      <b style="font-size:14px">The more habits you keep…</b>${pzDivBars(steps,90)}
+      <p class="pz-fine" style="margin:-4px 0 0">Your average day when you kept few, some or most of your habits.</p>
+      ${hab.length?`<b style="font-size:14px;margin-top:6px">Your habits, by what they’re worth</b>${hab.map((h,i)=>`<div class="pz-hlhab" data-pz-tip="${esc(h.label+'\nKept on '+dd(h.kept.n)+', skipped on '+dd(h.missed.n)+'.\nDays you kept it were '+pzHlFmt(h.diff,'$',true)+' a day compared with days you didn’t.')}" tabindex="0"><span class="pz-hlk${i===0&&h.diff>0&&S.verdict==='pays'?' top':''}">${i+1}</span><span>${esc(h.label)}<span class="pz-sub" style="display:block;font-size:12px">kept ${h.kept.n} of ${h.kept.n+h.missed.n} days</span></span><b style="color:${pzSignCol(h.diff)}">${esc(pzHlFmt(h.diff,'$'))}<small> /day</small></b></div>`).join('')}
+        <p class="pz-fine" style="margin:0">Habits overlap, so these don’t add up. Treat them as a ranking.</p>`:''}
+      <p class="pz-fine" style="margin:0">Every day as a dot, and the statistics behind this, are in the <a href="${esc(pzFullHref())}">full journal</a> under Review.</p></div>`;
+  }
+  return `<section class="pz-card pz-span pz-viz pz-hlcard" data-sec="stats:habits">
+    <div class="pz-kvrow"><b style="font-size:16px" data-pz-tip="${esc(PZ_HL_DAY)}" tabindex="0">Do your habits pay?</b><span class="pz-hlpill ${S.verdict}">${pill}</span></div>
+    <p class="pz-hlline">${line}</p>${tiles}${protect}${meter}
+    ${n>=L.need.days?`<button type="button" class="pz-hlmore" data-pz-hlmore="1" aria-expanded="${open}">${open?'Hide the breakdown':'See the breakdown'} ${pzI('chev',14)}</button>`:''}${more}</section>`;
 }
 function pzTrendsHtml(D){
   const {g}=D, ctx=g.ctx, R=pzS.range, now=Date.now();
@@ -753,7 +728,7 @@ function pzTrendsHtml(D){
         ${pzLongViewHtml()}
         ${rl?`<div class="pz-tile cool"><span class="pz-t" style="font-size:13px;line-height:1.45">On days you checked in at readiness 70+, your discipline averaged <b>${rl.hi}</b>; on the other check-in days, <b>${rl.lo}</b>.</span></div>`:''}</section></div>
       <div class="pz-col" data-sec="stats:findings"><section class="pz-card" style="padding:6px 16px"><b style="display:block;font-size:15px;margin:10px 0 2px">What moves your results <span class="pz-sub" style="font-weight:400;font-size:12px">· ${R==='all'?'all time':'last '+R+' days'}${RF.n?', '+RF.n+' trades':''}</span></b>${RF.few?`<p class="pz-sub" style="font-size:13px;padding:6px 0 12px">Needs at least 10 closed trades in this range to find patterns — there ${RF.n===1?'is':'are'} ${RF.n}. Try a longer range.</p>`:''}${F.length?F.map(f=>`<div class="pz-ins"><span class="pz-tag ${esc(f.tone)}">${esc(TONE_TAG[f.tone]||'Note')}</span><span><b>${esc(f.title)}</b><span>${esc(pzPlain(f.action||f.body||''))}</span>${f.evidence?`<details class="pz-why"><summary>Why</summary><span>${esc(f.evidence)} · ${esc(confWords(f.conf))}</span></details>`:''}</span></div>`).join(''):(RF.few?'':'<p class="pz-sub" style="padding:12px 0">Patterns show up here after about five closed trades.</p>')}</section></div>`; }
-  if(!lock)deep+=pzHabitLinkHtml(g,ctx,fromKey);
+  if(!lock)deep=pzHabitLinkHtml(g,ctx,fromKey)+deep; // the plain answer first, then the detail
   return `${pzHead(R==='all'?'All time':'Last '+R+' days','Stats',seg)}${pzMkSeg()}<div class="pz-wide">${stats}${deep}<p class="pz-fine pz-span"><a href="#how">How are the scores worked out?</a></p>${pzCustomizeLink('stats')}</div>${pzLayoutCss('stats')}`;
 }
 // The Diagnostic's findings for one range (all time reuses the coach's set). Same engine, only the
@@ -873,7 +848,7 @@ function pzTipShow(el){ const txt=el.getAttribute('data-pz-tip'); if(!txt)return
   box.style.left=Math.max(8,Math.min(innerWidth-bw-8,x))+'px'; box.style.top=Math.max(8,Math.min(innerHeight-bh-8,y))+'px'; }
 function pzTipHide(){ const box=document.getElementById('pzTip'); if(box)box.hidden=true; _pzTipEl=null; }
 var _pzTipEl=null;
-const PZ_VIZ='.pz-viz,.pz-chart,.pz-div,.pz-session,.pz-hlsvg,.pz-snapsvg';
+const PZ_VIZ='.pz-viz,.pz-chart,.pz-div,.pz-session,.pz-snapsvg';
 // no hover on a phone: a tap on a chart mark shows what it means, a tap anywhere else hides it
 document.addEventListener('pointerdown',ev=>{ if(ev.pointerType==='mouse')return; const el=ev.target.closest&&ev.target.closest('[data-pz-tip]');
   if(el&&el.closest(PZ_VIZ)){ pzTipShow(el); _pzTapAt=Date.now(); } else pzTipHide(); },{passive:true});
@@ -1240,7 +1215,7 @@ function wirePulse(){
       return; }
     if(await pzGrowthAction(t))return;
     if(ds.pzRange){ pzS.range=ds.pzRange==='all'?'all':+ds.pzRange; pzRender(); return; }
-    if(ds.pzHlu){ pzS.hlu=ds.pzHlu; pzRender(); return; }
+    if(ds.pzHlmore){ pzS.hlOpen=!pzS.hlOpen; pzRender(); return; }
     if(ds.pzBadge){ pzS.badge=pzS.badge===ds.pzBadge?null:ds.pzBadge; pzRender(); return; }
     if(ds.pzCk&&pzS.ck){ const n=+ds.n; pzS.ck[ds.pzCk]=pzS.ck[ds.pzCk]===n?null:n;
       t.closest('.pz-pills').querySelectorAll('button').forEach(b=>b.setAttribute('aria-checked',String(+b.dataset.n===pzS.ck[ds.pzCk])));

@@ -628,6 +628,23 @@ function habitLink(days, byDay, opts){
     .sort((a,b)=>(a.mechanical-b.mechanical)||(b.diff-a.diff));
   return {unit,units,points:P,spread,fit,corr,bands,good:split(true),rest:split(false),habits,tracked:inPlay.map(h=>h[1]),need:HL_MIN};
 }
+// The plain-language read of habitLink, for people who don't read scatter plots: a verdict, how
+// sure it is (0–3 bars), the difference between the two kinds of days, and the one habit to
+// protect. Never claims more than the numbers hold: before HL_MIN.corr days it's "too early",
+// without a significant link it's "not clear yet", and only a real positive link names a habit.
+const HL_SURE={early:'Too early to tell',flat:'Nothing to compare yet',unclear:'Not clear yet — could be luck',pays:['','','Looks real','Clear pattern'],reverse:['','','Looks real','Clear pattern']};
+function hlSummary(L){
+  const n=L.points.length, g=L.good, r=L.rest, both=g.n>0&&r.n>0, d=both?g.avg-r.avg:null, c=L.corr;
+  let verdict, sure=0;
+  if(n<L.need.corr)verdict='early';
+  else if(!L.spread||!both)verdict='flat';
+  else if(c&&c.p<0.05&&c.rho>0&&d>0){ verdict='pays'; sure=c.p<0.01?3:2; }
+  else if(c&&c.p<0.05&&c.rho<0&&d<0){ verdict='reverse'; sure=c.p<0.01?3:2; }
+  else { verdict='unclear'; sure=1; }
+  const top=verdict==='pays'?L.habits.find(h=>!h.mechanical&&h.diff>0&&h.kept.n>=3&&h.missed.n>=3)||null:null;
+  const sureText=Array.isArray(HL_SURE[verdict])?HL_SURE[verdict][sure]:HL_SURE[verdict];
+  return {n,verdict,sure,sureText,d,both,top};
+}
 // plain words for a day-level rank correlation
 function hlLinkWords(c){
   if(!c)return null;
