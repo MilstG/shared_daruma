@@ -524,6 +524,14 @@ waiting wallets first, shows whether the member joined with your invite code, an
 single or bulk approve/reject decisions with an optional note (e.g. "paid"). It is the
 manual base for automatic rules like "approve wallets that joined with my code" or
 "approve paying subscribers".
+**Mapping wallets to members.** On a member's page (Wallets card), or under Admin →
+**Wallets** (a row nobody uses, or the *Map a wallet to a member* card), an admin can
+map any address to a member. A wallet belongs to one member: one that is mapped, claimed
+by signature or someone else's main wallet is refused until it's freed there, and
+members can't take a mapped wallet as their own or join with it. Mapping a wallet
+approves it. A member with no wallet gets the mapped one as their main wallet; **Make main**
+switches it later (the old main stays mapped). The AI coach allowance counts across every
+wallet a member has. A signature still wins: claiming a mapped wallet moves it to the claimer.
 The sign-in message names the site it's for. When self-hosting, set `PUBLIC_ORIGIN` to
 your Pulse address so the server only writes messages for that site and a look-alike
 page can't collect a usable signature (on Railway the edge already guarantees the
@@ -566,7 +574,8 @@ wallet decisions record who made them.
 - **Overview** — members, activity, tiers, top XP, coach use and setup warnings.
 - **Members** — search and filter; **add a member** (you get a 7-day sign-in code and a
   `/pulse#link=CODE` link to send them); per member: rename, set or clear the wallet
-  (unless claimed), **boost XP** (or correct it) with a reason they see, fully unlock,
+  (unless claimed), **map more wallets** to them by hand (or make one their main wallet,
+  the one their numbers are read from), **boost XP** (or correct it) with a reason they see, fully unlock,
   their coach allowance, leagues and tiers, award or take back reward badges, a new
   sign-in code, suspend or delete. Members' addresses are visible to you; others see them only if the member chose to show theirs.
 - **Leagues** — create, edit and delete leagues (metric, period, tiers, listed,

@@ -297,7 +297,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   }
   function memberPg(){
     const q=UI.q.toLowerCase(), f=UI.filter;
-    return pager('members',D.members.filter(m=>(!q||m.handle.toLowerCase().includes(q)||(m.address||'').includes(q))
+    return pager('members',D.members.filter(m=>(!q||m.handle.toLowerCase().includes(q)||(m.address||'').includes(q)||(m.wallets||[]).some(a=>String(a).toLowerCase().includes(q)))
       &&(f==='all'||(f==='suspended'&&m.banned)||(f==='unlocked'&&m.unlocked)||(f==='added'&&m.adminMade)||(f==='coach'&&m.coachUsed>0))));
   }
   function memberRows(){
@@ -329,6 +329,14 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
         <div style="margin-top:12px"><button class="primary" data-m="edit">Save profile</button></div>
         ${m.av||m.bio?`<h3>Picture and bio</h3><div class="row" style="align-items:center">${m.av?`<img src="${esc(m.av)}" alt="Profile picture of @${esc(m.handle)}" class="avimg">`:''}<div style="flex:1;min-width:0">${m.bio?`<p style="margin:0;overflow-wrap:anywhere">${esc(m.bio)}</p>`:'<p class="muted" style="margin:0">No bio.</p>'}</div></div>
           <div class="row" style="margin-top:8px">${m.av?'<button class="sm fit" data-m="clearAvatar">Remove picture</button>':''}${m.bio?'<button class="sm fit" data-m="clearBio">Clear bio</button>':''}</div>`:''}
+      </section>
+      <section class="card"><h2>Wallets</h2>
+        ${(()=>{ const all=[...(m.address?[m.address]:[]),...(m.wallets||[])];
+          return all.length?`<div class="stack" style="gap:8px">${all.map(a=>`<div class="row" style="align-items:center;gap:6px"><code class="small fit" title="${esc(a)}">${esc(a.slice(0,8)+'…'+a.slice(-6))}</code>
+            ${a===m.address?`<span class="pill ok fit">main</span>${m.claimed===a?'<span class="pill ok fit">claimed ✓</span>':''}`:`<button class="sm fit" data-wmain="${esc(a)}"${m.claimed&&m.claimed===m.address?' disabled title="Their main wallet is claimed by signature"':''}>Make main</button><button class="sm fit danger" data-wunmap="${esc(a)}">Unmap</button>`}</div>`).join('')}</div>`
+            :'<p class="muted" style="margin:0">No wallet yet.</p>'; })()}
+        <div class="row" style="align-items:flex-end;margin-top:10px">${field('mMap','Map a wallet to @'+m.handle,'<input id="mMap" maxlength="42" placeholder="0x…" autocomplete="off">')}<button class="fit" data-m="mapwallet">Map</button></div>
+        <p class="hint">The main wallet is the one their returns and verified Discipline are read from. Every wallet mapped here is theirs alone: no other profile can map it, and their coach allowance is shared across all of them. Mapping a wallet approves it.</p>
       </section>
       <section class="card"><h2>Boost XP</h2>
         <div class="row">${field('gXp','XP','<input id="gXp" type="number" step="10" placeholder="250">','Negative to correct a mistake.')}${field('gWhy','Reason they’ll see','<input id="gWhy" maxlength="80" placeholder="Won the October mentoring session">')}</div>
@@ -369,6 +377,8 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       return act(()=>post(b),'Saved.'); }
     if(a==='grant'){ const xp=Math.round(+val('gXp')); if(!xp)return note('How much XP?',true);
       return act(()=>post({action:'grant',xp,why:val('gWhy').trim(),announce:chk('gAnn')}),(xp>0?'+':'')+fmt(xp)+' XP for @'+m.handle+'. Their app adds it on its next sync.'); }
+    if(a==='mapwallet'){ const ad=val('mMap').trim(); if(!ADDR.test(ad))return note('That isn’t a wallet address (0x and 40 hex characters).',true);
+      return act(()=>post({action:'link',address:ad}),'Wallet mapped to @'+m.handle+'.'); }
     if(a==='coachreset') return act(()=>post({action:'coachreset'}),'@'+m.handle+' can ask the coach again today'+(m.address?' (their wallet’s count is reset too)':'')+'.');
     if(a==='access'){ const v=$('mCoach')?val('mCoach').trim():'', un=chk('mUnlocked');
       const mt=chk('mMentor'), ad=ME.owner?chk('mAdmin'):!!m.admin;
@@ -577,14 +587,19 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     return list.map(w=>`<tr>
       <td style="vertical-align:top"><input type="checkbox" data-wsel="${esc(w.address)}" aria-label="Select ${esc(w.address)}"${UI.wsel.has(w.address)?' checked':''}></td>
       <td style="vertical-align:top"><div class="row" style="align-items:center;flex-wrap:nowrap;gap:6px"><code class="small fit" title="${esc(w.address)}">${esc(short(w.address))}</code><button class="sm fit" data-copy="${esc(w.address)}" aria-label="Copy address">Copy</button></div>
-        ${w.members.length?w.members.map(m=>`<div style="margin-top:6px"><a href="${mlink(m)}">@${esc(m.handle)}</a> ${m.claimed?'<span class="pill ok">claimed ✓</span>':''}${m.banned?' <span class="pill ban">suspended</span>':''}<div class="muted small">${m.joinedWith?'joined '+esc(JOINED[m.joinedWith]||''):'joined'}${m.createdAt?' · '+esc(ago(m.createdAt)):''}</div></div>`).join(''):'<div class="muted small" style="margin-top:6px">no profile uses it now</div>'}
+        ${w.members.length?w.members.map(m=>`<div style="margin-top:6px"><a href="${mlink(m)}">@${esc(m.handle)}</a> ${m.claimed?'<span class="pill ok">claimed ✓</span>':''}${m.linked?'<span class="pill">mapped by hand</span>':''}${m.banned?' <span class="pill ban">suspended</span>':''}<div class="muted small">${m.joinedWith?'joined '+esc(JOINED[m.joinedWith]||''):'joined'}${m.createdAt?' · '+esc(ago(m.createdAt)):''}</div></div>`).join(''):`<div class="muted small" style="margin-top:6px">no profile uses it now</div>
+          <div class="row" style="align-items:center;gap:6px;margin-top:6px"><input id="wmap_${esc(w.address)}" list="memberHandles" placeholder="@member" aria-label="Member to map ${esc(w.address)} to" style="flex:1 1 90px;min-width:0;max-width:180px;width:auto"><button class="sm fit" data-wmap="${esc(w.address)}">Map to member</button></div>`}
         ${w.note?`<div class="muted small" style="margin-top:4px">Note: ${esc(w.note)}</div>`:''}</td>
       <td style="vertical-align:top">${walletStatusPill(w.status)}${w.reviewedAt?`<div class="muted small">${w.by==='existing'?'already in use when approval went on':'by '+(w.by&&w.by!=='owner'?esc(w.by):ME.owner?'you':'the owner')+' · '+esc(ago(w.reviewedAt))}</div>`:''}
         <div class="row" style="align-items:center;margin-top:8px;gap:6px">${w.status!=='approved'?`<button class="sm fit primary" data-wact="approve" data-addr="${esc(w.address)}">Approve</button>`:''}${w.status!=='rejected'?`<button class="sm fit" data-wact="reject" data-addr="${esc(w.address)}">Reject</button>`:''}${w.status!=='pending'?`<button class="sm fit" data-wact="clear" data-addr="${esc(w.address)}" title="Forget the decision: back to waiting">Undo</button>`:''}</div></td></tr>`).join('');
   }
   function vWallets(){
     const W=D.wallets, c=W.counts;
-    return `<section class="card"><h2>Wallet approval</h2>
+    return `<datalist id="memberHandles">${D.members.map(m=>`<option value="@${esc(m.handle)}">`).join('')}</datalist>
+      <section class="card"><h2>Map a wallet to a member</h2>
+        <div class="row" style="align-items:flex-end">${field('wmap_new_addr','Wallet','<input id="wmap_new_addr" maxlength="42" placeholder="0x…" autocomplete="off">')}${field('wmap_new_who','Member','<input id="wmap_new_who" list="memberHandles" placeholder="@member" autocomplete="off">')}<button class="primary fit" id="wmapNew">Map</button></div>
+        <p class="hint">Or from the member’s page, where you can also pick their main wallet. A mapped wallet belongs to that member alone.</p></section>
+      <section class="card"><h2>Wallet approval</h2>
       ${box('wOn','Wallets need my approval',W.approveWallets,'A member’s wallet counts for returns, verified Discipline and return competitions only once you approve it. Members can still join and use Pulse; they see that their wallet is waiting. Decisions follow the address, so a rejected wallet stays rejected under a new profile. Wallets you attach to a member yourself count as approved.')}
       ${!W.approveWallets?'<p class="hint" style="margin-left:26px">Switching it on approves the wallets already in use (marked “already in use”), so nobody’s numbers vanish. You can still reject any of them.</p>':''}
       <div><button class="primary" id="wSave">Save</button></div></section>
@@ -647,6 +662,14 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     if(id==='addToggle'){ UI.addOpen=!UI.addOpen; UI.code=null; return render(); }
     if(d.coachreset){ const cm=D.members.find(x=>x.id===d.coachreset); if(!cm)return;
       return act(()=>api('/members/'+encodeURIComponent(cm.id),{body:{action:'coachreset'}}),'@'+cm.handle+' can ask the coach again today.'); }
+    if(m&&d.wmain) return act(()=>api('/members/'+encodeURIComponent(m.id),{body:{action:'primary',address:d.wmain}}),'That’s @'+m.handle+'’s main wallet now.');
+    if(m&&d.wunmap){ if(!confirm('Unmap this wallet from @'+m.handle+'?'))return; return act(()=>api('/members/'+encodeURIComponent(m.id),{body:{action:'unlink',address:d.wunmap}}),'Unmapped.'); }
+    if(d.wmap){ const inp=document.getElementById('wmap_'+d.wmap), h=(inp&&inp.value||'').trim().replace(/^@/,''), tm=D.members.find(x=>x.handle.toLowerCase()===h.toLowerCase());
+      if(!tm)return note('Pick a member by name.',true);
+      return act(()=>api('/members/'+encodeURIComponent(tm.id),{body:{action:'link',address:d.wmap}}),'Mapped to @'+tm.handle+'.'); }
+    if(id==='wmapNew'){ const ad=val('wmap_new_addr').trim(), h=val('wmap_new_who').trim().replace(/^@/,''), tm=D.members.find(x=>x.handle.toLowerCase()===h.toLowerCase());
+      if(!ADDR.test(ad))return note('That isn’t a wallet address (0x and 40 hex characters).',true); if(!tm)return note('Pick a member by name.',true);
+      return act(()=>api('/members/'+encodeURIComponent(tm.id),{body:{action:'link',address:ad}}),'Mapped to @'+tm.handle+'.'); }
     if(id==='adminToggle'){ UI.adminAdd=!UI.adminAdd; UI.code=null; return render(); }
     if(id==='logAll'){ UI.logAll=!UI.logAll; return render(); }
     if(id==='adCreate'){ const handle=val('adHandle').trim().replace(/^@/,''); if(!handle)return note('Give them a name.',true);
