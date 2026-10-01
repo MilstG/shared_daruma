@@ -37,8 +37,6 @@ let SRV={enabled:true,token:'owner-token'};
 let srvFetch=async()=>{ throw new Error('no server'); };
 let settings={wallets:[]}; const S_KEY='s'; const Store={set:async()=>{}};
 async function reconstructCompute(fills,frows,addr){ return {perp:attributeFunding(reconstructTrades(fills,addr,'perp'),frows),spot:attributeFunding(reconstructTrades(fills,addr,'spot'),[])}; }
-async function hlPost(b){ return HL_FILLS[b.user]||[]; }
-let HL_FILLS={};
 ${constLine('CEX_QUOTES')}
 ${constLine('STABLES')}
 ${constLine('cacheExtras')}
@@ -47,7 +45,7 @@ const venuesSrc = readFileSync(join(here, '..', 'app', 'venues.js'), 'utf8');
 
 // a fresh app sandbox with its own storage; fetch = the Lighter mock, srvFetch = through the relay
 function sandbox(lighterFetch) {
-  const ctx = vm.createContext({ console, setTimeout, clearTimeout, crypto: webcrypto, TextEncoder, TextDecoder, Blob, Response,
+  const ctx = vm.createContext({ console, setTimeout, clearTimeout, AbortController, crypto: webcrypto, TextEncoder, TextDecoder, Blob, Response,
     CompressionStream, DecompressionStream, URL, URLSearchParams, AbortSignal, Promise, JSON, Math, Date, Array, Object, Set, Map, String, Number, parseFloat,
     fetch: lighterFetch || (async () => { throw new Error('offline'); }) });
   vm.runInContext(ENGINE + '\n' + SHIMS + '\n' + venuesSrc, ctx);
@@ -75,13 +73,16 @@ const LT_TRADES = [ // oldest first here; served newest first
   ltTrade(5, T0 + 7 * H, 'A', 2, 55, { market_id: 2048, market_kind: 'spot', is_maker_ask: false }),
 ];
 let ltCalls = [];
+let HL_ROLE = {}; // Hyperliquid's userRole answers, by address (absent = "missing")
 function lighterMock(opts = {}) {
   const trades = opts.trades || LT_TRADES;
-  return async (url) => {
-    const u = new URL(url); ltCalls.push(u.pathname + u.search);
+  return async (url, o) => {
+    const u = new URL(url);
+    if (u.host === 'api.hyperliquid.xyz') { const b = JSON.parse(o.body); eq(b.type, 'userRole'); return jsonRes({ role: HL_ROLE[b.user] || 'missing' }); }
+    ltCalls.push(u.pathname + u.search);
     const q = Object.fromEntries(u.searchParams);
     if (u.pathname === '/api/v1/accountsByL1Address')
-      return jsonRes(q.l1_address.toLowerCase() === L1.toLowerCase() ? { code: 200, l1_address: L1, sub_accounts: [{ index: IDX }] } : { code: 21100, message: 'account not found' });
+      return q.l1_address.toLowerCase() === L1.toLowerCase() ? jsonRes({ code: 200, l1_address: L1, sub_accounts: [{ index: IDX }] }) : jsonRes({ code: 21100, message: 'account not found' }, 400);
     if (u.pathname === '/api/v1/orderBooks')
       return jsonRes({ code: 200, order_books: [{ symbol: 'BTC', market_id: 1, market_type: 'perp' }, { symbol: 'ETH/USDC', market_id: 2048, market_type: 'spot' }] });
     if (u.pathname === '/api/v1/trades') {
@@ -146,13 +147,35 @@ await t('opening the app rebuilds the same trades from storage alone, no network
   eq(boot.map(x => [x.id, +x.pnl.toFixed(6), +x.funding.toFixed(6)]).sort(), live.trades.map(x => [x.id, +x.pnl.toFixed(6), +x.funding.toFixed(6)]).sort());
 });
 await t('pasting an address finds the venues it trades on', async () => {
+  HL_ROLE = {};
   const S = sandbox(lighterMock());
-  eq(await S.run(`walletIdsFor('${L1}')`), ['lighter:' + L1]);
-  S.run(`HL_FILLS['${L1}']=[{coin:'BTC'}]`);
+  eq(await S.run(`walletIdsFor('${L1}')`), ['lighter:' + L1], 'Hyperliquid has never seen it, Lighter has it');
+  HL_ROLE[L1] = 'user';
   eq(await S.run(`walletIdsFor('${L1}')`), [L1, 'lighter:' + L1]);
   const other = '0x' + '12'.repeat(20);
   eq(await S.run(`walletIdsFor('${other}')`), [other], 'nothing anywhere yet: Hyperliquid');
+  HL_ROLE[other] = 'user';
+  eq(await S.run(`walletIdsFor('${other}')`), [other], 'a Hyperliquid account only');
   eq(await S.run(`walletIdsFor('${other}',['lighter'])`), ['lighter:' + other]);
+  HL_ROLE = {};
+});
+await t('Hyperliquid is never dropped on doubt, and a dead venue never holds the add up', async () => {
+  const mock = lighterMock();
+  const down = host => async (url, o) => { if (new URL(url).host === host) throw new TypeError('Failed to fetch'); return mock(url, o); };
+  // Lighter unreachable: Hyperliquid, as before Lighter existed
+  let S = sandbox(down('mainnet.zklighter.elliot.ai'));
+  eq(await S.run(`walletIdsFor('${L1}')`), [L1]);
+  // Hyperliquid unreachable but Lighter has an account: both (Hyperliquid isn't known to be empty)
+  S = sandbox(down('api.hyperliquid.xyz'));
+  eq(await S.run(`walletIdsFor('${L1}')`), [L1, 'lighter:' + L1]);
+  // a Hyperliquid error page (not JSON): kept
+  S = sandbox(async (url, o) => new URL(url).host === 'api.hyperliquid.xyz' ? { ok: false, status: 502, json: async () => { throw new Error('html'); } } : mock(url, o));
+  eq(await S.run(`walletIdsFor('${L1}')`), [L1, 'lighter:' + L1]);
+  // Lighter hangs: the check gives up after its time limit (aborted), Hyperliquid is added
+  S = sandbox(async (url, o) => new URL(url).host === 'api.hyperliquid.xyz' ? mock(url, o)
+    : new Promise((_, rej) => o.signal.addEventListener('abort', () => rej(new Error('aborted')))));
+  const t0 = Date.now(); eq(await S.run(`walletIdsFor('${L1}')`), [L1]); const ms = Date.now() - t0;
+  ok(ms >= 4900 && ms < 6000, 'gave up after ~5 s: ' + ms);
 });
 await t('candles come from Lighter for Lighter trades', async () => {
   const S = sandbox(lighterMock());
@@ -326,6 +349,20 @@ await t('hedge-mode legs are separate trades and funding goes to the leg that he
     const r=await reconstructStreams([...legs],fr,{address:'binance:0123456789ab'},'binance'); return {fr,tr:r.perp.map(t=>[t.dir,t.pnl,t.funding,t.id.includes('#LONG')||t.id.includes('#SHORT')])}; })()`);
   eq(out.fr.map(r => r.stream), ['LONG', 'SHORT']);
   eq(out.tr.sort(), [['Long', 10, -1, true], ['Short', 30, 2, true]]);
+});
+
+console.log('\nTrades that begin before the history');
+t('a fill on a position held before the history belongs to the side that was held', () => {
+  const S = sandbox();
+  const tr = fills => S.run(`reconstructTrades(${JSON.stringify(fills)},'0xw','perp').map(t=>[t.dir,t.isOpen?'open':'closed',+t.closeSz.toFixed(6),+t.openSz.toFixed(6)]).sort()`);
+  const F = (side, sz, sp, t = 1000) => ({ coin: 'BTC', side, sz: String(sz), px: '110', time: t, startPosition: String(sp), closedPnl: '0', fee: '0', tid: t, oid: t });
+  eq(tr([F('A', 1, 1)]), [['Long', 'closed', 1, 0]], 'closing a long held from before');
+  eq(tr([F('B', 1, -1)]), [['Short', 'closed', 1, 0]], 'closing a short held from before');
+  eq(tr([F('A', 3, 1)]), [['Long', 'closed', 1, 0], ['Short', 'open', 0, 2]], 'flipping through it');
+  eq(tr([F('A', 1, 2)]), [['Long', 'open', 1, 0]], 'reducing it');
+  eq(tr([F('B', 1, 2)]), [['Long', 'open', 0, 1]], 'adding to it');
+  eq(tr([F('A', 1, 0)]), [['Short', 'open', 0, 1]], 'a fresh short');
+  eq(tr([F('B', 1, 0), F('A', 1, 1, 2000)]), [['Long', 'closed', 1, 1]], 'an ordinary round trip');
 });
 
 console.log('\nRelay (cex-relay.js)');

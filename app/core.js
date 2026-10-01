@@ -183,6 +183,14 @@ function _syncMerge(k, mine, theirs){
       const o=by.get(g.id); if(!o){ by.set(g.id,Object.assign({},g)); continue; } const m=Object.assign({},(g.at||0)>=(o.at||0)?o:g,(g.at||0)>=(o.at||0)?g:o);
       for(const f of ['done','missed','cleared','dropped'])m[f]=o[f]||g[f]||m[f]; by.set(g.id,m); }
     return [...by.values()].sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)).slice(-40); }
+  if(k==='pzPlugs'){ const by=new Map(); // one plug per leak and start day: both devices' plugs survive, a stop sticks
+    for(const p of [...(Array.isArray(theirs)?theirs:[]),...(Array.isArray(mine)?mine:[])]){ if(!p||typeof p.slip!=='string')continue;
+      const id=p.slip+'|'+p.from, o=by.get(id); if(!o){ by.set(id,Object.assign({},p)); continue; }
+      const m=Object.assign({},(p.at||0)>=(o.at||0)?o:p,(p.at||0)>=(o.at||0)?p:o); if(o.dropped||p.dropped)m.dropped=true; by.set(id,m); }
+    return [...by.values()].sort((a,b)=>(a.at||0)-(b.at||0)); }
+  if(k==='habits'){ const by=new Map(); // by id: a habit adopted on the other device isn't lost; for the same habit this device's copy wins, as before
+    for(const h of [...(Array.isArray(theirs)?theirs:[]),...(Array.isArray(mine)?mine:[])])if(h&&typeof h.id==='string')by.set(h.id,h);
+    return [...by.values()]; }
   if(k==='pzLessons'){ const a=pzLessonsNorm(mine), b=pzLessonsNorm(theirs), items=Object.assign({},b.items);
     for(const [id,v] of Object.entries(a.items)){ const o=items[id]; items[id]=!o||(v.at||0)>=(o.at||0)?Object.assign({},v,{off:v.off||(o&&o.off)}):Object.assign({},o,{off:o.off||v.off}); }
     const own=new Map(); for(const o of [...b.own,...a.own])own.set(o.id,o);
@@ -198,7 +206,15 @@ function syncFailed(msg){
   clearTimeout(_srvTimer); _srvTimer=setTimeout(writeServer,SRV.retryMs);
 }
 // No token (a visitor, or the owner before signing in): edits stay in this browser, never sent to be refused.
-function scheduleServerWrite(){ if(!SRV.enabled||_applying)return; if(SRV.needsAuth&&!SRV.token)return; clearTimeout(_srvTimer); _srvTimer=setTimeout(writeServer,800); }
+function scheduleServerWrite(){ if(!SRV.enabled||_applying)return; if(SRV.needsAuth&&!SRV.token)return; _srvGen++; srvMark(true); clearTimeout(_srvTimer); _srvTimer=setTimeout(writeServer,800); }
+// A save waits 800 ms before it goes out. A reload inside that window used to lose the edit: the
+// next start applied the server's copy over this browser's newer one. So this browser notes the
+// revision it last matched and whether it has edits the server hasn't seen; at the next start, an
+// unchanged server revision means nobody else saved since, and this browser's copy is kept and sent.
+let _srvGen=0;
+const SRV_MARK='srv_sync';
+function srvMark(dirty){ try{ localStorage.setItem(SRV_MARK,JSON.stringify({rev:SRV.rev,dirty:!!dirty})); }catch(e){} }
+function srvMarkRead(){ try{ const m=JSON.parse(localStorage.getItem(SRV_MARK)||'null'); return m&&typeof m.rev==='number'?m:null; }catch(e){ return null; } }
 function srvFetch(p,o){ o=o||{}; o.headers=Object.assign({},o.headers);
   if(SRV.token)o.headers['Authorization']='Bearer '+SRV.token; return fetch(p,o); }
 async function writeServer(){
@@ -209,7 +225,7 @@ async function writeServer(){
     let excRows=null; try{ const p=await idbGet('excRows'); if(p&&p.v===1&&p.rows)excRows=p; }catch(e){}
     const snap={...snapshot()}; if(excRows)snap.excRows=excRows;
     const sentDirty=[..._dirtyJ.entries()]; // (id, counter) pairs — edits made while in flight bump the counter and stay dirty
-    const sentS=_snapS();
+    const sentS=_snapS(), sentGen=_srvGen;
     const r=await srvFetch('/api/data',{method:'PUT',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({rev:SRV.rev,snapshot:snap})});
     if(r.status===401){ SRV.badAuth=true; renderDatafile(); return; }
@@ -239,6 +255,7 @@ async function writeServer(){
         // misread server-origin values as local edits — pushing them back over the other
         // device's newer state.
         _lastSyncedS=_snapS();
+        srvMark(merged);
         if(merged)scheduleServerWrite(); // push the merge at the new revision
       }
       setStatus('Loaded newer data saved from another device.'+(_dirtyJ.size?' Your local edits were kept and will re-sync.':''));
@@ -247,6 +264,7 @@ async function writeServer(){
     if(r.ok){ const j=await r.json(); SRV.rev=j.rev||SRV.rev+1;
       for(const [id,rev] of sentDirty) if(_dirtyJ.get(id)===rev)_dirtyJ.delete(id); // only clear what was actually sent unchanged
       _lastSyncedS=sentS; SRV.err=null; SRV.retryMs=0;
+      srvMark(_srvGen!==sentGen); // an edit made while this PUT was in flight is still unsent
       renderDatafile('saved'); }
     else { // 413 / 5xx / proxy errors: say so — the indicator used to keep reading "saved"
       let msg='HTTP '+r.status; try{ const j=await r.json(); if(j&&j.error)msg+=': '+j.error; }catch(e){}
@@ -270,8 +288,12 @@ async function initServerSync(){
     if(d.status===401){ SRV.badAuth=true; renderDatafile(); return true; }
     if(d.status===429){ SRV.badAuth=true; renderDatafile(); setErr(srvLockMsg(d)); return true; } // locked out: never sync blind at rev 0
     if(d.ok){ const j=await d.json(); SRV.rev=j.rev||0;
-      if(j.snapshot)await applySnapshot(j.snapshot);
-      _lastSyncedS=_snapS(); } // baseline for the field-level 409 settings merge
+      const m=srvMarkRead();
+      if(m&&m.dirty&&m.rev===SRV.rev){ // nobody saved since this browser's unsent edits: keep them (boot sends them)
+        SRV.pushLocal=true; const ss=(j.snapshot&&j.snapshot.settings)||{};
+        _lastSyncedS=JSON.parse(JSON.stringify(Object.fromEntries(_SYNC_S_FIELDS.map(k=>[k,ss[k]])))); } // the server's side, for a later 409 merge
+      else { if(j.snapshot)await applySnapshot(j.snapshot); srvMark(false);
+        _lastSyncedS=_snapS(); } } // baseline for the field-level 409 settings merge
     // PWA: only meaningful when served — installable app icon + offline shell
     try{ if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
       if(!document.querySelector('link[rel=manifest]')){ const l=document.createElement('link');

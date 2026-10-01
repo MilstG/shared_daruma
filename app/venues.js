@@ -345,13 +345,22 @@ async function forgetVenueWallet(w){ if(isCexVenue(venueOf(w))){ try{ await idbD
 
 /* ---------------- adding wallets: one address finds Hyperliquid and Lighter ---------------- */
 // Pasting an address checks both venues at once and adds the one(s) with an account, so a Lighter
-// trader doesn't have to know there's anything to choose. No account anywhere yet: Hyperliquid.
+// trader doesn't have to know there's anything to choose. Hyperliquid is never dropped on doubt:
+// it's left out only when Hyperliquid itself says it has never seen the address AND Lighter has an
+// account for it. Each check is one small request with a short time limit and no retries, so
+// adding a wallet never waits on a slow or unreachable venue.
+async function venueProbe(url, body, ms){
+  const ctl=typeof AbortController!=='undefined'?new AbortController():null, timer=ctl?setTimeout(()=>ctl.abort(),ms):null;
+  try{ const r=await fetch(url,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:ctl&&ctl.signal}:{signal:ctl&&ctl.signal});
+    return r.ok||r.status===400?await r.json():null; }
+  catch(e){ return null; } finally{ if(timer)clearTimeout(timer); } }
 async function detectVenues(addr){
   const [hl,lt]=await Promise.all([
-    hlPost({type:'userFills',user:addr}).then(r=>Array.isArray(r)&&r.length>0).catch(()=>null),
-    ltAccountIndexes(addr).then(x=>x.length>0).catch(()=>null)]);
-  const out=[]; if(hl)out.push('hyperliquid'); if(lt)out.push('lighter');
-  if(!out.length)out.push('hyperliquid');
+    // {"role":"missing"} = Hyperliquid has never seen this address; anything else (or no answer) keeps it
+    venueProbe('https://api.hyperliquid.xyz/info',{type:'userRole',user:addr},5000).then(j=>j&&typeof j.role==='string'?j.role!=='missing':null),
+    venueProbe(LT_API+'/api/v1/accountsByL1Address?l1_address='+encodeURIComponent(addr),null,5000)
+      .then(j=>!j?null:Array.isArray(j.sub_accounts)?j.sub_accounts.length>0:j.code===21100?false:null)]);
+  const out=[]; if(hl!==false||lt!==true)out.push('hyperliquid'); if(lt===true)out.push('lighter');
   return out; }
 // the wallet ids to add for a pasted 0x address
 async function walletIdsFor(address, forced){

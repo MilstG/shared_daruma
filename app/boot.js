@@ -27,6 +27,8 @@ try{ if(window.Chart&&Chart.defaults)Chart.defaults.animation=false; }catch(e){}
     await Store.set(S_KEY,settings);
   }
   if(!Array.isArray(settings.wallets))settings.wallets=[];
+  // edits this browser made just before it was last closed never reached the server: send them now
+  if(SRV.pushLocal){ SRV.pushLocal=false; scheduleServerWrite(); }
   // a member's encrypted journal: take a newer copy from their other devices before anything reads settings
   try{ await vaultBoot(); }catch(e){}
   // the browser's IANA zone rides along with settings so the server's end-of-day nudge reads

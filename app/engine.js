@@ -51,8 +51,9 @@ function reconstructTrades(fills, addr, market){
     lastAfter[coin]=after;
     let t=open[coin];
     if(spot&&t&&signed>0&&t.closeSz>0&&Math.abs(before)>EPS)t=open[coin]=realize(t,coin,f,Math.abs(before));
-    // a fill that closes a position opened before the history began reads the way it was held
-    if(!t){ t=open[coin]=newTrade(coin,f,(Math.abs(after)<EPS?before>0:after>0)?'Long':'Short',0,0,0); }
+    // a fill acting on a position held before the history began (closing it, or flipping through it)
+    // belongs to the side that was held; a fresh position takes the side it opens
+    if(!t){ t=open[coin]=newTrade(coin,f,(Math.abs(before)>EPS?before>0:after>0)?'Long':'Short',0,0,0); }
     const flipped=Math.abs(before)>EPS&&Math.abs(after)>EPS&&(before>0)!==(after>0);
     // a flip fill's notional and fee are split by size between the closing and opening trade —
     // counting the whole fill on both inflated volume, taker share and the fee-tier model

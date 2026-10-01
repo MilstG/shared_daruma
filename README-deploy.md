@@ -63,6 +63,11 @@ tests/          test suites (`npm test`; CI runs them on every push)
   unsynced edits on top** — journal entries you touched since the last sync,
   and settings fields you changed — and re-syncs the merge at the new
   revision. Neither device's note is silently lost.
+- **Closing right after an edit:** a save goes out 0.8 s after the last change.
+  If the page is closed or reloaded before that, the browser remembers it has
+  unsent edits and the server revision they were made on; at the next start, if
+  no other device has saved since, it keeps its own copy and sends it (rather
+  than taking the server's older one). Plugs and habits merge item by item.
 - **Stays in the browser (by design):** candle caches and fill caches
   (re-fetchable, large) and journal image attachments. "Backup all" still
   exports everything exportable as a portable JSON.

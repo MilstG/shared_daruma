@@ -1108,11 +1108,12 @@ function renderCoach(){
     if(top){ const spec=resolveHabitSpec(top.habit);
       today={v:`<b>${esc(top.title)}.</b> ${esc(top.action)}`,act:spec&&!habitAdopted(spec)?'<button class="btn ghost coach-adopt">Adopt as habit</button>':''}; } }
   if(today)rows.push({k:'Today',...today});
+  // first: it fills the per-day slip flags a plugged leak's habit is judged by
+  let g=null; try{ g=gameContext(); }catch(e){ console.warn('progress failed',e); }
   const fid=weekFocus(), fh=fid&&habitById(fid);
   if(fh){ const p=habitProgress(fh,ctx,lastCompletedWeekRange().to);
     rows.push({k:'This week',v:`<span class="coach-habit">${esc(habitSentence(fh))}</span> ${p.total?`${dotsHtml(p.res)} <span class="mut">kept ${p.kept} of ${p.total} trading day${p.total===1?'':'s'}</span>`:'<span class="mut">no trading days yet this week</span>'}`}); }
   else rows.push({k:'This week',v:'<span class="mut">No focus habit yet. One habit a week beats ten resolutions.</span>',act:'<button class="btn ghost coach-go" data-go="habits">Pick one →</button>'});
-  let g=null; try{ g=gameContext(); }catch(e){ console.warn('progress failed',e); }
   if(g&&g.current){ const c=g.current, kept=c.res.filter(r=>r.kept).length;
     rows.push({k:'Challenge',v:`<span class="coach-habit">${esc(habitSentence(c.ch.spec))}</span> ${c.res.length?`${dotsHtml(c.res)} <span class="mut">${kept} of ${c.res.length} day${c.res.length===1?'':'s'} \u00b7 +150 XP if it holds all week</span>`:'<span class="mut">starts with your next trading day \u00b7 +150 XP</span>'}`}); }
   const les=coachLesson(fh); if(les)rows.push({k:'Remember',v:`“${esc(les.t)}” <span class="mut">— your lesson, ${esc(les.k.slice(5))}</span>`});

@@ -146,6 +146,32 @@ try {
   });
   await page.close();
 
+  await t('an edit made right before a reload is kept, not replaced by the server\'s older copy', async () => {
+    const { page: p, errors: errs } = await openPage({ width: 1366, height: 900 });
+    await p.goto(BASE + '/'); await p.waitForFunction(() => typeof SRV !== 'undefined' && SRV.enabled && SRV.rev > 0);
+    // the edit's save waits 800 ms; reload before it goes out
+    await p.evaluate(async () => { settings.wallets.push({ address: '0x' + '5e'.repeat(20), label: 'just added' }); await Store.set(S_KEY, settings); });
+    await p.reload();
+    await p.waitForFunction(() => typeof SRV !== 'undefined' && SRV.enabled && settings.wallets.some(w => w.label === 'just added'), null, { timeout: 10000 });
+    // and it reaches the server
+    let onServer = false;
+    for (let i = 0; i < 40 && !onServer; i++) { await new Promise(r => setTimeout(r, 250));
+      const d = await (await fetch(BASE + '/api/data', { headers: { Authorization: 'Bearer ' + TOKEN } })).json();
+      onServer = (d.snapshot.wallets || []).some(w => w.label === 'just added'); }
+    ok(onServer, 'sent to the server after the restart');
+    // another device's newer save still wins over a stale local copy
+    await p.evaluate(async () => { settings.wallets = settings.wallets.filter(w => w.label !== 'just added'); await Store.set(S_KEY, settings); });
+    await new Promise(r => setTimeout(r, 1500));
+    const cur = await (await fetch(BASE + '/api/data', { headers: { Authorization: 'Bearer ' + TOKEN } })).json();
+    await fetch(BASE + '/api/data', { method: 'PUT', headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rev: cur.rev, snapshot: { ...cur.snapshot, wallets: [...(cur.snapshot.wallets || []), { address: '0x' + '6f'.repeat(20), label: 'other device' }] } }) });
+    await p.evaluate(async () => { settings.riskDefault = 123; await Store.set(S_KEY, settings); });
+    await p.reload();
+    await p.waitForFunction(() => typeof SRV !== 'undefined' && SRV.enabled && settings.wallets.some(w => w.label === 'other device'), null, { timeout: 10000 });
+    eq(errs, []);
+    await p.close();
+  });
+
   console.log('\nPasskeys (Chrome virtual authenticator)');
   await t('a member adds a passkey in Pulse, then signs in with it on a fresh session', async () => {
     // WebAuthn refuses IP addresses as a site ID: this test talks to the server as localhost
@@ -236,7 +262,9 @@ try {
       '/api/v1/fundings': { code: 200, fundings: [] },
       '/api/v1/account': { code: 200, accounts: [{ index: 5, collateral: '500', positions: [] }] },
     };
-    await p.route('https://api.hyperliquid.xyz/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+    // Hyperliquid has never seen this address (userRole "missing"), so only the Lighter account is added
+    await p.route('https://api.hyperliquid.xyz/**', r => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+      body: JSON.parse(r.request().postData() || '{}').type === 'userRole' ? '{"role":"missing"}' : '[]' }));
     await p.route('https://mainnet.zklighter.elliot.ai/**', r => { const a = answers[new URL(r.request().url()).pathname];
       return r.fulfill({ status: a ? 200 : 404, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(a || { code: 404 }) }); });
     await p.goto(BASE + '/');

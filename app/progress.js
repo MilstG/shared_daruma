@@ -986,7 +986,7 @@ function pzBadgeCatalog(G){
   add('challenge',(G.challenges||[]).filter(c=>c.status==='done').map(c=>c.key));
   add('goals',(Array.isArray(settings.pzGoals)?settings.pzGoals:[]).filter(x=>x&&x.done&&!x.dropped).map(x=>dayKey(x.done)));
   add('adopt',(Array.isArray(settings.habits)?settings.habits:[]).filter(h=>h&&h.createdAt).map(h=>dayKey(h.createdAt)));
-  add('plugged',pzPlugs().filter(p=>p.done).map(p=>p.done));
+  { const seen=new Set(); add('plugged',pzPlugs().filter(p=>p.done&&!p.dropped&&!seen.has(p.slip+'|'+p.done)&&seen.add(p.slip+'|'+p.done)).map(p=>p.done)); } // a stopped plug earns nothing; one leak counts once
   // consistency
   add('days',D.map(d=>d.key));
   { const seen=new Set(), k=[]; for(const d of D){ const w=isoWeekOfKey(d.key); if(!seen.has(w)){ seen.add(w); k.push(d.key); } } add('weeks',k); }
@@ -1065,15 +1065,13 @@ function pzPlugState(p){
     x.days++; for(const s of (b.slips||[]))if(s.f.includes(p.slip)){ x.count++; x.cost+=s.net; } }
   const list=Object.values(weeks).sort((a,b)=>a.week<b.week?-1:1);
   let runN=0, done=null;
-  for(const w of list){ if(w.week===curWeek)continue; if(w.days<2)continue; // a week needs two trading days to count either way
-    runN=w.count?0:runN+1; if(runN>=3&&!done){ const mon=isoWeekMondayKey(w.week); done=pzAddDays(mon,6); } }
-  // what it cost before you started: average per week over the 8 weeks before
-  const before={count:0,cost:0,weeks:0}, startW=isoWeekOfKey(p.from);
-  const prior={}; for(const [k,b] of _pzSlipDays){ if(k>=p.from)continue; const w=isoWeekOfKey(k); if(w>=startW)continue; (prior[w]=prior[w]||{c:0,cost:0});
-    for(const s of (b.slips||[]))if(s.f.includes(p.slip)){ prior[w].c++; prior[w].cost+=s.net; } }
-  const pw=Object.keys(prior).sort().slice(-8); for(const w of pw){ before.count+=prior[w].c; before.cost+=prior[w].cost; } before.weeks=pw.length;
+  // a slip resets the run in any week; a clean week counts only with two trading days in it
+  for(const w of list){ if(w.week===curWeek)continue; if(w.count){ runN=0; continue; } if(w.days<2)continue;
+    runN++; if(runN>=3&&!done){ const mon=isoWeekMondayKey(w.week); done=pzAddDays(mon,6); } }
   const cur=weeks[curWeek]||{count:0,days:0};
-  return {weeks:list,cleanRun:runN,done,thisWeek:cur,before,perWeekBefore:before.weeks?before.count/before.weeks:null,costPerWeekBefore:before.weeks?before.cost/before.weeks:null};
+  // plugged, then slipped again in a later week: "It’s back"
+  const back=!!done&&list.some(w=>w.count&&isoWeekMondayKey(w.week)>done);
+  return {weeks:list,cleanRun:runN,done,thisWeek:cur,back};
 }
 function isoWeekMondayKey(week){ const m=/^(\d{4})-W(\d{2})$/.exec(week); if(!m)return null; const j4=Date.UTC(+m[1],0,4), d=new Date(j4);
   return new Date(j4-((d.getUTCDay()+6)%7)*86400000+(+m[2]-1)*7*86400000).toISOString().slice(0,10); }
@@ -1082,6 +1080,8 @@ async function pzPlugStart(slip){
   if(!PZ_PLUG[slip])return null;
   if(!Array.isArray(settings.pzPlugs))settings.pzPlugs=[];
   const live=settings.pzPlugs.find(p=>p.slip===slip&&!p.dropped&&!pzPlugState(p).done); if(live)return live; // a plugged leak that came back can be plugged again
+  // plugging it again after it was plugged: the old plug's habit starts over with the new plug
+  for(const o of settings.pzPlugs)if(o.slip===slip&&!o.dropped&&o.habitId){ const oh=habitById(o.habitId); if(oh&&!oh.retired)await retireHabit(o.habitId); }
   const h=await adoptHabit({kind:'slip',slip,when:PZ_PLUG[slip].when,then:PZ_PLUG[slip].then});
   const p={slip,from:dayKey(Date.now()),habitId:h&&h.id,at:Date.now()};
   settings.pzPlugs.push(p); await Store.set(S_KEY,settings); return p;
@@ -1089,7 +1089,7 @@ async function pzPlugStart(slip){
 async function pzPlugDrop(slip){ const p=(settings.pzPlugs||[]).find(x=>x.slip===slip&&!x.dropped&&!pzPlugState(x).done); if(!p)return; p.dropped=true; if(p.habitId)await retireHabit(p.habitId); await Store.set(S_KEY,settings); }
 // Your leaks over a window, costliest first, with the previous window for the trend.
 function pzLeakMap(g, days){
-  days=days||30; const now=Date.now(), from=dayKey(now-(days-1)*86400000), prevFrom=dayKey(now-(2*days-1)*86400000);
+  days=days||30; const today=dayKey(Date.now()), from=pzAddDays(today,-(days-1)), prevFrom=pzAddDays(today,-(2*days-1)); // calendar days, so a clock change can't add one
   const plugs=pzPlugs().filter(p=>!p.dropped);
   const sum=(lo,hi)=>{ const o={}; for(const d of g.days){ if(d.key<lo||d.key>=hi)continue; for(const s of (d.behavior.slips||[]))for(const k of s.f){ (o[k]=o[k]||{n:0,cost:0}); o[k].n++; o[k].cost+=s.net; } } return o; };
   const cur=sum(from,'9999'), prev=sum(prevFrom,from);
