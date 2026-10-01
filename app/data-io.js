@@ -344,9 +344,10 @@ function parseFillsCsv(text){
 // Coin names become part of trade ids, which land in HTML attributes and selectors — pasted
 // or imported data is untrusted, so anything outside exchange-style symbols is refused.
 function safeCoin(c){ return typeof c==='string'&&/^[A-Za-z0-9@:\/._+-]{1,48}$/.test(c); }
+let _pastedFills=null; // the last pasted (or sample) fills: tax exports need the raw legs, which have no wallet cache
 async function loadFromPaste(fills,opts){
   opts=opts||{};
-  const nIn=fills.length; fills=fills.filter(f=>f&&safeCoin(f.coin));
+  const nIn=fills.length; fills=fills.filter(f=>f&&safeCoin(f.coin)); _pastedFills=fills;
   const dropped=nIn-fills.length;
   if(!fills.length){ setErr(dropped?`No usable fills: ${dropped} had coin names with characters a market symbol can't contain.`:'No fills found in that data.'); return; }
   // resolve @N spot indices to real token names — the paste path used to skip this,

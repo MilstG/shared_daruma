@@ -639,6 +639,108 @@ function spotFifoLots(fills, nameByCoin){
     b.n++; b.proceeds+=r.proceeds; b.basis+=r.basis; b.gain+=r.gain; }
   return {rows, open, byYear, unknownQty};
 }
+/* ---- tax presets by country: the matching method, the tax year, and the flags that matter ---- */
+// Not tax advice: these reproduce each country's standard cost-basis METHOD and tax-year
+// boundaries from your fills, so an accountant (or you) starts from the right numbers. Gains are
+// computed; tax isn't. Proceeds are gross; costs include acquisition fees plus the sale's fees.
+const TAX_PRESETS={
+  us:{name:'United States',method:'fifo',year:'cal',cur:'USD',note:'FIFO lots. Short-term if held one year or less, long-term after (Form 8949).'},
+  uk:{name:'United Kingdom',method:'uk',year:'uk',cur:'GBP',note:'HMRC matching for cryptoassets: same day, then the next 30 days, then the Section 104 pool. Tax year 6 April to 5 April. Report in GBP.'},
+  de:{name:'Germany',method:'fifo',year:'cal',cur:'EUR',note:'Private sales under §23 EStG, FIFO. Coins held more than one year are tax-free; net gains under the annual Freigrenze are tax-free — check the current limit. Report in EUR.'},
+  au:{name:'Australia',method:'fifo',year:'au',cur:'AUD',note:'CGT with FIFO lots (the ATO also accepts identifying specific parcels). Assets held at least 12 months may get the 50% CGT discount (individuals). Income year 1 July to 30 June. Report in AUD.'},
+  ca:{name:'Canada',method:'acb',year:'cal',cur:'CAD',note:'Adjusted cost base (average cost) per coin. Losses where the same coin was bought within 30 days before or after are flagged as possible superficial losses — those are denied and added to the new cost. Report in CAD.'},
+  other:{name:'Other (FIFO, calendar year)',method:'fifo',year:'cal',cur:'USD',note:'FIFO lots, calendar year. Check your local rules.'},
+};
+function taxYearLabel(ms, kind){ const d=new Date(ms), y=d.getUTCFullYear(), m=d.getUTCMonth(), day=d.getUTCDate();
+  if(kind==='uk'){ const s=(m>3||(m===3&&day>=6))?y:y-1; return s+'/'+String((s+1)%100).padStart(2,'0'); }
+  if(kind==='au'){ const s=m>=6?y:y-1; return 'FY'+s+'-'+String((s+1)%100).padStart(2,'0'); }
+  return String(y); }
+// held past the first anniversary (UTC dates; a 29 Feb purchase's anniversary is 28 Feb)
+function heldOverYear(acq, disp){ if(acq==null)return false; const a=new Date(acq), d=new Date(disp);
+  const ann=Date.UTC(a.getUTCFullYear()+1,a.getUTCMonth(),a.getUTCMonth()===1&&a.getUTCDate()===29?28:a.getUTCDate());
+  return Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())>ann; }
+// A daily rate table pasted as "YYYY-MM-DD,rate" lines (units of your currency per 1 USD).
+// A fill uses the latest rate on or before its day, looking back up to 7 days (weekends,
+// holidays). Returns {fx(ms) -> rate|NaN, n, first, last}. An empty table means USD (rate 1).
+function fxFromTable(text){
+  const rows=[]; for(const line of String(text||'').split(/\r?\n/)){ const m=line.trim().match(/^(\d{4}-\d{2}-\d{2})\s*[,;\t ]\s*([0-9]*[.,]?[0-9]+)\s*$/); if(!m)continue;
+    const r=parseFloat(m[2].replace(',','.')); if(r>0)rows.push([Date.UTC(+m[1].slice(0,4),+m[1].slice(5,7)-1,+m[1].slice(8,10)),r]); }
+  if(!rows.length)return {fx:()=>1,n:0,first:null,last:null};
+  rows.sort((a,b)=>a[0]-b[0]);
+  const fx=ms=>{ const d=Math.floor(ms/86400000)*86400000; let lo=0,hi=rows.length-1,best=-1;
+    while(lo<=hi){ const m=(lo+hi)>>1; if(rows[m][0]<=d){best=m;lo=m+1;}else hi=m-1; }
+    return best>=0&&d-rows[best][0]<=7*86400000?rows[best][1]:NaN; };
+  return {fx,n:rows.length,first:rows[0][0],last:rows[rows.length-1][0]};
+}
+// Spot disposals by method. fills: raw spot fills; fx(ms): USD -> report currency.
+// method 'fifo' (lots), 'acb' (average cost), 'uk' (same-day, 30-day, Section 104 pool).
+// Rows: {symbol, qty, acquired|null, disposed, proceeds, cost, gain, rule, unknownBasis}.
+function taxDisposals(fills, nameByCoin, method, fx){
+  nameByCoin=nameByCoin||{}; fx=fx||(()=>1);
+  const EPS=1e-12, DAY=86400000;
+  const sym=c=>{ const base=c.includes('/')?c.split('/')[0]:c; return nameByCoin[c]||nameByCoin[base]||base; };
+  const ev=[]; let missingFx=0;
+  for(const f of (fills||[]).filter(f=>f&&typeof f.coin==='string'&&(f.coin.includes('/')||f.coin.startsWith('@'))).sort((a,b)=>a.time-b.time)){
+    const q=Math.abs(parseFloat(f.sz||0)), px=parseFloat(f.px||0), fee=parseFloat(f.fee||0)||0;
+    if(!(q>0)||!isFinite(px))continue;
+    const rate=fx(f.time); if(!(rate>0)){ missingFx++; continue; }
+    const baseFee=!!(f.feeToken&&f.feeToken!=='USDC'), feeVal=(baseFee?fee*px:fee)*rate;
+    if(f.side==='B'){ const recv=baseFee?q-fee:q; if(!(recv>EPS))continue; ev.push({s:sym(f.coin),t:f.time,buy:true,qty:recv,amt:q*px*rate+(baseFee?0:feeVal)}); }
+    else ev.push({s:sym(f.coin),t:f.time,buy:false,qty:q,amt:q*px*rate,fee:feeVal});
+  }
+  const rows=[];
+  const row=(e,qty,acquired,cost,rule,unknown)=>{ const share=qty/e.qty, proceeds=e.amt*share, c=cost+(e.fee||0)*share;
+    rows.push({symbol:e.s,qty,acquired,disposed:e.t,proceeds,cost:c,gain:proceeds-c,rule,unknownBasis:!!unknown}); };
+  const bySym={}; for(const e of ev)(bySym[e.s]=bySym[e.s]||[]).push(e);
+  for(const s in bySym){ const E=bySym[s];
+    if(method==='acb'){ let qty=0,cost=0;
+      for(const e of E){ if(e.buy){ qty+=e.qty; cost+=e.amt; continue; }
+        const take=Math.min(e.qty,qty), part=qty>EPS?cost*take/qty:0;
+        if(take>EPS){ row(e,take,null,part,'acb'); qty-=take; cost-=part; if(qty<=EPS){qty=0;cost=0;} }
+        if(e.qty-take>EPS)row(e,e.qty-take,null,0,'unknown',true); } }
+    else if(method==='uk'){
+      // per UTC day: total bought (qty, cost) and the day's disposals
+      const dayOf=t=>Math.floor(t/DAY), days={};
+      for(const e of E){ const d=days[dayOf(e.t)]=days[dayOf(e.t)]||{d:dayOf(e.t),bq:0,bc:0,sells:[]}; if(e.buy){ d.bq+=e.qty; d.bc+=e.amt; } else d.sells.push({e,left:e.qty}); }
+      const D=Object.values(days).sort((a,b)=>a.d-b.d);
+      const take=(d,want)=>{ const q=Math.min(want,d.bq), c=d.bq>EPS?d.bc*q/d.bq:0; d.bq-=q; d.bc-=c; if(d.bq<=EPS){d.bq=0;d.bc=0;} return [q,c]; };
+      for(const d of D) for(const x of d.sells){ if(x.left<=EPS||d.bq<=EPS)continue; const [q,c]=take(d,x.left); row(x.e,q,x.e.t,c,'same-day'); x.left-=q; }
+      for(const d of D) for(const x of d.sells){ for(const n of D){ if(x.left<=EPS)break; if(n.d<=d.d||n.d>d.d+30||n.bq<=EPS)continue;
+        const [q,c]=take(n,x.left); row(x.e,q,n.d*DAY,c,'30-day'); x.left-=q; } }
+      let pq=0,pc=0;
+      for(const d of D){ pq+=d.bq; pc+=d.bc; // what's left of the day's buys joins the pool (the day's own sells were matched first)
+        for(const x of d.sells){ if(x.left<=EPS)continue; const q=Math.min(x.left,pq), c=pq>EPS?pc*q/pq:0;
+          if(q>EPS){ row(x.e,q,null,c,'s104'); pq-=q; pc-=c; if(pq<=EPS){pq=0;pc=0;} }
+          if(x.left-q>EPS)row(x.e,x.left-q,null,0,'unknown',true); x.left=0; } } }
+    else { const L=[];
+      for(const e of E){ if(e.buy){ L.push({qty:e.qty,unit:e.amt/e.qty,t:e.t}); continue; }
+        let rem=e.qty;
+        while(rem>EPS){ const lot=L[0]; if(!lot){ row(e,rem,null,0,'unknown',true); break; }
+          const q=Math.min(rem,lot.qty); row(e,q,lot.t,q*lot.unit,'fifo'); lot.qty-=q; rem-=q; if(lot.qty<=EPS)L.shift(); } } }
+  }
+  rows.sort((a,b)=>a.disposed-b.disposed||(a.symbol<b.symbol?-1:1));
+  return {rows,missingFx,buys:ev.filter(e=>e.buy)};
+}
+// The preset's view of the disposals: tax year, the flags that change the tax, a per-year summary.
+function taxReport(fills, nameByCoin, presetKey, fx){
+  const P=TAX_PRESETS[presetKey]||TAX_PRESETS.other;
+  const {rows,missingFx,buys}=taxDisposals(fills,nameByCoin,P.method,fx);
+  for(const r of rows){
+    r.year=taxYearLabel(r.disposed,P.year);
+    const over=r.acquired!=null&&heldOverYear(r.acquired,r.disposed);
+    if(presetKey==='us')r.flag=r.unknownBasis?'unknown basis':over?'long-term':'short-term';
+    else if(presetKey==='de')r.flag=over?'tax-free (held over 1 year)':'';
+    else if(presetKey==='au')r.flag=over&&r.gain>0?'CGT discount may apply (held 12+ months)':'';
+    else if(presetKey==='ca')r.flag=r.gain<0&&buys.some(b=>b.s===r.symbol&&Math.abs(b.t-r.disposed)<=30*86400000)?'possible superficial loss':'';
+    else r.flag='';
+    if(r.unknownBasis&&presetKey!=='us')r.flag=(r.flag?r.flag+'; ':'')+'unknown basis';
+  }
+  const years={};
+  for(const r of rows){ const y=years[r.year]=years[r.year]||{year:r.year,n:0,proceeds:0,cost:0,gains:0,losses:0,net:0,flagged:0,exempt:0};
+    y.n++; y.proceeds+=r.proceeds; y.cost+=r.cost; if(r.gain>=0)y.gains+=r.gain; else y.losses+=r.gain; y.net+=r.gain;
+    if(r.flag&&!/^(short|long)-term$/.test(r.flag))y.flagged++; if(presetKey==='de'&&/tax-free/.test(r.flag))y.exempt+=r.gain; }
+  return {preset:P,rows,years:Object.values(years).sort((a,b)=>a.year<b.year?-1:1),missingFx,unknown:rows.filter(r=>r.unknownBasis).length};
+}
 function edgeSignificance(nets){ const m=_avg(nets),sd=_std(nets),N=nets.length;
   const t=(sd>0&&N>1)?m/(sd/Math.sqrt(N)):null; const p=t!=null?1-_tCdf(t,N-1):null;
   const d=sd>0?m/sd:null; const needN=(d&&d>0)?Math.ceil((1.645/d)**2):null;

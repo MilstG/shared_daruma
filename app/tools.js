@@ -367,6 +367,80 @@ $('exportTax').onclick=()=>{
   const summary=yrs.map(y=>`${y}: net ${fmtUsd(byYear[y].net)} (${byYear[y].n} trade${byYear[y].n===1?'':'s'})`).join(' · ');
   setStatus(`Exported ${rows.length} realized trades → ${summary}. Realized PnL only (no unrealized or transferred cost basis) — not tax advice.`);
 };
+/* ---- tax export by country (presets in engine.js: TAX_PRESETS, taxReport) ---- */
+const TAX_UI={preset:null,cur:null,rates:''};
+async function taxAllSpotFills(){
+  const out=[]; for(const w of settings.wallets){ let c=null; try{ c=await unpackFillCache(await idbGet('flc:'+w.address)); }catch(e){} if(c&&Array.isArray(c.fills))out.push(...c.fills); }
+  return out.length?out:(_pastedFills||[]);
+}
+async function openTaxExport(){
+  const tm=$('toolsMenu'); if(tm)tm.open=false;
+  const fills=await taxAllSpotFills();
+  if(!TAX_UI.rates){ try{ TAX_UI.rates=(await idbGet('taxRates'))||''; }catch(e){} } // a pasted rate table stays on this device
+  const perps=allTrades.filter(t=>t.market==='perp'&&!t.isOpen&&t.closeTime);
+  const bg=document.createElement('div'); bg.className='modal-bg show'; bg.setAttribute('role','dialog'); bg.setAttribute('aria-modal','true'); bg.setAttribute('aria-label','Tax export by country');
+  const saved=settings.taxExport||{};
+  TAX_UI.preset=TAX_UI.preset||saved.preset||'us'; TAX_UI.cur=TAX_UI.cur||saved.cur||TAX_PRESETS[TAX_UI.preset].cur;
+  bg.innerHTML=`<div class="modal taxbox"><h2>Tax export by country</h2>
+    <div class="taxgrid"><div class="field"><label for="taxPreset">Country</label><select id="taxPreset">${Object.entries(TAX_PRESETS).map(([k,p])=>`<option value="${k}"${k===TAX_UI.preset?' selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
+      <div class="field"><label for="taxCur">Report currency</label><input type="text" id="taxCur" maxlength="3" value="${esc(TAX_UI.cur)}" style="text-transform:uppercase"></div></div>
+    <div class="field" id="taxRatesF"><label for="taxRates">Daily rates — one line each: <code>YYYY-MM-DD,rate</code> (units of your currency per 1 USD)</label>
+      <textarea id="taxRates" placeholder="2025-01-02,0.7998&#10;2025-01-03,0.8041&#10;…" spellcheck="false">${esc(TAX_UI.rates)}</textarea>
+      <p class="mini-note">From your central bank or tax authority (e.g. the ECB, Bank of England, RBA, Bank of Canada). Each fill uses the rate on its own date, or the latest within a week before it. Kept on this device only.</p></div>
+    <p class="lead" id="taxNote"></p>
+    <div id="taxPreview"></div>
+    <div class="modal-actions"><button class="btn ghost" data-tax="close">Close</button><button class="btn ghost" data-tax="perps">Perp P&amp;L CSV</button><button class="btn" data-tax="spot">Spot disposals CSV</button></div></div>`;
+  document.body.appendChild(bg);
+  let rep=null, fx=null;
+  const q=v=>{ v=v==null?'':String(v); if(/^[=@]/.test(v)||(/^[+-]/.test(v)&&!isFinite(Number(v))))v="'"+v; return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  const day=ms=>ms==null?'':new Date(ms).toISOString().slice(0,10);
+  const money=(v,c)=>(v<0?'-':'')+Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+c;
+  const refresh=()=>{
+    const key=$('taxPreset').value, cur=($('taxCur').value||'USD').trim().toUpperCase().replace(/[^A-Z]/g,'').slice(0,3)||'USD';
+    TAX_UI.preset=key; TAX_UI.cur=cur; TAX_UI.rates=$('taxRates').value;
+    $('taxRatesF').classList.toggle('hide',cur==='USD');
+    const tbl=cur==='USD'?fxFromTable(''):fxFromTable(TAX_UI.rates);
+    fx=tbl.fx; rep=taxReport(fills,spotMaps.nameByCoin,key,fx);
+    const pm=perps.filter(t=>!(fx(t.closeTime)>0)).length;
+    const P=rep.preset;
+    $('taxNote').innerHTML=esc(P.note)+' <b>Not tax advice</b> — confirm with your adviser.';
+    const warn=[];
+    if(cur!=='USD'&&!tbl.n)warn.push('Paste a rate table to convert into '+esc(cur)+'.');
+    else if(rep.missingFx||pm)warn.push(`${rep.missingFx+pm} fill${rep.missingFx+pm===1?'':'s'}/trades have no ${esc(cur)} rate within a week — extend the table to cover ${tbl.first?day(tbl.first)+' … '+day(tbl.last)+' and beyond':'every trading date'}.`);
+    if(rep.unknown)warn.push(`${rep.unknown} disposal${rep.unknown===1?'':'s'} sold more than was bought on the exchange (transfers or airdrops in): zero cost assumed and flagged “unknown basis”.`);
+    if(cur!==P.cur&&P.cur!=='USD')warn.push(esc(P.name)+' reports in '+P.cur+'.');
+    const blocked=cur!=='USD'&&(!tbl.n||rep.missingFx>0||pm>0);
+    bg.querySelectorAll('[data-tax="spot"],[data-tax="perps"]').forEach(b=>b.disabled=blocked);
+    const perpY={}; if(!blocked)for(const t of perps){ const y=taxYearLabel(t.closeTime,P.year), r=fx(t.closeTime); perpY[y]=(perpY[y]||0)+t.net*r; }
+    const yrs=[...new Set([...rep.years.map(y=>y.year),...Object.keys(perpY)])].sort();
+    $('taxPreview').innerHTML=(warn.length?`<div class="taxwarn">${warn.map(w=>`<p>${w}</p>`).join('')}</div>`:'')
+      +(yrs.length&&!blocked?`<div class="tbl-wrap"><table class="taxtbl"><thead><tr><th class="l">Tax year</th><th>Spot disposals</th><th>Proceeds</th><th>Costs</th><th>Gains</th><th>Losses</th><th>Net spot</th>${key==='de'?'<th>of which tax-free</th>':''}<th>Perp net</th></tr></thead><tbody>${yrs.map(y=>{ const r=rep.years.find(x=>x.year===y)||{n:0,proceeds:0,cost:0,gains:0,losses:0,net:0,exempt:0};
+        return `<tr><td class="l">${esc(y)}</td><td>${r.n}${r.flagged?` <span class="badge mid" data-tip="Rows with a flag (see the CSV)">${r.flagged} flagged</span>`:''}</td><td>${money(r.proceeds,cur)}</td><td>${money(r.cost,cur)}</td><td class="pos-t">${money(r.gains,cur)}</td><td class="neg-t">${money(r.losses,cur)}</td><td class="${cls(r.net)}">${money(r.net,cur)}</td>${key==='de'?`<td>${money(r.exempt,cur)}</td>`:''}<td class="${cls(perpY[y]||0)}">${money(perpY[y]||0,cur)}</td></tr>`; }).join('')}</tbody></table></div>`:blocked?'':'<p class="lead">No realized spot disposals or closed perp trades in the loaded history.</p>');
+    try{ settings.taxExport={preset:key,cur}; Store.set(S_KEY,settings); idbSet('taxRates',TAX_UI.rates); }catch(e){}
+  };
+  refresh();
+  const close=()=>{ bg.remove(); document.removeEventListener('keydown',onKey); };
+  const onKey=e=>{ if(e.key==='Escape')close(); }; document.addEventListener('keydown',onKey);
+  $('taxPreset').addEventListener('change',()=>{ $('taxCur').value=TAX_PRESETS[$('taxPreset').value].cur; refresh(); });
+  $('taxCur').addEventListener('input',refresh); $('taxRates').addEventListener('input',()=>{ clearTimeout(TAX_UI.t); TAX_UI.t=setTimeout(refresh,250); });
+  bg.addEventListener('click',e=>{ const b=e.target.closest('[data-tax]'); if(!b){ if(e.target===bg)close(); return; }
+    const a=b.dataset.tax, cur=TAX_UI.cur, P=rep.preset, stamp=new Date().toISOString().slice(0,10);
+    if(a==='close')return close();
+    if(a==='spot'){ if(!rep.rows.length){ setStatus('No spot disposals to export.'); return; }
+      const head=['tax_year','asset','quantity','date_acquired','date_disposed','proceeds_'+cur,'cost_'+cur,'gain_'+cur,'matching_rule','flag'];
+      const lines=[head.join(',')].concat(rep.rows.map(r=>[r.year,r.symbol,r.qty.toFixed(8),day(r.acquired),day(r.disposed),r.proceeds.toFixed(2),r.cost.toFixed(2),r.gain.toFixed(2),r.rule,r.flag].map(q).join(',')));
+      dlBlob(new Blob([lines.join('\r\n')],{type:'text/csv'}),'ledger-tax-'+TAX_UI.preset+'-spot-'+stamp+'.csv');
+      setStatus(`Exported ${rep.rows.length} spot disposals (${P.name}, ${cur}). Not tax advice.`); }
+    if(a==='perps'){ if(!perps.length){ setStatus('No closed perp trades to export.'); return; }
+      const head=['tax_year','close_date','open_time_utc','close_time_utc','market','asset','direction','realized_pnl_'+cur,'fees_'+cur,'funding_'+cur,'net_'+cur,'usd_rate'];
+      const iso=ms=>new Date(ms).toISOString().replace('T',' ').slice(0,19);
+      const lines=[head.join(',')].concat([...perps].sort((x,y)=>x.closeTime-y.closeTime).map(t=>{ const r=fx(t.closeTime);
+        return [taxYearLabel(t.closeTime,P.year),day(t.closeTime),iso(t.openTime),iso(t.closeTime),'perp',dcoin(t),t.dir,(t.pnl*r).toFixed(2),(-t.fees*r).toFixed(2),((t.funding||0)*r).toFixed(2),(t.net*r).toFixed(2),r].map(q).join(','); }));
+      dlBlob(new Blob([lines.join('\r\n')],{type:'text/csv'}),'ledger-tax-'+TAX_UI.preset+'-perps-'+stamp+'.csv');
+      setStatus(`Exported ${perps.length} closed perp trades (${P.name} tax years, ${cur}). Not tax advice.`); }
+  });
+}
+$('exportTaxCountry').onclick=()=>{ openTaxExport().catch(e=>setErr('Tax export failed: '+e.message)); };
 $('exportSpotLots').onclick=async()=>{
   // FIFO lot rows are built straight from the cached raw fills (not the reconstructed
   // trades), because lots need the individual buy/sell legs, not netted round-trips.
