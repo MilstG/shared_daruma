@@ -97,7 +97,7 @@ try {
     await adm('/members/' + Cid, 'POST', { action: 'ungrant', id: me.grants[0].id });
     eq((await call('/me', { key: A })).d.me.grants, []);
     await adm('/members/' + Cid, 'POST', { action: 'coach', daily: null });
-    eq((await call('/me', { key: A })).d.me.coach.limit, 50, 'unlocked members get the larger allowance');
+    eq((await call('/me', { key: A })).d.me.coach.limit, 3, 'unlocked members get the unlocked allowance: 3 since the coach went to 3 a day');
   });
   await t('reward badges: earned when a measure crosses its value, or awarded by hand; titles follow the level table', async () => {
     Bk = (await call('/join', { method: 'POST', body: { handle: 'bravo' } })).d.key;

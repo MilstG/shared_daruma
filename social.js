@@ -407,7 +407,7 @@ function createSocial(opts) {
   }
   // every section kept as a kv row: one missing here is never loaded or saved (wallet decisions and
   // the admin log would vanish on the next restart)
-  const KV_KEYS = ['config', 'follows', 'comps', 'league', 'leagues', 'badges', 'ownerCoach', 'partners', 'comments', 'leagueSeq', 'wallets', 'adminLog'];
+  const KV_KEYS = ['config', 'follows', 'comps', 'league', 'leagues', 'badges', 'ownerCoach', 'partners', 'comments', 'leagueSeq', 'wallets', 'adminLog', 'coachUse', 'migrations'];
   let S = { v: 1, members: {} };
   const loadedRaw = new Map(); // what each row held, so the first save writes only what loading changed
   for (const r of q('SELECT k, v FROM kv').all()) if (KV_KEYS.includes(r.k)) try { S[r.k] = JSON.parse(r.v); loadedRaw.set(r.k, r.v); } catch (e) {}
@@ -433,6 +433,12 @@ function createSocial(opts) {
   if (!S.ownerCoach) S.ownerCoach = { k: null, n: 0 };
   // what admins did in the panel, newest last: {at, by, what}
   if (!Array.isArray(S.adminLog)) S.adminLog = [];
+  // AI coach messages asked today, per profile ('m:<id>') and per wallet ('w:<address>'): {k: day, tz, n}
+  if (!S.coachUse || typeof S.coachUse !== 'object') S.coachUse = {};
+  if (!S.migrations || typeof S.migrations !== 'object') S.migrations = {};
+  // October 2026: the coach goes to 3 messages a day for everyone (admins unlimited). Applied once,
+  // so a different number the owner sets later in the Coach tab stays.
+  if (!S.migrations.coach3) { S.config.coach.daily = 3; S.config.coach.dailyUnlocked = 3; S.migrations.coach3 = Date.now(); }
   if (!S.partners || typeof S.partners !== 'object') S.partners = {};
   if (!S.comments || typeof S.comments !== 'object') S.comments = {};
   if (!S.leagues || typeof S.leagues !== 'object') { // one league for everyone until the owner makes more
@@ -492,6 +498,11 @@ function createSocial(opts) {
   const dropWalletNumbers = m => { m.vdays = null; m.money = null; for (const cc of Object.values(S.comps)) if (cc.money) delete cc.money[m.id]; };
   const recheckWallet = m => { m.vAt = 0; m.vFailAt = 0; m.moneyFailAt = 0; if (!walletFor(m)) dropWalletNumbers(m); };
   const claimedBy = (addr, notId) => addr ? members().find(o => o.id !== notId && o.claimed === addr) || null : null;
+  // Wallets the owner or an admin mapped to a member by hand, beside their main one (m.address, the one
+  // their on-chain numbers are read from). A mapped wallet belongs to that one member.
+  const linkedOf = m => Array.isArray(m.wallets) ? m.wallets : [];
+  const walletsOf = m => [...(m.address ? [m.address] : []), ...linkedOf(m).filter(a => a !== m.address)];
+  const mappedTo = (addr, notId) => addr ? members().find(o => o.id !== notId && linkedOf(o).includes(addr)) || null : null;
   // simple per-IP rate limits: n requests per window
   const ipOf = opts.clientIp || (req => (req.socket && req.socket.remoteAddress) || '');
   const origins = (opts.publicOrigins || []).map(o => { try { const u = new URL(o); return { host: u.host.toLowerCase(), origin: u.origin }; } catch (e) { return null; } }).filter(Boolean);
@@ -597,17 +608,27 @@ function createSocial(opts) {
     return changed; };
   const awardsOut = m => Object.keys(m.awards || {}).filter(id => own(S.badges, id)).map(id => ({ id, name: S.badges[id].name, icon: S.badges[id].icon, desc: S.badges[id].desc, xp: S.badges[id].xp, at: m.awards[id] }));
   // ---- AI coach allowance: per member per day (their own clock), or the owner's own budget ----
-  const coachLimitFor = m => m.coachDaily != null ? m.coachDaily : m.unlocked ? S.config.coach.dailyUnlocked : S.config.coach.daily;
-  // A member's coach day follows their own clock, but the zone is fixed for the day once they've
-  // asked: changing time zones mid-day doesn't start a new count.
-  const coachTz = m => (m.coachUse && m.coachUse.tz) || (m.stats && m.stats.tz) || 'UTC';
-  const coachUsed = m => { if (!m.coachUse) return 0; const k = zoneKey(coachTz(m), now()); return m.coachUse.k === k ? m.coachUse.n : 0; };
+  // Admins ask without a limit (null); everyone else has the day's allowance, unless the owner set one for them.
+  const coachLimitFor = m => m.admin ? null : m.coachDaily != null ? m.coachDaily : m.unlocked ? S.config.coach.dailyUnlocked : S.config.coach.daily;
+  // Counted per profile and per wallet: several profiles on one wallet share its allowance, and
+  // taking the wallet off a profile doesn't hand it a fresh one. A count's day follows the asker's
+  // clock, fixed for the day once they've asked (changing zones mid-day doesn't start a new count).
+  const coachKeys = m => ['m:' + m.id, ...walletsOf(m).map(a => 'w:' + String(a).toLowerCase())];
+  const coachTz = m => { for (const k of coachKeys(m)) { const u = S.coachUse[k]; if (u && u.tz) return u.tz; } return (m.stats && m.stats.tz) || 'UTC'; };
+  const coachUsedKey = (key, tz) => { const u = S.coachUse[key]; return u && u.k === zoneKey(u.tz || tz, now()) ? u.n : 0; };
+  // (a count from before counts moved here, kept on the member, still holds for its day)
+  const coachUsed = m => { const tz = coachTz(m), old = m.coachUse && m.coachUse.k === zoneKey(m.coachUse.tz || tz, now()) ? m.coachUse.n : 0;
+    return Math.max(old, ...coachKeys(m).map(k => coachUsedKey(k, tz))); };
+  // counts from earlier days are dropped as new ones come in
+  const coachPrune = () => { const keys = Object.keys(S.coachUse); if (keys.length < 2000) return;
+    for (const k of keys) if (!coachUsedKey(k, 'UTC')) delete S.coachUse[k]; };
+  const coachReset = m => { for (const k of coachKeys(m)) delete S.coachUse[k]; delete m.coachUse; };
   const coachStatusFor = m => {
     const c = S.config.coach, lvl = (m.stats && m.stats.level) || 1, need = S.config.unlocksOn && !m.unlocked && S.config.modules.coach > 1 ? S.config.modules.coach : 0;
     const limit = coachLimitFor(m), used = coachUsed(m);
-    const reason = !c.members ? 'The owner hasn’t opened the coach to members.' : m.banned ? 'This profile was removed from the league.'
+    const reason = m.banned ? 'This profile was removed from the league.' : m.admin ? null : !c.members ? 'The owner hasn’t opened the coach to members.'
       : need && lvl < need ? 'The coach unlocks at level ' + need + '.' : limit <= 0 ? 'The coach is switched off for your profile.' : used >= limit ? 'You’ve used today’s ' + limit + ' coach message' + (limit === 1 ? '' : 's') + '. More tomorrow.' : null;
-    return { allowed: !reason, reason, limit, used, remaining: Math.max(0, limit - used), detail: !!(c.detail && m.coachDetail), detailAllowed: !!c.detail, unlockLevel: need || null }; };
+    return { allowed: !reason, reason, limit, used, remaining: limit == null ? null : Math.max(0, limit - used), detail: !!(c.detail && m.coachDetail), detailAllowed: !!c.detail, unlockLevel: need || null }; };
   const byHandle = h => { if (!handleIdx) { handleIdx = new Map(); for (const m of members()) handleIdx.set(m.handle.toLowerCase(), m.id); }
     const id = handleIdx.get(String(h || '').toLowerCase()), m = id && own(S.members, id) ? S.members[id] : null;
     return m && m.handle.toLowerCase() === String(h || '').toLowerCase() ? m : null; };
@@ -1071,7 +1092,7 @@ function createSocial(opts) {
           claimed: members().filter(m => m.claimed).length, vaults: members().filter(m => m.vault).length, vaultBytes: vaultTotal(), claims: !!sig,
           originPinned: origins.length > 0 || !!opts.hostVetted,
           leagues: Object.keys(S.leagues).length, badges: Object.keys(S.badges).length, coachAi: !!opts.coachAvailable,
-          coachToday: members().reduce((a, m) => a + coachUsed(m), 0) + (S.ownerCoach.k === utcDayKey(now()) ? S.ownerCoach.n : 0),
+          coachToday: Object.keys(S.coachUse).filter(k => k.startsWith('m:')).reduce((a, k) => a + coachUsedKey(k, 'UTC'), 0) + (S.ownerCoach.k === utcDayKey(now()) ? S.ownerCoach.n : 0),
           meta: { modules: SC.MODULES, leagueMetrics: SC.LEAGUE_METRICS, badgeMetrics: SC.BADGE_METRICS, profiles: SC.PROFILES },
           tiers: TIERS.map((t, i) => ({ tier: t, n: S.leagues.main ? members().filter(m => !m.banned && own(S.leagues.main.members, m.id) && leagueTier(S.leagues.main, m) === i).length : 0 })) });
       }
@@ -1082,6 +1103,7 @@ function createSocial(opts) {
           address: m.address || null, walletStatus: m.address ? walletStatus(m.address) : null, joinedWith: m.joinedWith || (m.adminMade ? 'admin' : null), claimed: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
           vault: m.vault ? m.vault.size : 0, share: m.share, banned: !!m.banned, unlocked: !!m.unlocked, coachDaily: m.coachDaily != null ? m.coachDaily : null,
           coachUsed: coachUsed(m), coachLimit: coachLimitFor(m), grants: m.grants || [], awards: Object.keys(m.awards || {}).filter(id => own(S.badges, id)),
+          wallets: linkedOf(m).filter(a => a !== m.address),
           leagues: leaguesOf(m).map(L => ({ id: L.id, tier: leagueTier(L, m) })), adminMade: !!m.adminMade, mentor: !!m.mentor, admin: !!m.admin, keys: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0), verified: !!(m.share.verify && Array.isArray(m.vdays)), createdAt: m.createdAt, lastSeen: m.lastSeen || null,
           av: avUrl(m), bio: m.bio || '',
           money: m.money && m.money.ret != null ? { ret: m.money.ret, dd: m.money.dd } : null })) });
@@ -1091,7 +1113,7 @@ function createSocial(opts) {
         if (!HANDLE_RE.test(handle)) return json(res, 400, { error: 'A name is 3–20 letters, numbers or underscores.' });
         if (byHandle(handle)) return json(res, 409, { error: 'That name is taken.' });
         if (members().length >= MAX_MEMBERS) return json(res, 403, { error: 'The league is full.' });
-        let address = typeof body.address === 'string' && ADDR_RE.test(body.address) ? body.address.toLowerCase() : null; if (claimedBy(address)) address = null;
+        let address = typeof body.address === 'string' && ADDR_RE.test(body.address) ? body.address.toLowerCase() : null; if (claimedBy(address) || mappedTo(address)) address = null;
         const id = crypto.randomBytes(6).toString('hex'), A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let code = ''; for (const x of crypto.randomBytes(10)) code += A[x % 32];
         const m = { id, handle, keyHash: null, keyHashes: [], createdAt: now(), lastSeen: 0, tier: 0, share: sanitizeShare(body.share), address, stats: null, weekXp: {}, money: null,
           banned: false, adminMade: true, unlocked: !!body.unlocked, pendingCodes: [{ h: sha(code), exp: now() + 7 * 86400000 }] };
@@ -1121,6 +1143,8 @@ function createSocial(opts) {
             const o = byHandle(h); if (o && o.id !== m.id) return json(res, 409, { error: 'That name is taken.' }); m.handle = h; reindex(); }
           if (body.address !== undefined && !m.claimed) { const ad = typeof body.address === 'string' && ADDR_RE.test(body.address) ? body.address.toLowerCase() : null;
             if (ad && claimedBy(ad, m.id)) return json(res, 409, { error: 'That wallet is claimed by another profile.' });
+            { const mp = ad && mappedTo(ad, m.id); if (mp) return json(res, 409, { error: 'That wallet is mapped to @' + mp.handle + '. Unmap it there first.' }); }
+            if (ad) m.wallets = linkedOf(m).filter(x => x !== ad); // it becomes the main one
             if (ad && S.config.approveWallets && !walletReview(ad)) S.wallets[ad] = { s: 'approved', at: now(), by: who.owner ? 'owner' : who.by, note: '' };
             if (ad !== m.address) { m.address = ad; m.vdays = null; m.vAt = 0; m.money = null; refreshAll(m); } }
           if (body.share && typeof body.share === 'object') m.share = sanitizeShare(body.share, m.share);
@@ -1129,6 +1153,26 @@ function createSocial(opts) {
         else if (a === 'clearBio') m.bio = '';
         else if (a === 'mentor' || a === 'unmentor') m.mentor = a === 'mentor'; // sees the days of members who let mentors in, and comments on them
         else if (a === 'unlock' || a === 'lock') m.unlocked = a === 'unlock'; // every feature, theme and the bigger coach allowance
+        else if (a === 'coachreset') coachReset(m); // today's count back to zero, for the profile and its wallet
+        else if (a === 'link' || a === 'unlink' || a === 'primary') { // map wallets to this member by hand
+          const ad = typeof body.address === 'string' && ADDR_RE.test(body.address.trim()) ? body.address.trim().toLowerCase() : null;
+          if (!ad) return json(res, 400, { error: 'That isn’t a wallet address (0x and 40 hex characters).' });
+          if (a === 'unlink') { if (ad === m.address) return json(res, 400, { error: 'That’s their main wallet: make another one main first, or clear it under Profile.' });
+            if (!linkedOf(m).includes(ad)) return json(res, 404, { error: 'That wallet isn’t mapped to @' + m.handle + '.' });
+            m.wallets = linkedOf(m).filter(x => x !== ad); }
+          else {
+            const cl = claimedBy(ad, m.id); if (cl) return json(res, 409, { error: 'That wallet is claimed by @' + cl.handle + ' (proved by signature). Only they can move it.' });
+            const mp = mappedTo(ad, m.id); if (mp) return json(res, 409, { error: 'That wallet is mapped to @' + mp.handle + '. Unmap it there first.' });
+            const um = members().find(o => o.id !== m.id && o.address === ad); if (um) return json(res, 409, { error: 'That’s @' + um.handle + '’s main wallet. Take it off their profile first.' });
+            if (a === 'primary' && m.claimed && m.claimed === m.address && ad !== m.address) return json(res, 409, { error: '@' + m.handle + '’s main wallet is claimed by signature: only they can change it.' });
+            if (a === 'link') { if (ad === m.address || linkedOf(m).includes(ad)) return json(res, 400, { error: 'That wallet is already @' + m.handle + '’s.' });
+              if (linkedOf(m).length >= 20) return json(res, 400, { error: 'Twenty wallets per member at most.' }); }
+            if (S.config.approveWallets && !walletReview(ad)) S.wallets[ad] = { s: 'approved', at: now(), by: who.owner ? 'owner' : who.by, note: 'mapped to @' + m.handle }; // mapping it is approving it
+            if (a === 'primary' || !m.address) { // the main wallet: the old main one stays mapped
+              const old = m.address; m.wallets = [...linkedOf(m).filter(x => x !== ad), ...(old && old !== ad ? [old] : [])];
+              if (ad !== old) { m.address = ad; m.vdays = null; m.vAt = 0; m.money = null; refreshAll(m); } }
+            else m.wallets = [...linkedOf(m), ad];
+            extra = { wallets: walletsOf(m), address: m.address }; } }
         else if (a === 'coach') { if (body.daily === null || body.daily === '') m.coachDaily = null;
           else { const d = clampNum(body.daily, 0, 1000); if (d == null || body.daily === undefined) return json(res, 400, { error: 'How many coach messages a day?' }); m.coachDaily = Math.round(d); } }
         else if (a === 'grant') { // XP boost (or a correction, if negative): the member's app adds it to their total
@@ -1159,6 +1203,11 @@ function createSocial(opts) {
             joinedWith: m.joinedWith || (m.adminMade ? 'admin' : null), createdAt: m.createdAt || null, lastSeen: m.lastSeen || null });
           rows.set(m.address, r);
         }
+        for (const m of members()) for (const a of linkedOf(m)) if (a !== m.address) { // mapped by hand
+          const r = rows.get(a) || { address: a, members: [] };
+          r.members.push({ id: m.id, handle: m.handle, claimed: false, banned: !!m.banned, linked: true,
+            joinedWith: m.joinedWith || (m.adminMade ? 'admin' : null), createdAt: m.createdAt || null, lastSeen: m.lastSeen || null });
+          rows.set(a, r); }
         for (const a of Object.keys(S.wallets)) if (!rows.has(a)) rows.set(a, { address: a, members: [] }); // decided, nobody uses it now
         const rank = { pending: 0, rejected: 1, approved: 2 };
         const wallets = [...rows.values()].map(r => { const rv = walletReview(r.address);
@@ -1339,7 +1388,7 @@ function createSocial(opts) {
       if (!HANDLE_RE.test(handle)) return json(res, 400, { error: 'Pick a name of 3–20 letters, numbers or underscores.' });
       if (byHandle(handle)) return json(res, 409, { error: 'That name is taken.' });
       let address = typeof body.address === 'string' && ADDR_RE.test(body.address) ? body.address.toLowerCase() : null;
-      if (claimedBy(address)) address = null; // someone proved that wallet is theirs; joining still works, without it
+      if (claimedBy(address) || mappedTo(address)) address = null; // someone proved that wallet is theirs, or the owner mapped it to someone: joining still works, without it
       const key = crypto.randomBytes(24).toString('hex'), id = crypto.randomBytes(6).toString('hex');
       const m = { id, handle, keyHash: sha(key), createdAt: now(), lastSeen: now(), tier: 0, share: sanitizeShare(body.share),
         address, stats: null, weekXp: {}, money: null, banned: false, joinedWith: S.config.inviteCode ? 'invite' : 'open' };
@@ -1393,6 +1442,8 @@ function createSocial(opts) {
         if (!me || me.banned || byKey(req) !== me) return json(res, 401, { error: 'not a member' });
         const prevAddr = me.address;
         // the wallet's signature wins: whoever else named or claimed it loses it
+        for (const o of members()) if (o.id !== me.id && linkedOf(o).includes(p.address)) o.wallets = linkedOf(o).filter(x => x !== p.address); // a mapping by hand gives way too
+        me.wallets = linkedOf(me).filter(x => x !== p.address); // it's their main wallet now
         for (const o of members()) if (o.id !== me.id && (o.claimed === p.address || o.address === p.address)) {
           if (o.claimed === p.address) o.claimed = null;
           o.address = null; o.vdays = null; o.vAt = 0; o.money = null;
@@ -1596,6 +1647,7 @@ function createSocial(opts) {
       if (body.avatar !== undefined && body.avatar !== null && (!r || r.member !== me.id || r.kind !== 'avatar')) return json(res, 400, { error: 'That picture didn’t upload. Try again.' });
       const newAddr = body.address !== undefined && !me.claimed ? (typeof body.address === 'string' && ADDR_RE.test(body.address) ? body.address.toLowerCase() : null) : undefined;
       if (newAddr && claimedBy(newAddr, me.id)) return json(res, 409, { error: 'That wallet is claimed by another profile. Only a signature from it can move it.', walletTaken: true });
+      if (newAddr && mappedTo(newAddr, me.id)) return json(res, 409, { error: 'That wallet belongs to another profile here. Claim it by signing with it, or ask the owner.', walletTaken: true });
       if (body.handle != null) { const h = cleanText(body.handle, 20).replace(/^@/, '');
         if (!HANDLE_RE.test(h)) return json(res, 400, { error: 'Pick a name of 3–20 letters, numbers or underscores.' });
         const other = byHandle(h); if (other && other.id !== me.id) return json(res, 409, { error: 'That name is taken.' }); me.handle = h; reindex(); }
@@ -1608,7 +1660,8 @@ function createSocial(opts) {
         if (!r || r.id !== me.avatar) { dropMedia(q('SELECT id FROM media WHERE member = ? AND kind = ? AND id != ?').all(me.id, 'avatar', r ? r.id : ''));
           if (r) q('UPDATE media SET ref = ? WHERE id = ?').run('avatar:' + me.id, r.id); me.avatar = r ? r.id : null; } }
       // a claimed wallet stays put: only releasing it (or claiming another) changes the address
-      if (newAddr !== undefined) { if (newAddr !== me.address) me.money = null; /* the old wallet's numbers aren't this one's */ me.address = newAddr; }
+      if (newAddr !== undefined) { if (newAddr !== me.address) me.money = null; /* the old wallet's numbers aren't this one's */ me.address = newAddr;
+        if (newAddr) me.wallets = linkedOf(me).filter(x => x !== newAddr); } // one of their mapped wallets became the main one
       if (!(me.share.ret || me.share.usd)) me.money = null;
       if (!me.share.verify || me.address !== prevAddr) { me.vdays = null; me.vAt = 0; }
       let compsCh = false;
@@ -1877,9 +1930,10 @@ function createSocial(opts) {
     ownerStatus: () => { const lim = S.config.coach.ownerDaily, k = utcDayKey(now()), used = S.ownerCoach.k === k ? S.ownerCoach.n : 0;
       return { who: 'owner', allowed: !lim || used < lim, reason: lim && used >= lim ? 'You’ve used today’s ' + lim + ' coach messages.' : null, limit: lim || null, used, remaining: lim ? Math.max(0, lim - used) : null, detail: true, detailAllowed: true }; },
     // reserve a message before asking the model (so parallel requests can't all pass), and give it back if no answer came
-    count: (m, d = 1) => { if (m) { const used = coachUsed(m), tz = used ? coachTz(m) : (m.stats && m.stats.tz) || 'UTC';
-        m.coachUse = { k: zoneKey(tz, now()), tz, n: Math.max(0, used + d) }; }
-      else { const k = utcDayKey(now()); S.ownerCoach = { k, n: Math.max(0, (S.ownerCoach.k === k ? S.ownerCoach.n : 0) + d) }; } save(m || 'ownerCoach'); },
+    count: (m, d = 1) => { if (m) { const tz = coachTz(m), k = zoneKey(tz, now());
+        for (const key of coachKeys(m)) S.coachUse[key] = { k, tz, n: Math.max(0, coachUsedKey(key, tz) + d) };
+        coachPrune(); }
+      else { const k = utcDayKey(now()); S.ownerCoach = { k, n: Math.max(0, (S.ownerCoach.k === k ? S.ownerCoach.n : 0) + d) }; } save(m ? 'coachUse' : 'ownerCoach'); },
   };
   save(); // what loading filled in (defaults, league numbers) is written once, so a restart reads the same
   return { handle, coach, tick, memberOf: req => { const m = byKey(req); return m && !m.banned ? m : null; }, state: () => S, store, close: () => store.close() };

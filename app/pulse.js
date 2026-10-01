@@ -1168,6 +1168,8 @@ function wirePulse(){
         const b=$('pzSheet').querySelector(`[data-pz-move="${sc}:${id}:${d}"]:not([disabled])`)||$('pzSheet').querySelector(`[data-pz-move^="${sc}:${id}:"]:not([disabled])`); if(b)b.focus(); } return; }
     if(ds.pzSect){ const [sc,id]=ds.pzSect.split(':'), L=settings.pzLayout=settings.pzLayout||{}, M=L[sc]=L[sc]||{}; M[id]=!pzShow(sc,id); await Store.set(S_KEY,settings); pzRender(); return; }
     if(ds.pzSectreset){ if(settings.pzLayout)delete settings.pzLayout[ds.pzSectreset]; await Store.set(S_KEY,settings); pzRender(); return; }
+    if(ds.pzAmfill!==undefined){ const el=$('pzAm'+ds.pzAmfill); if(!el)return; el.value=ds.v; el.dispatchEvent(new Event('input',{bubbles:true}));
+      root.querySelectorAll('[data-pz-amfill="'+ds.pzAmfill+'"]').forEach(b=>b.classList.toggle('ok',b===t)); el.focus(); return; }
     if(ds.pzRmw!==undefined){ const w=settings.wallets[+ds.pzRmw]; if(w&&!confirm('Remove '+labelFor(w)+'? Its trades leave Pulse; your notes on them stay saved.'))return;
       await removeWallet(+ds.pzRmw); pzRender(); return; }
     if(ds.pzCex){ pzS.cex={venue:ds.pzCex}; pzRender(); const f=$('pzCexKey'); if(f)f.focus(); return; }
