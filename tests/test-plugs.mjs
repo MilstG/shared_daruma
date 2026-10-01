@@ -17,7 +17,7 @@ class FDate extends Date { constructor(...a) { if (!a.length) super(NOW); else s
 const ctx = vm.createContext({ Date: FDate, Math, console, Set, Map, Object, JSON, Array, String, Promise, isFinite, Infinity, setTimeout,
   S_KEY: 's', J_KEY: 'j', rawSet: async () => {}, allTrades: [], viewFilter: () => true, Store: { async set() {} },
   dayKey: ms => new Date(ms).toISOString().slice(0, 10), isoWeekKey: () => 'week:x', markJEdit() {}, pbNorm: a => a || [] });
-const FNS = ['isoWeekOfKey', 'isoWeekMondayKey', 'pzPlugState', 'pzPlugs', 'pzPlugStart', 'pzPlugDrop', 'pzLeakMap', 'adoptHabit', 'retireHabit',
+const FNS = ['isoWeekOfKey', 'isoWeekMondayKey', 'pzPlugState', 'pzPlugWeekNote', 'pzPlugs', 'pzPlugStart', 'pzPlugDrop', 'pzLeakMap', 'adoptHabit', 'retireHabit',
   'habitById', '_syncMerge', 'pzLessonsNorm', 'weekFocus', 'setWeekFocus'];
 vm.runInContext(['PZ_BEH', 'PZ_PLUG', 'pzAddDays'].map(grabConst).join('\n') + '\nvar settings={}, journal={}, _pzSlipDays=new Map();\n' + FNS.map(grabFn).join('\n'), ctx);
 const run = c => vm.runInContext(c, ctx);
@@ -27,7 +27,7 @@ const days = o => { ctx.__d = new Map(Object.entries(o).sort().map(([k, sl]) => 
 const state = from => { const s = run(`pzPlugState({slip:'revenge',from:'${from}'})`); return { cleanRun: s.cleanRun, done: s.done, back: s.back }; };
 
 console.log('\nThe clean-week run');
-t('three clean weeks (two trading days each) plug it, done on the third Sunday', () => {
+t('three clean trading weeks plug it, done on the third Sunday', () => {
   days({ '2026-09-01': [], '2026-09-02': [], '2026-09-08': [], '2026-09-09': [], '2026-09-15': [], '2026-09-16': [] });
   eq(state('2026-09-01'), { cleanRun: 3, done: '2026-09-20', back: false });
 });
@@ -35,9 +35,23 @@ t('a slip resets the run even in a week with a single trading day', () => {
   days({ '2026-09-01': [], '2026-09-02': [], '2026-09-09': [[-400, 'revenge']], '2026-09-15': [], '2026-09-16': [], '2026-09-22': [], '2026-09-23': [] });
   eq(state('2026-09-01'), { cleanRun: 2, done: null, back: false });
 });
-t('a clean week with one trading day neither counts nor breaks the run', () => {
-  days({ '2026-09-01': [], '2026-09-02': [], '2026-09-09': [], '2026-09-15': [], '2026-09-16': [], '2026-09-22': [], '2026-09-23': [] });
-  eq(state('2026-09-01'), { cleanRun: 3, done: '2026-09-27', back: false });
+t('any week you traded in counts, even a single day', () => {
+  days({ '2026-09-01': [], '2026-09-09': [], '2026-09-17': [] });
+  eq(state('2026-09-01'), { cleanRun: 3, done: '2026-09-20', back: false });
+});
+t('weeks with no trading are skipped: they neither count nor break the run', () => {
+  days({ '2026-09-01': [], '2026-09-15': [], '2026-09-29': [] }); // traded W36 and W38; W37 idle; W40 is this week
+  eq(state('2026-09-01'), { cleanRun: 2, done: null, back: false });
+  days({ '2026-08-04': [], '2026-09-15': [], '2026-09-22': [] }); // a month off between the first and second
+  eq(state('2026-08-01'), { cleanRun: 3, done: '2026-09-27', back: false });
+});
+t('this week with no trades yet says so, not "clean"', () => {
+  const note = (from, d) => { days(d); return run(`pzPlugWeekNote(Object.assign({from:'${from}'},pzPlugState({slip:'revenge',from:'${from}'})))`); };
+  eq(note('2026-09-21', { '2026-09-22': [] }), 'no trades yet this week');
+  eq(note('2026-10-01', { '2026-09-29': [] }), 'no trades since you started', 'plugged mid-week after trading earlier that week');
+  eq(note('2026-09-21', { '2026-09-29': [] }), 'clean this week');
+  eq(note('2026-09-21', { '2026-09-29': [[-5, 'revenge'], [-6, 'revenge']] }), '2 slips this week');
+  eq((html.match(/pzPlugWeekNote\(p\)/g) || []).length, 4, 'defined once; the leak card, Today and the nudge all use it');
 });
 t('the week in progress shows but doesn’t count yet; another slip type is not this leak', () => {
   days({ '2026-09-22': [[-10, 'sizeUp']], '2026-09-23': [], '2026-09-29': [[-50, 'revenge']], '2026-09-30': [] });

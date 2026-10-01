@@ -500,7 +500,7 @@ function pzDueItems(D){
   if(g.current){ const kept=g.current.res.filter(r=>r.kept).length; items.push(['bolt',PZ_COL.xp,'Weekly challenge',`${kept} day${kept===1?'':'s'} kept · ${daysLeft?daysLeft+' day'+(daysLeft===1?'':'s')+' left this week':'ends tonight'}`,'#progress']); }
   for(const h of habitsList().slice(0,3)){ const r=habitProgress(h,g.ctx).res.find(x=>x.key===todayK);
     items.push(['check',r?(r.kept?PZ_COL.good:PZ_COL.low):'var(--pz-soft)',habitSentence(h),r?(r.kept?'kept today':'broken today'):'due today','#progress']); }
-  for(const p of pzPlugs().filter(p=>!p.dropped&&!p.done).slice(0,2))items.push(['shield',PZ_COL.risk,'Plugging: '+(PZ_BEH[p.slip]||p.slip),`${p.cleanRun} of 3 clean weeks · ${p.thisWeek&&p.thisWeek.count?p.thisWeek.count+' slip'+(p.thisWeek.count===1?'':'s')+' this week':'clean this week'}`,'#progress']);
+  for(const p of pzPlugs().filter(p=>!p.dropped&&!p.done).slice(0,2))items.push(['shield',PZ_COL.risk,'Plugging: '+(PZ_BEH[p.slip]||p.slip),`${p.cleanRun} of 3 clean trading weeks · ${pzPlugWeekNote(p)}`,'#progress']);
   if(typeof SOC!=='undefined'&&SOC.me){ const c=SOC.cache&&SOC.cache.comps, all=c&&c.d?c.d.competitions:[];
     for(const x of (all||[]).filter(x=>x.joined&&x.status==='live').sort((a,b)=>a.end<b.end?-1:1).slice(0,2)){
       const left=Math.round((Date.parse(x.end)-Date.parse(todayK))/86400000);

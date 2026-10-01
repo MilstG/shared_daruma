@@ -1065,14 +1065,19 @@ function pzPlugState(p){
     x.days++; for(const s of (b.slips||[]))if(s.f.includes(p.slip)){ x.count++; x.cost+=s.net; } }
   const list=Object.values(weeks).sort((a,b)=>a.week<b.week?-1:1);
   let runN=0, done=null;
-  // a slip resets the run in any week; a clean week counts only with two trading days in it
-  for(const w of list){ if(w.week===curWeek)continue; if(w.count){ runN=0; continue; } if(w.days<2)continue;
+  // only weeks you traded in exist here: a week with a slip resets the run, a week traded without
+  // one adds to it, and a week with no trading neither counts nor breaks it
+  for(const w of list){ if(w.week===curWeek)continue; if(w.count){ runN=0; continue; }
     runN++; if(runN>=3&&!done){ const mon=isoWeekMondayKey(w.week); done=pzAddDays(mon,6); } }
   const cur=weeks[curWeek]||{count:0,days:0};
   // plugged, then slipped again in a later week: "It’s back"
   const back=!!done&&list.some(w=>w.count&&isoWeekMondayKey(w.week)>done);
   return {weeks:list,cleanRun:runN,done,thisWeek:cur,back};
 }
+// this week so far, for one plug: only trades since the plug started count
+function pzPlugWeekNote(p){ const w=p.thisWeek||{count:0,days:0};
+  return w.count?w.count+' slip'+(w.count===1?'':'s')+' this week':w.days?'clean this week'
+    :isoWeekOfKey(p.from)===isoWeekOfKey(dayKey(Date.now()))?'no trades since you started':'no trades yet this week'; }
 function isoWeekMondayKey(week){ const m=/^(\d{4})-W(\d{2})$/.exec(week); if(!m)return null; const j4=Date.UTC(+m[1],0,4), d=new Date(j4);
   return new Date(j4-((d.getUTCDay()+6)%7)*86400000+(+m[2]-1)*7*86400000).toISOString().slice(0,10); }
 function pzPlugs(){ return (Array.isArray(settings.pzPlugs)?settings.pzPlugs:[]).filter(p=>p&&PZ_BEH[p.slip]&&/^\d{4}-\d{2}-\d{2}$/.test(p.from||'')).map(p=>Object.assign({},p,pzPlugState(p))); }
@@ -1137,7 +1142,7 @@ function pzNudges(D){
   if(D.ready!=null&&D.ready<50){ const rl=pzReadinessLink(g.days,journal);
     out.push({tone:'warn',text:'Low readiness this morning ('+D.ready+').'+(rl?' On low-readiness days your Discipline averages '+rl.lo+', against '+rl.hi+' when you’re rested.':'')+' Smaller size, fewer trades.'}); }
   for(const p of pzPlugs().filter(p=>!p.dropped&&!p.done)){ const n=p.thisWeek.count;
-    out.push({tone:n?'warn':'good',text:n?'Plugging “'+PZ_BEH[p.slip].toLowerCase()+'”: '+n+' slip'+(n===1?'':'s')+' this week. Reset and go again.':'Plugging “'+PZ_BEH[p.slip].toLowerCase()+'”: '+(p.cleanRun?p.cleanRun+' clean week'+(p.cleanRun===1?'':'s')+' so far, ':'')+'clean this week. Three straight weeks plugs it.'}); }
+    out.push({tone:n?'warn':'good',text:n?'Plugging “'+PZ_BEH[p.slip].toLowerCase()+'”: '+n+' slip'+(n===1?'':'s')+' this week. Reset and go again.':'Plugging “'+PZ_BEH[p.slip].toLowerCase()+'”: '+(p.cleanRun?p.cleanRun+' clean trading week'+(p.cleanRun===1?'':'s')+' so far, ':'')+pzPlugWeekNote(p)+'. Three clean trading weeks in a row plug it.'}); }
   return out.slice(0,3);
 }
 

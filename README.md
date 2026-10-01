@@ -308,9 +308,10 @@ it compares with the previous period; shareable as an image.
 
 **Building habits.** Progress shows a **leak map** (each recurring slip, what it
 cost, and whether it's shrinking), a one-tap **plug this leak** loop that turns a leak
-into a habit checked from your fills: three clean weeks in a row plugs it and earns
-a badge (a week counts as clean with at least two trading days and no slip; a slip
-in any week starts the count again), **per-habit streaks** with
+into a habit checked from your fills: three clean trading weeks in a row plug it
+and earn a badge (only weeks you traded in count: a week traded without that slip
+adds one, a week with the slip starts the count again, and a week with no trading
+is skipped), **per-habit streaks** with
 shields, **good moments** (the times you followed a rule that usually costs you)
 and **saved you** estimates. Today shows **live nudges** when a trigger you
 tend to slip after is happening right now (a fresh loss, a fast re-entry).

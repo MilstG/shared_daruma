@@ -60,10 +60,10 @@ function pzProgressHtml(D){
     ${leaks.length?leaks.map(x=>{ const tr=x.n<x.prevN?'down':x.n>x.prevN?'up':'flat', p=x.plug;
       return `<div class="pz-leak"><div class="pz-kvrow"><b style="font-size:14px">${esc(x.label)}</b><b style="color:${x.cost<0?PZ_COL.low:'var(--pz-soft)'}" title="${esc(signedPlain(x.cost))}">${x.n?esc(pzSigned(x.cost)):'—'}</b></div>
         <span class="pz-sub" style="font-size:12px">${x.n} trade${x.n===1?'':'s'} · ${tr==='down'?'<span style="color:'+PZ_COL.good+'">▼ fewer</span> than the 30 days before ('+x.prevN+')':tr==='up'?'<span style="color:'+PZ_COL.low+'">▲ more</span> than before ('+x.prevN+')':'same as before'}</span>
-        ${p?(p.done?`<div class="pz-kvrow"><span class="pz-chipbtn ok">${pzI('check',14,3)} Plugged ${esc(dayLabel(p.done))}</span>${p.back?`<button type="button" class="pz-ghost pz-sm" style="width:auto" data-pz-plug="${esc(x.slip)}">It’s back — plug again</button>`:''}</div>`:`<div class="pz-plug"><span class="pz-steps">${[0,1,2].map(i=>`<i class="${i<p.cleanRun?'on':''}"></i>`).join('')}</span><span class="pz-sub" style="font-size:12px">${p.cleanRun} of 3 clean weeks · ${p.thisWeek.count?p.thisWeek.count+' this week':'clean this week'}</span><button type="button" class="pz-kudo" data-pz-unplug="${esc(x.slip)}">Stop</button></div>`)
+        ${p?(p.done?`<div class="pz-kvrow"><span class="pz-chipbtn ok">${pzI('check',14,3)} Plugged ${esc(dayLabel(p.done))}</span>${p.back?`<button type="button" class="pz-ghost pz-sm" style="width:auto" data-pz-plug="${esc(x.slip)}">It’s back — plug again</button>`:''}</div>`:`<div class="pz-plug"><span class="pz-steps">${[0,1,2].map(i=>`<i class="${i<p.cleanRun?'on':''}"></i>`).join('')}</span><span class="pz-sub" style="font-size:12px">${p.cleanRun} of 3 clean trading weeks · ${pzPlugWeekNote(p)}</span><button type="button" class="pz-kudo" data-pz-unplug="${esc(x.slip)}">Stop</button></div>`)
           :x.n?`<button type="button" class="pz-ghost pz-sm" data-pz-plug="${esc(x.slip)}">Plug this leak</button>`:''}</div>`; }).join('')
       :'<p class="pz-sub" style="font-size:13px">No Discipline slips in the last 60 days. That’s rare — keep it up.</p>'}
-    <p class="pz-fine">Plugging a leak adds a habit that’s checked from your fills. Three clean weeks in a row plugs it and earns a badge.</p></section>`;
+    <p class="pz-fine">Plugging a leak adds a habit that’s checked from your fills. Three clean trading weeks in a row plug it and earn a badge (weeks you don’t trade are skipped).</p></section>`;
   // good moments
   const gm=pzGoodMoments(g,pzAddDays(nowK,-6));
   const gmHtml=`<section class="pz-card pz-kv"><div class="pz-kvrow"><b class="pz-kvh">Good moments · 7 days</b><span class="pz-sub" style="font-size:12px">${gm.length}</span></div>
@@ -714,7 +714,7 @@ async function pzGrowthAction(t){
       settings.pzTiltNotify=on; await Store.set(S_KEY,settings); pzRender(); return true; }
     if(ds.pzMk){ settings.pzMarket=ds.pzMk; await Store.set(S_KEY,settings); pzRender(); return true; }
     if(ds.pzPg!=null){ PZ_PAGES[ds.pzPg]=Math.max(0,(PZ_PAGES[ds.pzPg]||0)+(+ds.d||0)); pzRender(); const n=document.querySelector('[data-pz-pg="'+CSS.escape(ds.pzPg)+'"]'); if(n){ const list=n.closest('nav').previousElementSibling; if(list&&list.scrollIntoView)list.scrollIntoView({block:'nearest'}); } return true; }
-    if(ds.pzPlug){ await pzPlugStart(ds.pzPlug); pzNote('Plugging “'+PZ_BEH[ds.pzPlug].toLowerCase()+'”. It’s checked from your fills — three clean weeks plugs it.'); pzRender(); return true; }
+    if(ds.pzPlug){ await pzPlugStart(ds.pzPlug); pzNote('Plugging “'+PZ_BEH[ds.pzPlug].toLowerCase()+'”. It’s checked from your fills — three clean trading weeks in a row plug it.'); pzRender(); return true; }
     if(ds.pzUnplug){ if(!confirm('Stop plugging this leak? Its habit is retired.'))return true; await pzPlugDrop(ds.pzUnplug); pzRender(); return true; }
     if(ds.pzBcat){ pzS.bcat=ds.pzBcat; pzRender(); return true; }
     if(ds.pzBsel){ pzS.badgeSel=pzS.badgeSel===ds.pzBsel?null:ds.pzBsel; pzRender(); return true; }
