@@ -385,13 +385,82 @@ async function loadAttachments(id){ const box=document.getElementById('att-'+id)
   let arr=(await idbGet('att:'+id))||[];
   if(!arr.length&&SRV.enabled){ const dl=await syncAttDown(id); if(dl)arr=dl; } // images follow you across devices
   if(!arr.length){ box.innerHTML='<span style="color:var(--faint);font-size:11.5px">No attachments yet.</span>'; return; }
-  box.innerHTML=arr.map((src,i)=>_attSrcOk(src)?`<div class="attthumb"><img src="${src}" data-att-view="${esc(id)}:${i}" alt="attachment ${i+1}"><button class="att-del" data-att-del="${esc(id)}:${i}" title="Remove" aria-label="Remove attachment ${i+1}">×</button></div>`:'').join(''); }
+  box.innerHTML=arr.map((src,i)=>_attSrcOk(src)?`<div class="attthumb"><img src="${src}" data-att-view="${esc(id)}:${i}" alt="attachment ${i+1}"><button class="att-del" data-att-del="${esc(id)}:${i}" title="Remove" aria-label="Remove attachment ${i+1}">×</button><button class="att-ann" data-att-ann="${esc(id)}:${i}" title="Draw on it" aria-label="Draw on attachment ${i+1}">✎</button></div>`:'').join(''); }
 async function addAttachments(id,files){ const box=document.getElementById('att-'+id);
   if(box)box.innerHTML='<span style="color:var(--faint);font-size:11.5px">Processing…</span>';
   let arr=(await idbGet('att:'+id))||[];
   for(const f of files){ if(!/^image\//.test(f.type))continue; if(arr.length>=12){ setStatus('Max 12 images per trade.'); break; }
     try{ arr.push(await downscaleImage(f)); }catch(e){} }
   await idbSet('att:'+id,arr); loadAttachments(id); syncAttUp(id); }
+/* ---- drawing on a screenshot: arrows, lines, boxes, a pen and text, flattened into the image ---- */
+// Shapes are kept as a list while the editor is open (so undo works), then drawn into the image
+// on save. "Save" replaces the screenshot; "Save as a copy" keeps the original and adds the
+// marked-up one next to it. Pure helpers (annArrowHead) are unit-tested.
+const ANN_COLORS=['#F4586A','#2FD08C','#E6B450','#FFFFFF'];
+// the two barb points of an arrow head at (x2,y2), pointing along (x1,y1)->(x2,y2)
+function annArrowHead(x1,y1,x2,y2,len){
+  const a=Math.atan2(y2-y1,x2-x1), s=Math.PI/7;
+  return [[x2-len*Math.cos(a-s),y2-len*Math.sin(a-s)],[x2-len*Math.cos(a+s),y2-len*Math.sin(a+s)]];
+}
+function annDraw(ctx,sh,scale){
+  const w=Math.max(2,Math.round(3*scale));
+  ctx.save(); ctx.strokeStyle=sh.c; ctx.fillStyle=sh.c; ctx.lineWidth=w; ctx.lineCap='round'; ctx.lineJoin='round';
+  if(sh.t==='pen'){ ctx.beginPath(); sh.p.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y)); ctx.stroke(); }
+  else if(sh.t==='box'){ ctx.strokeRect(Math.min(sh.x1,sh.x2),Math.min(sh.y1,sh.y2),Math.abs(sh.x2-sh.x1),Math.abs(sh.y2-sh.y1)); }
+  else if(sh.t==='line'||sh.t==='arrow'){ ctx.beginPath(); ctx.moveTo(sh.x1,sh.y1); ctx.lineTo(sh.x2,sh.y2); ctx.stroke();
+    if(sh.t==='arrow'){ const [b1,b2]=annArrowHead(sh.x1,sh.y1,sh.x2,sh.y2,Math.max(12,16*scale));
+      ctx.beginPath(); ctx.moveTo(sh.x2,sh.y2); ctx.lineTo(b1[0],b1[1]); ctx.lineTo(b2[0],b2[1]); ctx.closePath(); ctx.fill(); } }
+  else if(sh.t==='text'){ const fs=Math.max(14,Math.round(18*scale)); ctx.font='600 '+fs+'px Inter, system-ui, sans-serif'; ctx.textBaseline='top';
+    // a dark halo keeps the label readable on any chart
+    ctx.lineWidth=Math.max(3,fs/4); ctx.strokeStyle='rgba(8,10,14,.85)'; ctx.strokeText(sh.s,sh.x1,sh.y1); ctx.fillText(sh.s,sh.x1,sh.y1); }
+  ctx.restore();
+}
+async function openAnnotator(id,idx){
+  const arr=(await idbGet('att:'+id))||[], src=arr[idx]; if(!_attSrcOk(src))return;
+  const img=new Image(); img.src=src; await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; }).catch(()=>null);
+  if(!img.naturalWidth)return;
+  const W=img.naturalWidth, H=img.naturalHeight, scale=Math.max(W,H)/1200*1.6||1;
+  const bg=document.createElement('div'); bg.className='modal-bg show'; bg.setAttribute('role','dialog'); bg.setAttribute('aria-modal','true'); bg.setAttribute('aria-label','Mark up screenshot');
+  const tools=[['arrow','↗ Arrow'],['line','╱ Line'],['box','▭ Box'],['pen','✎ Pen'],['text','T Text']];
+  bg.innerHTML=`<div class="modal annbox"><div class="anntools" role="toolbar" aria-label="Drawing tools">
+      ${tools.map(([k,l],i)=>`<button type="button" class="btn ghost${i?'':' on'}" data-ann-tool="${k}" aria-pressed="${i?'false':'true'}">${l}</button>`).join('')}
+      <span class="annsep"></span>${ANN_COLORS.map((c,i)=>`<button type="button" class="anncol${i?'':' on'}" data-ann-col="${c}" style="background:${c}" aria-label="Colour ${i+1}" aria-pressed="${i?'false':'true'}"></button>`).join('')}
+      <span class="annsep"></span><button type="button" class="btn ghost" data-ann="undo">Undo</button><button type="button" class="btn ghost" data-ann="clear">Clear</button></div>
+    <div class="annstage"><canvas width="${W}" height="${H}"></canvas></div>
+    <div class="modal-actions"><button class="btn ghost" data-ann="cancel">Cancel</button><button class="btn ghost" data-ann="copy">Save as a copy</button><button class="btn" data-ann="save">Save</button></div></div>`;
+  document.body.appendChild(bg);
+  const cv=bg.querySelector('canvas'), ctx=cv.getContext('2d');
+  let tool='arrow', color=ANN_COLORS[0], shapes=[], cur=null;
+  const paint=()=>{ ctx.clearRect(0,0,W,H); ctx.drawImage(img,0,0,W,H); for(const s of shapes)annDraw(ctx,s,scale); if(cur)annDraw(ctx,cur,scale); };
+  paint();
+  const pos=e=>{ const r=cv.getBoundingClientRect(); return [(e.clientX-r.left)*W/r.width,(e.clientY-r.top)*H/r.height]; };
+  cv.addEventListener('pointerdown',e=>{ e.preventDefault(); const [x,y]=pos(e);
+    if(tool==='text'){ const s=(prompt('Text to place here:')||'').trim().slice(0,80); if(s){ shapes.push({t:'text',c:color,x1:x,y1:y,s}); paint(); } return; }
+    cv.setPointerCapture(e.pointerId); cur=tool==='pen'?{t:'pen',c:color,p:[[x,y]]}:{t:tool,c:color,x1:x,y1:y,x2:x,y2:y}; });
+  cv.addEventListener('pointermove',e=>{ if(!cur)return; const [x,y]=pos(e); if(cur.t==='pen')cur.p.push([x,y]); else{ cur.x2=x; cur.y2=y; } paint(); });
+  const end=()=>{ if(!cur)return; const tiny=cur.t==='pen'?cur.p.length<2:Math.hypot(cur.x2-cur.x1,cur.y2-cur.y1)<4; if(!tiny)shapes.push(cur); cur=null; paint(); };
+  cv.addEventListener('pointerup',end); cv.addEventListener('pointercancel',end);
+  const close=()=>{ bg.remove(); document.removeEventListener('keydown',onKey); };
+  const onKey=e=>{ if(e.key==='Escape')close(); else if((e.ctrlKey||e.metaKey)&&e.key==='z'){ e.preventDefault(); shapes.pop(); paint(); } };
+  document.addEventListener('keydown',onKey);
+  bg.addEventListener('click',async e=>{
+    const b=e.target.closest('button'); if(!b){ if(e.target===bg)close(); return; }
+    if(b.dataset.annTool){ tool=b.dataset.annTool; bg.querySelectorAll('[data-ann-tool]').forEach(x=>{ x.classList.toggle('on',x===b); x.setAttribute('aria-pressed',String(x===b)); }); return; }
+    if(b.dataset.annCol){ color=b.dataset.annCol; bg.querySelectorAll('[data-ann-col]').forEach(x=>{ x.classList.toggle('on',x===b); x.setAttribute('aria-pressed',String(x===b)); }); return; }
+    const a=b.dataset.ann;
+    if(a==='undo'){ shapes.pop(); paint(); }
+    else if(a==='clear'){ shapes=[]; paint(); }
+    else if(a==='cancel')close();
+    else if(a==='save'||a==='copy'){
+      if(!shapes.length){ close(); return; }
+      cur=null; paint();
+      let out; try{ out=cv.toDataURL('image/jpeg',0.85); }catch(err){ setErr('Couldn’t save the drawing: '+err.message); return; }
+      const now=(await idbGet('att:'+id))||[];
+      if(a==='save'&&now[idx]===src)now[idx]=out; else{ if(now.length>=12){ setErr('Max 12 images per trade — remove one first, or Save to replace.'); return; } now.push(out); }
+      await idbSet('att:'+id,now); close(); loadAttachments(id); syncAttUp(id);
+    }
+  });
+}
 async function removeAttachment(id,idx){ let arr=(await idbGet('att:'+id))||[]; arr.splice(idx,1);
   if(arr.length)await idbSet('att:'+id,arr); else await idbDel('att:'+id); loadAttachments(id); syncAttUp(id); }
 // The plan's `at` stamps when its numbers last changed — a plan saved while the trade is

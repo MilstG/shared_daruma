@@ -535,7 +535,11 @@ Every trade row expands into a journal entry:
   Perp positions opened in the last 7 days with no written stop get a
   dashboard nudge.
 - **Notes** — free text.
-- **Attachments** — paste or drop screenshots; stored in this browser.
+- **Attachments** — paste or drop screenshots; stored in this browser (and on
+  the server when synced). The ✎ on a thumbnail opens a mark-up editor: arrows,
+  lines, boxes, a pen and text labels in four colours, with undo. **Save**
+  replaces the screenshot; **Save as a copy** keeps the original and adds the
+  marked-up version next to it.
 
 **Playbooks** (Review → Playbooks) are your setups with their rules written down:
 a name ("Breakout retest") and one rule per line ("Wait for the retest", "Stop

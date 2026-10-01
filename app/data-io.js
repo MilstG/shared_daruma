@@ -526,6 +526,7 @@ document.querySelectorAll('.trades th.sortable').forEach(th=>{
 $('tbody').addEventListener('click',e=>{
   const save=e.target.closest('[data-save]'); if(save){ saveJournal(save.dataset.save); return; }
   // trade ids contain ':' themselves (addr:COIN:time) — the index is after the LAST colon
+  const ann=e.target.closest('[data-att-ann]'); if(ann){ const v=ann.dataset.attAnn, k=v.lastIndexOf(':'); openAnnotator(v.slice(0,k),+v.slice(k+1)); return; }
   const del=e.target.closest('[data-att-del]'); if(del){ const v=del.dataset.attDel, k=v.lastIndexOf(':'); removeAttachment(v.slice(0,k),+v.slice(k+1)); return; }
   const rp=e.target.closest('[data-replay]'); if(rp){ openReplay(rp.dataset.replay,rp); return; }
   const av=e.target.closest('[data-att-view]'); if(av){ const src=av.getAttribute('src');
