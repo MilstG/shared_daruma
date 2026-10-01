@@ -895,6 +895,14 @@ All opt-in via environment variables, still zero dependencies:
   Messages from chats outside the allowlist are ignored silently; the bot can
   never write journal data. Get a token from @BotFather; your chat id from
   e.g. @userinfobot.
+- **Ops health.** With the schedule on, the server also watches itself: when
+  `HEALTH_FAIL_RUNS` (default 3) scheduled refreshes fail in a row — every
+  alert and nudge is then quietly working from stale data — or the data volume
+  passes `HEALTH_DISK_PCT` (default 90) percent full or drops under
+  `HEALTH_DISK_MIN_MB` (default 100) free, one message goes to the delivery
+  channels (repeated at most daily while it lasts), plus a one-line "working
+  again" when the refresh recovers. `GET /api/v1/meta` reports the current
+  failure streak, last error, and disk free/total.
 - `NUDGE_HOUR=18` — an **end-of-day journaling nudge**: once a day, on the
   first scheduled run after that hour — in the app's own day-journal time zone
   (UTC when the app's clock toggle is on UTC, otherwise the browser zone the app

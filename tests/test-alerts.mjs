@@ -1,7 +1,12 @@
 // Webhook alert derivation (scheduled refresh + alerts feature). alertsFrom is pure —
 // thresholds and dedupe keys are pinned here without a server, caches, or network.
 import { t, ok, eq, report } from './harness.mjs';
-import { alertsFrom, postWebhook, telegramReply } from '../server.js';
+import { alertsFrom, healthAlertsFrom, postWebhook, telegramReply, createApp } from '../server.js';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import http from 'node:http';
 
 const CFG = { liqPct: 10, dailyLoss: 500, funding24h: 100, cooldownMs: 0 };
 
@@ -117,6 +122,64 @@ t('unknown commands get the help text listing every command', () => {
   const h = telegramReply('/help', { engineOk: true });
   for (const c of ['/today', '/risk', '/stats', '/goals', '/digest']) ok(h.includes(c));
   ok(h.includes('read-only'));
+});
+
+console.log('\nOps health alerts');
+const HC = { failRuns: 3, diskMinBytes: 100 * 1024 * 1024, diskPct: 90 };
+t('refresh failure streak alerts at failRuns, with the last error and data age', () => {
+  const now = Date.UTC(2026, 9, 1, 12);
+  eq(healthAlertsFrom({ failStreak: 2, now }, HC).length, 0);
+  const a = healthAlertsFrom({ failStreak: 3, lastError: 'HTTP 502', lastOkAt: now - 3 * 3600e3, now }, HC);
+  eq(a.length, 1); eq(a[0].key, 'health:refresh');
+  ok(a[0].text.includes('3 runs in a row') && a[0].text.includes('HTTP 502') && a[0].text.includes('3 h ago'), a[0].text);
+  ok(healthAlertsFrom({ failStreak: 5, now }, HC)[0].text.includes('not since this server started'));
+  eq(healthAlertsFrom({ failStreak: 9, now }, { ...HC, failRuns: 0 }).length, 0, 'failRuns 0 = off');
+});
+t('disk alerts under the free floor or past the used percentage, not otherwise', () => {
+  const GB = 1024 ** 3;
+  eq(healthAlertsFrom({ failStreak: 0, disk: { free: 2 * GB, total: 5 * GB } }, HC).length, 0);
+  const pct = healthAlertsFrom({ failStreak: 0, disk: { free: 0.4 * GB, total: 5 * GB } }, HC);
+  eq(pct.length, 1); eq(pct[0].key, 'health:disk'); ok(pct[0].text.includes('92% used'), pct[0].text);
+  eq(healthAlertsFrom({ failStreak: 0, disk: { free: 50 * 1024 * 1024, total: 0.2 * GB } }, HC).length, 1, 'under the MB floor');
+  eq(healthAlertsFrom({ failStreak: 0, disk: null }, HC).length, 0, 'no statfs = no disk alert');
+});
+
+await t('scheduled refresh: 3 failed runs post one health alert, a recovery posts once, and meta reports it', async () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const posts = [];
+  const hook = http.createServer((req, res) => { let b = ''; req.on('data', c => b += c); req.on('end', () => { posts.push(JSON.parse(b).text); res.end('ok'); }); });
+  await new Promise(r => hook.listen(0, r));
+  let failing = true;
+  const reply = x => new Response(JSON.stringify(x), { status: 200, headers: { 'content-type': 'application/json' } });
+  const fetchImpl = async (url, o) => {
+    if (failing) throw new Error('exchange unreachable');
+    const ty = JSON.parse(o.body).type;
+    if (ty === 'clearinghouseState') return reply({ assetPositions: [], marginSummary: { accountValue: '0' } });
+    if (ty === 'spotClearinghouseState') return reply({ balances: [] });
+    if (ty === 'spotMetaAndAssetCtxs') return reply([{ universe: [], tokens: [] }, []]);
+    return reply([]);
+  };
+  const dataDir = mkdtempSync(join(tmpdir(), 'ledger-health-'));
+  const app = createApp({ dataDir, auth: 'secret', htmlPath: join(here, '..', 'ledger.html'), fetchImpl, push: false,
+    alerts: { webhook: 'http://127.0.0.1:' + hook.address().port + '/hook' },
+    diskStat: () => ({ free: 10 * 1024 ** 3, total: 20 * 1024 ** 3 }) });
+  const base = await new Promise(r => app.listen(0, () => r('http://127.0.0.1:' + app.address().port)));
+  const H = { Authorization: 'Bearer secret', 'Content-Type': 'application/json' };
+  const w = await fetch(base + '/api/data', { method: 'PUT', headers: H, body: JSON.stringify({ rev: 0,
+    snapshot: { app: 'ledger', journal: {}, wallets: [{ address: '0x' + '1'.repeat(40), label: 'main' }] } }) });
+  eq(w.status, 200);
+  for (let i = 0; i < 4; i++) await app._runScheduledRefresh();
+  const health = posts.filter(p => p.includes('Scheduled refresh'));
+  eq(health.length, 1, 'one alert for the streak, not one per run: ' + JSON.stringify(posts));
+  ok(health[0].includes('last error: Network error'), health[0]);
+  const meta = await (await fetch(base + '/api/v1/meta', { headers: H })).json();
+  eq(meta.refresh.failStreak, 4); ok(meta.disk && meta.disk.total > 0);
+  failing = false;
+  await app._runScheduledRefresh();
+  await app._runScheduledRefresh();
+  eq(posts.filter(p => p.includes('working again')).length, 1, 'recovery said once: ' + JSON.stringify(posts));
+  eq((await (await fetch(base + '/api/v1/meta', { headers: H })).json()).refresh.failStreak, 0);
+  await new Promise(r => app.close(r)); hook.close();
 });
 
 report('alerts');

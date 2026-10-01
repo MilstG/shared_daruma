@@ -289,6 +289,33 @@ function zonedDayHour(ms, tz) {
   for (const p of f.formatToParts(new Date(ms))) parts[p.type] = p.value;
   return { day: parts.year + '-' + parts.month + '-' + parts.day, hour: parseInt(parts.hour, 10) % 24 };
 }
+// Ops health (the server watching itself), pure like alertsFrom:
+//   h   = {failStreak, lastError, lastOkAt, now, disk: {free, total} | null}
+//   cfg = {failRuns, diskMinBytes, diskPct}
+// -> [{key, text}]. A refresh that keeps failing means every alert, nudge and bot answer is
+// quietly working from stale data; a full volume means journal saves start failing. Both
+// deserve a human before they're noticed the hard way.
+function healthAlertsFrom(h, cfg) {
+  const out = [];
+  if (!h || !cfg) return out;
+  const mb = n => n >= 1024 ** 3 ? (n / 1024 ** 3).toFixed(1) + ' GB' : Math.round(n / 1024 ** 2) + ' MB';
+  if (cfg.failRuns > 0 && h.failStreak >= cfg.failRuns) {
+    const ago = h.lastOkAt ? Math.round((h.now - h.lastOkAt) / 60000) : null;
+    const agoTxt = ago == null ? 'not since this server started'
+      : ago < 120 ? ago + ' min ago' : ago < 2880 ? Math.round(ago / 60) + ' h ago' : Math.round(ago / 1440) + ' days ago';
+    out.push({ key: 'health:refresh', text: '⚠️ Scheduled refresh has failed ' + h.failStreak + ' runs in a row'
+      + (h.lastError ? ' (last error: ' + String(h.lastError).slice(0, 160) + ')' : '')
+      + '. Alerts, nudges and digests are working from data last refreshed ' + agoTxt + '.' });
+  }
+  const d = h.disk;
+  if (d && d.total > 0 && d.free >= 0) {
+    const used = 1 - d.free / d.total;
+    if ((cfg.diskMinBytes > 0 && d.free < cfg.diskMinBytes) || (cfg.diskPct > 0 && used * 100 >= cfg.diskPct))
+      out.push({ key: 'health:disk', text: '⚠️ Data volume nearly full: ' + mb(d.free) + ' free of ' + mb(d.total)
+        + ' (' + Math.round(used * 100) + '% used). Journal saves fail once it fills — delete old backups/attachments or grow the volume.' });
+  }
+  return out;
+}
 // (state, cfg) -> {key, text} | null. Fires once per day, at or after cfg.hour, only when
 // something is actually missing: trades closed today with nothing journaled, or no review.
 function nudgeFrom(st, cfg) {
@@ -1208,6 +1235,49 @@ function createApp(opts) {
     try { await deliver(n.text); }
     catch (e) { _alertSent.delete(n.key); saveAlertState(); console.warn('[ledger] nudge delivery failed: ' + e.message); }
   }
+  // HEALTH_FAIL_RUNS consecutive failed scheduled refreshes, or a data volume past
+  // HEALTH_DISK_PCT used / under HEALTH_DISK_MIN_MB free, goes to the alert channels
+  // (once a day while it lasts; a recovered refresh says so once).
+  const healthCfg = Object.assign({
+    failRuns: process.env.HEALTH_FAIL_RUNS !== undefined ? parseInt(process.env.HEALTH_FAIL_RUNS, 10) || 0 : 3,
+    diskMinBytes: (process.env.HEALTH_DISK_MIN_MB !== undefined ? parseFloat(process.env.HEALTH_DISK_MIN_MB) || 0 : 100) * 1024 * 1024,
+    diskPct: process.env.HEALTH_DISK_PCT !== undefined ? parseFloat(process.env.HEALTH_DISK_PCT) || 0 : 90,
+    cooldownMs: 24 * 3600e3,
+  }, opts.health || {});
+  const _health = { failStreak: 0, lastError: null, lastOkAt: 0 };
+  const diskOf = () => {
+    if (opts.diskStat) return opts.diskStat();
+    try { if (typeof fs.statfsSync !== 'function') return null; // node < 18.15
+      const st = fs.statfsSync(dataDir); return { free: st.bavail * st.bsize, total: st.blocks * st.bsize }; }
+    catch (e) { return null; }
+  };
+  function noteRefreshOutcome(err, summary) {
+    if (err && (err.code === 400 || err.code === 409)) return; // no wallets saved yet / superseded: not a failure
+    const ws = summary && Array.isArray(summary.wallets) ? summary.wallets : [];
+    const allFailed = !err && ws.length > 0 && ws.every(w => w.error);
+    if (err || allFailed) {
+      _health.failStreak++;
+      _health.lastError = err ? ((err.msg || err.message) || String(err)) : ws[0].error;
+    } else { _health.failStreak = 0; _health.lastError = null; _health.lastOkAt = Date.now(); }
+  }
+  async function maybeHealthAlert() {
+    const now = Date.now();
+    const due = healthAlertsFrom({ ..._health, now, disk: diskOf() }, healthCfg);
+    for (const a of due) if (!_alertSent.has(a.key)) console.warn('[ledger] health: ' + a.text);
+    // the refresh is healthy again after we told someone it wasn't: close the loop
+    if (!due.some(a => a.key === 'health:refresh') && _alertSent.has('health:refresh') && _health.failStreak === 0) {
+      _alertSent.delete('health:refresh'); saveAlertState();
+      if (hasDelivery()) { try { await deliver('✅ Scheduled refresh is working again.'); } catch (e) {} }
+      return;
+    }
+    if (!hasDelivery()) return;
+    const send = due.filter(a => now - (_alertSent.get(a.key) || 0) >= healthCfg.cooldownMs);
+    if (!send.length) return;
+    for (const a of send) _alertSent.set(a.key, now);
+    saveAlertState();
+    try { await deliver(send.map(a => a.text).join('\n')); }
+    catch (e) { for (const a of send) _alertSent.delete(a.key); saveAlertState(); console.warn('[ledger] health alert delivery failed: ' + e.message); }
+  }
   async function runScheduledRefresh() {
     if (_refreshing) return;
     _refreshing = true;
@@ -1221,11 +1291,13 @@ function createApp(opts) {
         }, 5 * 60000); if (watchdog.unref) watchdog.unref(); }),
       ]);
       _lastRefreshAt = Date.now(); _lastRefreshSummary = summary;
+      noteRefreshOutcome(null, summary);
     }
-    catch (e) { console.warn('[ledger] scheduled refresh failed: ' + ((e && (e.msg || e.message)) || e)); }
+    catch (e) { console.warn('[ledger] scheduled refresh failed: ' + ((e && (e.msg || e.message)) || e)); noteRefreshOutcome(e); }
     finally { clearTimeout(watchdog); _refreshing = false; }
     await maybeAlert();
     await maybeNudge();
+    await maybeHealthAlert();
   }
   /* ---------------- weekly digest ---------------- */
   // Once per ISO week (first scheduled run after Monday 00:00 UTC) a digest of the PREVIOUS
@@ -1476,7 +1548,9 @@ function createApp(opts) {
             accountValue: market.accountValue, spotAccountValue: market.spotAccountValue, hlPnl: market.hlPnl } : null,
           settings: (() => { const s = Object.assign({}, S_DEFAULTS, snap.settings || {});
             return { beThreshold: s.beThreshold, rBasis: s.rBasis, riskDefault: s.riskDefault, tz: s.tz }; })(),
-          refresh: { running: _refreshing, lastAt: _lastRefreshAt || null },
+          refresh: { running: _refreshing, lastAt: _lastRefreshAt || null,
+            failStreak: _health.failStreak, lastError: _health.lastError, lastOkAt: _health.lastOkAt || null },
+          disk: diskOf(),
         });
       }
 
@@ -2345,6 +2419,7 @@ function createApp(opts) {
   server._weeklyDigest = weeklyDigest;       // exposed for tests — generation is time-gated in production
   server._gatherAlertState = gatherAlertState; // exposed for tests
   server._buildBotState = buildBotState;       // exposed for tests — the loop itself needs a live bot
+  server._runScheduledRefresh = runScheduledRefresh; // exposed for tests — the schedule itself is a timer
   server._social = social; // tests reach the coach allowance through this
   server.pushTick = () => social.tick(); // the reminder pass, for tests and one-off runs
   return server;
@@ -2381,5 +2456,5 @@ if (require.main === module) {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-module.exports = { sanitizeCoachChat, coachChatRequest, scrubCoachData, createApp, buildEngine, ENGINE_FNS, alertsFrom, postWebhook, telegramReply, nudgeFrom, zonedDayHour,
+module.exports = { sanitizeCoachChat, coachChatRequest, scrubCoachData, createApp, buildEngine, ENGINE_FNS, alertsFrom, healthAlertsFrom, postWebhook, telegramReply, nudgeFrom, zonedDayHour,
   sanitizeCoachFacts, coachLetterRequest, coachLetterText };
