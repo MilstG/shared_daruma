@@ -311,6 +311,27 @@ try {
     eq(errs, [], 'no uncaught errors across ' + tabs.length + ' tabs');
     await p.close();
   });
+  await t('the owner adds an admin by name; the link signs them in on another browser', async () => {
+    const { page: p, errors: errs } = await openPage({ width: 1280, height: 900 });
+    await p.goto(BASE + '/admin#members');
+    await p.waitForSelector('#adminToggle');
+    await p.click('#adminToggle'); await p.fill('#adHandle', 'co_admin'); await p.click('#adCreate');
+    await p.waitForSelector('.okbox .code');
+    const link = await p.$eval('.okbox [data-copy^="http"]', b => b.dataset.copy);
+    ok(/\/admin#code=[A-Z0-9]+$/.test(link), link);
+    // a different person, a different browser: no token, nothing stored
+    const { page: q, errors: errs2 } = await openPage({ width: 1280, height: 900 }, { token: false });
+    await q.goto(link);
+    await q.waitForSelector('#view .tile');
+    eq(await q.textContent('#whoami'), 'Admin · @co_admin');
+    await q.goto(BASE + '/admin#members'); await q.waitForSelector('#mRows');
+    eq(await q.$('#adminToggle'), null, 'only the owner adds admins');
+    eq(await q.evaluate(() => localStorage.getItem('srv_token')), null, 'never the access token');
+    // and Pulse on that browser is signed in as the same profile
+    await q.goto(BASE + '/pulse'); await q.waitForFunction(() => typeof SOC !== 'undefined' && SOC.me && SOC.me.handle === 'co_admin', null, { timeout: 10000 });
+    eq(errs, []); eq(errs2, []);
+    await p.close(); await q.close();
+  });
   await t('a wrong token is refused with a message, not a blank page', async () => {
     const { page: p, errors: errs } = await openPage({ width: 1280, height: 900 }, { token: false });
     await p.addInitScript(() => { try { localStorage.setItem('srv_token', 'wrong'); } catch (e) {} });

@@ -100,13 +100,15 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
 <main>
   <header>
     <div><h1>Pulse admin</h1><div class="muted">Members, leagues, badges, levels and everything members can unlock.</div></div>
-    <div class="row" style="flex:0 0 auto;align-items:center"><a class="fit" href="/pulse">Open Pulse</a><a class="fit" href="/">Full journal</a><button id="signout" class="hide fit sm">Sign out</button></div>
+    <div class="row" style="flex:0 0 auto;align-items:center"><a class="fit" href="/pulse">Open Pulse</a><a class="fit" href="/">Full journal</a><span id="whoami" class="muted small fit"></span><button id="signout" class="hide fit sm">Sign out</button></div>
   </header>
 
   <section class="card" id="login">
     <h2>Sign in</h2>
-    <p class="muted" style="margin:0">Use the access token set as <code>AUTH_TOKEN</code> on the server. It’s remembered in this browser.</p>
-    <div class="row" style="margin-top:10px"><input type="password" id="tok" autocomplete="current-password" placeholder="access token" aria-label="Access token"><button class="primary fit" id="go">Sign in</button></div>
+    <p class="muted" style="margin:0">An admin the owner added: open the sign-in link they sent you, or enter its code. The same works for any admin already signed in to Pulse on this device.</p>
+    <div class="row" style="margin-top:10px"><input id="acode" autocomplete="one-time-code" placeholder="sign-in code" aria-label="Admin sign-in code" style="text-transform:uppercase"><button class="primary fit" id="ago">Sign in</button></div>
+    <p class="muted" style="margin:16px 0 0">The owner: use the access token set as <code>AUTH_TOKEN</code> on the server. It’s remembered in this browser.</p>
+    <div class="row" style="margin-top:10px"><input type="password" id="tok" autocomplete="current-password" placeholder="access token" aria-label="Access token"><button class="fit" id="go">Sign in as owner</button></div>
     <p id="loginErr" class="warn hide" role="alert" style="margin:12px 0 0"></p>
   </section>
 
@@ -138,11 +140,14 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     achievement:['Achievement','The base: badge tiers pay ×0.1 to ×3.2 of it'],challenge:['Weekly challenge kept',''],focus:['Focus habit kept','Per kept day']};
   const TABS=[['overview','Overview'],['members','Members'],['wallets','Wallets'],['leagues','Leagues'],['competitions','Competitions'],['badges','Badges'],['levels','Levels & XP'],
     ['features','Features'],['coach','Coach'],['routines','Routines'],['feed','Feed'],['settings','Settings']];
+  // the owner's AUTH_TOKEN, or (for an admin the owner added) this browser's Pulse member key
   let tok=''; try{ tok=localStorage.getItem('srv_token')||''; }catch(e){}
+  let mkey=''; try{ mkey=localStorage.getItem('pz_social_key')||''; }catch(e){}
+  let ME={owner:false,name:''};
   let noteT=null;
   const note=(m,err)=>{ const n=$('note'); n.className='note'+(err?' err':''); n.textContent=m||''; clearTimeout(noteT); if(m)noteT=setTimeout(()=>{ n.textContent=''; },err?6000:3500); };
   async function api(p,o){ o=o||{}; const body=o.body!==undefined?JSON.stringify(o.body):undefined;
-    const r=await fetch('/api/social/admin'+p,{method:o.method||(body?'POST':'GET'),body,headers:Object.assign({'Authorization':'Bearer '+tok},body?{'Content-Type':'application/json'}:{})});
+    const r=await fetch('/api/social/admin'+p,{method:o.method||(body?'POST':'GET'),body,headers:Object.assign(tok?{'Authorization':'Bearer '+tok}:{'X-Pulse-Key':mkey},body?{'Content-Type':'application/json'}:{})});
     const d=await r.json().catch(()=>({}));
     if(!r.ok){ const e=new Error(d.error||('HTTP '+r.status)); e.status=r.status; throw e; } return d; }
   const ago=ms=>{ if(!ms)return 'never'; const m=Math.round((Date.now()-ms)/60000); return m<1?'just now':m<60?m+'m ago':m<1440?Math.round(m/60)+'h ago':Math.round(m/1440)+'d ago'; };
@@ -162,13 +167,15 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   const D={ov:null,members:[],leagues:[],badges:[],comps:[],events:[],wallets:{approveWallets:false,wallets:[],counts:{pending:0,approved:0,rejected:0}}};
   const UI={tab:'overview',member:null,q:'',filter:'all',wq:'',wfilter:'pending',wsel:new Set(),leagueEdit:null,badgeEdit:null,addOpen:false,code:null,levelDraft:null,custom:null,overrides:null,pages:{}};
   const linkFor=code=>location.origin+'/pulse#link='+encodeURIComponent(code);
+  const adminLinkFor=code=>location.origin+'/admin#code='+encodeURIComponent(code);
   const leagueName=id=>{ const L=D.leagues.find(x=>x.id===id); return L?L.name:id; };
   // level n starts at base·n·(n−1) XP, or at a table entry — mirrors social-config.js levelStart
   const levelStart=(c,n)=>n<=1?0:c.mode==='table'?(n-2<c.thresholds.length?c.thresholds[n-2]:Infinity):c.base*n*(n-1);
 
   async function load(){
-    const [ov,ms,ls,bs,cs,ev,ws]=await Promise.all([api('/overview'),api('/members'),api('/leagues'),api('/badges'),api('/competitions'),api('/events'),api('/wallets')]);
-    Object.assign(D,{ov,members:ms.members,leagues:ls.leagues,badges:bs.badges,comps:cs.competitions,events:ev.events,wallets:ws});
+    const [me,ov,ms,ls,bs,cs,ev,ws,lg]=await Promise.all([api('/me'),api('/overview'),api('/members'),api('/leagues'),api('/badges'),api('/competitions'),api('/events'),api('/wallets'),api('/log')]);
+    ME=me; $('whoami').textContent=me.owner?'Owner':'Admin · '+me.name;
+    Object.assign(D,{ov,members:ms.members,leagues:ls.leagues,badges:bs.badges,comps:cs.competitions,events:ev.events,wallets:ws,log:lg.log});
     for(const a of [...UI.wsel])if(!ws.wallets.some(w=>w.address===a))UI.wsel.delete(a);
     $('login').classList.add('hide'); $('app').classList.remove('hide'); $('signout').classList.remove('hide');
     render();
@@ -227,14 +234,46 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
 
   // ---------------- members ----------------
   const wpill=s=>s==='pending'?'<span class="pill wait">wallet waiting</span>':s==='rejected'?'<span class="pill ban">wallet rejected</span>':'';
-  const pills=m=>[m.claimed?'<span class="pill ok">claimed ✓</span>':'',m.passkeys?`<span class="pill">${m.passkeys} passkey${m.passkeys===1?'':'s'}</span>`:'',D.wallets.approveWallets?wpill(m.walletStatus):'',m.verified?'<span class="pill ok">verified</span>':'',m.unlocked?'<span class="pill xp">unlocked</span>':'',
+  const pills=m=>[m.admin?'<span class="pill ok">admin</span>':'',m.claimed?'<span class="pill ok">claimed ✓</span>':'',m.passkeys?`<span class="pill">${m.passkeys} passkey${m.passkeys===1?'':'s'}</span>`:'',D.wallets.approveWallets?wpill(m.walletStatus):'',m.verified?'<span class="pill ok">verified</span>':'',m.unlocked?'<span class="pill xp">unlocked</span>':'',
     m.adminMade&&!m.keys?'<span class="pill">not signed in yet</span>':'',m.banned?'<span class="pill ban">suspended</span>':''].filter(Boolean).join(' ');
-  const codeBox=c=>`<div class="okbox" style="margin-top:12px"><div class="row" style="justify-content:space-between;align-items:center"><div><div class="small">Sign-in code for @${esc(c.handle)} · good for 7 days</div><div class="code">${esc(c.code)}</div></div>
-      <div class="fit row" style="align-items:center"><button class="sm fit" data-copy="${esc(linkFor(c.code))}">Copy link</button><button class="sm fit" data-copy="${esc(c.code)}">Copy code</button><button class="sm fit" id="codeDone">Done</button></div></div>
-      <div class="small" style="margin-top:6px">${esc(linkFor(c.code))}</div><div class="small muted" style="margin-top:4px">Shown once. You can make a new one any time from their page.</div></div>`;
+  const codeBox=c=>{ const link=c.admin?adminLinkFor(c.code):linkFor(c.code); return `<div class="okbox" style="margin-top:12px"><div class="row" style="justify-content:space-between;align-items:center"><div><div class="small">${c.admin?'Admin sign-in link':'Sign-in code'} for @${esc(c.handle)} · good for 7 days${c.admin?' — send it to them; opening it signs them in here':''}</div><div class="code">${esc(c.code)}</div></div>
+      <div class="fit row" style="align-items:center"><button class="sm fit" data-copy="${esc(link)}">Copy link</button><button class="sm fit" data-copy="${esc(c.code)}">Copy code</button><button class="sm fit" id="codeDone">Done</button></div></div>
+      <div class="small" style="margin-top:6px">${esc(link)}</div><div class="small muted" style="margin-top:4px">Shown once. You can make a new one any time from their page.</div></div>`; };
+  // ---------------- admins ----------------
+  // Admins are members the owner trusts with this panel. They sign in with their own Pulse
+  // profile (a link from here, or Pulse on a device they already use) — never the access token,
+  // so the owner's journal and the server stay the owner's. Only the owner adds or removes them.
+  // "POST members/<id> · grant" -> "gave XP to @sam"
+  const ACT_WORDS={grant:'gave XP to',ungrant:'undid XP for',ban:'suspended',unban:'restored',remove:'deleted',edit:'edited',admin:'made an admin:',unadmin:'removed as admin:',
+    code:'made a sign-in code for',unlock:'fully unlocked',lock:'locked',mentor:'made a mentor:',unmentor:'removed as mentor:',coach:'set the coach allowance for',tier:'changed the tier of',
+    leagues:'changed the leagues of',award:'awarded a badge to',revoke:'took a badge back from'};
+  const NOUNS={leagues:'league',competitions:'competition',badges:'badge',events:'feed post'};
+  function logWords(what){ const m=/^(\w+) ([\w-]+)(?:\/([^ ]+))?(?: · (\w+))?/.exec(what||''); if(!m)return what;
+    const [,M,sub,id,a]=m, who=id&&D.members.find(x=>x.id===decodeURIComponent(id));
+    if(sub==='members')return id?((ACT_WORDS[a]||'changed')+' '+(who?'@'+who.handle:'a member')):'added a member';
+    if(sub==='wallets')return (a==='approve'?'approved':a==='reject'?'rejected':'reviewed')+' wallets';
+    if(sub==='config')return 'changed settings';
+    if(sub==='announce')return 'posted an announcement';
+    if(NOUNS[sub])return (M==='DELETE'?'deleted':M==='PUT'||id?'edited':'created')+' a '+NOUNS[sub];
+    return what; }
+  function vAdmins(){
+    const admins=D.members.filter(m=>m.admin), log=(D.log||[]).slice(0,UI.logAll?200:8);
+    return `<section class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 class="fit" style="margin:0">Admins <span class="muted">· ${admins.length+1}</span></h2>
+        ${ME.owner?`<button class="${UI.adminAdd?'':'primary '}fit" id="adminToggle">${UI.adminAdd?'Close':'Add admin'}</button>`:''}</div>
+      <p class="muted small" style="margin:6px 0 0">Admins can do everything in this panel except add or remove admins. They sign in with their own profile, never your access token, so your journal and the server stay yours.</p>
+      ${UI.adminAdd?`<div class="sub" style="margin-top:12px"><div class="row" style="align-items:flex-end">${field('adHandle','Their name','<input id="adHandle" maxlength="20" placeholder="alex" autocomplete="off">')}<button class="primary fit" id="adCreate">Create admin and get a link</button></div>
+        <p class="hint">Already a member? Open their page and tick “Admin” under Access instead.</p></div>`:''}
+      ${UI.code&&UI.code.admin&&!UI.member?codeBox(UI.code):''}
+      <div class="scroll" style="margin-top:10px"><table><tbody><tr><td><b>Owner</b> <span class="pill ok">access token</span></td><td class="muted small">${ME.owner?'you':''}</td><td></td></tr>
+        ${admins.map(m=>`<tr><td><a href="${mlink(m)}"><b>@${esc(m.handle)}</b></a> ${m.adminMade&&!m.keys?'<span class="pill">not signed in yet</span>':''}${m.banned?'<span class="pill ban">suspended</span>':''}</td><td class="muted small">last seen ${esc(ago(m.lastSeen))}${ME.id===m.id?' · you':''}</td>
+          <td>${ME.owner?`<div class="row fit" style="align-items:center"><button class="sm fit" data-adcode="${esc(m.id)}">New sign-in link</button><button class="sm danger fit" data-unadmin="${esc(m.id)}">Remove admin</button></div>`:''}</td></tr>`).join('')}</tbody></table></div>
+      ${(D.log||[]).length?`<h3>Recent admin activity</h3><div class="scroll"><table><tbody>${log.map(x=>`<tr><td class="small"><b>${esc(x.by==='owner'?'Owner':x.by)}</b></td><td class="small">${esc(logWords(x.what))}</td><td class="muted small">${esc(ago(x.at))}</td></tr>`).join('')}</tbody></table></div>
+        ${(D.log||[]).length>8?`<button class="sm" id="logAll">${UI.logAll?'Show less':'Show all'}</button>`:''}`:''}
+    </section>`;
+  }
   function vMembers(){
     if(UI.member){ const m=D.members.find(x=>x.id===UI.member); if(m)return vMember(m); }
-    return `<section class="card">
+    return vAdmins()+`<section class="card">
       <div class="row" style="justify-content:space-between;align-items:center"><h2 class="fit" style="margin:0">Members <span class="muted">· ${D.members.length}</span></h2><button class="${UI.addOpen?'':'primary '}fit" id="addToggle">${UI.addOpen?'Close':'Add member'}</button></div>
       ${UI.addOpen?`<div class="sub" style="margin-top:12px">
         <div class="row">${field('nmHandle','Name','<input id="nmHandle" maxlength="20" placeholder="sam_trades" autocomplete="off">')}${field('nmAddr','Wallet (optional)','<input id="nmAddr" maxlength="42" placeholder="0x…" autocomplete="off">')}</div>
@@ -243,7 +282,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
         <div style="margin-top:10px"><button class="primary" id="nmCreate">Create and get a sign-in code</button></div>
         <p class="hint">They open the link, or paste the code in Pulse → Social → Account → “Link a device”. It works once, within 7 days.</p>
       </div>`:''}
-      ${UI.code&&!UI.member?codeBox(UI.code):''}
+      ${UI.code&&!UI.code.admin&&!UI.member?codeBox(UI.code):''}
       <div class="row" style="margin-top:12px;align-items:center">
         <input id="q" placeholder="Search by name or address" aria-label="Search members" value="${esc(UI.q)}">
         <div class="fit">${sel('mFilter',[['all','Everyone'],['suspended','Suspended'],['unlocked','Fully unlocked'],['added','Added by you'],['coach','Used the coach today']],UI.filter,' aria-label="Filter"')}</div>
@@ -293,6 +332,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       <section class="card"><h2>Access</h2>
         ${box('mUnlocked','Fully unlocked',m.unlocked,'Every feature and theme regardless of level, and the unlocked coach allowance.')}
         ${box('mMentor','Mentor',m.mentor,'Sees the days of members who let mentors in (scores, slips, nightly lesson) and can leave them notes.')}
+        ${ME.owner?box('mAdmin','Admin',m.admin,'Can use this admin panel with their own profile (everything except adding or removing admins). Send them the link from “New sign-in code”, or they open /admin on a device where they use Pulse.'):m.admin?'<p class="muted small">Admin — only the owner changes that.</p>':''}
         ${field('mCoach','Coach messages a day',`<input id="mCoach" type="number" min="0" max="1000" placeholder="default (${m.unlocked?cc.dailyUnlocked:cc.daily})" value="${m.coachDaily!=null?m.coachDaily:''}">`,'Empty uses the default from the Coach tab. 0 switches the coach off for them.')}
         <div style="margin-top:12px"><button class="primary" data-m="access">Save access</button></div>
       </section>
@@ -322,13 +362,13 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     if(a==='grant'){ const xp=Math.round(+val('gXp')); if(!xp)return note('How much XP?',true);
       return act(()=>post({action:'grant',xp,why:val('gWhy').trim(),announce:chk('gAnn')}),(xp>0?'+':'')+fmt(xp)+' XP for @'+m.handle+'. Their app adds it on its next sync.'); }
     if(a==='access'){ const v=val('mCoach').trim(), un=chk('mUnlocked');
-      const mt=chk('mMentor');
-      return act(async()=>{ if(un!==m.unlocked)await post({action:un?'unlock':'lock'}); if(mt!==!!m.mentor)await post({action:mt?'mentor':'unmentor'}); await post({action:'coach',daily:v===''?null:+v}); },'Access saved.'); }
+      const mt=chk('mMentor'), ad=ME.owner?chk('mAdmin'):!!m.admin;
+      return act(async()=>{ if(un!==m.unlocked)await post({action:un?'unlock':'lock'}); if(mt!==!!m.mentor)await post({action:mt?'mentor':'unmentor'}); if(ad!==!!m.admin)await post({action:ad?'admin':'unadmin'}); await post({action:'coach',daily:v===''?null:+v}); },'Access saved.'); }
     if(a==='leagues'){ const want=[...document.querySelectorAll('input[name=mLeague]')].filter(i=>i.checked).map(i=>i.value), had=m.leagues.map(x=>x.id);
       const tiers=[...document.querySelectorAll('[data-tier-league]')].map(s=>[s.dataset.tierLeague,+s.value]);
       return act(async()=>{ await post({action:'leagues',join:want.filter(x=>!had.includes(x)),leave:had.filter(x=>!want.includes(x))});
         for(const [lid,t] of tiers){ const cur=m.leagues.find(x=>x.id===lid); if(want.includes(lid)&&cur&&t!==cur.tier)await post({action:'tier',tier:t,league:lid}); } },'Leagues saved.'); }
-    if(a==='code'){ const r=await act(()=>post({action:'code'})); if(r&&r.code){ UI.code={id:m.id,handle:m.handle,code:r.code}; render(); } return; }
+    if(a==='code'){ const r=await act(()=>post({action:'code'})); if(r&&r.code){ UI.code={id:m.id,handle:m.handle,code:r.code,admin:!!m.admin}; render(); } return; }
     if(a==='remove'){ if(!confirm('Delete @'+m.handle+'? Their profile, posts and competition entries are removed. This can’t be undone.'))return;
       if(await act(()=>post({action:'remove'}),'Deleted.'))location.hash='#members'; return; }
     if(a==='ban'&&!confirm('Suspend @'+m.handle+'? They disappear from boards and the feed and can’t post until you restore them.'))return;
@@ -515,7 +555,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       <td style="vertical-align:top"><div class="row" style="align-items:center;flex-wrap:nowrap;gap:6px"><code class="small fit" title="${esc(w.address)}">${esc(short(w.address))}</code><button class="sm fit" data-copy="${esc(w.address)}" aria-label="Copy address">Copy</button></div>
         ${w.members.length?w.members.map(m=>`<div style="margin-top:6px"><a href="${mlink(m)}">@${esc(m.handle)}</a> ${m.claimed?'<span class="pill ok">claimed ✓</span>':''}${m.banned?' <span class="pill ban">suspended</span>':''}<div class="muted small">${m.joinedWith?'joined '+esc(JOINED[m.joinedWith]||''):'joined'}${m.createdAt?' · '+esc(ago(m.createdAt)):''}</div></div>`).join(''):'<div class="muted small" style="margin-top:6px">no profile uses it now</div>'}
         ${w.note?`<div class="muted small" style="margin-top:4px">Note: ${esc(w.note)}</div>`:''}</td>
-      <td style="vertical-align:top">${walletStatusPill(w.status)}${w.reviewedAt?`<div class="muted small">${w.by==='existing'?'already in use when approval went on':'by you · '+esc(ago(w.reviewedAt))}</div>`:''}
+      <td style="vertical-align:top">${walletStatusPill(w.status)}${w.reviewedAt?`<div class="muted small">${w.by==='existing'?'already in use when approval went on':'by '+(w.by&&w.by!=='owner'?esc(w.by):ME.owner?'you':'the owner')+' · '+esc(ago(w.reviewedAt))}</div>`:''}
         <div class="row" style="align-items:center;margin-top:8px;gap:6px">${w.status!=='approved'?`<button class="sm fit primary" data-wact="approve" data-addr="${esc(w.address)}">Approve</button>`:''}${w.status!=='rejected'?`<button class="sm fit" data-wact="reject" data-addr="${esc(w.address)}">Reject</button>`:''}${w.status!=='pending'?`<button class="sm fit" data-wact="clear" data-addr="${esc(w.address)}" title="Forget the decision: back to waiting">Undo</button>`:''}</div></td></tr>`).join('');
   }
   function vWallets(){
@@ -581,6 +621,15 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     { const lc=b.closest('details'); if(lc&&(d.pg||d.lgadd||d.lgrm)){ const m2=/^roster:(.+)$/.exec(d.pg||'')||[0,d.lgadd||d.lgrm]; UI.rosterOpen=m2[1]; } }
     if(d.pg){ UI.pages[d.pg]=Math.max(0,(UI.pages[d.pg]||0)+(+d.d||0)); if(d.pg==='members'&&$('mRows')){ $('mRows').innerHTML=memberRows(); $('mPager').innerHTML=memberPg().html; return; } UI.fresh=false; return render(); }
     if(id==='addToggle'){ UI.addOpen=!UI.addOpen; UI.code=null; return render(); }
+    if(id==='adminToggle'){ UI.adminAdd=!UI.adminAdd; UI.code=null; return render(); }
+    if(id==='logAll'){ UI.logAll=!UI.logAll; return render(); }
+    if(id==='adCreate'){ const handle=val('adHandle').trim().replace(/^@/,''); if(!handle)return note('Give them a name.',true);
+      const r=await act(()=>api('/members',{body:{handle,admin:true,unlocked:true,leagues:[]}}),'Admin added.');
+      if(r&&r.code){ UI.adminAdd=false; UI.code={id:r.id,handle,code:r.code,admin:true}; render(); } return; }
+    if(d.adcode){ const am=D.members.find(x=>x.id===d.adcode); const r=await act(()=>api('/members/'+encodeURIComponent(d.adcode),{body:{action:'code'}}));
+      if(r&&r.code&&am){ UI.code={id:am.id,handle:am.handle,code:r.code,admin:true}; render(); } return; }
+    if(d.unadmin){ const am=D.members.find(x=>x.id===d.unadmin); if(!am||!confirm('Remove @'+am.handle+' as an admin? They stay a member.'))return;
+      return act(()=>api('/members/'+encodeURIComponent(d.unadmin),{body:{action:'unadmin'}}),'@'+am.handle+' is no longer an admin.'); }
     if(id==='codeDone'){ UI.code=null; return render(); }
     // wallets
     if(id==='wSave'){ const on=chk('wOn'); if(on===D.wallets.approveWallets)return note('Nothing changed.');
@@ -659,16 +708,31 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     if(UI.open){ if(UI.open==='member')UI.addOpen=true; else if(UI.open==='league')UI.leagueEdit='new'; else if(UI.open==='badge')UI.badgeEdit='new'; UI.open=null; }
     if(D.ov){ render(); window.scrollTo(0,0); } });
 
+  // an admin's sign-in link (/admin#code=…) or typed code: a one-time member code; the key it
+  // returns is this browser's Pulse sign-in too (same site), so Pulse opens signed in as well
+  async function redeem(code){
+    code=String(code||'').toUpperCase().replace(/[^A-Z0-9]/g,''); if(!code)return false;
+    const r=await fetch('/api/social/link/finish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||!d.key){ const el=$('loginErr'); el.classList.remove('hide'); el.textContent=d.error||'That code didn’t work.'; return false; }
+    mkey=d.key; try{ localStorage.setItem('pz_social_key',mkey); }catch(e){} return true;
+  }
   async function start(){
-    if(!tok)return;
+    const m=/(?:^#|&)code=([^&]+)/.exec(location.hash);
+    if(m){ history.replaceState(null,'',location.pathname+location.search+'#overview'); let c=''; try{ c=decodeURIComponent(m[1]); }catch(e){} if(await redeem(c))tok=''; }
+    if(!tok&&!mkey)return;
     try{ route(); await load(); }
     catch(e){ $('login').classList.remove('hide'); $('app').classList.add('hide');
       const el=$('loginErr'); el.classList.remove('hide');
-      el.textContent=e.status===401?'That token isn’t right.':e.status===403?e.message:'Couldn’t reach the admin API ('+e.message+').'; }
+      el.textContent=e.status===401?(tok?'That token isn’t right.':'This browser is signed in to Pulse, but that profile isn’t an admin. Ask the owner for an admin link.'):e.status===403?e.message:'Couldn’t reach the admin API ('+e.message+').'; }
   }
   $('go').onclick=()=>{ tok=$('tok').value.trim(); try{ localStorage.setItem('srv_token',tok); }catch(e){} start(); };
   $('tok').addEventListener('keydown',e=>{ if(e.key==='Enter')$('go').click(); });
-  $('signout').onclick=()=>{ try{ localStorage.removeItem('srv_token'); }catch(e){} location.reload(); };
+  $('ago').onclick=async()=>{ if(await redeem($('acode').value)){ tok=''; try{ localStorage.removeItem('srv_token'); }catch(e){} start(); } };
+  $('acode').addEventListener('keydown',e=>{ if(e.key==='Enter')$('ago').click(); });
+  $('signout').onclick=()=>{ try{ localStorage.removeItem('srv_token'); }catch(e){}
+    if(!ME.owner&&mkey){ if(!confirm('Sign out? This also signs this browser out of Pulse.'))return; try{ localStorage.removeItem('pz_social_key'); }catch(e){} }
+    location.reload(); };
   start();
 })();
 </script>

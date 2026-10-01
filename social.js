@@ -21,7 +21,8 @@
 //   - A member is identified by random keys kept in their browsers (header X-Pulse-Key);
 //     only their SHA-256 is stored. A new device gets its own key by signing in with the
 //     claimed wallet, or with a one-time code from a signed-in device. The owner's
-//     AUTH_TOKEN gates the admin endpoints.
+//     AUTH_TOKEN gates the admin endpoints; the owner can also make members admins, who reach
+//     them with their own member key (never the token, so never the owner's journal or server).
 //   - The journal sync (vault) is end-to-end encrypted: the browser encrypts with a key from
 //     the member's passphrase before sending, so this server only ever stores ciphertext.
 //
@@ -336,6 +337,8 @@ function createSocial(opts) {
   // { '0x…': { s: 'approved' | 'rejected', at, by: 'owner' | 'existing', note } }
   if (!S.wallets || typeof S.wallets !== 'object') S.wallets = {};
   if (!S.ownerCoach) S.ownerCoach = { k: null, n: 0 };
+  // what admins did in the panel, newest last: {at, by, what}
+  if (!Array.isArray(S.adminLog)) S.adminLog = [];
   if (!S.partners || typeof S.partners !== 'object') S.partners = {};
   if (!S.comments || typeof S.comments !== 'object') S.comments = {};
   if (!S.leagues || typeof S.leagues !== 'object') { // one league for everyone until the owner makes more
@@ -580,7 +583,7 @@ function createSocial(opts) {
       claimed: !!m.claimed };
     if (out.isMe) Object.assign(out, { claimedAddress: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
       vault: m.vault ? { rev: m.vault.rev, size: m.vault.size, at: m.vault.at } : null, requireClaim: !!S.config.requireClaim, vaultOn: !!S.config.vaultOn,
-      walletStatus: S.config.approveWallets && m.address ? walletStatus(m.address) : null,
+      walletStatus: S.config.approveWallets && m.address ? walletStatus(m.address) : null, admin: !!m.admin,
       passkeys: (m.passkeys || []).map(k => ({ id: k.id, name: k.name, at: k.at, lastUsed: k.lastUsed || null })),
       unlocked: !!m.unlocked, grants: (m.grants || []).map(g => ({ id: g.id, xp: g.xp, why: g.why, at: g.at })), coach: coachStatusFor(m), coachDetail: !!m.coachDetail,
       leagues: leaguesOf(m).map(L => ({ id: L.id, name: L.name, tier: leagueTier(L, m) })), mentor: !!m.mentor,
@@ -759,8 +762,16 @@ function createSocial(opts) {
     if (head === 'admin') {
       // an open server (no AUTH_TOKEN) would make everyone an admin: refuse until a token is set
       if (!adminConfigured) return json(res, 403, { error: 'Set AUTH_TOKEN on the server to use the admin panel.' });
-      if (!authOk(req)) return json(res, 401, { error: 'unauthorized' });
+      // the owner (AUTH_TOKEN), or a member the owner made an admin (their own Pulse key)
+      let who = null;
+      if (req.headers['authorization'] && authOk(req)) who = { owner: true, by: 'owner', name: 'Owner' };
+      else { const am = byKey(req); if (am && am.admin && !am.banned) { who = { owner: false, id: am.id, by: '@' + am.handle, name: '@' + am.handle }; am.lastSeen = now(); } }
+      if (!who) return json(res, 401, { error: 'unauthorized' });
       const sub = parts[1] || '';
+      if (sub === 'me' && M === 'GET') return json(res, 200, { owner: who.owner, id: who.id || null, name: who.name });
+      if (sub === 'log' && M === 'GET') return json(res, 200, { log: S.adminLog.slice(-200).reverse() });
+      if (M !== 'GET') { S.adminLog.push({ at: now(), by: who.by, what: (M + ' ' + parts.slice(1).join('/') + (body && body.action ? ' · ' + String(body.action).slice(0, 20) : '')).slice(0, 120) });
+        if (S.adminLog.length > 500) S.adminLog = S.adminLog.slice(-400); }
       if (sub === 'overview' && M === 'GET') {
         const wk = S.league.week, act = members().filter(m => now() - (m.lastSeen || 0) < 7 * 86400000);
         return json(res, 200, { adminConfigured, members: members().length, banned: members().filter(m => m.banned).length, active7: act.length,
@@ -780,9 +791,10 @@ function createSocial(opts) {
           address: m.address || null, walletStatus: m.address ? walletStatus(m.address) : null, joinedWith: m.joinedWith || (m.adminMade ? 'admin' : null), claimed: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
           vault: m.vault ? m.vault.size : 0, share: m.share, banned: !!m.banned, unlocked: !!m.unlocked, coachDaily: m.coachDaily != null ? m.coachDaily : null,
           coachUsed: coachUsed(m), coachLimit: coachLimitFor(m), grants: m.grants || [], awards: Object.keys(m.awards || {}).filter(id => own(S.badges, id)),
-          leagues: leaguesOf(m).map(L => ({ id: L.id, tier: leagueTier(L, m) })), adminMade: !!m.adminMade, mentor: !!m.mentor, keys: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0), verified: !!(m.share.verify && Array.isArray(m.vdays)), createdAt: m.createdAt, lastSeen: m.lastSeen || null,
+          leagues: leaguesOf(m).map(L => ({ id: L.id, tier: leagueTier(L, m) })), adminMade: !!m.adminMade, mentor: !!m.mentor, admin: !!m.admin, keys: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0), verified: !!(m.share.verify && Array.isArray(m.vdays)), createdAt: m.createdAt, lastSeen: m.lastSeen || null,
           money: m.money && m.money.ret != null ? { ret: m.money.ret, dd: m.money.dd } : null })) });
       if (sub === 'members' && !parts[2] && M === 'POST') { // the owner adds someone; they sign in with the code it returns
+        if (body.admin && !who.owner) return json(res, 403, { error: 'Only the owner can add admins.' });
         const handle = cleanText(body.handle, 20).replace(/^@/, '');
         if (!HANDLE_RE.test(handle)) return json(res, 400, { error: 'A name is 3–20 letters, numbers or underscores.' });
         if (byHandle(handle)) return json(res, 409, { error: 'That name is taken.' });
@@ -791,7 +803,8 @@ function createSocial(opts) {
         const id = crypto.randomBytes(6).toString('hex'), A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let code = ''; for (const x of crypto.randomBytes(10)) code += A[x % 32];
         const m = { id, handle, keyHash: null, keyHashes: [], createdAt: now(), lastSeen: 0, tier: 0, share: sanitizeShare(body.share), address, stats: null, weekXp: {}, money: null,
           banned: false, adminMade: true, unlocked: !!body.unlocked, pendingCodes: [{ h: sha(code), exp: now() + 7 * 86400000 }] };
-        if (address && S.config.approveWallets && !walletReview(address)) S.wallets[address] = { s: 'approved', at: now(), by: 'owner', note: '' }; // the owner attached it: that's an approval
+        if (body.admin) { m.admin = true; m.adminSince = now(); }
+        if (address && S.config.approveWallets && !walletReview(address)) S.wallets[address] = { s: 'approved', at: now(), by: who.owner ? 'owner' : who.by, note: '' }; // the owner (or an admin) attached it: that's an approval
         S.members[id] = m; S.follows[id] = [];
         const ls = body.leagues != null ? [].concat(body.leagues) : Object.values(S.leagues).filter(L => L.autoJoin).map(L => L.id);
         for (const lid of ls) if (own(S.leagues, lid)) joinLeague(S.leagues[lid], m);
@@ -801,7 +814,11 @@ function createSocial(opts) {
       if (sub === 'members' && parts[2] && M === 'POST') {
         const m = own(S.members, parts[2]) ? S.members[parts[2]] : null; if (!m) return json(res, 404, { error: 'no such member' });
         const a = body.action; let extra = {};
-        if (a === 'ban' || a === 'unban') m.banned = a === 'ban';
+        // admins run the league; only the owner makes or removes admins, or acts on another admin's profile
+        if ((a === 'admin' || a === 'unadmin') && !who.owner) return json(res, 403, { error: 'Only the owner can add or remove admins.' });
+        if (m.admin && !who.owner && m.id !== who.id) return json(res, 403, { error: 'Only the owner can change another admin.' });
+        if (a === 'admin' || a === 'unadmin') { m.admin = a === 'admin'; if (m.admin) m.adminSince = now(); else delete m.adminSince; }
+        else if (a === 'ban' || a === 'unban') m.banned = a === 'ban';
         else if (a === 'tier') { const t = clampNum(body.tier, 0, TIERS.length - 1); if (t == null) return json(res, 400, { error: 'bad tier' });
           const L = own(S.leagues, body.league || 'main') ? S.leagues[body.league || 'main'] : null; if (!L || !own(L.members, m.id)) return json(res, 400, { error: 'not in that league' });
           L.members[m.id].tier = Math.round(t); if (L.id === 'main') m.tier = Math.round(t); }
@@ -812,7 +829,7 @@ function createSocial(opts) {
             const o = byHandle(h); if (o && o.id !== m.id) return json(res, 409, { error: 'That name is taken.' }); m.handle = h; }
           if (body.address !== undefined && !m.claimed) { const ad = typeof body.address === 'string' && ADDR_RE.test(body.address) ? body.address.toLowerCase() : null;
             if (ad && claimedBy(ad, m.id)) return json(res, 409, { error: 'That wallet is claimed by another profile.' });
-            if (ad && S.config.approveWallets && !walletReview(ad)) S.wallets[ad] = { s: 'approved', at: now(), by: 'owner', note: '' };
+            if (ad && S.config.approveWallets && !walletReview(ad)) S.wallets[ad] = { s: 'approved', at: now(), by: who.owner ? 'owner' : who.by, note: '' };
             if (ad !== m.address) { m.address = ad; m.vdays = null; m.vAt = 0; m.money = null; refreshAll(m); } }
           if (body.share && typeof body.share === 'object') m.share = sanitizeShare(body.share, m.share);
         }
@@ -864,7 +881,7 @@ function createSocial(opts) {
         const note = cleanText(body.note, 120);
         for (const a of new Set(list)) {
           if (action === 'clear') delete S.wallets[a];
-          else S.wallets[a] = { s: action === 'approve' ? 'approved' : 'rejected', at: now(), by: 'owner', note };
+          else S.wallets[a] = { s: action === 'approve' ? 'approved' : 'rejected', at: now(), by: who.owner ? 'owner' : who.by, note };
           for (const m of members()) if (m.address === a) { recheckWallet(m); if (walletFor(m)) refreshAll(m); }
         }
         save(); return json(res, 200, { ok: true, n: new Set(list).size });

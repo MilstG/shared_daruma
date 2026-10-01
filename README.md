@@ -520,7 +520,16 @@ map every feature (insights, in-depth stats, share cards, competitions, AI coach
 end-of-day review, report cards) to a level, switch unlocks off, or **fully unlock**
 chosen members. Sample data shows everything. The full journal at `/` is never locked.
 
-**Admin panel (`/admin`).** Sign in with `AUTH_TOKEN`. Tabs:
+**Admins.** You can share the panel without sharing your access token. Members →
+**Add admin**, type a name, and send them the link it shows (good for 7 days): opening it
+signs them in to the panel, and to Pulse, with their own profile. An existing member becomes
+an admin by ticking **Admin** under Access on their page. Admins can do everything in the
+panel except add or remove admins or change another admin's profile; their key never
+opens your journal, backups or the server's other routes. Removing or suspending an admin
+closes the panel to them at once. The Admins card lists who did what recently, and
+wallet decisions record who made them.
+
+**Admin panel (`/admin`).** Sign in with `AUTH_TOKEN` (the owner) or as an admin. Tabs:
 
 - **Overview** — members, activity, tiers, top XP, coach use and setup warnings.
 - **Members** — search and filter; **add a member** (you get a 7-day sign-in code and a
