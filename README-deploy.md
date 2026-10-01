@@ -22,6 +22,7 @@ badges.html     a member's public badge page, served at /b/<name>
 vendor/         eth-sig.js — signature recovery for wallet claims (bundled, no install)
 tech.html       technical reference, served at /docs
 package.json    start script + node version (one optional dependency, the Anthropic SDK, used only with COACH_AI)
+webauthn.js     passkey (WebAuthn) checks for Pulse sign-in, no dependencies
 offsite.js      encrypted off-site backups to any S3-compatible bucket, plus the restore CLI
 tests/          test suites (`npm test`; CI runs them on every push)
 ```

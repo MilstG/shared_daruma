@@ -146,6 +146,31 @@ try {
   });
   await page.close();
 
+  console.log('\nPasskeys (Chrome virtual authenticator)');
+  await t('a member adds a passkey in Pulse, then signs in with it on a fresh session', async () => {
+    // WebAuthn refuses IP addresses as a site ID: this test talks to the server as localhost
+    const LB = BASE.replace('127.0.0.1', 'localhost');
+    const j = await (await fetch(BASE + '/api/social/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle: 'pk_e2e' }) })).json();
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
+    await p.route('**/*', r => r.request().url().startsWith(LB) ? r.continue() : r.abort());
+    const cdp = await ctx.newCDPSession(p); await cdp.send('WebAuthn.enable');
+    await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true } });
+    await p.addInitScript(k => { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('pz_social_key', k); localStorage.setItem('srv_token', 'e2e-token'); sessionStorage.setItem('seeded', '1'); } }, j.key);
+    await p.goto(LB + '/pulse'); await p.waitForFunction(() => typeof SOC !== 'undefined' && SOC.me);
+    await p.evaluate(async () => { pzS.demo = true; await loadDemo(); location.hash = '#account'; });
+    await p.click('#socPkAdd');
+    await p.waitForSelector('[data-pk-del]');
+    await p.evaluate(() => { localStorage.removeItem('pz_social_key'); localStorage.removeItem('srv_token'); });
+    await p.reload();
+    await p.click('.pz-acct summary'); await p.click('#socPkLogin');
+    await p.waitForFunction(() => localStorage.getItem('pz_social_key'));
+    eq(await p.evaluate(() => SOC.me && SOC.me.handle), 'pk_e2e');
+    ok(await p.evaluate(k => localStorage.getItem('pz_social_key') !== k, j.key), 'a new device key');
+    eq(errs, [], 'no uncaught errors');
+    await ctx.close();
+  });
+
   console.log('\nOffline (service worker)');
   await t('after one visit the app opens offline, scripts and all, from the service worker cache', async () => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 } });

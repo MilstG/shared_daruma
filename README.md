@@ -430,6 +430,18 @@ and only another signature from that wallet moves it. The owner can switch on
 competitions only use claimed wallets. Smart-contract wallets (which can't produce a
 plain signature) and email-login wallets without an exportable key can't claim yet.
 
+**Passkeys.** Under Account, a signed-in member can **Add a passkey on this
+device**. After that, "Sign in with a passkey" works on any device where that
+passkey is available: Face ID, a fingerprint or the device PIN, synced through
+iCloud Keychain, Google Password Manager and the like. No code and no wallet
+needed. The server checks everything the WebAuthn spec requires of a site
+(`webauthn.js`, no dependencies): the ceremony, a single-use challenge, this
+site's origin and RP ID, user presence, the signature (ES256, Ed25519 or
+RS256), and a signature counter that never goes backwards. It stores only the
+public key. Passkeys belong to one site: set `PUBLIC_ORIGIN` when self-hosting so
+they're tied to your real address. A member can hold up to 10, and remove any of
+them. Each sign-in issues a fresh device key, like the other sign-in methods.
+
 **Wallet approval.** Under Admin → **Wallets** the owner can switch on **Wallets need
 my approval**. From then on, a member's wallet counts for returns, verified Discipline
 and return competitions only after the owner approves its address. Until then the

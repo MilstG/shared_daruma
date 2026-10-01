@@ -262,7 +262,7 @@ function socAccountHtml(D){
   if(!socAvailable()||!SOC.me)return `<a class="pz-back" href="#social">${pzI('back',20)}Social</a>${socSocialHtml(D)}`;
   const sync=(SRV.token&&!SRV.badAuth)?'':socVaultCardHtml();
   return `${back}${pzHead('@'+SOC.me.handle,'Account')}
-  <div class="pz-wide"><div class="pz-col">${socClaimCardHtml()}${socDevicesCardHtml()}</div>
+  <div class="pz-wide"><div class="pz-col">${socClaimCardHtml()}${socPasskeysCardHtml()}${socDevicesCardHtml()}</div>
   <div class="pz-col">${sync}
     <section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Leave the league</b><p class="pz-sub" style="font-size:13px">Deletes your profile, posts and competition entries from this server. Your journal isn’t touched.</p><button type="button" class="pz-ghost pz-sm" id="socLeave" style="color:var(--pz-err-t);border-color:var(--pz-err-b)">Leave and delete my profile</button></section>
   </div></div>`;
@@ -332,7 +332,7 @@ async function socAction(t){
     if(ds.socAdopt){ await adoptHabit(socHabitSpec(ds.socAdopt)); done('Added to your habits. It’s tracked by the day journal’s “I followed the plan”.'); return true; }
     if(ds.pzAppear){ await setAppearance(ds.pzAppear); return true; }
     if(ds.pzTheme){ settings.pzTheme=ds.pzTheme; await Store.set(S_KEY,settings); pzRender(); return true; }
-    if(t.id&&await acctAction(t))return true;
+    if((t.id||(t.dataset&&t.dataset.pkDel))&&await acctAction(t))return true;
     switch(t.id){
       case 'socJoin': { const h=($('socHandle')||{value:''}).value.trim(), inv=($('socInvite')||{value:''}).value.trim();
         const share=SOC.draft||SOC_DEFAULT_SHARE;
@@ -566,6 +566,7 @@ function acctConnectHtml(){
     return `<p class="pz-fine">Signed in as @${esc(SOC.me.handle)}.${a?'':' Add your wallet address above to load your trades.'}</p>${a&&!known?`<button type="button" class="pz-ghost" id="acctLoadClaimed">Load my claimed wallet (${esc(walletShort(a))})</button>`:''}`; }
   return `<details class="pz-acct"${pzS.acctOpen?' open':''}><summary class="pz-fine" style="cursor:pointer">Already use Pulse on another device? Sign in</summary>
     <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+    ${pkAvailable()?'<button type="button" class="pz-ghost" id="socPkLogin">Sign in with a passkey</button><p class="pz-fine">Face ID, a fingerprint or your device PIN — once you’ve added a passkey under Account on a signed-in device.</p>':''}
     ${SOC.cfg.claims?'<button type="button" class="pz-ghost" id="socWalletLogin">Sign in with my wallet</button><p class="pz-fine">Works once you’ve claimed your wallet. It’s a signature, not a transaction — nothing moves.</p>':''}
     <div class="pz-field"><label for="socLinkIn" style="font-size:13px">Or enter a code from a signed-in device</label><input type="text" id="socLinkIn" maxlength="14" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="e.g. K7Q2M9XW4P" value="${esc(pzS.linkCode||'')}">
       <button type="button" class="pz-ghost pz-sm" id="socLinkGo">Sign in with code</button></div>
@@ -582,10 +583,38 @@ function socClaimCardHtml(){
     <button type="button" class="pz-ghost" id="socClaim">Claim with my wallet</button>
     <p class="pz-fine">Signs with the account selected in your browser wallet (MetaMask, Rabby…). On a phone, open this page in your wallet app’s browser.</p></section>`;
 }
+// ---- passkeys: Face ID / fingerprint / security key sign-in (server side: webauthn.js) ----
+function pkAvailable(){ return !!(typeof window!=='undefined'&&window.PublicKeyCredential&&navigator.credentials&&window.isSecureContext&&SOC.cfg&&SOC.cfg.passkeys); }
+const pkBuf=s=>Uint8Array.from(atob(String(s).replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
+const pkB64u=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+function pkJSON(c){ const r=c.response, o={id:c.id,rawId:pkB64u(c.rawId),type:c.type,response:{clientDataJSON:pkB64u(r.clientDataJSON)}};
+  if(r.attestationObject)o.response.attestationObject=pkB64u(r.attestationObject);
+  if(r.authenticatorData){ o.response.authenticatorData=pkB64u(r.authenticatorData); o.response.signature=pkB64u(r.signature); o.response.userHandle=r.userHandle?pkB64u(r.userHandle):null; }
+  return o; }
+// a short label for a new passkey: the kind of device it was made on
+function pkDeviceName(){ const u=navigator.userAgent||''; return /iPhone/.test(u)?'iPhone':/iPad/.test(u)?'iPad':/Android/.test(u)?'Android':/Mac/.test(u)?'Mac':/Windows/.test(u)?'Windows':/Linux/.test(u)?'Linux':'This device'; }
+async function pkAdd(){
+  const o=await socFetch('/passkey/register/start',{method:'POST'});
+  const cred=await navigator.credentials.create({publicKey:{...o,challenge:pkBuf(o.challenge),user:{...o.user,id:pkBuf(o.user.id)},excludeCredentials:(o.excludeCredentials||[]).map(c=>({...c,id:pkBuf(c.id)}))}});
+  return socFetch('/passkey/register/finish',{method:'POST',body:JSON.stringify({credential:pkJSON(cred),name:pkDeviceName()})});
+}
+async function pkLogin(){
+  const o=await socFetch('/passkey/login/start',{method:'POST'});
+  const cred=await navigator.credentials.get({publicKey:{challenge:pkBuf(o.challenge),rpId:o.rpId,timeout:o.timeout,userVerification:o.userVerification}});
+  return socFetch('/passkey/login/finish',{method:'POST',body:JSON.stringify({credential:pkJSON(cred)})});
+}
+function socPasskeysCardHtml(){
+  if(!SOC.cfg||!SOC.cfg.passkeys)return '';
+  const me=SOC.me, list=me.passkeys||[];
+  return `<section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px;display:flex;align-items:center;gap:8px">${pzI('shield',18)}Passkeys</b>
+    <p class="pz-sub" style="font-size:13px">Sign in on any device with Face ID, a fingerprint or your device PIN — no code, no wallet. ${list.length?'':'Add one here and it syncs through your phone’s or computer’s password manager.'}</p>
+    ${list.map(k=>`<div class="pz-wl"><span>${esc(k.name)} <span class="pz-fine">· added ${esc(socAgo(k.at))}${k.lastUsed?' · last used '+esc(socAgo(k.lastUsed)):''}</span></span><button type="button" class="pz-ghost pz-sm" data-pk-del="${esc(k.id)}" aria-label="Remove passkey ${esc(k.name)}">Remove</button></div>`).join('')}
+    ${pkAvailable()?'<button type="button" class="pz-ghost pz-sm" id="socPkAdd">Add a passkey on this device</button>':'<p class="pz-fine">This browser can’t make passkeys here (they need a secure https page and a recent browser).</p>'}</section>`;
+}
 function socDevicesCardHtml(){
   const me=SOC.me, L=SOC.link&&SOC.link.exp>Date.now()?SOC.link:null;
   return `<section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Your devices</b>
-    <p class="pz-sub" style="font-size:13px">Signed in on ${me.devices||1} device${(me.devices||1)===1?'':'s'}.${me.claimed?' On a new device, sign in with your wallet —':' On a new device,'} or use a one-time code from here.</p>
+    <p class="pz-sub" style="font-size:13px">Signed in on ${me.devices||1} device${(me.devices||1)===1?'':'s'}. On a new device, sign in with ${[(me.passkeys||[]).length?'a passkey':'',me.claimed?'your wallet':''].filter(Boolean).join(' or ')||'a one-time code from here'}${(me.passkeys||[]).length||me.claimed?', or a one-time code from here':''}.</p>
     ${L?`<div class="pz-code" aria-live="polite"><b style="font-family:var(--pz-num);font-size:26px;letter-spacing:.12em">${esc(L.code.slice(0,5)+' '+L.code.slice(5))}</b><span class="pz-fine">On the other device open Pulse, choose “Already use Pulse on another device?” and enter this code. It works once, for 10 minutes.</span></div>`
       :'<button type="button" class="pz-ghost pz-sm" id="socLinkNew">Add a device</button>'}
     ${(me.devices||1)>1?'<button type="button" class="pz-ghost pz-sm" id="socSignOutOthers">Sign out other devices</button>':''}</section>`;
@@ -612,7 +641,16 @@ async function acctAction(t){
   const done=(m,kind)=>{ if(m)pzNote(m,kind); socStale(); pzRender(); };
   const pass=()=>{ const el=$('vaultPass'), v=el?el.value:''; return v; };
   const clearPass=()=>{ for(const id of ['vaultPass','vaultPass2']){ const el=$(id); if(el)el.value=''; } };
+  if(t.dataset&&t.dataset.pkDel){ if(!confirm('Remove this passkey? You won’t be able to sign in with it here any more.'))return true;
+    const r=await socFetch('/passkey/'+encodeURIComponent(t.dataset.pkDel),{method:'DELETE'}); SOC.me=r.me; done('Passkey removed.'); return true; }
   switch(t.id){
+    case 'socPkAdd': { pzNote('Follow your device’s prompt…','busy');
+      try{ const r=await pkAdd(); SOC.me=r.me; done('Passkey added. On another device, choose “Sign in with a passkey”.'); }
+      catch(e){ if(e&&e.name==='NotAllowedError'){ pzNote('Cancelled.'); return true; } if(e&&e.name==='InvalidStateError'){ pzNote('This device already has a passkey for your profile.','err'); return true; } throw e; }
+      return true; }
+    case 'socPkLogin': { pzS.acctOpen=true; pzNote('Follow your device’s prompt…','busy');
+      let r; try{ r=await pkLogin(); }catch(e){ if(e&&e.name==='NotAllowedError'){ pzNote('Cancelled.'); return true; } throw e; }
+      socSignedIn(r); pzNote('Signed in as @'+r.me.handle+'.'); await acctAfterSignIn(); return true; }
     case 'socClaim': { pzNote('Waiting for your wallet…','busy'); const r=await socWalletSign('claim'); SOC.me=r.me; PZ_CFG.rev++; SOC.share=r.share; SOC.draft=null;
       const known=settings.wallets.some(w=>String(w.address).toLowerCase()===r.address);
       done('Claimed '+walletShort(r.address)+'. It’s locked to your profile.'+(known?'':' It isn’t one of the wallets Pulse reads — add it in Settings to see its trades.')); return true; }

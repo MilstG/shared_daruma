@@ -227,7 +227,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
 
   // ---------------- members ----------------
   const wpill=s=>s==='pending'?'<span class="pill wait">wallet waiting</span>':s==='rejected'?'<span class="pill ban">wallet rejected</span>':'';
-  const pills=m=>[m.claimed?'<span class="pill ok">claimed ✓</span>':'',D.wallets.approveWallets?wpill(m.walletStatus):'',m.verified?'<span class="pill ok">verified</span>':'',m.unlocked?'<span class="pill xp">unlocked</span>':'',
+  const pills=m=>[m.claimed?'<span class="pill ok">claimed ✓</span>':'',m.passkeys?`<span class="pill">${m.passkeys} passkey${m.passkeys===1?'':'s'}</span>`:'',D.wallets.approveWallets?wpill(m.walletStatus):'',m.verified?'<span class="pill ok">verified</span>':'',m.unlocked?'<span class="pill xp">unlocked</span>':'',
     m.adminMade&&!m.keys?'<span class="pill">not signed in yet</span>':'',m.banned?'<span class="pill ban">suspended</span>':''].filter(Boolean).join(' ');
   const codeBox=c=>`<div class="okbox" style="margin-top:12px"><div class="row" style="justify-content:space-between;align-items:center"><div><div class="small">Sign-in code for @${esc(c.handle)} · good for 7 days</div><div class="code">${esc(c.code)}</div></div>
       <div class="fit row" style="align-items:center"><button class="sm fit" data-copy="${esc(linkFor(c.code))}">Copy link</button><button class="sm fit" data-copy="${esc(c.code)}">Copy code</button><button class="sm fit" id="codeDone">Done</button></div></div>

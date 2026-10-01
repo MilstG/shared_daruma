@@ -33,6 +33,9 @@ const SC = require('./social-config.js');
 const Push = require('./push.js');
 // Ethereum signature recovery for wallet claims (vendored noble libraries, no install needed)
 let ethSig = null; try { ethSig = require('./vendor/eth-sig.js'); } catch (e) { /* claims and wallet sign-in answer 501 */ }
+// Passkeys (WebAuthn): sign in on any device with Face ID, a fingerprint or a security key
+const WebAuthn = require('./webauthn.js');
+const PASSKEY_MAX = 10;
 
 const TIERS = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'];
 const LEVELS = ['Rookie', 'Apprentice', 'Journeyman', 'Disciplined', 'Consistent', 'Professional', 'Veteran', 'Master', 'Grandmaster', 'Legend'];
@@ -370,6 +373,18 @@ function createSocial(opts) {
   // simple per-IP rate limits: n requests per window
   const ipOf = opts.clientIp || (req => (req.socket && req.socket.remoteAddress) || '');
   const origins = (opts.publicOrigins || []).map(o => { try { const u = new URL(o); return { host: u.host.toLowerCase(), origin: u.origin }; } catch (e) { return null; } }).filter(Boolean);
+  // the site a passkey belongs to: {origin, rpId} — the pinned PUBLIC_ORIGIN that matches this
+  // request's Host, or (unpinned) the address this page was served from
+  const siteOf = req => {
+    const reqHost = String(req.headers.host || '').toLowerCase();
+    if (origins.length) { const o = origins.find(x => x.host === reqHost);
+      if (!o) return { error: 'Open Pulse at ' + origins[0].origin + '/pulse to use a passkey.' };
+      return { origin: o.origin, rpId: o.host.replace(/:\d+$/, '') }; }
+    const host = reqHost.slice(0, 100).replace(/[^a-z0-9.:\-\[\]]/g, '');
+    if (!host) return { error: 'Missing Host header.' };
+    const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https' || (req.socket && req.socket.encrypted) ? 'https' : 'http';
+    return { origin: proto + '://' + host, rpId: host.replace(/:\d+$/, '').replace(/^\[|\]$/g, '') };
+  };
   const limits = new Map();
   const limited = (req, bucket, n, windowMs) => { const k = bucket + '|' + ipOf(req);
     const recent = (limits.get(k) || []).filter(t => now() - t < windowMs);
@@ -566,6 +581,7 @@ function createSocial(opts) {
     if (out.isMe) Object.assign(out, { claimedAddress: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
       vault: m.vault ? { rev: m.vault.rev, size: m.vault.size, at: m.vault.at } : null, requireClaim: !!S.config.requireClaim, vaultOn: !!S.config.vaultOn,
       walletStatus: S.config.approveWallets && m.address ? walletStatus(m.address) : null,
+      passkeys: (m.passkeys || []).map(k => ({ id: k.id, name: k.name, at: k.at, lastUsed: k.lastUsed || null })),
       unlocked: !!m.unlocked, grants: (m.grants || []).map(g => ({ id: g.id, xp: g.xp, why: g.why, at: g.at })), coach: coachStatusFor(m), coachDetail: !!m.coachDetail,
       leagues: leaguesOf(m).map(L => ({ id: L.id, name: L.name, tier: leagueTier(L, m) })), mentor: !!m.mentor,
       push: { on: !!(m.push && m.push.subs && m.push.subs.length), prefs: sanitizePrefs(null, m.push && m.push.prefs), available: !!push },
@@ -733,7 +749,7 @@ function createSocial(opts) {
     if (head === 'config' && M === 'GET')
       return json(res, 200, { enabled: adminConfigured, open: S.config.open, inviteRequired: !!S.config.inviteCode, unlocksOn: S.config.unlocksOn,
         unlocks: S.config.unlocks, themes: S.config.themes, tiers: TIERS, week: S.league.week, members: members().filter(m => !m.banned).length,
-        claims: !!sig, requireClaim: !!S.config.requireClaim, approveWallets: !!S.config.approveWallets, vaultOn: !!S.config.vaultOn,
+        claims: !!sig, passkeys: true, requireClaim: !!S.config.requireClaim, approveWallets: !!S.config.approveWallets, vaultOn: !!S.config.vaultOn,
         modules: S.config.modules, levels: S.config.levels, xp: S.config.xp, profiles: S.config.profiles,
         coach: { members: S.config.coach.members, daily: S.config.coach.daily, detail: S.config.coach.detail },
         badges: Object.values(S.badges).map(b => ({ id: b.id, name: b.name, icon: b.icon, desc: b.desc, metric: b.metric, metricLabel: b.metric ? SC.BADGE_METRICS[b.metric] : null, op: b.op, value: b.value, xp: b.xp })),
@@ -760,6 +776,7 @@ function createSocial(opts) {
       if (sub === 'members' && M === 'GET' && !parts[2])
         return json(res, 200, { members: members().sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0)).map(m => ({ id: m.id, handle: m.handle,
           tier: m.tier || 0, level: (m.stats && m.stats.level) || 1, xp: (m.stats && m.stats.xp) || 0, streak: (m.stats && m.stats.streak) || 0,
+          passkeys: (m.passkeys || []).length,
           address: m.address || null, walletStatus: m.address ? walletStatus(m.address) : null, joinedWith: m.joinedWith || (m.adminMade ? 'admin' : null), claimed: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
           vault: m.vault ? m.vault.size : 0, share: m.share, banned: !!m.banned, unlocked: !!m.unlocked, coachDaily: m.coachDaily != null ? m.coachDaily : null,
           coachUsed: coachUsed(m), coachLimit: coachLimitFor(m), grants: m.grants || [], awards: Object.keys(m.awards || {}).filter(id => own(S.badges, id)),
@@ -1045,6 +1062,36 @@ function createSocial(opts) {
       const key = addKey(m); m.lastSeen = now(); save();
       return json(res, 200, { key, me: publicMember(m, m), share: m.share });
     }
+    // ---------- passkeys: sign in ----------
+    // The RP ID is the site's hostname: pinned by PUBLIC_ORIGIN when set (a passkey made for one
+    // site never works on another), else the address this page was served from.
+    if (head === 'passkey' && parts[1] === 'login' && M === 'POST') {
+      if (!adminConfigured) return json(res, 403, { error: 'The owner needs to set an access token on the server first.' });
+      if (limited(req, 'passkey', 30, 600000)) return json(res, 429, { error: 'Too many sign-in attempts from here. Try again in a few minutes.' });
+      const site = siteOf(req); if (site.error) return json(res, 400, { error: site.error });
+      if (parts[2] === 'start') {
+        const challenge = WebAuthn.newChallenge(); sweep(pending);
+        pending.set('pk:' + challenge, { purpose: 'pk-login', site, exp: now() + 5 * 60000 });
+        return json(res, 200, { challenge, rpId: site.rpId, timeout: 300000, userVerification: 'preferred' });
+      }
+      if (parts[2] === 'finish') {
+        const cred = body.credential; let cd = null;
+        try { cd = JSON.parse(WebAuthn.fromB64u(cred && cred.response && cred.response.clientDataJSON).toString('utf8')); } catch (e) {}
+        const p = cd && typeof cd.challenge === 'string' ? pending.get('pk:' + cd.challenge) : null;
+        if (!p || p.purpose !== 'pk-login' || p.exp < now()) return json(res, 400, { error: 'That sign-in request expired. Try again.' });
+        pending.delete('pk:' + cd.challenge);
+        const id = cred && typeof cred.id === 'string' ? cred.id : '';
+        const m = id && members().find(x => (x.passkeys || []).some(k => k.id === id));
+        if (!m) return json(res, 404, { error: 'This passkey isn’t linked to a profile here. Sign in another way, then add it under Account.' });
+        if (m.banned) return json(res, 403, { error: 'This profile was removed from the league.' });
+        const pk = m.passkeys.find(k => k.id === id);
+        try { const r = WebAuthn.verifyAssertion(cred, { challenge: cd.challenge, origin: p.site.origin, rpId: p.site.rpId }, pk); pk.signCount = r.signCount; }
+        catch (e) { return json(res, 403, { error: 'That passkey didn’t check out (' + e.message + ').' }); }
+        pk.lastUsed = now();
+        const key = addKey(m); m.lastSeen = now(); save();
+        return json(res, 200, { key, me: publicMember(m, m), share: m.share });
+      }
+    }
     // a one-time code from a signed-in device (Profile & privacy → Add a device)
     if (head === 'link' && parts[1] === 'finish' && M === 'POST') {
       if (limited(req, 'link', 20, 600000)) return json(res, 429, { error: 'Too many tries from here. Try again in a few minutes.' });
@@ -1066,6 +1113,38 @@ function createSocial(opts) {
     const me = byKey(req);
     if (!me) return json(res, 401, { error: 'not a member' });
     if (me.banned) return json(res, 403, { error: 'This profile was removed from the league.' });
+
+    // ---------- passkeys: add one on this device, list, remove ----------
+    if (head === 'passkey' && parts[1] === 'register' && M === 'POST') {
+      const site = siteOf(req); if (site.error) return json(res, 400, { error: site.error });
+      if (parts[2] === 'start') {
+        if ((me.passkeys || []).length >= PASSKEY_MAX) return json(res, 409, { error: 'You have ' + PASSKEY_MAX + ' passkeys already. Remove one first.' });
+        const challenge = WebAuthn.newChallenge(); sweep(pending);
+        pending.set('pk:' + challenge, { purpose: 'pk-reg', memberId: me.id, site, exp: now() + 5 * 60000 });
+        return json(res, 200, { challenge, rp: { name: 'Pulse', id: site.rpId }, user: { id: WebAuthn.b64u(Buffer.from('pulse:' + me.id)), name: me.handle, displayName: '@' + me.handle },
+          pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -8 }, { type: 'public-key', alg: -257 }],
+          authenticatorSelection: { residentKey: 'required', requireResidentKey: true, userVerification: 'preferred' }, attestation: 'none', timeout: 300000,
+          excludeCredentials: (me.passkeys || []).map(k => ({ type: 'public-key', id: k.id })) });
+      }
+      if (parts[2] === 'finish') {
+        const cred = body.credential; let cd = null;
+        try { cd = JSON.parse(WebAuthn.fromB64u(cred && cred.response && cred.response.clientDataJSON).toString('utf8')); } catch (e) {}
+        const p = cd && typeof cd.challenge === 'string' ? pending.get('pk:' + cd.challenge) : null;
+        if (!p || p.purpose !== 'pk-reg' || p.memberId !== me.id || p.exp < now()) return json(res, 400, { error: 'That request expired. Try again.' });
+        pending.delete('pk:' + cd.challenge);
+        let r; try { r = WebAuthn.verifyRegistration(cred, { challenge: cd.challenge, origin: p.site.origin, rpId: p.site.rpId }); }
+        catch (e) { return json(res, 400, { error: 'That passkey couldn’t be added (' + e.message + ').' }); }
+        if (members().some(x => (x.passkeys || []).some(k => k.id === r.id))) return json(res, 409, { error: 'That passkey is already linked to a profile.' });
+        me.passkeys = [...(me.passkeys || []), { id: r.id, alg: r.alg, jwk: r.jwk, signCount: r.signCount, rpId: p.site.rpId, name: cleanText(body.name, 40) || 'Passkey', at: now(), lastUsed: null }].slice(-PASSKEY_MAX);
+        save(); return json(res, 200, { me: publicMember(me, me) });
+      }
+    }
+    if (head === 'passkey' && parts[1] && parts[1] !== 'register' && parts[1] !== 'login' && M === 'DELETE') {
+      const before = (me.passkeys || []).length;
+      me.passkeys = (me.passkeys || []).filter(k => k.id !== parts[1]);
+      if (me.passkeys.length === before) return json(res, 404, { error: 'No such passkey.' });
+      save(); return json(res, 200, { me: publicMember(me, me) });
+    }
     me.lastSeen = now();
 
     if (head === 'me' && M === 'GET') return json(res, 200, { me: publicMember(me, me), share: me.share, tier: me.tier || 0 });
