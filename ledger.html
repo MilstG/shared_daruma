@@ -582,7 +582,7 @@ body.pz-mode .wrap,body.pz-mode #appfoot{display:none!important}
 #pz button{font-family:inherit}
 #pz :focus-visible{outline:2px solid var(--pz-risk);outline-offset:2px}
 .pz-main{max-width:560px;margin:0 auto;padding:calc(14px + env(safe-area-inset-top)) 16px calc(96px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px}
-.pz-head{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:52px}
+.pz-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;min-height:52px}
 .pz-kick{display:block;font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--pz-muted)}
 .pz-h1{margin:0;text-transform:none;font-family:var(--pz-num);font-size:34px;font-weight:600;line-height:1;letter-spacing:.01em}
 .pz-chips{display:flex;gap:8px;align-items:center}
@@ -732,6 +732,11 @@ body.pz-mode .wrap,body.pz-mode #appfoot{display:none!important}
 .pz-tbl th[scope="row"],.pz-tbl thead th:first-child{text-align:left;font-size:13px;font-weight:600;color:var(--pz-soft);white-space:normal}
 .pz-tbl thead th{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--pz-muted)}
 .pz-tbl tr:last-child th,.pz-tbl tr:last-child td{border-bottom:0}
+.pz-tbl small{display:none;font-size:11px;color:var(--pz-muted)}
+@media (max-width:440px){ /* phones: the average folds under the net, so four columns fit without scrolling */
+  .pz-tbl th:nth-child(5),.pz-tbl td:nth-child(5){display:none}
+  .pz-tbl small{display:block}
+  .pz-tbl th,.pz-tbl td{padding:7px 3px} }
 .pz-div{display:flex;gap:2px;height:var(--h,110px)}
 .pz-div span{flex:1;min-width:0;display:flex;flex-direction:column}
 .pz-div i{flex:1;display:flex;flex-direction:column}
@@ -7829,6 +7834,11 @@ function usdPlain(x){ const a=Math.abs(x); return a>=100?fmtUsd(a,0):fmtUsd(a).r
 function dayLabel(k){ const d=new Date(k+'T00:00:00Z'); if(isNaN(d))return k; return DOWN[d.getUTCDay()]+', '+MONTHS[d.getUTCMonth()]+' '+d.getUTCDate(); }
 function daysPlain(ms){ const d=Math.round(ms/86400000); return d>=60?Math.round(d/7)+' weeks':d+' day'+(d===1?'':'s'); }
 function signedPlain(x){ return (x<0?'−':'+')+usdPlain(x); }
+// Money that stays readable on a phone: exact up to $99,999, then $452k · $6.04M · $60.4M (the
+// exact figure goes in a tooltip). Used where big accounts would otherwise wrap or crowd a tile.
+function pzShort(x){ const a=Math.abs(x); if(!(a>=1e5))return usdPlain(x);
+  return '$'+(a>=9.995e8?(a/1e9).toFixed(2)+'B':a>=9.995e5?(a/1e6).toFixed(a>=9.95e7?0:a>=9.995e6?1:2)+'M':Math.round(a/1e3)+'k'); }
+function pzSigned(x){ return (x<0?'−':'+')+pzShort(x); }
 // Welch two-sample t-test, two-sided p. Used to put a confidence word on "A vs B" findings.
 function welchP(a,b){
   if(!a||!b||a.length<3||b.length<3)return null;
@@ -8778,7 +8788,7 @@ const PZ_BEH={revenge:'Entered within 15 minutes of a loss',afterTwo:'Kept tradi
 // What counts as a loss for Discipline: fixed (more than $1 lost), NOT the personal break-even
 // setting, so the app and the server's verification score the same trades the same way.
 const PZ_LOSS=n=>n<-1;
-const PZ_BONUS={checkin:['Morning check-in',10],plan:['Plan before your first trade',15],journal:['Today’s trades journaled',15],stops:['Stops written while trades were open',10],limit:['Stayed inside your loss limit',10]};
+const PZ_BONUS={checkin:['Morning check-in',10],plan:['Plan before your first trade',15],journal:['Today’s trades journaled',15],stops:['Stops written while trades were open',10],limit:['Respected your loss limit',10]};
 // Per trading day (by close day): the share of trades with none of the six slips, 0–100.
 // Baselines (usual size, usual trades per day, usual winner hold) come only from trades that
 // closed before that day's first entry, so a day is never judged against itself.
@@ -8892,23 +8902,31 @@ function pzDeepStats(trades, o){
   let maxDD=0, ddFrom=null, ddTo=null, pk=0, pkAt=tr[0].closeTime;
   for(const c of curve){ if(c.cum>=pk){ pk=c.cum; pkAt=c.at; } if(c.cum-pk<maxDD){ maxDD=c.cum-pk; ddFrom=pkAt; ddTo=c.at; } }
   // size quarters: smallest to biggest notional, so you see whether size and results line up
-  const sizes=tr.map(size).filter(x=>x>0).sort((a,b)=>a-b), q=f=>sizes[Math.min(sizes.length-1,Math.floor(f*sizes.length))];
-  const cuts=sizes.length>=8?[q(0.25),q(0.5),q(0.75)]:null;
-  const bySize=cuts?group(t=>{ const v=size(t); if(!(v>0))return null; return v<=cuts[0]?0:v<=cuts[1]?1:v<=cuts[2]?2:3; },(a,b)=>a.k-b.k)
-    .map(r=>({...r,label:['Smallest ¼','Second ¼','Third ¼','Biggest ¼'][r.k],
-      range:[0,cuts[0],cuts[1],cuts[2],Infinity][r.k],to:[cuts[0],cuts[1],cuts[2],Infinity][r.k]})):[];
+  // quarters by rank (ties split evenly by entry order), each labelled with the sizes it actually holds
+  const sized=tr.filter(t=>size(t)>0).sort((a,b)=>size(a)-size(b)||a.closeTime-b.closeTime), qOf=new Map();
+  sized.forEach((t,i)=>qOf.set(t,Math.min(3,Math.floor(4*i/sized.length))));
+  const bySize=sized.length>=8?group(t=>qOf.has(t)?qOf.get(t):null,(a,b)=>a.k-b.k).map(r=>{ const v=sized.filter(t=>qOf.get(t)===r.k).map(size);
+      return {...r,label:['Smallest ¼','Second ¼','Third ¼','Biggest ¼'][r.k],from:Math.min(...v),to:Math.max(...v)}; }):[];
+  const real=t=>!t.partialHistory&&t.openTime; // trades cut off at the start of the history have no real entry time
   const HB=[[5,'Under 5 min'],[60,'5–60 min'],[240,'1–4 hours'],[1440,'4–24 hours'],[Infinity,'Over a day']];
-  const byHold=group(t=>{ const m=hold(t)/60000; return HB.findIndex(h=>m<h[0]); },(a,b)=>a.k-b.k).map(r=>({...r,label:HB[r.k][1]}));
+  const byHold=group(t=>{ if(!real(t))return null; const m=hold(t)/60000; return HB.findIndex(h=>m<h[0]); },(a,b)=>a.k-b.k).map(r=>({...r,label:HB[r.k][1]}));
   // streaks, and what happens right after a win or a loss
+  // runs: break-even trades neither extend nor break a run (as in the full app's stats)
   let run=0, runSign=0, bestW=0, bestL=0; const after={win:[],loss:[]};
-  tr.forEach((t,i)=>{ const sg=W(t)?1:L(t)?-1:0;
-    if(sg&&sg===runSign)run++; else { run=sg?1:0; runSign=sg; }
-    if(sg>0)bestW=Math.max(bestW,run); if(sg<0)bestL=Math.max(bestL,run);
-    const p=tr[i-1]; if(p&&(t.openTime||t.closeTime)>=p.closeTime){ if(W(p))after.win.push(t); else if(L(p))after.loss.push(t); } });
+  const ct=tr.map(t=>t.closeTime), lastBefore=ms=>{ let lo=0,hi=ct.length; while(lo<hi){ const m=(lo+hi)>>1; if(ct[m]<=ms)lo=m+1; else hi=m; } return lo-1; };
+  tr.forEach(t=>{ const sg=W(t)?1:L(t)?-1:0;
+    if(sg){ if(sg===runSign)run++; else { run=1; runSign=sg; } if(sg>0)bestW=Math.max(bestW,run); else bestL=Math.max(bestL,run); }
+    // the trade that closed last before this one was opened, even with other positions open in between
+    if(!real(t))return; let q=lastBefore(t.openTime); while(q>=0&&tr[q]===t)q--;
+    const p=q>=0?tr[q]:null; if(p){ if(W(p))after.win.push(t); else if(L(p))after.loss.push(t); } });
   // outcome spread in units of your typical trade (median absolute result)
   const absMed=(()=>{ const a=tr.map(t=>Math.abs(t.net)).filter(x=>x>0).sort((x,y)=>x-y); return a.length?a[Math.floor(a.length/2)]:0; })();
-  const BD=[[-Infinity,-3],[-3,-1],[-1,0],[0,1],[1,3],[3,Infinity]];
-  const dist=absMed>0?BD.map(([lo,hi])=>({lo:lo*absMed,hi:hi*absMed,n:tr.filter(t=>{ const x=t.net/absMed; return x>lo&&x<=hi; }).length})):[];
+  // losses and wins in steps of your typical trade; trades inside your break-even band get their own row
+  const BL=[[-Infinity,-3],[-3,-1],[-1,0]], BW=[[0,1],[1,3],[3,Infinity]];
+  const inB=(t,lo,hi)=>{ const x=Math.abs(t.net)/absMed; return x>lo&&x<=hi; };
+  const dist=absMed>0?[...BL.map(([lo,hi])=>({kind:'loss',lo:-hi*absMed,hi:-lo*absMed,n:tr.filter(t=>L(t)&&inB(t,-hi,-lo)).length})),
+    {kind:'even',n:tr.filter(t=>!W(t)&&!L(t)).length},
+    ...BW.map(([lo,hi])=>({kind:'win',lo:lo*absMed,hi:hi*absMed,n:tr.filter(t=>W(t)&&inB(t,lo,hi)).length}))]:[];
   const nets=tr.map(t=>t.net);
   return {all:agg(tr),curve,maxDD,ddFrom,ddTo,
     side:group(t=>t.dir||null,(a,b)=>b.n-a.n),
@@ -8920,7 +8938,7 @@ function pzDeepStats(trades, o){
     streaks:{bestW,bestL,current:run*runSign},
     after:{win:agg(after.win),loss:agg(after.loss)},
     best:Math.max(...nets),worst:Math.min(...nets),
-    holdW:nfMedian(tr.filter(W).map(hold).filter(x=>x>0)),holdL:nfMedian(tr.filter(L).map(hold).filter(x=>x>0))};
+    holdW:nfMedian(tr.filter(t=>W(t)&&real(t)).map(hold).filter(x=>x>0)),holdL:nfMedian(tr.filter(t=>L(t)&&real(t)).map(hold).filter(x=>x>0)),partial:tr.filter(t=>!real(t)).length};
 }
 // What the six slips cost over a window: each slip's trades and their total, against clean trades.
 function pzSlipCost(days){
@@ -9008,7 +9026,7 @@ function pzBonusItems(D){
       hint:planned?(opened?'Written after your first entry: half the bonus':'Written — it counts when you trade'):'A line and a loss limit, before you trade'},
     {k:'journal',label:'Journal today’s trades',xp:15,done:todayT.length>0&&j===todayT.length,partial:j>0&&j<todayT.length,href:'#journal',
       hint:todayT.length?j+' of '+todayT.length+' journaled':'After your trades close'},
-    lim>0?{k:'limit',label:'Stay inside your loss limit',xp:10,done:earned.limit===10,href:'#discipline',hint:usdPlain(lim)+' today'}:null,
+    lim>0?{k:'limit',label:'Respect your loss limit',xp:10,done:earned.limit===10,href:'#discipline',hint:usdPlain(lim)+' today'}:null,
   ].filter(Boolean);
 }
 // One line from the coach, most urgent first: a hit limit, then the slip you just made, then
@@ -9178,30 +9196,30 @@ function pzDisciplineHtml(D){
 
 function pzTrendsHtml(D){
   const {g}=D, ctx=g.ctx, R=pzS.range, now=Date.now();
-  const from=R==='all'?0:now-(R-1)*86400000, fromKey=dayKey(from);
-  const st=pzStatsFor(ctx.trades,R==='all'?0:tzMidnight(now)-(R-1)*86400000);
+  const from=R==='all'?0:pzRangeStart(R,now), fromKey=dayKey(from);
+  const st=pzStatsFor(ctx.trades,from);
   const seg=`<div class="pz-seg" role="group" aria-label="Range">${[[7,'7D'],[30,'30D'],[90,'90D'],['all','All']].map(([n,l])=>`<button type="button" data-pz-range="${n}" aria-pressed="${n===R}">${l}</button>`).join('')}</div>`;
-  const money=v=>v==null||!isFinite(v)?'—':signedPlain(v);
+  const money=v=>v==null||!isFinite(v)?'—':pzSigned(v), exact=v=>v==null||!isFinite(v)?'':signedPlain(v);
   let stats;
   if(!st) stats=`<section class="pz-card pz-span"><p class="pz-sub">No closed trades in this range.</p></section>`;
   else { const s=st.s, col=v=>v>0?PZ_COL.good:v<0?PZ_COL.low:'var(--pz-text)';
-    const tile=(label,val,sub,c)=>`<div class="pz-tile"><span class="pz-t">${esc(label)}</span><span class="pz-n" style="color:${c||'var(--pz-text)'}">${esc(val)}</span>${sub?`<span class="pz-t">${esc(sub)}</span>`:''}</div>`;
+    const tile=(label,val,sub,c,full)=>`<div class="pz-tile"${full?` title="${esc(label+': '+full)}"`:''}><span class="pz-t">${esc(label)}</span><span class="pz-n" style="color:${c||'var(--pz-text)'}">${esc(val)}</span>${sub?`<span class="pz-t">${esc(sub)}</span>`:''}</div>`;
     const maxAbs=Math.max(1,...st.days.map(x=>Math.abs(x.net)));
     const days=st.days.slice(-60);
     const bars=days.map(x=>`<i style="height:${Math.max(3,Math.round(Math.abs(x.net)/maxAbs*100))}px;background:${x.net>=0?PZ_COL.good:PZ_COL.low};opacity:.9" title="${esc(dayLabel(x.k))}: ${esc(signedPlain(x.net))}"></i>`).join('');
     const mk=st.markets, best=mk.slice(0,3).filter(x=>x.net>0), worst=mk.slice(-3).reverse().filter(x=>x.net<0);
     const hr=h=>String(h).padStart(2,'0')+':00';
     const hrs=st.hours.length>=2?[['Best hour',st.hours[0]],['Worst hour',st.hours[st.hours.length-1]]]:[];
-    stats=`<div class="pz-grid3 pz-span">${tile('Net P&L',money(s.net),s.n+' trade'+(s.n===1?'':'s'),col(s.net))}${tile('Win rate',pzPct(s.winRate),s.wins+' W · '+s.losses+' L')}${tile('Average trade',money(s.expectancy),'',col(s.expectancy))}
-      ${tile('Profit factor',isFinite(s.profitFactor)?s.profitFactor.toFixed(2):'∞','')}${tile('Avg win / loss',usdPlain(s.avgWin)+' / '+usdPlain(s.avgLoss),'payoff '+(isFinite(s.payoff)?s.payoff.toFixed(2):'∞'))}${tile('Fees + funding',money(-(s.fees)+(s.fund||0)),'fees '+usdPlain(s.fees))}</div>
+    stats=`<div class="pz-grid3 pz-span">${tile('Net P&L',money(s.net),s.n+' trade'+(s.n===1?'':'s'),col(s.net),exact(s.net))}${tile('Win rate',pzPct(s.winRate),s.wins+' W · '+s.losses+' L')}${tile('Average trade',money(s.expectancy),'',col(s.expectancy),exact(s.expectancy))}
+      ${tile('Profit factor',isFinite(s.profitFactor)?s.profitFactor.toFixed(2):'∞','')}${tile('Average win',pzShort(s.avgWin),'avg loss '+pzShort(s.avgLoss)+' · payoff '+(isFinite(s.payoff)?s.payoff.toFixed(2):'∞'),null,usdPlain(s.avgWin)+' win / '+usdPlain(s.avgLoss)+' loss')}${tile('Fees + funding',money(-(s.fees)+(s.fund||0)),'fees '+pzShort(s.fees),null,exact(-(s.fees)+(s.fund||0)))}</div>
       <a class="pz-ghost pz-span pz-deepbtn" href="#deep">See in-depth stats${pzI('chev',18)}</a>
       <section class="pz-card pz-span" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-size:15px">Daily P&L</b><span class="pz-sub" style="font-size:12px">${days.length} trading day${days.length===1?'':'s'}${st.days.length>60?' (last 60)':''}</span></div>
         <div class="pz-chart" style="--h:100px;--gap:${days.length>30?'2px':'5px'}">${bars}</div></section>
       <section class="pz-card" style="display:flex;flex-direction:column;gap:6px"><b style="font-size:15px">Markets</b>
-        ${best.map(x=>`<div class="pz-row-t"><span>${esc(dispMarket(x.k))} · ${x.n}</span><b style="color:${PZ_COL.good}">${esc(signedPlain(x.net))}</b></div>`).join('')||'<p class="pz-sub" style="font-size:13px">No winning market in this range.</p>'}
-        ${worst.map(x=>`<div class="pz-row-t"><span>${esc(dispMarket(x.k))} · ${x.n}</span><b style="color:${PZ_COL.low}">${esc(signedPlain(x.net))}</b></div>`).join('')}</section>
+        ${best.map(x=>`<div class="pz-row-t"><span>${esc(dispMarket(x.k))} · ${x.n}</span><b style="color:${PZ_COL.good}" title="${esc(signedPlain(x.net))}">${esc(pzSigned(x.net))}</b></div>`).join('')||'<p class="pz-sub" style="font-size:13px">No winning market in this range.</p>'}
+        ${worst.map(x=>`<div class="pz-row-t"><span>${esc(dispMarket(x.k))} · ${x.n}</span><b style="color:${PZ_COL.low}" title="${esc(signedPlain(x.net))}">${esc(pzSigned(x.net))}</b></div>`).join('')}</section>
       <section class="pz-card" style="display:flex;flex-direction:column;gap:6px"><b style="font-size:15px">Time of day</b>
-        ${hrs.map(([l,x])=>`<div class="pz-row-t"><span>${l} · ${hr(x.h)} · ${x.n} trades</span><b style="color:${col(x.net)}">${esc(signedPlain(x.net))}</b></div>`).join('')||'<p class="pz-sub" style="font-size:13px">Needs a few more trades per hour to compare.</p>'}
+        ${hrs.map(([l,x])=>`<div class="pz-row-t"><span>${l} · ${hr(x.h)} · ${x.n} trades</span><b style="color:${col(x.net)}" title="${esc(signedPlain(x.net))}">${esc(pzSigned(x.net))}</b></div>`).join('')||'<p class="pz-sub" style="font-size:13px">Needs a few more trades per hour to compare.</p>'}
         <p class="pz-fine">By entry time, on your ${settings.tz==='utc'?'UTC':'local'} clock.</p></section>`; }
   // deeper insights: discipline vs results — unlocked by level
   const lock=pzNeeds('trends',g.level.level,pzUnlockCfg(),pzS.demo);
@@ -9216,11 +9234,11 @@ function pzTrendsHtml(D){
     deep=`<section class="pz-card pz-span" style="display:flex;flex-direction:column;gap:12px"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px"><span><span class="pz-lbl" style="color:${PZ_COL.good}">Discipline</span><br><span class="pz-sub" style="font-size:13px">${bc.unit}</span></span><span style="display:flex;align-items:baseline;gap:6px"><span class="pz-sub" style="font-size:12px">avg</span><span style="font-family:var(--pz-num);font-size:40px;font-weight:600;line-height:1">${ts.avg==null?'—':ts.avg}</span></span></div>${chart}</section>
       <div class="pz-col"><section style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Does discipline pay?</b><div class="pz-grid2">${tile('good','Days 70+',ts.hi)}${tile('hot','Under 70',ts.lo)}</div>
         ${rl?`<div class="pz-tile cool"><span class="pz-t" style="font-size:13px;line-height:1.45">On days you checked in at readiness 70+, your discipline averaged <b>${rl.hi}</b>; on the other check-in days, <b>${rl.lo}</b>.</span></div>`:''}</section></div>
-      <div class="pz-col"><section class="pz-card" style="padding:6px 16px"><b style="display:block;font-size:15px;margin:10px 0 2px">What moves your results</b>${F.length?F.map(f=>`<div class="pz-ins"><span class="pz-tag ${esc(f.tone)}">${esc(TONE_TAG[f.tone]||'Note')}</span><span><b>${esc(f.title)}</b><span>${esc(f.action||f.body||'')}</span>${f.evidence?`<span style="font-size:12px;color:var(--pz-muted)">${esc(f.evidence)} · ${esc(confWords(f.conf))}</span>`:''}</span></div>`).join(''):'<p class="pz-sub" style="padding:12px 0">Patterns show up here after about five closed trades.</p>'}</section></div>`; }
+      <div class="pz-col"><section class="pz-card" style="padding:6px 16px"><b style="display:block;font-size:15px;margin:10px 0 2px">What moves your results</b>${F.length?F.map(f=>`<div class="pz-ins"><span class="pz-tag ${esc(f.tone)}">${esc(TONE_TAG[f.tone]||'Note')}</span><span><b>${esc(f.title)}</b><span>${esc(f.action||f.body||'')}</span>${f.evidence?`<span style="display:block;margin-top:4px;font-size:12px;color:var(--pz-muted)">${esc(f.evidence)} · ${esc(confWords(f.conf))}</span>`:''}</span></div>`).join(''):'<p class="pz-sub" style="padding:12px 0">Patterns show up here after about five closed trades.</p>'}</section></div>`; }
   return `${pzHead(R==='all'?'All time':'Last '+R+' days','Stats',seg)}<div class="pz-wide">${stats}${deep}<p class="pz-fine pz-span"><a href="#how">How are the scores worked out?</a></p></div>`;
 }
 // ---- screens: in-depth stats (#deep) and how the scores work (#how) ----
-const pzMoney=v=>v==null||!isFinite(v)?'—':signedPlain(v);
+const pzMoney=v=>v==null||!isFinite(v)?'—':pzSigned(v);
 const pzSignCol=v=>v>0?PZ_COL.good:v<0?PZ_COL.low:'var(--pz-text)';
 const pzRatio=v=>v==null?'—':isFinite(v)?v.toFixed(2):'∞';
 // a card of label/value rows; tip explains the number on hover
@@ -9231,7 +9249,7 @@ function pzKv(title, rows, note){
 function pzTbl(title, rows, labelOf, note){
   if(!rows.length)return '';
   return `<section class="pz-card pz-kv"><b class="pz-kvh">${esc(title)}</b><div class="pz-tblw"><table class="pz-tbl"><thead><tr><th scope="col"></th><th scope="col">Trades</th><th scope="col">Win rate</th><th scope="col">Net</th><th scope="col">Avg</th></tr></thead><tbody>
-    ${rows.map(r=>`<tr><th scope="row">${esc(labelOf(r))}</th><td>${r.n}</td><td>${pzPct(r.winRate)}</td><td style="color:${pzSignCol(r.net)}">${esc(pzMoney(r.net))}</td><td>${esc(pzMoney(r.avg))}</td></tr>`).join('')}</tbody></table></div>${note?`<p class="pz-fine">${note}</p>`:''}</section>`;
+    ${rows.map(r=>`<tr><th scope="row">${esc(labelOf(r))}</th><td>${r.n}</td><td>${pzPct(r.winRate)}</td><td style="color:${pzSignCol(r.net)}" title="${esc(r.net==null?'':signedPlain(r.net))}">${esc(pzMoney(r.net))}<small>avg ${esc(pzMoney(r.avg))}</small></td><td title="${esc(r.avg==null?'':signedPlain(r.avg))}">${esc(pzMoney(r.avg))}</td></tr>`).join('')}</tbody></table></div>${note?`<p class="pz-fine">${note}</p>`:''}</section>`;
 }
 // bars above and below a zero line, one per bucket (P&L by hour or weekday); tip on each
 function pzDivBars(items, h){
@@ -9254,9 +9272,12 @@ function pzEquitySvg(curve){
       <path d="${line}" fill="none" style="stroke:${last>=0?PZ_COL.good:PZ_COL.low}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>${hits}</svg>
     <svg class="pz-eq dd" viewBox="0 0 ${Wd} ${Hd}" role="img" aria-label="Drawdown from the running high"><path d="${area}" style="fill:${PZ_COL.low}" fill-opacity=".35"/></svg>`;
 }
+// Midnight (on the app's clock) of the first day of an n-day range ending today — calendar
+// days, not 24-hour steps, so a daylight-saving change doesn't shift the window by an hour.
+function pzRangeStart(n, now){ const p=tzParts(now); return settings.tz==='utc'?Date.UTC(p.y,p.mo,p.day-(n-1)):new Date(p.y,p.mo,p.day-(n-1)).getTime(); }
 function pzDeepHtml(D){
   const {g}=D, ctx=g.ctx, R=pzS.range, now=Date.now();
-  const fromMs=R==='all'?0:tzMidnight(now)-(R-1)*86400000, fromKey=R==='all'?'0000':dayKey(fromMs);
+  const fromMs=R==='all'?0:pzRangeStart(R,now), fromKey=R==='all'?'0000':dayKey(fromMs);
   const back=`<a class="pz-back" href="#trends">${pzI('back',20)}Stats</a>`;
   const seg=`<div class="pz-seg" role="group" aria-label="Range">${[[7,'7D'],[30,'30D'],[90,'90D'],['all','All']].map(([n,l])=>`<button type="button" data-pz-range="${n}" aria-pressed="${n===R}">${l}</button>`).join('')}</div>`;
   const head=`${back}${pzHead(R==='all'?'All time':'Last '+R+' days','In-depth stats',seg)}`;
@@ -9271,7 +9292,7 @@ function pzDeepHtml(D){
     ['Win rate',pzPct(s.winRate),null,'Wins ÷ (wins + losses); break-even trades are left out'],
     ['Win rate you need to break even',pzPct(s.breakevenWR),null,'Given your average win and loss: avg loss ÷ (avg win + avg loss)'],
     ['Average trade',pzMoney(s.expectancy),pzSignCol(s.expectancy)],['Median trade',pzMoney(s.median),pzSignCol(s.median),'Half your trades did better than this, half worse'],
-    ['Average win / loss',usdPlain(s.avgWin)+' / '+usdPlain(s.avgLoss)],['Payoff ratio',pzRatio(s.payoff),null,'Average win ÷ average loss'],
+    ['Average win / loss',pzShort(s.avgWin)+' / '+pzShort(s.avgLoss)],['Payoff ratio',pzRatio(s.payoff),null,'Average win ÷ average loss'],
     ['Profit factor',pzRatio(s.profitFactor),null,'Money won ÷ money lost'],['Best / worst trade',pzMoney(X.best)+' / '+pzMoney(X.worst)],
     s.rCount?['Average R',(s.avgR>=0?'+':'')+s.avgR.toFixed(2)+'R · '+s.rCount+' trades with risk set',null,'Result ÷ the risk you set for the trade']:null]);
   const risk=pzKv('Risk',[
@@ -9280,10 +9301,10 @@ function pzDeepHtml(D){
     s.maxDDpct!=null?['Drawdown vs the peak',pzPct(s.maxDDpct)]:null,
     ['Longest losing run',X.streaks.bestL+' trade'+(X.streaks.bestL===1?'':'s')],['Longest winning run',X.streaks.bestW+' trade'+(X.streaks.bestW===1?'':'s')],
     ['Current run',X.streaks.current>0?X.streaks.current+' win'+(X.streaks.current===1?'':'s'):X.streaks.current<0?(-X.streaks.current)+' loss'+(X.streaks.current===-1?'':'es'):'—'],
-    s.sharpe!=null?['Sharpe (yearly)',s.sharpe.toFixed(2)+(s.sharpeLo!=null?' · likely '+s.sharpeLo.toFixed(1)+' to '+s.sharpeHi.toFixed(1):''),null,'Daily returns, annualised, with a 90% range — wide ranges mean too little history to tell']:null,
+    s.sharpe!=null?['Sharpe (yearly)',s.sharpe.toFixed(2)+(s.sharpeLo!=null?' · likely '+s.sharpeLo.toFixed(1)+' to '+s.sharpeHi.toFixed(1):''),null,'Daily net P&L, annualised, with a 95% range — a wide range means too little history to tell']:null,
     s.sortino!=null&&isFinite(s.sortino)?['Sortino (yearly)',s.sortino.toFixed(2),null,'Like Sharpe, but only down days count as risk']:null,
     ['Fees',pzMoney(-s.fees),PZ_COL.low],['Funding',pzMoney(s.fund||0),pzSignCol(s.fund||0)],
-    s.volume?['Volume traded',usdPlain(s.volume)]:null]);
+    s.volume?['Volume traded',pzShort(s.volume)]:null]);
   const cons=pzKv('Consistency',[
     ['Green days',s.greenDays+' of '+s.totalDays],
     ['Typical hold: winners',X.holdW?fmtDur(X.holdW):'—'],['Typical hold: losers',X.holdL?fmtDur(X.holdL):'—'],
@@ -9297,14 +9318,16 @@ function pzDeepHtml(D){
     ['Clean trades',sc.cleanN+' · avg '+pzMoney(sc.cleanAvg),pzSignCol(sc.cleanAvg)],
     ['Trades with a slip',sc.slipN+' · avg '+pzMoney(sc.slipAvg),pzSignCol(sc.slipAvg)],
     ...slips.map(k=>[PZ_BEH[k],sc.by[k].n+' · '+pzMoney(sc.by[k].net),pzSignCol(sc.by[k].net)])],
-    sc.slipN?'Each trade with one of the six Discipline slips, and what those trades made or lost in total. A trade can have more than one slip.':'No slips in this range — every closed trade was clean.');
+    (sc.slipN?'Each trade with one of the six Discipline slips, and what those trades made or lost in total. A trade can have more than one slip.':'No slips in this range — every closed trade was clean.')
+      +(X.partial?' '+X.partial+' trade'+(X.partial===1?' was':'s were')+' cut off at the start of your history and aren’t judged.':''));
   // plan vs execution
   const pa=planAdherence(tr,journal,_excM), pd=g.days.filter(d=>d.key>=fromKey&&d.parts);
   const dp=pd.filter(d=>d.parts.plan!=null), lim=pd.filter(d=>d.parts.limit!=null), rl=pd.filter(d=>d.parts.rules!=null);
   const planHtml=pzKv('Plan vs execution',[
     dp.length?['Day plan before the first trade',dp.filter(d=>d.parts.plan===1).length+' of '+dp.length+' days'+(dp.some(d=>d.parts.plan===0.5)?' · '+dp.filter(d=>d.parts.plan===0.5).length+' written late':'')]:null,
-    lim.length?['Stayed inside the loss limit',lim.filter(d=>d.parts.limit===1).length+' of '+lim.length+' days with a limit']:null,
-    rl.length?['Trades within your rules',pzPct(_avg(rl.map(d=>d.parts.rules)))]:null,
+    lim.length?['Stayed inside the loss limit',lim.filter(d=>!d.breached).length+' of '+lim.length+' days with a limit']:null,
+    lim.some(d=>d.breached)?['Stopped once the limit was hit',lim.filter(d=>d.breached&&d.parts.limit===1).length+' of '+lim.filter(d=>d.breached).length+' days you hit it',null,'No new trade opened after the day’s losses reached the limit']:null,
+    rl.length?['Trades within your rules',pzPct(rl.reduce((a,d)=>a+d.parts.rules*d.n,0)/Math.max(1,rl.reduce((a,d)=>a+d.n,0)))]:null,
     pa.n?['Trades with a written stop',pa.n+' of '+s.n+(pa.liveN||pa.hindsightN?' · '+pa.liveN+' written while open':'')]:null,
     pa.n?['Stops honored',pzPct(pa.stopHonoredRate)+(pa.heldThroughN?' · '+pa.heldThroughN+' held through the stop':''),null,'Exit at or before the stop; with price data, price trading past the stop while you held also counts as broken']:null,
     pa.n&&pa.brokeStopCost?['Trades that broke their stop',pzMoney(pa.brokeStopCost),pzSignCol(pa.brokeStopCost)]:null,
@@ -9318,14 +9341,14 @@ function pzDeepHtml(D){
   const hours=Array.from({length:24},(_,h)=>X.hours.find(r=>r.k===h)||{k:h,n:0,net:0});
   const hourHtml=`<section class="pz-card pz-span pz-kv"><b class="pz-kvh">Time of day</b>${pzDivBars(hours.map(r=>({v:r.net,l:r.k%6===0?String(r.k):'',tip:hr(r.k)+' · '+r.n+' trade'+(r.n===1?'':'s')+(r.n?' · '+signedPlain(r.net):'')})),110)}<p class="pz-fine">Net P&L by entry hour, on your ${settings.tz==='utc'?'UTC':'local'} clock.</p></section>`;
   const dowHtml=`<section class="pz-card pz-kv"><b class="pz-kvh">Day of the week</b>${pzDivBars(X.dow.map(r=>({v:r.net,l:DN[r.k].slice(0,2),tip:DN[r.k]+' · '+r.n+' trades · '+signedPlain(r.net)})),90)}</section>`;
-  const distHtml=X.dist.length?`<section class="pz-card pz-kv"><b class="pz-kvh">How your trades land</b>${pzRows(X.dist.map(b=>({label:(b.lo===-Infinity?'Lost more than '+usdPlain(-b.hi):b.hi===Infinity?'Made more than '+usdPlain(b.lo):(b.hi<=0?'Lost ':'Made ')+usdPlain(Math.min(Math.abs(b.lo),Math.abs(b.hi)))+'–'+usdPlain(Math.max(Math.abs(b.lo),Math.abs(b.hi)))),
-      value:b.n+' trade'+(b.n===1?'':'s'),pct:b.n/s.n,color:b.hi<=0?PZ_COL.low:PZ_COL.good})),PZ_COL.good)}<p class="pz-fine">Steps are your typical trade (${esc(usdPlain(X.absMed))}). A few big losses at the top of this list cost more than many small ones.</p></section>`:'';
+  const distHtml=X.dist.length?`<section class="pz-card pz-kv"><b class="pz-kvh">How your trades land</b>${pzRows(X.dist.filter(b=>b.kind!=='even'||b.n).map(b=>({label:b.kind==='even'?'About even':b.kind==='loss'?(b.hi===Infinity?'Lost more than '+pzShort(b.lo):'Lost '+pzShort(b.lo)+'–'+pzShort(b.hi)):(b.hi===Infinity?'Made more than '+pzShort(b.lo):'Made '+pzShort(b.lo)+'–'+pzShort(b.hi)),
+      value:b.n+' trade'+(b.n===1?'':'s'),pct:b.n/s.n,color:b.kind==='loss'?PZ_COL.low:b.kind==='even'?'#5A6470':PZ_COL.good})),PZ_COL.good)}<p class="pz-fine">Steps are your typical trade (${esc(pzShort(X.absMed))}). A few big losses at the top of this list cost more than many small ones.</p></section>`:'';
   const exc=tr.map(t=>_excM[t.id]).filter(e=>e&&e.maePct!=null);
   const excHtml=exc.length>=10?(()=>{ const Wn=tr.filter(t=>isWin(t.net)&&_excM[t.id]&&_excM[t.id].maePct!=null), Ls=tr.filter(t=>isLoss(t.net)&&_excM[t.id]&&_excM[t.id].maePct!=null);
       const m=(a,k)=>a.length?nfMedian(a.map(t=>_excM[t.id][k])):null, f=v=>v==null?'—':v.toFixed(2)+'%';
       return pzKv('Price excursions',[['Winners: worst point against you',f(m(Wn,'maePct')),null,'Median, as % of entry price'],['Winners: best point',f(m(Wn,'mfePct'))],['Losers: worst point',f(m(Ls,'maePct'))],['Losers: best point before turning',f(m(Ls,'mfePct')),null,'How far losers went your way before they lost']],exc.length+' trades measured from candles. Measure more in the full journal.'); })():'';
   const left=[dowHtml,pzTbl('By market',X.markets,r=>dispMarket(r.k)),pzTbl('Long vs short',X.side,r=>r.k),excHtml].join('');
-  const right=[pzTbl('By position size',X.bySize,r=>r.label+(r.to===Infinity?' · over '+usdPlain(r.range):' · up to '+usdPlain(r.to)),'Position size is the largest notional the trade reached.'),
+  const right=[pzTbl('By position size',X.bySize,r=>r.label+' · '+pzShort(r.from)+'–'+pzShort(r.to),'A quarter of your trades each, smallest to biggest. Position size is the largest notional the trade reached.'),
     pzTbl('By holding time',X.byHold,r=>r.label),pzTbl('By month',X.months,r=>MONTHS[+r.k.slice(5)-1]+' '+r.k.slice(0,4))].join('');
   return `${head}<div class="pz-wide">${eq}<div class="pz-col">${results}${cons}${slipHtml}</div><div class="pz-col">${risk}${planHtml}${distHtml}</div>${hourHtml}<div class="pz-col">${left}</div><div class="pz-col">${right}</div>
     <section class="pz-span" style="display:flex;flex-direction:column;gap:8px"><a class="pz-ghost" href="#how">How the scores are worked out</a><a class="pz-ghost" href="${esc(pzFullHref())}">Open the full journal: pattern miner, excursions, Diagnostic</a></section></div>`;
@@ -9336,19 +9359,19 @@ function pzHowHtml(){
   return `${back}${pzHead('Plain arithmetic, no AI','How the scores work')}<div class="pz-wide"><div class="pz-col">
     ${sec('Discipline · 0–100',`<p>The share of the day’s closed trades with none of six slips, read from your fills — nothing to log. 3 of 4 clean trades = 75.</p><ul>
       <li><b>Revenge entry:</b> opened within 15 minutes of closing a loss.</li><li><b>Trading on after two losses:</b> a third trade the same day after two losing ones in a row.</li>
-      <li><b>Sizing up after a loss:</b> within 2 hours of a loss, a position over 1.5× your median size of your last 30 trades.</li><li><b>Adding to a loser:</b> buying more while the position was under water.</li>
+      <li><b>Sizing up after a loss:</b> within 2 hours of a loss, a position over 1.5× your median size of your last 30 trades.</li><li><b>Adding to a loser:</b> adding to a position (buying more on a long, selling more on a short) while it was under water.</li>
       <li><b>Overtrading:</b> trades past 1.5× your usual number per day (median of the 30 trading days before; at least 3).</li><li><b>Holding a loser:</b> a losing trade held over 3× your usual winner’s hold.</li></ul>
       <p>“Usual” only uses trades closed before that day’s first entry, so a day is never judged against itself. A loss means losing more than $1. Profit never counts. The server recomputes this same score from public fills for the leaderboard.</p>`)}
     ${sec('Form · 50 is your usual',`<p>Your recent trades against your own earlier ones. Recent = the last 7 days if they hold 5+ trades, else your last 5 trades; the baseline is up to 90 trades before that.</p>
-      <p>Form = 50 + 20 × (difference in average trade ÷ your typical trade size, capped at ±1.5) + 40 × (difference in win rate, capped at ±0.5) − 20 × (how far below your 30-day high you are, in units of 5 typical trades, capped at 1). Needs 15 closed trades.</p>`)}
+      <p>Form = 50 + 20 × (difference in average trade ÷ your typical result, the median size of a win or loss, capped at ±1.5) + 40 × (difference in win rate, capped at ±0.5) − 20 × (how far below your 30-day high you are, in units of 5 typical results, capped at 1). Needs 15 closed trades, at least 10 of them before the recent window, and a trade in the last 30 days.</p>`)}
     ${sec('Load · 50 is a usual day',`<p>Today against your usual trading day (median of the last 30 days you traded): trades opened, and total size traded. Load = 50 × the larger of the two ratios, up to 100. 1.0× usual reads 50; twice your usual reads 100. Needs 5 earlier trading days.</p>`)}
     </div><div class="pz-col">
     ${sec('Readiness · from the check-in',`<p>Your 1–5 answers: sleep counts 40%, calm 20%, focus 40%. All 5s = 100. It never changes your Discipline score; Stats shows whether your discipline is better on high-readiness days.</p>`)}
-    ${sec('XP and levels',`<p>Each trading day earns its Discipline score in XP (up to 100), plus optional bonus XP: check-in 10, a plan before your first trade 15 (half if written after), today’s trades journaled 15, stops written while trades were open 10, staying inside your loss limit 10. Plus 50 per achievement, 150 per weekly challenge kept, 25 per focus-habit day. Logging only ever adds.</p>
+    ${sec('XP and levels',`<p>Each trading day earns its Discipline score in XP (up to 100), plus optional bonus XP: check-in 10, a plan before your first trade 15 (half if written after), today’s trades journaled 15, stops written while trades were open 10, respecting your loss limit (nothing new opened after hitting it) 10. Plus 50 per achievement, 150 per weekly challenge kept, 25 per focus-habit day. Logging only ever adds.</p>
       <p>Level n starts at 200 × n × (n − 1) XP: level 2 at 400, 3 at 1,200, 4 at 2,400, 5 at 4,000.</p>`)}
     ${sec('Streak and shields',`<p>Consecutive trading days scoring 70+. Days you don’t trade never break it. A finished perfect week (every trading day 70+, at least three) earns a shield, two at most; a shield absorbs one off day.</p>`)}
     ${sec('Plan vs execution',`<p>Checked against the numbers you wrote, not judged by AI: a day plan’s time against your first entry; your loss limit against the day’s realized P&L (opening anything after hitting it counts as breaking it); each trade’s stop and target against its actual exit, and, where candles were measured, whether price traded through the stop while you held.</p>
-      <p>The only AI is an optional weekly letter in the full journal (the owner switches it on with COACH_AI). It gets an aggregate summary — no trades, notes or addresses — and is told to use only the numbers the app computed.</p>`)}
+      <p>The only AI is an optional weekly letter in the full journal (the owner switches it on with COACH_AI). It gets an aggregate summary — no individual trades, trade notes or addresses, but your habit sentences and your last two written weekly lessons — and is told to use only the numbers the app computed.</p>`)}
     </div></div>`;
 }
 

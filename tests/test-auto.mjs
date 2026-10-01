@@ -126,11 +126,28 @@ t('breakdowns: equity and drawdown, streaks, after a loss, sides, hours, size qu
   eq(X.side.map(r => [r.k, r.n]), [['Long', 5], ['Short', 5]]);
   eq(X.markets.map(r => r.k), ['ETH', 'BTC']);
   eq(X.hours.map(r => r.k), [9, 10, 11]);
-  eq(X.bySize.map(r => r.n), [3, 3, 2, 2]);
+  eq(X.bySize.map(r => r.n), [3, 2, 3, 2], 'quarters by rank');
   eq(X.byHold.map(r => r.label), ['5–60 min', '1–4 hours', '4–24 hours']);
   eq(X.dist.reduce((s, b) => s + b.n, 0), 10, 'every trade lands in one bucket');
   eq([X.best, X.worst], [60, -50]);
   eq(ctx.pzDeepStats([], {}), null);
+});
+const O = { isWin: n => n > 1, isLoss: loss, coin: () => 'X', hourOf: () => 0, dowOf: () => 0, monthOf: () => '2026-09' };
+t('size quarters stay quarters when many trades share a size', () => {
+  const T = Array.from({ length: 12 }, (_, i) => tr(i, 9, 0, 10, 5, { maxSize: i < 9 ? 1 : 2 + i }));
+  eq(ctx.pzDeepStats(T, O).bySize.map(r => r.n), [3, 3, 3, 3]);
+});
+t('break-even trades neither extend nor break a run', () => {
+  const X = ctx.pzDeepStats([10, 10, 0, 10, -10, -10, 0, -10].map((n, i) => tr(i, 9, 0, 10, n)), O);
+  eq([X.streaks.bestW, X.streaks.bestL, X.streaks.current], [3, 3, -3]);
+});
+t('the trade after a loss is found even with another position open in between', () => {
+  const A = tr(0, 9, 0, 70, -40), B = tr(0, 8, 59, 91, 20), C = tr(0, 10, 15, 30, 10); // A closes 10:10, B closes 10:30, C opens 10:15
+  eq(ctx.pzDeepStats([A, B, C], O).after.loss.n, 1);
+});
+t('break-even trades get their own row in how trades land', () => {
+  const X = ctx.pzDeepStats([0, 0, 0, 10, -10, 20, -20].map((n, i) => tr(i, 9, 0, 10, n)), O);
+  eq(X.dist.find(b => b.kind === 'even').n, 3); eq(X.dist.filter(b => b.kind === 'loss').reduce((s, b) => s + b.n, 0), 2);
 });
 
 report('auto');
