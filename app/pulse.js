@@ -587,7 +587,7 @@ function pzTodayHtml(D){
     ${sec('oneThing',()=>pzOneThingHtml(D))}
     <div class="pz-wide">${ringsHtml}<div class="pz-span" id="pzRingDetail">${detail}</div>${more('numbers',pzTodayStripHtml)}${sec('level',()=>pzProgressRowHtml(D))}
       ${(()=>{ const card={tilt:()=>sec('tilt',()=>pzTiltHtml(D)),insight:()=>on('insight')?coach:'',session:()=>more('session',pzSessionHtml),positions:()=>more('positions',pzPositionsHtml),
-          next:()=>sec('next',()=>pzNextHtml(D)),now:()=>more('now',pzNowHtml),good:()=>sec('good',()=>pzGoodHtml(D)),inbox:()=>sec('inbox',()=>socInboxHtml()),duels:()=>sec('duels',()=>socDuelsTodayHtml()),partners:()=>sec('partners',()=>socPartnerStripHtml()),
+          next:()=>sec('next',()=>pzNextHtml(D)),now:()=>more('now',pzNowHtml),good:()=>sec('good',()=>pzGoodHtml(D)),inbox:()=>sec('inbox',()=>socInboxHtml()),duels:()=>sec('duels',()=>socDuelsTodayHtml(D.g)),partners:()=>sec('partners',()=>socPartnerStripHtml()),
           lesson:()=>sec('lesson',()=>pzLessonDueHtml(D)),xp:()=>on('xp')?bonus:'',week:()=>sec('week',()=>pzWeekSparkHtml(D)),yesterday:()=>sec('yesterday',()=>pzYesterdayHtml(D))};
         const ord=pzOrdered('today'), lead=pzLinkCardHtml()+pzNudgesHtml(D);
         // your own order reads top to bottom, then on into the second column on a wide screen

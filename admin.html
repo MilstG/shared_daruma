@@ -632,20 +632,23 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   function vDuels(){
     const X=D.duels; if(!X)return '<section class="card"><p class="muted">Couldn’t load duels.</p></section>';
     const c=X.config, k=X.counts, T=X.types;
-    const row=d=>`<tr><td>@${esc(d.a)} <span class="muted">vs</span> @${esc(d.b)}</td><td>${esc(d.label)} · ${d.period==='month'?'month':'week'}</td>
+    const row=d=>`<tr><td>@${esc(d.a)} <span class="muted">vs</span> @${esc(d.b)}</td><td>${esc(d.label)} · ${d.period==='month'?'month':'week'}${d.stake?`<div class="muted small">${fmt(d.stake)} XP each at stake</div>`:''}</td>
       <td>${d.start?esc(d.start)+' → '+esc(d.end):'<span class="muted">starts when accepted</span>'}</td>
       <td><span class="pill ${DUEL_ST[d.status]?DUEL_ST[d.status][1]:''}">${DUEL_ST[d.status]?DUEL_ST[d.status][0]:esc(d.status)}</span>${d.awaiting?`<div class="muted small">@${esc(d.awaiting)} to answer</div>`:''}${d.status==='done'?`<div class="muted small">${d.winner?'@'+esc(d.winner)+' won':'draw'}${d.why?' · '+esc(d.why):''}</div>`:''}</td>
       <td>${d.status==='pending'||d.status==='active'?`<button class="sm fit" data-duelcancel="${esc(d.id)}">Cancel</button>`:''}</td></tr>`;
     return `<section class="card"><h2>Duels</h2>
-        <p class="muted">Members challenge each other to a week or a month, 1 on 1, scored by the server from verified fills and the app’s synced days. Nothing is staked. A challenge waits 48 hours for an answer; a duel is settled the day after it ends.</p>
+        <p class="muted">Members challenge each other to a week or a month, 1 on 1, scored by the server from verified fills and the app’s synced days. Money is never staked; XP can be, if you allow it. A challenge waits 48 hours for an answer; a duel is settled the day after it ends.</p>
         <div class="row">${[['Running',k.active],['Waiting for an answer',k.pending],['Finished, last 30 days',k.done30],['Declined',k.declined]].map(([l,v])=>`<div class="tile"><span class="muted small">${l}</span><b style="font-size:22px">${fmt(v)}</b></div>`).join('')}</div></section>
       <section class="card"><h2>Settings</h2>
         ${box('dOn','Duels are on',c.on,'Off hides duels in Pulse and stops new challenges. Duels already running finish.')}
         <p class="muted small" style="margin:6px 0 4px">What members can compete on</p>
         ${Object.keys(T).map(t=>box('dT_'+t,T[t].label,c.types[t],esc(T[t].rule)+(t==='ret'?' Both sides must share % return; a drawdown cap is required. It rewards risk-taking, so it’s off unless you switch it on.':''))).join('')}
-        <div class="row">${field('dXp','XP for the winner','<input id="dXp" type="number" min="0" max="10000" step="10" value="'+c.xp+'">','The same for every duel, so it can’t be farmed. 0 for none.')}
+        <div class="row">${field('dXp','XP for the winner','<input id="dXp" type="number" min="0" max="10000" step="10" value="'+c.xp+'">','The same for every duel, and only for one played to the end (not a forfeit), so it can’t be farmed. 0 for none.')}
           ${field('dOpen','Open duels per member','<input id="dOpen" type="number" min="1" max="20" value="'+c.maxOpen+'">','Running and waiting together.')}
           ${field('dDay','New challenges a day','<input id="dDay" type="number" min="1" max="50" value="'+c.perDay+'">','Per member, to keep it from turning into spam.')}</div>
+        ${box('dStakes','Members can stake XP',c.stakes!==false,'Both sides put up the same XP and the winner takes the other’s; a draw gives both back. It moves XP between members, it never creates it. Backing out before a duel starts costs nothing.')}
+        <div class="row">${field('dMaxStake','Most XP per duel','<input id="dMaxStake" type="number" min="0" max="100000" step="50" value="'+(c.maxStake??500)+'">','The biggest stake one duel can carry.')}
+          ${field('dStakePct','Most of a member’s XP at stake','<input id="dStakePct" type="number" min="1" max="100" value="'+(c.stakePct??25)+'">','Percent, across all their open duels, so one bad week can’t cost more than this share of anyone’s XP.')}</div>
         <p class="hint">Unlock level: under Features (“Duels”, free at level 1). Members switch off “Accept duel challenges” under Profile & privacy.</p>
         <div><button class="primary" id="dSave">Save</button></div></section>
       <section class="card"><h2>Running and waiting</h2>
@@ -743,7 +746,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     if(id==='codeDone'){ UI.code=null; return render(); }
     // wallets
     if(id==='dSave'){ const types={}; for(const t of Object.keys(D.duels.types))types[t]=chk('dT_'+t);
-      return act(()=>api('/config',{method:'PUT',body:{duels:{on:chk('dOn'),types,xp:+val('dXp'),maxOpen:+val('dOpen'),perDay:+val('dDay')}}}),'Saved.'); }
+      return act(()=>api('/config',{method:'PUT',body:{duels:{on:chk('dOn'),types,xp:+val('dXp'),maxOpen:+val('dOpen'),perDay:+val('dDay'),stakes:chk('dStakes'),maxStake:+val('dMaxStake'),stakePct:+val('dStakePct')}}}),'Saved.'); }
     if(d.duelcancel){ if(!confirm('Cancel this duel? Nobody wins or loses, and both are told.'))return; return act(()=>api('/duels/'+encodeURIComponent(d.duelcancel),{body:{action:'cancel'}}),'Cancelled.'); }
     if(id==='bRebuild')return act(()=>api('/bench',{body:{action:'rebuild'}}),'Rebuilt.');
     if(id==='bSave'){ const mn=+val('bMin'), sp=+val('bSplit'); if(!(mn>=10))return note('The smallest group can’t be under 10.',true);

@@ -987,8 +987,10 @@ losses, win rate, the average trade and the best and worst trade.
 
 ### Duels
 
-Members challenge each other 1 on 1 for a week or a month, from someone's profile
-(**Challenge to a duel**) or under **Social → Duels**. Nothing is staked.
+Members challenge each other 1 on 1 for a week or a month. Anyone in the league
+can be challenged: from their profile (**Challenge to a duel**), by name under
+**Social → Duels**, or from the quick picks there (your partners, people you
+follow and your leagues' members). Money is never staked; XP can be.
 
 - **What you can compete on:**
   - **Discipline:** the higher average wins. It can require a minimum number of
@@ -1007,19 +1009,29 @@ Members challenge each other 1 on 1 for a week or a month, from someone's profil
   from the next Monday (or the 1st, for a month), so nobody gets a head start.
   A live card on Today and under Duels shows both scores and each day's mark, and
   a notification comes when the lead changes.
+- **XP stakes.** A challenge can put XP on the line: both sides put up the same
+  amount and the winner takes the other's (a draw gives both back). A duel can
+  stake at most 500 XP, and at most 25% of a member's XP can ride on their open
+  duels at once (the owner sets both). The other side's limit is checked too.
+  XP won in a duel doesn't count toward a Process XP duel.
 - **Results.** A duel is settled the day after it ends. The winner gets a feed
-  line (naming the loser only if they share milestones too) and an XP bonus the
-  owner sets (default +100, the same for every duel). Either side can forfeit.
+  line (naming the loser only if they share milestones too), the stake, and an XP
+  bonus the owner sets (default +100, the same for every duel and only for a duel
+  played to the end). Before the start date either side can **back out** and
+  nothing counts; after it, a **forfeit** gives the other side the win and the
+  stake. In a verified Last one standing duel, switching verification off counts
+  as falling on the first day.
   Records (won, lost, drawn) show on profiles, with a **Rematch** button.
 - **Limits.** At most 3 open duels per member, 5 new challenges a day, and no new
   challenge to someone who declined you in the last week. Members switch off
   **Accept duel challenges** under Profile & privacy.
 - **Admin → Duels:**
-  - Switch duels on or off, choose the allowed types, and set the XP bonus and
-    the limits.
+  - Switch duels on or off, choose the allowed types, and set the XP bonus,
+    the limits and XP stakes (on or off, the most per duel, the most of a
+    member's XP at stake).
   - See every duel running or waiting, and cancel one without a result.
   - "Duels" is a Pulse feature, free at level 1; set a level under Features to
-    make it an unlock.
+    make it an unlock (the server enforces it too).
 
 ### Traders like you
 
@@ -1041,7 +1053,7 @@ dimensions to match and see each group's spread.
   A group needs at least 25 traders (the owner can set 10 or more); below 200
   contributors only "everyone" and "same style" groups exist. Only each group's
   deciles leave the server, and a "best quarter" figure only when it covers at
-  least 5 traders. Summaries need 30 closed trades over at least 3 weeks.
+  least 10 traders. Summaries need 30 closed trades over at least 3 weeks.
 - **Seed wallets.** To get started before you have many members, the owner can
   bulk-add public Hyperliquid wallets in Admin → Benchmarks. The server reads
   each one's last 90 days of fills, a few seconds apart, and runs the same

@@ -56,6 +56,22 @@ t('clean days, last one standing, journaling, XP and capped returns', () => {
   const r = dd('ret', { money: { a: { ret: 0.2, dd: 0.12 }, b: { ret: 0.01, dd: 0.02 } } });
   const rs = Duels.standing(r, A, B, '2026-10-20'); eq([rs.lead, rs.a.out], ['b', true], 'past the cap loses, whatever the return');
 });
+t('turning verification off mid-duel counts as falling on day one in last one standing', () => {
+  const v = k => ({ k: '2026-10-' + k, s: 90 });
+  const A = mem('a', [], { share: { verify: true }, vdays: [v('12'), v('13'), { k: '2026-10-14', s: 40 }] }), B = mem('b', [], { share: { verify: false }, vdays: [v('12')] });
+  const s = Duels.standing(dd('survive', { verified: true }), A, B, '2026-10-20');
+  eq([s.b.fell, s.lead], ['2026-10-12', 'a']); ok(/verification off/.test(s.b.note), s.b.note);
+});
+t('XP duels count process XP only: XP won in duels comes off the day it landed', () => {
+  const A = mem('a', [], { grants: [{ xp: 300, at: Date.parse('2026-10-13T10:00:00Z'), duel: 'x' }, { xp: -50, at: Date.parse('2026-10-14T10:00:00Z'), duel: 'y' }] });
+  A.stats.xpDays = { '2026-10-13': 340, '2026-10-14': 20 }; A.stats.tz = 'UTC';
+  const s = Duels.sideScore(dd('xp'), A, '2026-10-20'); eq([s.score, s.marks.map(m => m.s)], [60, [40, 20]]);
+});
+t('stakes: capped per duel, and by a share of your XP across open duels', () => {
+  eq(Duels.sanitizeTerms({ type: 'disc', stake: 9999 }).stake, 500);
+  eq(Duels.sanitizeTerms({ type: 'disc', stake: 100 }, Duels.sanitizeDuelCfg({ stakes: false })).stake, 0, 'off: no stake');
+  eq([Duels.stakeRoom(1000, 0), Duels.stakeRoom(1000, 200), Duels.stakeRoom(100000, 0), Duels.stakeRoom(50, 0)], [250, 50, 500, 12]);
+});
 
 console.log('\nOver HTTP');
 let clock = Date.parse('2026-10-07T15:00:00Z'); // a Wednesday
@@ -129,11 +145,50 @@ try {
     eq((await mine(dee)).duels.find(x => x.id === r2.d.duel.id).status, 'expired');
     ok((await inbox(dee)).some(x => /expired/.test(x)));
   });
-  await t('withdraw a sent challenge; forfeit a running duel (the other side wins)', async () => {
+  await t('withdraw a sent challenge; back out before the start (nothing counts); forfeit a running duel (no league bonus)', async () => {
     const w = await send(ann, 'cat'); eq((await call('/duels/' + w.d.duel.id, { method: 'POST', key: ann, body: { action: 'cancel' } })).d.duel.status, 'cancelled');
     const f = await send(bob, 'cat'); await call('/duels/' + f.d.duel.id, { method: 'POST', key: cat, body: { action: 'accept' } });
-    const ff = await call('/duels/' + f.d.duel.id, { method: 'POST', key: cat, body: { action: 'forfeit' } });
-    eq([ff.d.duel.result.outcome, ff.d.duel.result.forfeit], ['lost', 'me']); eq((await mine(bob)).record.w, 1);
+    const early = await call('/duels/' + f.d.duel.id, { method: 'POST', key: cat, body: { action: 'forfeit' } });
+    eq([early.d.duel.status, (await mine(bob)).record.w], ['cancelled', 0], 'backing out before it starts: no result');
+    ok((await inbox(bob)).some(x => /backed out/.test(x)));
+    const g = await send(bob, 'cat'); const acc = await call('/duels/' + g.d.duel.id, { method: 'POST', key: cat, body: { action: 'accept' } });
+    clock = Date.parse(acc.d.duel.start + 'T12:00:00Z');
+    const ff = await call('/duels/' + g.d.duel.id, { method: 'POST', key: cat, body: { action: 'forfeit' } });
+    eq([ff.d.duel.result.outcome, ff.d.duel.result.forfeit], ['lost', 'me']);
+    const b = (await mine(bob)), bv = b.duels.find(x => x.id === g.d.duel.id); eq([b.record.w, bv.result.xp], [1, 0], 'a forfeit wins the duel, not the league’s XP');
+  });
+  await t('anyone can be challenged; partners, follows and league-mates are offered as quick picks', async () => {
+    await call('/follow/cat', { method: 'POST', key: ann });
+    const d = await mine(ann); ok(d.people.some(p => p.handle === 'cat' && p.rel === 'following'), JSON.stringify(d.people));
+    ok(!d.people.some(p => p.handle === 'ann'), 'never yourself');
+  });
+  await t('XP stakes: both put up the same, the winner takes the other’s, within what each can cover', async () => {
+    await call('/stats', { method: 'POST', key: ann, body: Object.assign(days([]), { xp: 1000 }) });
+    await call('/stats', { method: 'POST', key: dee, body: Object.assign(days([]), { xp: 100 }) });
+    eq((await mine(ann)).room, 250, '25% of 1000');
+    ok(/at most 250 XP/.test((await send(ann, 'dee', { type: 'xp', stake: 300 })).d.error));
+    ok(/@dee can’t cover/.test((await send(ann, 'dee', { type: 'xp', stake: 100 })).d.error));
+    await call('/stats', { method: 'POST', key: dee, body: Object.assign(days([]), { xp: 1000 }) });
+    const r = await send(ann, 'dee', { type: 'xp', stake: 200 }); eq([r.status, r.d.duel.stake], [200, 200], JSON.stringify(r.d));
+    eq((await mine(ann)).room, 50, 'what you proposed is riding');
+    eq((await mine(dee)).room, 250, 'a challenge waiting on you commits nothing yet');
+    ok((await inbox(dee)).some(x => /200 XP each at stake/.test(x)));
+    const a = await call('/duels/' + r.d.duel.id, { method: 'POST', key: dee, body: { action: 'accept' } }); eq(a.status, 200, JSON.stringify(a.d));
+    const st = a.d.duel.start; clock = Date.parse(st + 'T15:00:00Z');
+    await call('/stats', { method: 'POST', key: ann, body: Object.assign(days([], { [st]: 10 }), { xp: 1000 }) });
+    await call('/stats', { method: 'POST', key: dee, body: Object.assign(days([], { [st]: 50 }), { xp: 1000 }) });
+    clock = Date.parse(a.d.duel.end + 'T12:00:00Z') + 2 * DAY;
+    const dv = (await mine(dee)).duels.find(x => x.id === r.d.duel.id), av = (await mine(ann)).duels.find(x => x.id === r.d.duel.id);
+    eq([dv.result.outcome, dv.result.xp, dv.result.stake, av.result.outcome, av.result.stake], ['won', 100, 200, 'lost', -200]);
+    const ga = (await call('/me', { key: ann })).d.me.grants, gd = (await call('/me', { key: dee })).d.me.grants;
+    ok(ga.some(g => g.xp === -200 && /Lost a Process XP duel to @dee/.test(g.why)), JSON.stringify(ga));
+    ok(gd.some(g => g.xp === 200 && /staked by @ann/.test(g.why)));
+    ok((await inbox(ann)).some(x => /−200 XP/.test(x)));
+  });
+  await t('the server holds the unlock level the owner sets', async () => {
+    await call('/admin/config', { method: 'PUT', owner: true, body: { unlocksOn: true, modules: { duels: 3 } } });
+    const r = await send(cat, 'dee'); eq(r.status, 403); ok(/level 3/.test(r.d.error));
+    await call('/admin/config', { method: 'PUT', owner: true, body: { modules: { duels: 1 } } });
   });
   await t('limits: open duels per member, people who don’t take challenges, types the league switched off', async () => {
     await call('/admin/config', { method: 'PUT', owner: true, body: { duels: { maxOpen: 1 } } });
@@ -152,7 +207,7 @@ try {
     eq((await call('/admin/duels/' + open.id, { method: 'POST', key: ann, body: { action: 'cancel' } })).status, 401, 'members can’t');
     await new Promise(r => app.close(r)); app = mk(); B = await listen();
     eq((await call('/admin/duels', { owner: true })).d.config.maxOpen, 1);
-    eq((await mine(ann)).record, { w: 1, l: 0, d: 0 });
+    eq((await mine(ann)).record, { w: 1, l: 1, d: 0 }, 'won the first, lost the staked one');
     const c = (await call('/config')).d; eq([c.modules.duels, c.duels.on], [1, true]);
   });
 } finally { await new Promise(r => app.close(r)); }

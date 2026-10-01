@@ -2272,8 +2272,9 @@ function createApp(opts) {
   wearRef.forget = uid => wear.forget(uid);
   // the owner's slot needs AUTH_TOKEN: on an open server anyone would be the owner
   const wearUid = req => { const m = social.memberOf(req); if (m) return 'm:' + m.id; return auth && authOk(req) ? 'owner' : null; };
-  // morning and evening reminders, checked once a minute on each member's own clock
-  if (pushCfg && opts.pushTick !== false) { const pt = setInterval(() => { social.tick().catch(() => {}); }, 60000); if (pt.unref) pt.unref(); }
+  // once a minute: duel results and expiries, seed-wallet re-reads, and (with push) the morning and
+  // evening reminders on each member's own clock
+  if (opts.pushTick !== false) { const pt = setInterval(() => { social.tick().catch(() => {}); }, 60000); if (pt.unref) pt.unref(); }
 
   const server = http.createServer((req, res) => {
     const [url, qs] = (req.url || '/').split('?');

@@ -71,7 +71,7 @@ function buildBenchmarks(rows, cfg, at) {
         if (vals.length < cfg.min) continue; // a metric only some measure is shown only when enough do
         q[k] = DECILES.map(p => r2(quant(vals, p)));
         const tv = best.map(r => r[k]).filter(fin).sort((a, b) => a - b);
-        if (tv.length >= 5) top[k] = r2(quant(tv, 0.5));
+        if (tv.length >= 10) top[k] = r2(quant(tv, 0.5));
       }
       groups[key] = { dims: g.dims, n: g.rows.length, q, top };
     }

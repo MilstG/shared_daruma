@@ -52,13 +52,13 @@ t('summaries are checked: real ranges only, at least 30 trades, numbers clamped'
   eq(Bench.sanitizeBench({ ...row('day', 's2', 'e2', 50), jour: null }).jour, null);
 });
 t('only groups of `min` or more exist; below `splitAt` only everyone and same-style groups', () => {
-  const rows = [...Array.from({ length: 30 }, (_, i) => row('day', 's2', 'e2', 40 + i)), ...Array.from({ length: 12 }, (_, i) => row('swing', 's3', 'e3', 50 + i))];
+  const rows = [...Array.from({ length: 40 }, (_, i) => row('day', 's2', 'e2', 40 + i)), ...Array.from({ length: 12 }, (_, i) => row('swing', 's3', 'e3', 50 + i))];
   const small = Bench.buildBenchmarks(rows, { min: 25, splitAt: 200 }, 1);
   eq(Object.keys(small.groups).sort(), ['all', 'style=day']); eq(small.split, false);
   const big = Bench.buildBenchmarks(rows, { min: 25, splitAt: 0 }, 1);
   ok(big.groups['style=day|size=s2|exp=e2'] && !big.groups['style=swing'], 'the 12 swing traders have no group of their own');
   const g = big.groups['style=day'];
-  eq(g.n, 30); eq(g.q.wr.length, 9); near(g.q.wr[4], 54.5, 0.01, 'median win rate');
+  eq(g.n, 40); eq(g.q.wr.length, 9); near(g.q.wr[4], 59.5, 0.01, 'median win rate');
   ok(g.top.wr > g.q.wr[4], 'the best quarter by profit factor beats the median');
   ok(!('jour' in g.q), 'a measure too few traders have is left out');
   eq(Bench.groupsFor(big, { style: 'day', size: 's2', exp: 'e2', act: 'a2' }).map(x => x.key)[0], 'all', 'broadest first');
@@ -93,7 +93,7 @@ const call = async (p, o = {}) => { const r = await fetch(B + '/api/social' + p,
   return { status: r.status, d: await r.json().catch(() => ({})) }; };
 let ipN = 0;
 const join_ = async h => (await call('/join', { method: 'POST', ip: '10.0.1.' + (++ipN), body: { handle: h } })).d.key;
-const summary = i => ({ ok: true, v: 1, n: 40 + i, style: 'day', size: 's2', exp: 'e2', act: 'a2', disc: 50 + i, rev: 20 - i / 2, jour: 20 + i * 2, wr: 40 + i / 2, pf: 0.8 + i / 30, pay: 1.1, fees: 20, tw: 9, hold: 80 });
+const summary = i => ({ ok: true, v: 1, n: 40 + i, style: 'day', size: 's2', exp: 'e2', act: 'a2', disc: 50 + i, rev: 20 - i / 2, jour: 20 + i * 2, wr: 40 + i / 2, pf: 0.8 + i / 30, pay: 1.1, fees: 20, tw: 9, hold: 80, ret: 900, dd: 1 }); // ret/dd from an app: never trusted
 const keys = [];
 const waitFor = async (f, ms = 3000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await f()) return true; await new Promise(r => setTimeout(r, 20)); } return false; };
 try {
@@ -107,6 +107,7 @@ try {
     const all = r.groups.find(g => g.key === 'all'), mine = r.groups[r.groups.length - 1];
     eq(mine.key, 'style=day|size=s2|exp=e2|act=a2'); eq(all.n, 12); eq(all.q.disc.length, 9); eq(all.top.disc, undefined, 'a best quarter of 3 traders is too few to show');
     eq(r.mine, { share: true, have: true, at: NOW });
+    eq([all.q.ret, all.q.dd], [undefined, undefined], 'returns come only from the chain, never from what an app sends');
   });
   await t('switching off removes the summary from the next build; the owner can read groups too', async () => {
     await call('/me', { method: 'PUT', key: keys[0], body: { share: { bench: false } } });
@@ -154,7 +155,10 @@ try {
   });
   await t('“Traders like you” is a feature the owner can tie to a level (free by default)', async () => {
     const c = (await call('/config')).d; eq(c.modules.peers, 1); eq(c.bench, { on: true });
-    await call('/admin/config', { method: 'PUT', owner: true, body: { modules: { peers: 3 }, bench: { on: false } } });
+    await call('/admin/config', { method: 'PUT', owner: true, body: { unlocksOn: true, modules: { peers: 3 } } });
+    const locked = await call('/bench', { key: keys[1] }); eq(locked.status, 403, 'the server holds the level too'); ok(/level 3/.test(locked.d.error));
+    eq((await call('/bench', { owner: true })).status, 200, 'the owner always can');
+    await call('/admin/config', { method: 'PUT', owner: true, body: { bench: { on: false } } });
     const c2 = (await call('/config')).d; eq([c2.modules.peers, c2.bench.on], [3, false]);
     eq((await call('/bench', { key: keys[1] })).d, { on: false });
   });
