@@ -340,7 +340,8 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
         ${box('mUnlocked','Fully unlocked',m.unlocked,'Every feature regardless of level, and the unlocked coach allowance.')}
         ${box('mMentor','Mentor',m.mentor,'Sees the days of members who let mentors in (scores, slips, nightly lesson) and can leave them notes.')}
         ${ME.owner?box('mAdmin','Admin',m.admin,'Can use this admin panel with their own profile (everything except adding or removing admins). Send them the link from “New sign-in code”, or they open /admin on a device where they use Pulse.'):m.admin?'<p class="muted small">Admin — only the owner changes that.</p>':''}
-        ${field('mCoach','Coach messages a day',`<input id="mCoach" type="number" min="0" max="1000" placeholder="default (${m.unlocked?cc.dailyUnlocked:cc.daily})" value="${m.coachDaily!=null?m.coachDaily:''}">`,'Empty uses the default from the Coach tab. 0 switches the coach off for them.')}
+        ${m.admin?'<p class="muted small">Admins ask the coach without a limit.</p>':field('mCoach','Coach messages a day',`<input id="mCoach" type="number" min="0" max="1000" placeholder="default (${m.unlocked?cc.dailyUnlocked:cc.daily})" value="${m.coachDaily!=null?m.coachDaily:''}">`,'Empty uses the default from the Coach tab. 0 switches the coach off for them.')}
+        <div class="row" style="align-items:center;margin-top:6px"><span class="small">Coach today: <b>${m.coachUsed}</b>${m.coachLimit!=null?' of '+m.coachLimit:' (no limit)'}${m.address?' · shared with every profile on this wallet':''}</span>${m.coachUsed?`<button class="sm fit" data-m="coachreset">Reset today’s count</button>`:''}</div>
         <div style="margin-top:12px"><button class="primary" data-m="access">Save access</button></div>
       </section>
       <section class="card"><h2>Leagues</h2>
@@ -368,9 +369,10 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       return act(()=>post(b),'Saved.'); }
     if(a==='grant'){ const xp=Math.round(+val('gXp')); if(!xp)return note('How much XP?',true);
       return act(()=>post({action:'grant',xp,why:val('gWhy').trim(),announce:chk('gAnn')}),(xp>0?'+':'')+fmt(xp)+' XP for @'+m.handle+'. Their app adds it on its next sync.'); }
-    if(a==='access'){ const v=val('mCoach').trim(), un=chk('mUnlocked');
+    if(a==='coachreset') return act(()=>post({action:'coachreset'}),'@'+m.handle+' can ask the coach again today'+(m.address?' (their wallet’s count is reset too)':'')+'.');
+    if(a==='access'){ const v=$('mCoach')?val('mCoach').trim():'', un=chk('mUnlocked');
       const mt=chk('mMentor'), ad=ME.owner?chk('mAdmin'):!!m.admin;
-      return act(async()=>{ if(un!==m.unlocked)await post({action:un?'unlock':'lock'}); if(mt!==!!m.mentor)await post({action:mt?'mentor':'unmentor'}); if(ad!==!!m.admin)await post({action:ad?'admin':'unadmin'}); await post({action:'coach',daily:v===''?null:+v}); },'Access saved.'); }
+      return act(async()=>{ if(un!==m.unlocked)await post({action:un?'unlock':'lock'}); if(mt!==!!m.mentor)await post({action:mt?'mentor':'unmentor'}); if(ad!==!!m.admin)await post({action:ad?'admin':'unadmin'}); if($('mCoach'))await post({action:'coach',daily:v===''?null:+v}); },'Access saved.'); }
     if(a==='leagues'){ const want=[...document.querySelectorAll('input[name=mLeague]')].filter(i=>i.checked).map(i=>i.value), had=m.leagues.map(x=>x.id);
       const tiers=[...document.querySelectorAll('[data-tier-league]')].map(s=>[s.dataset.tierLeague,+s.value]);
       return act(async()=>{ await post({action:'leagues',join:want.filter(x=>!had.includes(x)),leave:had.filter(x=>!want.includes(x))});
@@ -500,12 +502,13 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       <div class="two"><section class="card"><h2>AI coach</h2>
         ${box('cMembers','Members can use the coach',c.members)}
         <div class="row">${field('cDaily','Messages a day, per member',`<input id="cDaily" type="number" min="0" max="500" value="${c.daily}">`)}${field('cDailyU','…for fully unlocked members',`<input id="cDailyU" type="number" min="0" max="1000" value="${c.dailyUnlocked}">`)}</div>
+        <p class="hint">Counted per profile and per wallet: profiles that share a wallet share its allowance. Admins have no limit. Reset anyone’s count from the list on the right or their page.</p>
         ${field('cOwner','Your own daily limit',`<input id="cOwner" type="number" min="0" max="1000" value="${c.ownerDaily}">`,'0 = no limit. Each member’s day resets at their local midnight.')}
         ${box('cDetail','Members may share their trades and notes with the coach',c.detail,'Each member still chooses, and it’s off until they switch it on. Off here: the coach only ever sees summaries.')}
         <p class="hint">The coach opens at level ${o.config.modules.coach} (see Features). Per-member limits are on each member’s page.</p>
         <div style="margin-top:14px"><button class="primary" id="cSave">Save coach settings</button></div></section>
       <section class="card"><h2>Today</h2>${tiles([['Messages today',fmt(o.coachToday)],['Members who asked',users.length]])}
-        ${users.length?`<div class="scroll" style="margin-top:12px"><table><tbody>${pager('coachusers',users).items.map(m=>`<tr><td><a href="${mlink(m)}">@${esc(m.handle)}</a></td><td>${m.coachUsed}${m.coachLimit!=null?' / '+m.coachLimit:''}</td></tr>`).join('')}</tbody></table></div>${pager('coachusers',users).html}`:''}
+        ${users.length?`<div class="scroll" style="margin-top:12px"><table><tbody>${pager('coachusers',users).items.map(m=>`<tr><td><a href="${mlink(m)}">@${esc(m.handle)}</a>${m.admin?' <span class="pill ok">admin</span>':''}</td><td>${m.coachUsed}${m.coachLimit!=null?' / '+m.coachLimit:''}</td><td><button class="sm fit" data-coachreset="${esc(m.id)}">Reset</button></td></tr>`).join('')}</tbody></table></div>${pager('coachusers',users).html}`:''}
         <p class="hint">Messages go to the AI provider (Anthropic or OpenAI, whichever the server uses) and aren’t stored on this server; only the count is.</p></section></div>`;
   }
 
@@ -642,6 +645,8 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     { const lc=b.closest('details'); if(lc&&(d.pg||d.lgadd||d.lgrm)){ const m2=/^roster:(.+)$/.exec(d.pg||'')||[0,d.lgadd||d.lgrm]; UI.rosterOpen=m2[1]; } }
     if(d.pg){ UI.pages[d.pg]=Math.max(0,(UI.pages[d.pg]||0)+(+d.d||0)); if(d.pg==='members'&&$('mRows')){ $('mRows').innerHTML=memberRows(); $('mPager').innerHTML=memberPg().html; return; } UI.fresh=false; return render(); }
     if(id==='addToggle'){ UI.addOpen=!UI.addOpen; UI.code=null; return render(); }
+    if(d.coachreset){ const cm=D.members.find(x=>x.id===d.coachreset); if(!cm)return;
+      return act(()=>api('/members/'+encodeURIComponent(cm.id),{body:{action:'coachreset'}}),'@'+cm.handle+' can ask the coach again today.'); }
     if(id==='adminToggle'){ UI.adminAdd=!UI.adminAdd; UI.code=null; return render(); }
     if(id==='logAll'){ UI.logAll=!UI.logAll; return render(); }
     if(id==='adCreate'){ const handle=val('adHandle').trim().replace(/^@/,''); if(!handle)return note('Give them a name.',true);

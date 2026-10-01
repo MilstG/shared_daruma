@@ -407,7 +407,7 @@ function createSocial(opts) {
   }
   // every section kept as a kv row: one missing here is never loaded or saved (wallet decisions and
   // the admin log would vanish on the next restart)
-  const KV_KEYS = ['config', 'follows', 'comps', 'league', 'leagues', 'badges', 'ownerCoach', 'partners', 'comments', 'leagueSeq', 'wallets', 'adminLog'];
+  const KV_KEYS = ['config', 'follows', 'comps', 'league', 'leagues', 'badges', 'ownerCoach', 'partners', 'comments', 'leagueSeq', 'wallets', 'adminLog', 'coachUse', 'migrations'];
   let S = { v: 1, members: {} };
   const loadedRaw = new Map(); // what each row held, so the first save writes only what loading changed
   for (const r of q('SELECT k, v FROM kv').all()) if (KV_KEYS.includes(r.k)) try { S[r.k] = JSON.parse(r.v); loadedRaw.set(r.k, r.v); } catch (e) {}
@@ -433,6 +433,12 @@ function createSocial(opts) {
   if (!S.ownerCoach) S.ownerCoach = { k: null, n: 0 };
   // what admins did in the panel, newest last: {at, by, what}
   if (!Array.isArray(S.adminLog)) S.adminLog = [];
+  // AI coach messages asked today, per profile ('m:<id>') and per wallet ('w:<address>'): {k: day, tz, n}
+  if (!S.coachUse || typeof S.coachUse !== 'object') S.coachUse = {};
+  if (!S.migrations || typeof S.migrations !== 'object') S.migrations = {};
+  // October 2026: the coach goes to 3 messages a day for everyone (admins unlimited). Applied once,
+  // so a different number the owner sets later in the Coach tab stays.
+  if (!S.migrations.coach3) { S.config.coach.daily = 3; S.config.coach.dailyUnlocked = 3; S.migrations.coach3 = Date.now(); }
   if (!S.partners || typeof S.partners !== 'object') S.partners = {};
   if (!S.comments || typeof S.comments !== 'object') S.comments = {};
   if (!S.leagues || typeof S.leagues !== 'object') { // one league for everyone until the owner makes more
@@ -597,17 +603,27 @@ function createSocial(opts) {
     return changed; };
   const awardsOut = m => Object.keys(m.awards || {}).filter(id => own(S.badges, id)).map(id => ({ id, name: S.badges[id].name, icon: S.badges[id].icon, desc: S.badges[id].desc, xp: S.badges[id].xp, at: m.awards[id] }));
   // ---- AI coach allowance: per member per day (their own clock), or the owner's own budget ----
-  const coachLimitFor = m => m.coachDaily != null ? m.coachDaily : m.unlocked ? S.config.coach.dailyUnlocked : S.config.coach.daily;
-  // A member's coach day follows their own clock, but the zone is fixed for the day once they've
-  // asked: changing time zones mid-day doesn't start a new count.
-  const coachTz = m => (m.coachUse && m.coachUse.tz) || (m.stats && m.stats.tz) || 'UTC';
-  const coachUsed = m => { if (!m.coachUse) return 0; const k = zoneKey(coachTz(m), now()); return m.coachUse.k === k ? m.coachUse.n : 0; };
+  // Admins ask without a limit (null); everyone else has the day's allowance, unless the owner set one for them.
+  const coachLimitFor = m => m.admin ? null : m.coachDaily != null ? m.coachDaily : m.unlocked ? S.config.coach.dailyUnlocked : S.config.coach.daily;
+  // Counted per profile and per wallet: several profiles on one wallet share its allowance, and
+  // taking the wallet off a profile doesn't hand it a fresh one. A count's day follows the asker's
+  // clock, fixed for the day once they've asked (changing zones mid-day doesn't start a new count).
+  const coachKeys = m => m.address ? ['m:' + m.id, 'w:' + String(m.address).toLowerCase()] : ['m:' + m.id];
+  const coachTz = m => { for (const k of coachKeys(m)) { const u = S.coachUse[k]; if (u && u.tz) return u.tz; } return (m.stats && m.stats.tz) || 'UTC'; };
+  const coachUsedKey = (key, tz) => { const u = S.coachUse[key]; return u && u.k === zoneKey(u.tz || tz, now()) ? u.n : 0; };
+  // (a count from before counts moved here, kept on the member, still holds for its day)
+  const coachUsed = m => { const tz = coachTz(m), old = m.coachUse && m.coachUse.k === zoneKey(m.coachUse.tz || tz, now()) ? m.coachUse.n : 0;
+    return Math.max(old, ...coachKeys(m).map(k => coachUsedKey(k, tz))); };
+  // counts from earlier days are dropped as new ones come in
+  const coachPrune = () => { const keys = Object.keys(S.coachUse); if (keys.length < 2000) return;
+    for (const k of keys) if (!coachUsedKey(k, 'UTC')) delete S.coachUse[k]; };
+  const coachReset = m => { for (const k of coachKeys(m)) delete S.coachUse[k]; delete m.coachUse; };
   const coachStatusFor = m => {
     const c = S.config.coach, lvl = (m.stats && m.stats.level) || 1, need = S.config.unlocksOn && !m.unlocked && S.config.modules.coach > 1 ? S.config.modules.coach : 0;
     const limit = coachLimitFor(m), used = coachUsed(m);
-    const reason = !c.members ? 'The owner hasn’t opened the coach to members.' : m.banned ? 'This profile was removed from the league.'
+    const reason = m.banned ? 'This profile was removed from the league.' : m.admin ? null : !c.members ? 'The owner hasn’t opened the coach to members.'
       : need && lvl < need ? 'The coach unlocks at level ' + need + '.' : limit <= 0 ? 'The coach is switched off for your profile.' : used >= limit ? 'You’ve used today’s ' + limit + ' coach message' + (limit === 1 ? '' : 's') + '. More tomorrow.' : null;
-    return { allowed: !reason, reason, limit, used, remaining: Math.max(0, limit - used), detail: !!(c.detail && m.coachDetail), detailAllowed: !!c.detail, unlockLevel: need || null }; };
+    return { allowed: !reason, reason, limit, used, remaining: limit == null ? null : Math.max(0, limit - used), detail: !!(c.detail && m.coachDetail), detailAllowed: !!c.detail, unlockLevel: need || null }; };
   const byHandle = h => { if (!handleIdx) { handleIdx = new Map(); for (const m of members()) handleIdx.set(m.handle.toLowerCase(), m.id); }
     const id = handleIdx.get(String(h || '').toLowerCase()), m = id && own(S.members, id) ? S.members[id] : null;
     return m && m.handle.toLowerCase() === String(h || '').toLowerCase() ? m : null; };
@@ -1071,7 +1087,7 @@ function createSocial(opts) {
           claimed: members().filter(m => m.claimed).length, vaults: members().filter(m => m.vault).length, vaultBytes: vaultTotal(), claims: !!sig,
           originPinned: origins.length > 0 || !!opts.hostVetted,
           leagues: Object.keys(S.leagues).length, badges: Object.keys(S.badges).length, coachAi: !!opts.coachAvailable,
-          coachToday: members().reduce((a, m) => a + coachUsed(m), 0) + (S.ownerCoach.k === utcDayKey(now()) ? S.ownerCoach.n : 0),
+          coachToday: Object.keys(S.coachUse).filter(k => k.startsWith('m:')).reduce((a, k) => a + coachUsedKey(k, 'UTC'), 0) + (S.ownerCoach.k === utcDayKey(now()) ? S.ownerCoach.n : 0),
           meta: { modules: SC.MODULES, leagueMetrics: SC.LEAGUE_METRICS, badgeMetrics: SC.BADGE_METRICS, profiles: SC.PROFILES },
           tiers: TIERS.map((t, i) => ({ tier: t, n: S.leagues.main ? members().filter(m => !m.banned && own(S.leagues.main.members, m.id) && leagueTier(S.leagues.main, m) === i).length : 0 })) });
       }
@@ -1129,6 +1145,7 @@ function createSocial(opts) {
         else if (a === 'clearBio') m.bio = '';
         else if (a === 'mentor' || a === 'unmentor') m.mentor = a === 'mentor'; // sees the days of members who let mentors in, and comments on them
         else if (a === 'unlock' || a === 'lock') m.unlocked = a === 'unlock'; // every feature, theme and the bigger coach allowance
+        else if (a === 'coachreset') coachReset(m); // today's count back to zero, for the profile and its wallet
         else if (a === 'coach') { if (body.daily === null || body.daily === '') m.coachDaily = null;
           else { const d = clampNum(body.daily, 0, 1000); if (d == null || body.daily === undefined) return json(res, 400, { error: 'How many coach messages a day?' }); m.coachDaily = Math.round(d); } }
         else if (a === 'grant') { // XP boost (or a correction, if negative): the member's app adds it to their total
@@ -1877,9 +1894,10 @@ function createSocial(opts) {
     ownerStatus: () => { const lim = S.config.coach.ownerDaily, k = utcDayKey(now()), used = S.ownerCoach.k === k ? S.ownerCoach.n : 0;
       return { who: 'owner', allowed: !lim || used < lim, reason: lim && used >= lim ? 'You’ve used today’s ' + lim + ' coach messages.' : null, limit: lim || null, used, remaining: lim ? Math.max(0, lim - used) : null, detail: true, detailAllowed: true }; },
     // reserve a message before asking the model (so parallel requests can't all pass), and give it back if no answer came
-    count: (m, d = 1) => { if (m) { const used = coachUsed(m), tz = used ? coachTz(m) : (m.stats && m.stats.tz) || 'UTC';
-        m.coachUse = { k: zoneKey(tz, now()), tz, n: Math.max(0, used + d) }; }
-      else { const k = utcDayKey(now()); S.ownerCoach = { k, n: Math.max(0, (S.ownerCoach.k === k ? S.ownerCoach.n : 0) + d) }; } save(m || 'ownerCoach'); },
+    count: (m, d = 1) => { if (m) { const tz = coachTz(m), k = zoneKey(tz, now());
+        for (const key of coachKeys(m)) S.coachUse[key] = { k, tz, n: Math.max(0, coachUsedKey(key, tz) + d) };
+        coachPrune(); }
+      else { const k = utcDayKey(now()); S.ownerCoach = { k, n: Math.max(0, (S.ownerCoach.k === k ? S.ownerCoach.n : 0) + d) }; } save(m ? 'coachUse' : 'ownerCoach'); },
   };
   save(); // what loading filled in (defaults, league numbers) is written once, so a restart reads the same
   return { handle, coach, tick, memberOf: req => { const m = byKey(req); return m && !m.banned ? m : null; }, state: () => S, store, close: () => store.close() };

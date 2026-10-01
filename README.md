@@ -1101,7 +1101,9 @@ All opt-in via environment variables, still zero dependencies:
   journal uses, so a review you wrote is always found.
 - `COACH_AI=1` + `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`, see below) — the **coach's weekly letter** (see
   The coach) and the **AI coach chat** in Pulse (`/api/coach/chat`: a member's
-  key or the owner token; per-day allowances from the admin panel; low effort
+  key or the owner token; 3 messages a day per profile and per wallet (profiles that share a
+  wallet share its 3), set in the admin panel's Coach tab; admins and the owner have no limit,
+  and any admin can reset a member's count for the day from their page; low effort
   for quick replies). Uses the official `@anthropic-ai/sdk`, installed as an *optional*
   dependency: without `COACH_AI` the server never loads it and stays
   dependency-free. Model `COACH_AI_MODEL` (default `claude-opus-5-5`), medium

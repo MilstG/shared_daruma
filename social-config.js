@@ -23,7 +23,7 @@ const DEFAULTS = {
   modules: { trends: 2, deep: 1, share: 3, compete: 4, coach: 1, review: 1, reports: 1 },
   levels: { mode: 'curve', base: 200, thresholds: [], titles: DEFAULT_LEVEL_TITLES },
   xp: { discipline: 1, checkin: 10, plan: 15, journal: 15, stops: 10, limit: 10, review: 15, achievement: 50, challenge: 150, focus: 25 },
-  coach: { members: true, daily: 10, dailyUnlocked: 50, ownerDaily: 0, detail: true },
+  coach: { members: true, daily: 3, dailyUnlocked: 3, ownerDaily: 0, detail: true },
   profiles: { custom: [], overrides: {} },
 };
 
