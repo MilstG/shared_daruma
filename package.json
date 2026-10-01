@@ -5,7 +5,8 @@
   "description": "Client-side Hyperliquid trading journal with a minimal persistence server",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/run-all.mjs"
+    "test": "node tests/run-all.mjs",
+    "test:e2e": "node e2e/run.mjs"
   },
   "engines": {
     "node": ">=18"

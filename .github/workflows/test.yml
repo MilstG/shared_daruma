@@ -16,3 +16,18 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm test
+  # The real app in a real Chromium, served by the real server, offline (e2e/run.mjs).
+  # Playwright is installed here only — the app and server still have no dependencies.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm i --no-save playwright@1.56.1
+      - run: npx playwright install --with-deps chromium
+      # CI runners are slower than a laptop; the budgets still catch a page that got slow
+      - run: npm run test:e2e
+        env:
+          E2E_SLOW: '2'

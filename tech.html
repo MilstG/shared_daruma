@@ -296,7 +296,7 @@ html{scroll-behavior:smooth}
 <section id="testing">
   <p class="kicker">15</p>
   <h2>Testing</h2>
-  <p><code>npm test</code> runs 22 suites (~430 tests) via <code>tests/run-all.mjs</code>. The harness (<code>tests/harness.mjs</code>) provides <code>makeExtractor(html)</code>: <code>evalModule(names, exports, prelude)</code> brace-matches the named functions out of <code>ledger.html</code>, prepends a prelude of one-line consts, and imports the bundle as a data-URL ES module — the tests run the shipped source, not a copy.</p>
+  <p><code>npm test</code> runs 33 suites (~620 tests) via <code>tests/run-all.mjs</code>, including a size budget for <code>ledger.html</code> (<code>test-budget</code>). <code>npm run test:e2e</code> runs the browser smoke tests in <code>e2e/run.mjs</code>: real Chromium against the real server, with all off-origin requests blocked. It covers boot, sample data, every tab, a journal note's round trip through sync and a reload, Pulse at phone width and every admin tab, failing on any uncaught page error or a blown time budget. CI runs it as a separate job, with Playwright installed only there. The harness (<code>tests/harness.mjs</code>) provides <code>makeExtractor(html)</code>: <code>evalModule(names, exports, prelude)</code> brace-matches the named functions out of <code>ledger.html</code>, prepends a prelude of one-line consts, and imports the bundle as a data-URL ES module — the tests run the shipped source, not a copy.</p>
   <div class="tblwrap"><table class="mono">
     <tr><th>Suite</th><th>Covers</th></tr>
     <tr><td>test-syntax</td><td>Every script block parses (vm.Script) — catches template-literal and escaping regressions whole-file.</td></tr>

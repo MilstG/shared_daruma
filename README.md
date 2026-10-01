@@ -1100,10 +1100,11 @@ curl -H "Authorization: Bearer $READ_TOKEN" -o trades.csv 'https://your.app/api/
 ## Development and testing
 
 ```
-npm test         # or: node tests/run-all.mjs
+npm test           # or: node tests/run-all.mjs — offline, no dependencies
+npm run test:e2e   # browser smoke tests (needs Playwright, see below)
 ```
 
-428 tests across twenty-two suites cover reconstruction (flips, funding
+About 620 tests across 33 suites cover reconstruction (flips, funding
 windows, spot/perp separation, partial-history flagging), the Web Worker
 dispatcher end-to-end with byte-parity against the synchronous fallback,
 excursion math and the retention/ratchet behavior, miner families and
@@ -1120,7 +1121,20 @@ values, a whole-file parse check of every script block, and the server over
 real HTTP (auth, revision conflicts, restart survival, the capital endpoint,
 digest lifecycle, server-held backups, the metrics endpoint). The suites extract functions **directly from `ledger.html`**, so
 they test exactly what ships — there is no second copy of the code to drift
-out of sync.
+out of sync. `tests/test-budget.mjs` adds a size budget: the build fails if
+`ledger.html` grows past 1750 KB raw or 680 KB gzipped (what visitors download),
+so growth is a choice rather than a drift.
+
+**Browser smoke tests** (`e2e/run.mjs`) run the real app in Chromium against the
+real server, fully offline (every request off the local server is blocked). They
+boot the full journal with a token, load sample data, open every tab, save a journal
+note and check it reaches the server and survives a reload, open Pulse at phone
+width (no sideways scroll), and open every admin tab, failing on any uncaught page
+error. Each step also has a time budget (boot 3 s, sample data 4 s, a tab switch
+2.5 s; `E2E_SLOW=2` doubles them for slow machines, and CI uses that). Playwright is
+deliberately not a dependency of the repo: install it with
+`npm i --no-save playwright && npx playwright install chromium`. CI runs these in a
+separate job on every push.
 
 Architecture in one paragraph: everything is in `ledger.html` — UI, engine,
 and a Web Worker built at runtime from a Blob of the page's own function
