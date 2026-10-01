@@ -51,7 +51,8 @@ function planExcursions(trades,now,pass){
   now=now||Date.now();
   const plan=new Map();
   for(const t of trades){
-    if(t.isOpen||!(t.avgEntry>0)||!(t.closeTime>t.openTime))continue;
+    // a partial-history trade's entry is a stand-in (its opening fills are older than the history): no MAE/MFE
+    if(t.isOpen||t.partialHistory||!(t.avgEntry>0)||!(t.closeTime>t.openTime))continue;
     const itv=chooseItv(t,now,pass), venue=candleVenue(t), k=excKey(t.coin,itv.name,venue);
     let e=plan.get(k); if(!e){ e={coin:t.coin,venue,itv,windows:[]}; plan.set(k,e); }
     e.windows.push([t.openTime-itv.ms,t.closeTime+itv.ms]);

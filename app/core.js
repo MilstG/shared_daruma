@@ -19,8 +19,8 @@ const Store = {
   },
   async set(key,val){
     const s=JSON.stringify(val);
-    if(window.storage){ try{ await window.storage.set(key,s); }catch(e){ try{localStorage.setItem(key,s);}catch(_){} } }
-    else { try{ localStorage.setItem(key,s); }catch(e){} }
+    if(window.storage){ try{ await window.storage.set(key,s); }catch(e){ try{localStorage.setItem(key,s);}catch(e2){ storeFailed(e2); } } }
+    else { try{ localStorage.setItem(key,s); }catch(e){ storeFailed(e); } }
     if(key===S_KEY)vaultMark(null); // a member's encrypted journal sync keeps this device's newer settings in a merge
     schedulePersist();
   }
@@ -113,14 +113,14 @@ async function unpackFillCache(c){
 }
 function snapshot(){ return {app:'ledger',version:8,exportedAt:new Date().toISOString(),
   wallets:settings.wallets, settings:{riskDefault:settings.riskDefault,view:settings.view,dexView:settings.dexView,rBasis:settings.rBasis,pageSize:settings.pageSize,beThreshold:settings.beThreshold,theme:settings.theme,anaBasis:settings.anaBasis,tz:settings.tz,assumedLev:settings.assumedLev,rules:settings.rules,attribBasis:settings.attribBasis,goals:settings.goals,
-    pins:settings.pins, habits:settings.habits, tzZone:settings.tzZone, calMode:settings.calMode, calWeeks:settings.calWeeks, coachMode:settings.coachMode, pzTheme:settings.pzTheme, pzPlugs:settings.pzPlugs, pzProfile:settings.pzProfile, pzMarket:settings.pzMarket, pzLayout:settings.pzLayout, pzLessons:settings.pzLessons, pzGoals:settings.pzGoals, playbooks:settings.playbooks, appearance:settings.appearance}, journal}; } // pins are the long-horizon forward tracker — losing them on a restore defeated the feature
+    pins:settings.pins, habits:settings.habits, tzZone:settings.tzZone, calMode:settings.calMode, calWeeks:settings.calWeeks, coachMode:settings.coachMode, pzPlugs:settings.pzPlugs, pzProfile:settings.pzProfile, pzMarket:settings.pzMarket, pzLayout:settings.pzLayout, pzLessons:settings.pzLessons, pzGoals:settings.pzGoals, playbooks:settings.playbooks, appearance:settings.appearance}, journal}; } // pins are the long-horizon forward tracker — losing them on a restore defeated the feature
 async function applySnapshot(data){ if(!data)return false; _applying=true;
   try{
     if(data.journal && typeof data.journal==='object'){ journal=data.journal; _jrev++; }
     if(Array.isArray(data.wallets)) settings.wallets=data.wallets;
     // 'in', not !=null: a cleared risk default (null) must propagate, or another device resurrects it
     if(data.settings){ if('riskDefault' in data.settings)settings.riskDefault=data.settings.riskDefault;
-      if(data.settings.view)settings.view=data.settings.view; if(data.settings.dexView)settings.dexView=data.settings.dexView; if(data.settings.rBasis)settings.rBasis=data.settings.rBasis; if(data.settings.pageSize)settings.pageSize=data.settings.pageSize; if(data.settings.beThreshold!=null)settings.beThreshold=data.settings.beThreshold; if(data.settings.theme)settings.theme=data.settings.theme; if(data.settings.anaBasis)settings.anaBasis=data.settings.anaBasis; if(data.settings.tz)settings.tz=data.settings.tz; if(data.settings.assumedLev>0)settings.assumedLev=data.settings.assumedLev; if(data.settings.rules&&typeof data.settings.rules==='object')settings.rules=data.settings.rules; if(data.settings.attribBasis)settings.attribBasis=data.settings.attribBasis; if(Array.isArray(data.settings.pins))settings.pins=data.settings.pins.filter(p=>p&&typeof p.pid==='string'); if(Array.isArray(data.settings.habits))settings.habits=data.settings.habits.filter(h=>h&&typeof h.id==='string'&&typeof h.kind==='string'); if(typeof data.settings.tzZone==='string')settings.tzZone=data.settings.tzZone; if(data.settings.calMode==='pnl'||data.settings.calMode==='process')settings.calMode=data.settings.calMode; if(data.settings.calWeeks===26||data.settings.calWeeks===52)settings.calWeeks=data.settings.calWeeks; if(typeof data.settings.coachMode==='boolean')settings.coachMode=data.settings.coachMode; if(typeof data.settings.pzTheme==='string')settings.pzTheme=data.settings.pzTheme; if(Array.isArray(data.settings.pzPlugs))settings.pzPlugs=data.settings.pzPlugs.filter(p=>p&&typeof p.slip==='string'); if(typeof data.settings.pzProfile==='string')settings.pzProfile=data.settings.pzProfile; if(['all','perp','spot'].includes(data.settings.pzMarket))settings.pzMarket=data.settings.pzMarket; if(data.settings.pzLayout&&typeof data.settings.pzLayout==='object')settings.pzLayout=data.settings.pzLayout;
+      if(data.settings.view)settings.view=data.settings.view; if(data.settings.dexView)settings.dexView=data.settings.dexView; if(data.settings.rBasis)settings.rBasis=data.settings.rBasis; if(data.settings.pageSize)settings.pageSize=data.settings.pageSize; if(data.settings.beThreshold!=null)settings.beThreshold=data.settings.beThreshold; if(data.settings.theme)settings.theme=data.settings.theme; if(data.settings.anaBasis)settings.anaBasis=data.settings.anaBasis; if(data.settings.tz)settings.tz=data.settings.tz; if(data.settings.assumedLev>0)settings.assumedLev=data.settings.assumedLev; if(data.settings.rules&&typeof data.settings.rules==='object')settings.rules=data.settings.rules; if(data.settings.attribBasis)settings.attribBasis=data.settings.attribBasis; if(Array.isArray(data.settings.pins))settings.pins=data.settings.pins.filter(p=>p&&typeof p.pid==='string'); if(Array.isArray(data.settings.habits))settings.habits=data.settings.habits.filter(h=>h&&typeof h.id==='string'&&typeof h.kind==='string'); if(typeof data.settings.tzZone==='string')settings.tzZone=data.settings.tzZone; if(data.settings.calMode==='pnl'||data.settings.calMode==='process')settings.calMode=data.settings.calMode; if(data.settings.calWeeks===26||data.settings.calWeeks===52)settings.calWeeks=data.settings.calWeeks; if(typeof data.settings.coachMode==='boolean')settings.coachMode=data.settings.coachMode; if(Array.isArray(data.settings.pzPlugs))settings.pzPlugs=data.settings.pzPlugs.filter(p=>p&&typeof p.slip==='string'); if(typeof data.settings.pzProfile==='string')settings.pzProfile=data.settings.pzProfile; if(['all','perp','spot'].includes(data.settings.pzMarket))settings.pzMarket=data.settings.pzMarket; if(data.settings.pzLayout&&typeof data.settings.pzLayout==='object')settings.pzLayout=data.settings.pzLayout;
       if(data.settings.pzLessons&&typeof data.settings.pzLessons==='object')settings.pzLessons=pzLessonsNorm(data.settings.pzLessons);
       if(Array.isArray(data.settings.playbooks))settings.playbooks=pbNorm(data.settings.playbooks,true);
       if(['auto','dark','light'].includes(data.settings.appearance))settings.appearance=data.settings.appearance;
@@ -140,7 +140,11 @@ async function applySnapshot(data){ if(!data)return false; _applying=true;
 // write to local store WITHOUT re-triggering a file write (avoids loops on load)
 async function rawSet(key,val){ const s=JSON.stringify(val);
   if(window.storage){ try{ await window.storage.set(key,s); return; }catch(e){} }
-  try{ localStorage.setItem(key,s); }catch(e){} }
+  try{ localStorage.setItem(key,s); }catch(e){ storeFailed(e); } }
+// The browser refused to save (its storage for this site is full): say so, instead of a "saved"
+// tick over an edit that will be gone on the next load.
+function storeFailed(e){ const full=e&&(e.name==='QuotaExceededError'||e.code===22||/quota/i.test(e.message||''));
+  try{ setErr(full?'This browser’s storage for the journal is full, so the last change wasn’t saved here. Use Backup all, then clear old attachments or link a data file.':'Couldn’t save in this browser: '+(e&&e.message||e)); }catch(_){} }
 
 function scheduleLinkedWrite(){ if(!linkedHandle||_applying)return; clearTimeout(_writeTimer); _writeTimer=setTimeout(writeLinked,600); }
 
@@ -165,13 +169,24 @@ let _srvWriting=false,_srvAgain=false;
 // Journal edit counter — part of the miner cache key, since tags/setups/mistakes/ratings
 // change miner inputs without changing the trade count.
 let _jrev=0;
-function markJEdit(id){ _dirtyJ.set(id,(_dirtyJ.get(id)||0)+1); _jrev++; vaultMark(id); }
+function markJEdit(id){ _dirtyJ.set(id,(_dirtyJ.get(id)||0)+1); _jrev++; vaultMark(id); jPendingSave(); }
+// The ids edited here and not yet confirmed saved (to the server, or the linked file) are kept in
+// localStorage too: a reload or a closed tab before the save went through used to let the older
+// copy from the server win at the next start. At boot they're laid back over what loaded.
+const JP_KEY='hl_jpending_v1';
+let _jpQ=false; // once per burst of edits (a bulk change marks thousands)
+function jPendingSave(){ if(_jpQ)return; _jpQ=true; queueMicrotask(()=>{ _jpQ=false;
+  try{ if(_dirtyJ.size)localStorage.setItem(JP_KEY,JSON.stringify([..._dirtyJ.keys()].slice(-5000))); else localStorage.removeItem(JP_KEY); }catch(e){} }); }
+function jPendingLoad(){ try{ const a=JSON.parse(localStorage.getItem(JP_KEY)||'[]'); return Array.isArray(a)?a.filter(x=>typeof x==='string'):[]; }catch(e){ return []; } }
+async function jPendingOverlay(localJ,pend){ if(!pend.length||!localJ)return; _jrev++;
+  for(const id of pend){ if(localJ[id]!==undefined)journal[id]=localJ[id]; else delete journal[id]; _dirtyJ.set(id,(_dirtyJ.get(id)||0)+1); }
+  await rawSet(J_KEY,journal); jPendingSave(); schedulePersist(); }
 // Settings as of the last successful sync — powers a field-level 409 merge: a goal/rule/tz
 // edit made here since the last sync wins over the incoming snapshot instead of silently
 // bouncing back. Wallets are deliberately excluded (list merges are ambiguous; last write
 // wins there, as before).
 let _lastSyncedS=null;
-const _SYNC_S_FIELDS=['riskDefault','view','dexView','rBasis','pageSize','beThreshold','theme','anaBasis','tz','assumedLev','rules','attribBasis','goals','pins','habits','tzZone','calMode','calWeeks','coachMode','pzTheme','pzPlugs','pzProfile','pzMarket','pzLayout','pzLessons','pzGoals','playbooks','appearance'];
+const _SYNC_S_FIELDS=['riskDefault','view','dexView','rBasis','pageSize','beThreshold','theme','anaBasis','tz','assumedLev','rules','attribBasis','goals','pins','habits','tzZone','calMode','calWeeks','coachMode','pzPlugs','pzProfile','pzMarket','pzLayout','pzLessons','pzGoals','playbooks','appearance'];
 // lessons and goals are lists edited on several devices: a conflict merges them by id instead of
 // letting one device's copy replace the other's (the newest change to an item wins; removals stick)
 function pzLessonsNorm(v){ v=v&&typeof v==='object'?v:{}; return Object.assign({},v,{items:v.items&&typeof v.items==='object'&&!Array.isArray(v.items)?v.items:{},own:Array.isArray(v.own)?v.own.filter(o=>o&&typeof o.id==='string'):[]}); }
@@ -263,6 +278,7 @@ async function writeServer(){
     }
     if(r.ok){ const j=await r.json(); SRV.rev=j.rev||SRV.rev+1;
       for(const [id,rev] of sentDirty) if(_dirtyJ.get(id)===rev)_dirtyJ.delete(id); // only clear what was actually sent unchanged
+      jPendingSave();
       _lastSyncedS=sentS; SRV.err=null; SRV.retryMs=0;
       srvMark(_srvGen!==sentGen); // an edit made while this PUT was in flight is still unsent
       renderDatafile('saved'); }
@@ -289,10 +305,14 @@ async function initServerSync(){
     if(d.status===429){ SRV.badAuth=true; renderDatafile(); setErr(srvLockMsg(d)); return true; } // locked out: never sync blind at rev 0
     if(d.ok){ const j=await d.json(); SRV.rev=j.rev||0;
       const m=srvMarkRead();
-      if(m&&m.dirty&&m.rev===SRV.rev){ // nobody saved since this browser's unsent edits: keep them (boot sends them)
+      if(m&&m.dirty&&m.rev===SRV.rev){ // nobody saved since this browser's unsent edits: keep them all (boot sends them)
         SRV.pushLocal=true; const ss=(j.snapshot&&j.snapshot.settings)||{};
+        for(const id of jPendingLoad())_dirtyJ.set(id,(_dirtyJ.get(id)||0)+1); // still unsent: a 409 before the push keeps them
         _lastSyncedS=JSON.parse(JSON.stringify(Object.fromEntries(_SYNC_S_FIELDS.map(k=>[k,ss[k]])))); } // the server's side, for a later 409 merge
-      else { if(j.snapshot)await applySnapshot(j.snapshot); srvMark(false);
+      else { srvMark(false);
+        // (no readable local journal: nothing to lay over — a missing copy isn't "every edit was a delete")
+        if(j.snapshot){ const pend=jPendingLoad(), localJ=pend.length?await Store.get(J_KEY):null;
+          await applySnapshot(j.snapshot); await jPendingOverlay(localJ,pend); }
         _lastSyncedS=_snapS(); } } // baseline for the field-level 409 settings merge
     // PWA: only meaningful when served — installable app icon + offline shell
     try{ if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
@@ -346,7 +366,9 @@ async function writeLinked(){ if(!linkedHandle)return;
   if(_writing){ _writeAgain=true; return; }
   _writing=true;
   try{ if(await ensurePerm(linkedHandle,'readwrite')!=='granted'){ renderDatafile('need-permission'); return; }
+    const sent=[..._dirtyJ.entries()];
     const w=await linkedHandle.createWritable(); await w.write(JSON.stringify(snapshot(),null,2)); await w.close();
+    if(!SRV.enabled){ for(const [id,rev] of sent) if(_dirtyJ.get(id)===rev)_dirtyJ.delete(id); jPendingSave(); } // the file is the saved copy here
     renderDatafile('saved');
   }catch(e){ renderDatafile('error'); }
   finally{ _writing=false; if(_writeAgain){ _writeAgain=false; writeLinked(); } } }

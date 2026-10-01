@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { webcrypto } from 'node:crypto';
 import http from 'node:http';
 import vm from 'node:vm';
-import { t, ok, eq, report, makeExtractor } from './harness.mjs';
+import { t, ok, eq, report, makeExtractor, storedText } from './harness.mjs';
 import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
 const require = createRequire(import.meta.url);
@@ -137,7 +137,7 @@ try {
     eq(r.status, 200); ok(r.d.key && r.d.key !== A); A2 = r.d.key;
     eq(r.d.me.handle, 'alpha'); eq(r.d.me.devices, 2);
     eq((await call('/me', { key: A })).status, 200); eq((await call('/me', { key: A2 })).status, 200);
-    ok(!readFileSync(join(dataDir, 'social.json'), 'utf8').includes(A2), 'only the hash is stored');
+    ok(!storedText(dataDir).includes(A2), 'only the hash is stored');
   });
   let A3;
   await t('a one-time code from a signed-in device adds another device', async () => {
@@ -334,9 +334,9 @@ t('a cut-off answer from the server is an error, never an empty success that rea
 t('the wallet signs the exact server text, hex-encoded for personal_sign', () => {
   eq(cctx.utf8Hex('Hi ✓'), '0x' + Buffer.from('Hi ✓').toString('hex'));
 });
-t('the Pulse theme now travels with backups and every sync', () => {
-  ok(grabFn('snapshot').includes('pzTheme:settings.pzTheme'));
-  ok(grabFn('applySnapshot').includes("typeof data.settings.pzTheme==='string'"));
+t('the Pulse layout (shown sections and their order) travels with backups and every sync', () => {
+  ok(grabFn('snapshot').includes('pzLayout:settings.pzLayout'));
+  ok(grabFn('applySnapshot').includes("data.settings.pzLayout&&typeof data.settings.pzLayout==='object'"));
 });
 t('every local save reaches the encrypted sync, and the owner never uses it (they already sync the whole journal)', () => {
   ok(grabFn('markJEdit').includes('vaultMark(id)'));

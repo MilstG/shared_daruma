@@ -91,7 +91,6 @@ function pzProgressHtml(D){
     ${P('goals',(()=>{ try{ return pzGoalsHtml(g); }catch(e){ console.warn('goals',e); return ''; } })())}
     <div class="pz-col">${P('xpsources',xpCard)}${P('challenge',chHtml)}${P('habits',habitsHtml)}${P('reports',reportHtml)}</div>
     <div class="pz-col">${P('leaks',leakHtml)}${P('lessons',(()=>{ try{ return pzLessonsCardHtml(); }catch(e){ console.warn('lessons',e); return ''; } })())}${P('moments',gmHtml)}${P('badges',badgeHtml)}${P('bests',pb)}</div>
-    ${P('themes',pzThemesHtml(g))}
     <section class="pz-span" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${share?`<span class="pz-fine">${pzI('lock',14)} Share cards unlock at level ${share}</span>`:'<button type="button" class="pz-ghost pz-sm" id="pzShare" style="width:auto;padding:0 16px">Share this week</button>'}</section>
     <div class="pz-span" id="gmOut"></div>
     ${pzCustomizeLink('progress')}
@@ -366,7 +365,7 @@ async function pzCoachSend(text){
     const d=await r.json().catch(()=>({}));
     if(!r.ok){ COACH.err=d.error||('HTTP '+r.status); if(d.remaining!=null&&COACH.status)Object.assign(COACH.status,{remaining:d.remaining,allowed:false,reason:d.error}); msgs.pop(); const el=$('pzCoachIn'); if(el&&!el.value)el.value=text; }
     else { msgs.push({role:'assistant',content:d.text,at:Date.now()}); if(COACH.status)Object.assign(COACH.status,{remaining:d.remaining,used:d.used,limit:d.limit,allowed:d.remaining==null||d.remaining>0}); }
-  }catch(e){ COACH.err='Couldn’t reach the coach. Check your connection and try again.'; msgs.pop(); }
+  }catch(e){ COACH.err='Couldn’t reach the coach. Check your connection and try again.'; msgs.pop(); const el=$('pzCoachIn'); if(el&&!el.value)el.value=text; }
   finally{ COACH.busy=false; pzCoachSave(); pzRender(); const l=$('pzChat'); if(l)l.scrollTop=l.scrollHeight; }
 }
 function pzCoachPrompts(){
@@ -493,7 +492,7 @@ function socLeagueInfoHtml(D, id){
       <div class="pz-row-t"><span>Joining</span><b>${L.inviteRequired?'Invite code':'Open'}</b></div>
       ${L.tiersCount?`<div class="pz-row-t"><span>By tier</span><b>${L.tiersCount.map(t=>t.n).join(' · ')}</b></div>`:''}</section>${act}</div>
     <div class="pz-col"><section class="pz-card pz-kv"><b class="pz-kvh">Top five</b>${top}</section>
-      ${L.hall&&L.hall.length?`<section class="pz-card pz-kv"><b class="pz-kvh">Hall of fame</b>${L.hall.slice(0,6).map(h=>`<div style="padding:8px 0;border-top:1px solid var(--pz-line)"><span class="pz-sub" style="font-size:12px">${esc(h.label)} · ${h.n} trader${h.n===1?'':'s'}</span><div style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px;font-size:14px;font-weight:600">${h.podium.map((r,i)=>`<span>${['🏆','🥈','🥉'][i]} ${r.me?'You':'@'+esc(r.handle)}</span>`).join('')||'—'}</div></div>`).join('')}</section>`:''}
+      ${L.hall&&L.hall.length?`<section class="pz-card pz-kv"><b class="pz-kvh">Hall of fame</b>${L.hall.slice(0,6).map(h=>`<div style="padding:8px 0;border-top:1px solid var(--pz-line)"><span class="pz-sub" style="font-size:12px">${esc(h.label)} · ${h.n} trader${h.n===1?'':'s'}</span><div style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px;font-size:14px;font-weight:600">${h.podium.map((r,i)=>`<span>${['🏆','🥈','🥉'][i]} ${r.me?'You':r.handle?'@'+esc(r.handle):'a former member'}</span>`).join('')||'—'}</div></div>`).join('')}</section>`:''}
       ${L.comps&&L.comps.length?`<section class="pz-card pz-kv"><b class="pz-kvh">Competitions</b>${L.comps.map(x=>`<a class="pz-row-t" href="#c/${esc(x.id)}"><span>${esc(x.title)}</span><b>${esc(x.start.slice(5))} → ${esc(x.end.slice(5))}</b></a>`).join('')}</section>`:''}</div></div>`;
 }
 
@@ -516,9 +515,9 @@ function socPartnersHtml(){
         <div style="display:flex;gap:8px"><button type="button" class="pz-cta pz-sm" style="flex:1;min-height:40px" data-soc-chsave="${esc(p.id)}">Set it for you both</button><button type="button" class="pz-ghost pz-sm" style="flex:1" data-soc-chfor="">Cancel</button></div>`
         :`<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="pz-ghost pz-sm" style="width:auto;padding:0 14px" data-soc-nudge="${esc(p.id)}"${p.canNudge?'':' disabled'}>${p.canNudge?'Nudge':'Nudged'}</button><button type="button" class="pz-ghost pz-sm" style="width:auto;padding:0 14px" data-soc-chfor="${esc(p.id)}">${p.challenge?'Change the challenge':'Set a shared challenge'}</button>${p.challenge&&!p.challenge.mine?`<button type="button" class="pz-ghost pz-sm" style="width:auto;padding:0 14px" data-soc-adopt="${esc(p.challenge.text)}">Adopt as habit</button>`:''}</div>`}</section>`; };
   return `<section style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px"><span class="pz-lbl" style="color:var(--pz-muted)">Accountability partners</span>
-    ${recv.map(p=>`<section class="pz-card pz-kvrow">${socAv(p.handle,30)}<span style="flex:1;font-size:14px"><b>@${esc(p.handle)}</b> wants to be partners</span><button type="button" class="pz-cta pz-sm" style="width:auto;min-height:40px;padding:0 16px" data-soc-paccept="${esc(p.id)}">Accept</button><button type="button" class="pz-ghost pz-sm" style="width:auto;padding:0 14px" data-soc-pdel="${esc(p.id)}">Decline</button></section>`).join('')}
+    ${recv.map(p=>`<section class="pz-card pz-kvrow">${socAv(p.handle,30)}<span style="flex:1;font-size:14px"><b>@${esc(p.handle)}</b> wants to be partners</span><button type="button" class="pz-cta pz-sm" style="width:auto;min-height:40px;padding:0 16px" data-soc-paccept="${esc(p.id)}">Accept</button><button type="button" class="pz-ghost pz-sm" style="width:auto;padding:0 14px" data-soc-pdel="${esc(p.id)}" data-what="decline">Decline</button></section>`).join('')}
     ${active.length?`<div class="pz-jgrid">${active.map(card).join('')}</div>`:'<p class="pz-sub" style="font-size:13px">Pair with someone you trust: you each see the other’s streak, Discipline scores and slips — never trades or P&amp;L — and can nudge each other and share a weekly challenge.</p>'}
-    ${sent.map(p=>`<p class="pz-fine">Waiting for @${esc(p.handle)} to accept. <button type="button" class="pz-linkbtn" data-soc-pdel="${esc(p.id)}">Cancel</button></p>`).join('')}
+    ${sent.map(p=>`<p class="pz-fine">Waiting for @${esc(p.handle)} to accept. <button type="button" class="pz-linkbtn" data-soc-pdel="${esc(p.id)}" data-what="cancel">Cancel</button></p>`).join('')}
     ${active.length<3?`<div style="display:flex;gap:8px;align-items:flex-end"><div class="pz-field" style="flex:1"><label for="socPIn" style="font-size:13px">Ask someone by name</label><input type="text" id="socPIn" maxlength="21" placeholder="@name" autocomplete="off" autocapitalize="off" spellcheck="false"></div><button type="button" class="pz-ghost pz-sm" style="width:auto;padding:0 16px;min-height:48px" id="socPAsk">Ask</button></div>`:''}</section>`;
 }
 // a slim row per partner on Today

@@ -1,7 +1,8 @@
 'use strict';
 // Social layer for Pulse (v0.1): members, weekly leagues, leaderboards, competitions,
-// following, a feed with kudos, and the owner's admin endpoints. Everything lives on the
-// owner's server in one JSON file (DATA_DIR/social.json); there is no central service.
+// following, a feed with kudos, members' posts (trades, plans, notes, pictures, comments), and
+// the owner's admin endpoints. Everything lives on the owner's server, in an SQLite database
+// (DATA_DIR/pulse.db, see db.js) and DATA_DIR/media/; there is no central service.
 //
 // Trust model, stated plainly:
 //   - Process numbers (XP, level, streak, daily process scores) are computed by each
@@ -31,6 +32,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const SC = require('./social-config.js');
+const Store = require('./db.js');
 const Push = require('./push.js');
 // Ethereum signature recovery for wallet claims (vendored noble libraries, no install needed)
 let ethSig = null; try { ethSig = require('./vendor/eth-sig.js'); } catch (e) { /* claims and wallet sign-in answer 501 */ }
@@ -45,17 +47,21 @@ const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const WEEK_RE = /^\d{4}-W\d{2}$/;
 const BADGE_RE = /^[a-z0-9-]{1,40}$/;
 const MAX_SOCIAL_BODY = 64 * 1024;
+const MAX_AVATAR = 256 * 1024;              // a profile picture, already shrunk to a small square by the app
+const MAX_IMAGE = 1536 * 1024;              // one image on a post
+const MAX_MEDIA_TOTAL = 2 * 1024 * 1024 * 1024; // every uploaded image together
+const MAX_MEDIA_MEMBER = 100 * 1024 * 1024;      // one member's images
+const POSTS_PER_DAY = 10, MEDIA_PER_DAY = 40, POST_EDIT_MS = 15 * 60000;
 const MAX_VAULT_BODY = 6 * 1024 * 1024;   // one encrypted journal (the ciphertext is base64: ~4.5 MB of journal)
 const MAX_VAULT_TOTAL = 1024 * 1024 * 1024; // all members' encrypted journals together
 const MAX_KEYS = 10;                       // signed-in devices per member; the oldest drops out
 const ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
 const B64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
-const MAX_EVENTS = 2000;
 const MAX_MEMBERS = 5000;
 const STREAK_MARKS = [7, 14, 21, 30, 50, 75, 100, 150, 200, 365];
 const COMP_TYPES = ['discipline', 'survivor', 'journal', 'return'];
 const DEFAULT_CONFIG = { open: true, inviteCode: '', unlocksOn: true, requireClaim: false, approveWallets: false, vaultOn: true,
-  unlocks: { trends: 2, share: 3, compete: 4 }, themes: { ember: 3, aurora: 5, gold: 8 } };
+  unlocks: { trends: 2, share: 3, compete: 4 } };
 const SHARE_KEYS = ['profile', 'boards', 'global', 'page', 'feed', 'habits', 'verify', 'ret', 'usd', 'addr', 'mentor'];
 // mentor: the league's mentors can see your trading days (scores, slips, the lesson you wrote) and comment on them — opt-in
 // global: appear on the server-wide leaderboards (every member, every league) — opt-in
@@ -66,6 +72,9 @@ const sha = s => crypto.createHash('sha256').update(String(s)).digest('hex');
 const clampNum = (v, lo, hi) => { const n = +v; return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : null; };
 // invite codes are compared in constant time
 const sameText = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
+// a post's text keeps its line breaks (at most one blank line in a row); other control characters go
+const cleanPost = (s, max) => String(s == null ? '' : s).replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ')
+  .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, max);
 const cleanText = (s, max) => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max);
 const utcDayKey = ms => new Date(ms).toISOString().slice(0, 10);
 const addDaysKey = (k, n) => utcDayKey(Date.parse(k + 'T00:00:00Z') + n * 86400000);
@@ -252,13 +261,18 @@ function weeksIn(start, end) { const out = []; let k = start;
 
 // ---- competitions ----
 function compStatus(c, todayKey) { return todayKey < c.start ? 'upcoming' : todayKey > c.end ? 'finished' : 'live'; }
+// members: an array, or the members object keyed by id (no lookup map to build per call)
 // walletGate (optional): m -> a reason the member's wallet doesn't count yet (owner approval), or null
 function compStandings(c, members, todayKey, requireClaim, walletGate) {
-  const byId = new Map(members.map(m => [m.id, m]));
+  const byId = Array.isArray(members) ? new Map(members.map(m => [m.id, m])) : { get: id => Object.prototype.hasOwnProperty.call(members, id) ? members[id] : undefined };
   const rows = [];
   for (const id of Object.keys(c.entrants || {})) {
     const m = byId.get(id); if (!m || m.banned) continue;
-    const days = ((m.stats && m.stats.days) || []).filter(d => d.k >= c.start && d.k <= c.end && d.k <= todayKey);
+    // the days the competition kept as they were synced (the app only sends the last few weeks),
+    // with the member's latest copy on top
+    const kept = new Map(((c.log && c.log[id]) || []).map(d => [d.k, d]));
+    for (const d of (m.stats && m.stats.days) || []) { const p = kept.get(d.k); kept.set(d.k, p ? Object.assign({}, d, { b: !!(d.b || p.b) }) : d); }
+    const days = [...kept.values()].filter(d => d.k >= c.start && d.k <= c.end && d.k <= todayKey).sort((a, b) => a.k < b.k ? -1 : 1);
     let score = null, note = '', out = false;
     if (c.type === 'discipline') {
       // verified days only: recomputed by the server from the member's own fills
@@ -297,6 +311,66 @@ function sanitizeComp(b) {
     ddCap: type === 'return' ? (clampNum(b.ddCap, 0.01, 0.9) || 0.08) : null };
 }
 
+// ---- members' own posts: a trade they took, one they plan to take, or a note ----
+// The owner's switches: posts at all, planned-trade posts, images on posts.
+function sanitizePostCfg(b, prev) {
+  const o = Object.assign({ on: true, plans: true, images: true }, prev || {});
+  if (b && typeof b === 'object') for (const k of ['on', 'plans', 'images']) if (typeof b[k] === 'boolean') o[k] = b[k];
+  return o;
+}
+const POST_KINDS = ['trade', 'plan', 'note'];
+const TRADE_STATUS = ['planned', 'open', 'closed', 'cancelled'];
+const COIN_RE = /^[A-Za-z0-9@/:._-]{1,24}$/;
+const MEDIA_RE = /^[a-f0-9]{24}$/;
+const price = v => { const n = +v; return v != null && v !== '' && isFinite(n) && n > 0 && n < 1e12 ? +n.toPrecision(10) : null; };
+const stamp = v => { const n = Math.round(+v); return isFinite(n) && n > 1.5e12 && n < 4e12 ? n : null; };
+// What a trade post carries. The plan's levels (entry, stop, target) are fixed once posted; later
+// updates only add what happened (status, exit, times, result). R and % come from the prices
+// whenever they're there, so a member can't post a result the levels don't support.
+function sanitizeTrade(b, prev, opts) {
+  opts = opts || {};
+  if (!b || typeof b !== 'object') return prev || null;
+  const t = prev ? Object.assign({}, prev) : {};
+  if (!prev) {
+    const coin = String(b.coin || '').trim(); if (!COIN_RE.test(coin)) return null;
+    const side = b.side === 'short' || b.side === 'Short' ? 'short' : b.side === 'long' || b.side === 'Long' ? 'long' : null; if (!side) return null;
+    Object.assign(t, { coin, side, entry: price(b.entry), stop: price(b.stop), target: price(b.target),
+      setup: cleanText(b.setup, 40), tf: cleanText(b.tf, 12) });
+    // a spot pair is '@107' in fills: the app sends the pair's name to show instead (perps show the coin itself)
+    const label = String(b.label || '').trim(); if (/^@\d+$/.test(coin) && /^[A-Za-z0-9]{1,16}(\/[A-Za-z0-9]{1,12})?$/.test(label)) t.label = label;
+    if (t.entry == null) return null;
+    // a stop a hair from the entry would make any move look like a huge R
+    if (t.stop != null && Math.abs(t.entry - t.stop) / t.entry < 0.0005) return null;
+    // a stop or target on the wrong side of the entry is a typo, not a plan
+    const dir = side === 'long' ? 1 : -1;
+    if (t.stop != null && (t.stop - t.entry) * dir >= 0) return null;
+    if (t.target != null && (t.target - t.entry) * dir <= 0) return null;
+    t.status = opts.kind === 'plan' ? 'planned' : 'open';
+  }
+  const order = { planned: 0, open: 1, closed: 2, cancelled: 2 }, cur = t.status;
+  if (TRADE_STATUS.includes(b.status)) {
+    // a new plan starts planned and a new trade open or closed; after that, forward only: a closed
+    // trade doesn't reopen, and only a plan that never happened can be cancelled
+    const ok = !prev ? (opts.kind === 'plan' ? b.status === 'planned' : b.status === 'open' || b.status === 'closed')
+      : order[b.status] > order[cur] && (b.status !== 'cancelled' || cur === 'planned');
+    if (ok) t.status = b.status;
+  }
+  // times: a planned trade can't have opened before it was posted (notBefore), and closes after it opens
+  const nb = opts.notBefore || 0;
+  if (t.status === 'closed' || t.status === 'open') { const o = stamp(b.openedAt); if (o != null && t.openedAt == null && o >= nb) t.openedAt = o; }
+  if (t.status === 'closed') { const ex = price(b.exit); if (ex != null && t.exit == null) t.exit = ex;
+    const c = stamp(b.closedAt); if (c != null && t.closedAt == null && c >= nb && (t.openedAt == null || c >= t.openedAt)) t.closedAt = c; }
+  const dir = t.side === 'long' ? 1 : -1;
+  // the result is worked out once, when the exit is first known, and never rewritten
+  if (t.status === 'closed' && t.exit != null && t.pct == null) {
+    t.pct = Math.round(dir * (t.exit - t.entry) / t.entry * 10000) / 100;
+    const r = t.stop != null ? dir * (t.exit - t.entry) / Math.abs(t.entry - t.stop) : clampNum(b.r, -100, 100);
+    if (r != null) t.r = Math.round(Math.max(-100, Math.min(100, r)) * 100) / 100;
+    const usd = clampNum(b.usd, -1e9, 1e9); if (usd != null && opts.usd) t.usd = Math.round(usd * 100) / 100;
+  }
+  if (t.status !== 'closed') { delete t.pct; delete t.r; delete t.usd; }
+  return t;
+}
 // ---- the HTTP side ----
 // Sign-In with Ethereum (EIP-4361) message text. Wallets recognise this format and check the
 // domain against the page they're on, so it has to be the host the member is looking at.
@@ -316,22 +390,42 @@ function sanitizeVaultBlob(b) {
 }
 
 function createSocial(opts) {
-  const file = path.join(opts.dataDir, 'social.json');
+  const legacyFile = path.join(opts.dataDir, 'social.json');
   const json = opts.json, authOk = opts.authOk, adminConfigured = !!opts.adminConfigured;
   const fetchImpl = opts.fetchImpl || ((...a) => globalThis.fetch(...a));
   const now = opts.now || (() => Date.now());
-  let S;
-  try { S = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { S = null; }
-  if (!S || S.v !== 1) S = { v: 1, config: {}, members: {}, follows: {}, events: [], comps: {}, league: { week: null } };
+  // ---- storage: SQLite in DATA_DIR/pulse.db (db.js) ----
+  const store = Store.open(opts.dataDir), q = store.q, tx = store.tx;
+  // the first start on SQLite brings the old JSON file over, once
+  if (!q('SELECT 1 FROM kv LIMIT 1').get() && !q('SELECT 1 FROM members LIMIT 1').get()) {
+    let raw = null, old = null; try { raw = fs.readFileSync(legacyFile, 'utf8'); } catch (e) {}
+    if (raw != null) { try { old = JSON.parse(raw); } catch (e) {}
+      // a league file that's there but can't be read must not turn into an empty league that then
+      // can never import it: stop and say so
+      if (!old || old.v !== 1) throw new Error(legacyFile + ' could not be read, so the league was not imported. Fix or move the file, then start again.'); }
+    if (old) { Store.importJson(store, old); try { fs.renameSync(legacyFile, legacyFile + '.migrated'); } catch (e) {} }
+  }
+  // every section kept as a kv row: one missing here is never loaded or saved (wallet decisions and
+  // the admin log would vanish on the next restart)
+  const KV_KEYS = ['config', 'follows', 'comps', 'league', 'leagues', 'badges', 'ownerCoach', 'partners', 'comments', 'leagueSeq', 'wallets', 'adminLog'];
+  let S = { v: 1, members: {} };
+  const loadedRaw = new Map(); // what each row held, so the first save writes only what loading changed
+  for (const r of q('SELECT k, v FROM kv').all()) if (KV_KEYS.includes(r.k)) try { S[r.k] = JSON.parse(r.v); loadedRaw.set(r.k, r.v); } catch (e) {}
+  for (const r of q('SELECT data FROM members').all()) try { const m = JSON.parse(r.data); if (m && m.id) { S.members[m.id] = m; loadedRaw.set('m:' + m.id, r.data); } } catch (e) {}
+  if (!S.config || typeof S.config !== 'object') S.config = {};
+  if (!S.follows || typeof S.follows !== 'object') S.follows = {};
+  if (!S.comps || typeof S.comps !== 'object') S.comps = {};
+  if (!S.league || typeof S.league !== 'object') S.league = { week: null };
   S.config = Object.assign({}, DEFAULT_CONFIG, S.config, {
-    unlocks: Object.assign({}, DEFAULT_CONFIG.unlocks, S.config && S.config.unlocks),
-    themes: Object.assign({}, DEFAULT_CONFIG.themes, S.config && S.config.themes) });
+    unlocks: Object.assign({}, DEFAULT_CONFIG.unlocks, S.config && S.config.unlocks) });
+  delete S.config.themes; // colour themes were dropped
   // v0.4 sections; v0.3's three unlock levels carry over into the feature map
   S.config.modules = SC.sanitizeModules(S.config.modules || S.config.unlocks, null);
   S.config.levels = SC.sanitizeLevels(S.config.levels, null);
   S.config.xp = SC.sanitizeXp(S.config.xp, null);
   S.config.coach = SC.sanitizeCoachCfg(S.config.coach, null);
   S.config.profiles = SC.sanitizeProfiles(S.config.profiles, null);
+  S.config.posts = sanitizePostCfg(S.config.posts, null);
   if (!S.badges || typeof S.badges !== 'object') S.badges = {};
   // the owner's wallet decisions, by address (so a new profile can't launder a rejected wallet):
   // { '0x…': { s: 'approved' | 'rejected', at, by: 'owner' | 'existing', note } }
@@ -347,18 +441,43 @@ function createSocial(opts) {
     for (const m of Object.values(S.members)) S.leagues.main.members[m.id] = { tier: m.tier || 0, at: m.createdAt || Date.now() };
   }
   // every league has a short number people can search for (#1001, #1002, …)
-  if (!(S.leagueSeq > 1000)) S.leagueSeq = 1000;
+  // numbers never repeat: the counter is at least the highest number already handed out
+  S.leagueSeq = Math.max(1000, +S.leagueSeq || 0, ...Object.values(S.leagues).map(L => +L.num || 0));
   for (const L of Object.values(S.leagues)) if (!L.num) L.num = ++S.leagueSeq;
+  // Writes go out as rows: save(m, 'partners', …) writes that member and those sections, save()
+  // with nothing named checks everything. A row is only written when its JSON changed (a digest of
+  // the last copy written is kept), and each save is one transaction.
+  const written = new Map(), dirty = new Set();
+  const digest = s => crypto.createHash('sha1').update(s).digest('base64');
+  for (const [k, raw] of loadedRaw) written.set(k, digest(raw)); loadedRaw.clear();
+  // what was written is only remembered once the transaction commits: a failed save is tried again next time
+  let fresh = null;
+  const writeRow = (key, val) => { if (val === undefined) return; const s = JSON.stringify(val), d = digest(s); if (written.get(key) === d) return; fresh.set(key, d);
+    if (key.startsWith('m:')) q('INSERT OR REPLACE INTO members (id, data) VALUES (?, ?)').run(key.slice(2), s); else q('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').run(key, s); };
+  const touch = (...xs) => { for (const x of xs) if (typeof x === 'string') dirty.add(x); else if (x && x.id) dirty.add('m:' + x.id); };
+  const save = (...xs) => { const all = !xs.length; touch(...xs);
+    if (all || dirty.has('follows')) folCount = null;
+    if (dirty.has('leagues')) dirty.add('leagueSeq'); // a new league's number and the counter go together
+    fresh = new Map();
+    tx(() => {
+      if (all) { for (const k of KV_KEYS) writeRow(k, S[k]); for (const m of members()) writeRow('m:' + m.id, m); }
+      else for (const k of dirty) { if (!k.startsWith('m:')) writeRow(k, S[k]); else if (own(S.members, k.slice(2))) writeRow(k, S.members[k.slice(2)]); }
+    });
+    for (const [k, d] of fresh) written.set(k, d); dirty.clear(); };
+  // lookups by device key and by name, rebuilt after anything that changes keys or names
+  let keyIdx = null, handleIdx = null, folCount = null;
+  const reindex = () => { keyIdx = null; handleIdx = null; };
   const sig = opts.sig !== undefined ? opts.sig : ethSig;
   const vaultDir = path.join(opts.dataDir, 'vault');
   const vaultFile = id => path.join(vaultDir, String(id).replace(/[^a-f0-9]/g, '') + '.json');
-  const save = () => { const tmp = file + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(S)); fs.renameSync(tmp, file); };
   const members = () => Object.values(S.members);
   // a member has one key per device: keyHash from joining, keyHashes from wallet sign-ins and device codes
   const byKey = req => { const k = req.headers['x-pulse-key']; if (!k || typeof k !== 'string' || k.length > 128) return null;
-    const h = sha(k); return members().find(m => m.keyHash === h || (Array.isArray(m.keyHashes) && m.keyHashes.includes(h))) || null; };
+    if (!keyIdx) { keyIdx = new Map(); for (const m of members()) { if (m.keyHash) keyIdx.set(m.keyHash, m.id); for (const h of m.keyHashes || []) keyIdx.set(h, m.id); } }
+    const h = sha(k), id = keyIdx.get(h), m = id && own(S.members, id) ? S.members[id] : null;
+    return m && (m.keyHash === h || (Array.isArray(m.keyHashes) && m.keyHashes.includes(h))) ? m : null; };
   const addKey = m => { const key = crypto.randomBytes(24).toString('hex');
-    m.keyHashes = [...(Array.isArray(m.keyHashes) ? m.keyHashes : []), sha(key)].slice(-MAX_KEYS); return key; };
+    m.keyHashes = [...(Array.isArray(m.keyHashes) ? m.keyHashes : []), sha(key)].slice(-MAX_KEYS); reindex(); return key; };
   // the wallet whose on-chain numbers count for this member: any address they gave, or, when the
   // owner requires claims, only a wallet they proved is theirs by signing
   // … and, when the owner approves wallets, only an address the owner approved
@@ -389,11 +508,13 @@ function createSocial(opts) {
     return { origin: proto + '://' + host, rpId: host.replace(/:\d+$/, '').replace(/^\[|\]$/g, '') };
   };
   const limits = new Map();
-  const limited = (req, bucket, n, windowMs) => { const k = bucket + '|' + ipOf(req);
-    const recent = (limits.get(k) || []).filter(t => now() - t < windowMs);
-    if (recent.length >= n) { limits.set(k, recent); return true; }
-    recent.push(now()); limits.set(k, recent);
-    if (limits.size > 20000) for (const [kk, v] of limits) if (!v.length || now() - v[v.length - 1] > 3600000) limits.delete(kk);
+  // byMember: count per member wherever they connect from (an IP is easy to change)
+  const limited = (req, bucket, n, windowMs, byMember) => { const k = byMember ? bucket : bucket + '|' + ipOf(req);
+    const e = limits.get(k), recent = (e ? e.t : []).filter(t => now() - t < windowMs);
+    if (recent.length >= n) { limits.set(k, { w: windowMs, t: recent }); return true; }
+    recent.push(now()); limits.set(k, { w: windowMs, t: recent });
+    // pruning drops only entries whose own window has passed (a day-long limit isn't reset after an hour)
+    if (limits.size > 20000) for (const [kk, v] of limits) if (!v.t.length || now() - v.t[v.t.length - 1] > v.w) limits.delete(kk);
     return false; };
   const pending = new Map(); // SIWE nonce -> the message the server wrote, single use, 10 minutes
   const links = new Map();   // one-time device code -> member, single use, 10 minutes
@@ -434,13 +555,20 @@ function createSocial(opts) {
     weeks: board === 'xp' && W.weeks ? W.weeks : undefined, dayFrom: board === 'xp' ? W.dayFrom : undefined, dayTo: W.dayTo, days: W.days }); };
   // a monthly league's boards cover the month so far: the same window its rollover ranks on
   const monthDays = () => Math.max(1, Math.round((Date.parse(todayKey()) - Date.parse(isoWeekMonday(monthWeeks(S.league.week)[0]))) / 86400000) + 1);
+  // how many active members a league has: a walk over its own roster, not over every member
+  const leagueSize = L => { let n = 0; for (const id in L.members) if (own(S.members, id) && !S.members[id].banned) n++; return n; };
   const leagueOut = (L, viewer) => ({ id: L.id, num: L.num, name: L.name, desc: L.desc, metric: L.metric, metricLabel: SC.LEAGUE_METRICS[L.metric], period: L.period,
-    tiers: L.tiers, open: L.open, inviteRequired: !!L.invite, members: members().filter(m => own(L.members, m.id) && !m.banned).length,
+    tiers: L.tiers, open: L.open, inviteRequired: !!L.invite, members: leagueSize(L),
     joined: !!viewer && own(L.members, viewer.id), tier: viewer && own(L.members, viewer.id) ? leagueTier(L, viewer) : null,
     tierName: viewer && own(L.members, viewer.id) ? TIERS[leagueTier(L, viewer)] : null, season: L.season ? seasonInfo(L) : null });
   // ---- levels, XP grants, reward badges ----
   const levelTitle = n => { const t = S.config.levels.titles; return t[Math.min(n, t.length) - 1] || ('Level ' + n); };
-  const zoneKey = (tz, ms) => { try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms); }
+  // one formatter per time zone, made once: making them is the slow part (the reminder pass runs every minute over every member)
+  const fmts = new Map();
+  const fmtFor = (kind, tz) => { const k = kind + '|' + tz; let f = fmts.get(k);
+    if (!f) { f = new Intl.DateTimeFormat(kind === 'day' ? 'en-CA' : 'en-GB', kind === 'day' ? { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' } : { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+      if (fmts.size > 500) fmts.clear(); fmts.set(k, f); } return f; };
+  const zoneKey = (tz, ms) => { try { return fmtFor('day', tz || 'UTC').format(ms); }
     catch (e) { return utcDayKey(ms); } };
   const badgeValue = (m, metric) => {
     const st = m.stats || {}, mo = m.money;
@@ -480,29 +608,63 @@ function createSocial(opts) {
     const reason = !c.members ? 'The owner hasn’t opened the coach to members.' : m.banned ? 'This profile was removed from the league.'
       : need && lvl < need ? 'The coach unlocks at level ' + need + '.' : limit <= 0 ? 'The coach is switched off for your profile.' : used >= limit ? 'You’ve used today’s ' + limit + ' coach message' + (limit === 1 ? '' : 's') + '. More tomorrow.' : null;
     return { allowed: !reason, reason, limit, used, remaining: Math.max(0, limit - used), detail: !!(c.detail && m.coachDetail), detailAllowed: !!c.detail, unlockLevel: need || null }; };
-  const byHandle = h => members().find(m => m.handle.toLowerCase() === String(h || '').toLowerCase()) || null;
+  const byHandle = h => { if (!handleIdx) { handleIdx = new Map(); for (const m of members()) handleIdx.set(m.handle.toLowerCase(), m.id); }
+    const id = handleIdx.get(String(h || '').toLowerCase()), m = id && own(S.members, id) ? S.members[id] : null;
+    return m && m.handle.toLowerCase() === String(h || '').toLowerCase() ? m : null; };
   const EVENTS_PER_DAY = 12;
+  // ---- the feed: rows in the events table ----
+  // automatic milestones are capped per member per day; members' own posts have their own limit
   const pushEvent = (m, e) => {
-    if (m) { const recent = S.events.filter(x => x.member === m.id && now() - x.at < 86400000).length; if (recent >= EVENTS_PER_DAY) return; }
-    S.events.push({ id: crypto.randomBytes(6).toString('hex'), at: now(), member: m ? m.id : null, type: e.type, text: e.text, quote: e.quote || '', kudos: [] });
-    if (S.events.length > MAX_EVENTS) S.events.splice(0, S.events.length - MAX_EVENTS);
+    if (m && q("SELECT count(*) AS n FROM events WHERE member = ? AND at > ? AND type != 'post'").get(m.id, now() - 86400000).n >= EVENTS_PER_DAY) return null;
+    const id = crypto.randomBytes(6).toString('hex');
+    q('INSERT INTO events (id, at, member, type, text, quote, data) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(id, now(), m ? m.id : null, String(e.type), String(e.text || ''), String(e.quote || ''), e.data ? JSON.stringify(e.data) : null);
+    return id;
   };
+  const eventById = id => typeof id === 'string' && /^[a-f0-9]{1,32}$/.test(id) ? q('SELECT * FROM events WHERE id = ?').get(id) || null : null;
   const todayKey = () => utcDayKey(now());
   const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
-  // a post is visible when its author is still here, not suspended, and shares that kind of post
-  const visible = (e, viewer) => { if (!e.member) return true; const a = own(S.members, e.member) ? S.members[e.member] : null;
+  // a post is visible when its author is still here, not suspended, and shares that kind of post;
+  // posts a member wrote themselves only need them to still be here
+  const visible = (e, viewer) => { if (e.hidden) return false; if (!e.member) return true; const a = own(S.members, e.member) ? S.members[e.member] : null;
     if (!a || a.banned) return false; if (viewer && a.id === viewer.id) return true;
+    if (e.type === 'post') return true;
     return !!a.share.feed && (e.type !== 'habit' || !!a.share.habits); };
+  // images: files in DATA_DIR/media, a row each in the media table
+  const mediaDir = path.join(opts.dataDir, 'media');
+  const mediaFile = id => path.join(mediaDir, String(id).replace(/[^a-f0-9]/g, ''));
+  const dropMedia = rows => { for (const r of rows) { q('DELETE FROM media WHERE id = ?').run(r.id); const f = mediaFile(r.id); store.afterCommit(() => { try { fs.unlinkSync(f); } catch (e) {} }); } };
+  // one post (or milestone) and everything hanging off it
+  const dropEvent = id => tx(() => {
+    q('DELETE FROM kudos WHERE event = ?').run(id);
+    q('DELETE FROM reports WHERE event = ? OR comment IN (SELECT id FROM comments WHERE event = ?)').run(id, id);
+    q('DELETE FROM comments WHERE event = ?').run(id);
+    dropMedia(q('SELECT id FROM media WHERE ref = ?').all('post:' + id));
+    return q('DELETE FROM events WHERE id = ?').run(id).changes; });
+  const dropComment = c => tx(() => { q('DELETE FROM reports WHERE comment = ?').run(c.id);
+    if (q('DELETE FROM comments WHERE id = ?').run(c.id).changes) q('UPDATE events SET comments = max(0, comments - 1) WHERE id = ?').run(c.event); });
   const dropMember = (id) => { const gone = own(S.members, id) ? S.members[id].address : null;
-    if (own(S.members, id) && S.members[id].vault) try { fs.unlinkSync(vaultFile(id)); } catch (e) {}
-    delete S.members[id]; delete S.follows[id]; dropPairsOf(id); delete S.comments[id];
+    const hadVault = own(S.members, id) && !!S.members[id].vault, goneHandle = own(S.members, id) ? '@' + S.members[id].handle : null;
+    // a deleted profile leaves nothing behind: the admin log keeps what was done, not who to
+    S.adminLog = S.adminLog.map(x => (x.what.includes(id) || x.by === goneHandle) ? Object.assign({}, x, { what: x.what.split(id).join('(deleted member)'), by: x.by === goneHandle ? '(deleted admin)' : x.by }) : x); touch('adminLog');
+    if (goneHandle) for (const w of Object.values(S.wallets)) if (w && w.by === goneHandle) { w.by = '(deleted admin)'; touch('wallets'); }
+    delete S.members[id]; delete S.follows[id]; dropPairsOf(id); delete S.comments[id]; reindex();
     if (opts.onDrop) try { opts.onDrop(id); } catch (e) {}
     for (const k in S.comments) S.comments[k] = S.comments[k].filter(c => c.by !== id);
     for (const L of Object.values(S.leagues)) delete L.members[id];
     if (gone && opts.forgetAddress && !members().some(o => o.address === gone)) opts.forgetAddress(gone);
     for (const k in S.follows) S.follows[k] = S.follows[k].filter(x => x !== id);
-    S.events = S.events.filter(e => e.member !== id); for (const e of S.events) e.kudos = e.kudos.filter(x => x !== id);
-    for (const c of Object.values(S.comps)) { delete c.entrants[id]; if (c.money) delete c.money[id]; } };
+    for (const c of Object.values(S.comps)) { delete c.entrants[id]; if (c.money) delete c.money[id]; if (c.log) delete c.log[id]; }
+    tx(() => {
+      for (const e of q('SELECT id FROM events WHERE member = ?').all(id)) dropEvent(e.id);
+      q('UPDATE events SET kudos = max(0, kudos - 1) WHERE id IN (SELECT event FROM kudos WHERE member = ?)').run(id);
+      q('DELETE FROM kudos WHERE member = ?').run(id);
+      for (const c of q('SELECT id, event FROM comments WHERE member = ?').all(id)) dropComment(c);
+      q('DELETE FROM reports WHERE member = ?').run(id);
+      dropMedia(q('SELECT id FROM media WHERE member = ?').all(id));
+      q('DELETE FROM members WHERE id = ?').run(id); written.delete('m:' + id);
+      if (hadVault) store.afterCommit(() => { try { fs.unlinkSync(vaultFile(id)); } catch (e) {} }); // the journal file goes once the row has
+    }); };
   // weekly league rollover runs lazily on the first request of a new ISO week
   const ensureWeek = () => {
     const wk = isoWeekOfKey(todayKey());
@@ -523,12 +685,16 @@ function createSocial(opts) {
       L.week = wk;
     }
     S.league.week = wk; save();
+    // milestones older than about a year leave the feed; members' posts and the owner's announcements stay
+    tx(() => { const old = "SELECT id FROM events WHERE type NOT IN ('post', 'announce') AND at < ?", cut = now() - 400 * 86400000;
+      q('DELETE FROM kudos WHERE event IN (' + old + ')').run(cut); q('DELETE FROM events WHERE id IN (' + old + ')').run(cut); });
   };
   // money stats: read from the chain for opted-in members, at most every 30 minutes each
   const moneyBusy = new Set();
   const refreshMoney = async (m, force) => {
     const addr = walletFor(m);
-    if (!addr || !(m.share.ret || m.share.usd) || moneyBusy.has(m.id)) return;
+    if (!addr || m.banned || !(m.share.ret || m.share.usd) || moneyBusy.has(m.id)) return;
+    if (moneyBusy.size >= 3 && !force) return; // three wallets at a time (a forced one, after a wallet change, goes anyway)
     if (!force && m.money && now() - m.money.at < 30 * 60000) return;
     if (m.moneyFailAt && now() - m.moneyFailAt < 10 * 60000) return; // Hyperliquid erroring: don't hammer it
     moneyBusy.add(m.id);
@@ -540,13 +706,17 @@ function createSocial(opts) {
       if (!own(S.members, m.id) || walletFor(S.members[m.id]) !== addr) return; // wallet changed meanwhile
       const st = portfolioStats(res, 'month');
       m.money = st ? { ret: st.ret, dd: st.dd, usd: st.usd, at: now() } : { ret: null, dd: null, usd: null, at: now() };
-      for (const c of Object.values(S.comps)) if (c.type === 'return' && c.entrants[m.id]) {
+      let compsChanged = false;
+      // a finished competition keeps the result it had when it ended
+      // until a competition's result is frozen (a day or so after the end) its numbers still update
+      for (const c of Object.values(S.comps)) if (c.type === 'return' && c.entrants[m.id] && !c.final) {
         const from = Date.parse(c.start + 'T00:00:00Z');
         // the 'month' series only reaches back 30 days; older windows need the coarser all-time one
         const s2 = portfolioStats(res, from >= now() - 29 * 86400000 ? 'month' : 'allTime', from, Date.parse(c.end + 'T23:59:59Z'));
-        if (s2) { c.money = c.money || {}; c.money[m.id] = { ret: s2.ret, dd: s2.dd }; }
+        if (s2) { c.money = c.money || {}; const prev = c.money[m.id];
+          if (!prev || prev.ret !== s2.ret || prev.dd !== s2.dd) { c.money[m.id] = { ret: s2.ret, dd: s2.dd }; compsChanged = true; } }
       }
-      awardCheck(m); save();
+      awardCheck(m); if (compsChanged) save(m, 'comps'); else save(m);
       m.moneyFailAt = 0;
     } catch (e) { m.moneyFailAt = now(); /* retried after the backoff; boards show what they have */ }
     finally { moneyBusy.delete(m.id); }
@@ -569,18 +739,22 @@ function createSocial(opts) {
       const keep = new Map((live.vdays || []).map(d => [d.k, d]));
       for (const d of days) if (d && DAY_RE.test(d.k)) keep.set(d.k, { k: d.k, s: clampNum(d.s, 0, 100) || 0, n: clampNum(d.n, 0, 1e5) || 0 });
       live.vdays = [...keep.values()].sort((a, b) => a.k < b.k ? -1 : 1).slice(-100);
-      live.vAt = now(); live.vFailAt = 0; awardCheck(live); save();
+      live.vAt = now(); live.vFailAt = 0; awardCheck(live); save(live);
     } catch (e) { m.vFailAt = now(); }
     finally { behaviorBusy.delete(m.id); }
   };
   const refreshAll = m => { refreshMoney(m); refreshBehavior(m); };
   const tierOf = m => ({ tier: m.tier || 0, tierName: TIERS[m.tier || 0] });
+  // how many follow each member, counted once until the follows change
+  const followersOf = id => { if (!folCount) { folCount = new Map();
+      for (const [k, list] of Object.entries(S.follows)) if (own(S.members, k)) for (const x of list || []) folCount.set(x, (folCount.get(x) || 0) + 1); }
+    return folCount.get(id) || 0; };
   const publicMember = (m, viewer) => {
     const st = m.stats || {};
     const out = { id: m.id, handle: m.handle, ...tierOf(m), level: st.level || 1, title: levelTitle(st.level || 1),
-      followers: members().filter(x => (S.follows[x.id] || []).includes(m.id)).length,
+      followers: followersOf(m.id),
       following: (S.follows[m.id] || []).length, isFollowing: !!viewer && (S.follows[viewer.id] || []).includes(m.id), isMe: !!viewer && viewer.id === m.id,
-      claimed: !!m.claimed };
+      claimed: !!m.claimed, av: avUrl(m), bio: m.bio || '' };
     if (out.isMe) Object.assign(out, { claimedAddress: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
       vault: m.vault ? { rev: m.vault.rev, size: m.vault.size, at: m.vault.at } : null, requireClaim: !!S.config.requireClaim, vaultOn: !!S.config.vaultOn,
       walletStatus: S.config.approveWallets && m.address ? walletStatus(m.address) : null, admin: !!m.admin,
@@ -601,26 +775,111 @@ function createSocial(opts) {
     if ((m.share.addr || out.isMe) && m.address) out.address = m.address;
     return out;
   };
-  const eventOut = (e, viewer) => { const m = e.member ? S.members[e.member] : null;
-    return { id: e.id, at: e.at, type: e.type, text: e.text, quote: e.quote, handle: m ? m.handle : null, tier: m ? m.tier || 0 : null,
-      admin: !e.member, kudos: e.kudos.length, liked: !!viewer && e.kudos.includes(viewer.id), mine: !!viewer && e.member === viewer.id }; };
+  const avUrl = m => m && m.avatar && !m.banned ? '/api/social/media/' + m.avatar : null;
+  // feed rows as the app sees them; liked: the ids among them this viewer gave kudos to
+  const likedBy = (viewer, rows) => { if (!viewer || !rows.length) return new Set();
+    return new Set(q('SELECT event FROM kudos WHERE member = ? AND event IN (SELECT value FROM json_each(?))').all(viewer.id, JSON.stringify(rows.map(e => e.id))).map(r => r.event)); };
+  const eventOut = (e, viewer, liked) => { const m = e.member && own(S.members, e.member) ? S.members[e.member] : null;
+    const o = { id: e.id, at: e.at, type: e.type, text: e.text, quote: e.quote, handle: m ? m.handle : null, av: avUrl(m), tier: m ? m.tier || 0 : null,
+      admin: !e.member, kudos: e.kudos || 0, liked: !!liked && liked.has(e.id), mine: !!viewer && e.member === viewer.id };
+    if (e.type === 'post') { let d = {}; try { d = JSON.parse(e.data || '{}') || {}; } catch (x) {}
+      const t = d.trade ? Object.assign({}, d.trade) : null;
+      if (t && !(m && m.share.usd)) delete t.usd; // dollar results only for members who share them
+      o.post = { kind: d.kind || 'note', trade: t, media: (d.media || []).map(id => '/api/social/media/' + id), verified: isVerified(d),
+        comments: e.comments || 0, edited: e.edited || null, outcome: d.outcome || '', outcomeAt: d.outcomeAt || null }; }
+    return o; };
+  const eventsOut = (rows, viewer) => { const liked = likedBy(viewer, rows); return rows.map(e => eventOut(e, viewer, liked)); };
+  // who to suggest following: the best 30-day Discipline on the server, worked out every five minutes
+  let topCache = null;
+  const topDiscipline = () => { if (topCache && now() - topCache.at < 300000) return topCache.list;
+    const list = members().filter(m => !m.banned && m.share.profile && m.stats)
+      .map(m => ({ id: m.id, d: disciplineOver(m.share.verify && Array.isArray(m.vdays) ? m.vdays : m.stats.days, addDaysKey(todayKey(), -29), todayKey(), 3).avg }))
+      .sort((a, b) => (b.d || 0) - (a.d || 0)).slice(0, 60);
+    topCache = { at: now(), list }; return list; };
+  const postCfgOut = () => ({ on: !!S.config.posts.on, plans: !!S.config.posts.plans, images: !!S.config.posts.images });
+  const commentRowOut = (c, viewer, e) => { const a = own(S.members, c.member) ? S.members[c.member] : null;
+    return { id: c.id, at: c.at, text: c.text, handle: a ? a.handle : null, av: avUrl(a), mine: !!viewer && c.member === viewer.id,
+      canDelete: !!viewer && (c.member === viewer.id || e.member === viewer.id) }; };
+  // up to four of the member's own uploads, not used elsewhere; false when one isn't theirs or is gone
+  const sanitizeMediaIds = (list, m, postId) => { const ids = [...new Set((Array.isArray(list) ? list : []).filter(x => typeof x === 'string'))].slice(0, 4);
+    for (const id of ids) { const r = MEDIA_RE.test(id) ? q('SELECT * FROM media WHERE id = ?').get(id) : null;
+      if (!r || r.member !== m.id || r.kind !== 'post' || (r.ref && r.ref !== 'post:' + postId)) return false; }
+    return ids; };
+  // "On chain": the wallet the member proved is theirs by signing (a claimed wallet, never just a
+  // typed address) has fills that match the post: the right side, in that market, within a minute of
+  // the times given, near the prices given (server.js tradeCheck). The mark belongs to one version of
+  // the trade (its times and exit): when those change it's checked again. Checks run in the
+  // background, two at a time, and a check that couldn't get an answer waits ten minutes to retry.
+  const checkedKey = t => [t.openedAt || 0, t.closedAt || 0, t.exit || 0].join(':');
+  const isVerified = d => d.verified === true && !!d.trade && d.checked === checkedKey(d.trade);
+  const vq = [], vlast = new Map(); let vbusy = 0;
+  const verifyPost = (id, m) => { if (!opts.tradeCheck || !m || vq.some(j => j.id === id)) return; vq.push({ id, mid: m.id }); runVerify(); };
+  const runVerify = () => { while (vbusy < 2 && vq.length) { const job = vq.shift(); vbusy++; verifyOne(job).catch(() => {}).finally(() => { vbusy--; runVerify(); }); } };
+  const verifyOne = async ({ id, mid }) => {
+    const m = own(S.members, mid) ? S.members[mid] : null; if (!m || !m.claimed || m.banned) return;
+    const addr = m.claimed, e = eventById(id); let d; try { d = JSON.parse(e && e.data || 'null'); } catch (x) { return; }
+    const t = d && d.trade; if (!t || !(t.status === 'open' || t.status === 'closed') || !t.openedAt) return;
+    const key = checkedKey(t); if (d.checked === key) return;
+    const last = vlast.get(id); if (last && last.key === key && now() - last.at < 10 * 60000) return;
+    vlast.set(id, { key, at: now() }); if (vlast.size > 5000) vlast.delete(vlast.keys().next().value);
+    const ok = await opts.tradeCheck(addr, Object.assign({ kind: d.kind }, t)); if (typeof ok !== 'boolean') return;
+    const cur = eventById(id); if (!cur) return; const d2 = JSON.parse(cur.data || '{}');
+    if (!d2.trade || checkedKey(d2.trade) !== key) { verifyPost(id, m); return; } // it changed meanwhile: check what it is now
+    if (!own(S.members, mid) || S.members[mid].claimed !== addr) return;
+    d2.verified = ok; d2.checked = key; q('UPDATE events SET data = ? WHERE id = ?').run(JSON.stringify(d2), id); };
+  // newest first, `limit` the viewer may see, older than the cursor ("<at>.<id>" of the last one shown)
+  const feedPage = (viewer, where, args, cursor, limit) => {
+    let at = Number.MAX_SAFE_INTEGER, id = '~';
+    const c = /^(\d{1,15})\.([a-f0-9]{1,32})$/.exec(String(cursor || '')); if (c) { at = +c[1]; id = c[2]; }
+    const out = []; let last = null, more = true;
+    for (let pass = 0; pass < 20 && out.length < limit && more; pass++) {
+      const rows = q('SELECT * FROM events WHERE hidden = 0 AND (at < ? OR (at = ? AND id < ?))' + (where ? ' AND ' + where : '') + ' ORDER BY at DESC, id DESC LIMIT 100').all(at, at, id, ...args);
+      more = rows.length === 100;
+      for (const r of rows) { last = r; if (visible(r, viewer)) out.push(r); if (out.length >= limit) break; }
+      if (last) { at = last.at; id = last.id; }
+    }
+    // a short page with more rows behind it (a long run the viewer can't see) still hands on its cursor
+    return { rows: out, next: (out.length >= limit || more) && last ? last.at + '.' + last.id : null };
+  };
+  // A competition's standings are frozen the day after it ends (a day's grace for the last sync)
+  // and served from then on: members' later days and their history being trimmed can't move them.
+  const compRows = c => {
+    if (c.final) return c.final.filter(r => own(S.members, r.id) && !S.members[r.id].banned); // as members stand today
+    const rows = compStandings(c, S.members, todayKey(), !!S.config.requireClaim, m => ({ approval: 'Wallet waiting for approval', rejected: 'Wallet not accepted' })[walletBlock(m)] || null);
+    // return and discipline results come from the chain: freeze once every entrant's numbers were
+    // read after the end (or a week late at most, for a wallet that can't be read)
+    const endMs = Date.parse(c.end + 'T23:59:59Z'), fresh = () => Object.keys(c.entrants).every(id => { const m = own(S.members, id) ? S.members[id] : null;
+      if (!m || m.banned) return true; return c.type === 'return' ? !(m.share.ret && m.address) || (m.money && m.money.at > endMs) : c.type === 'discipline' ? !(m.share.verify && m.address) || (m.vAt || 0) > endMs : true; });
+    if (todayKey() > addDaysKey(c.end, 1) && (fresh() || todayKey() > addDaysKey(c.end, 7))) { c.final = rows.map(r => ({ id: r.id, handle: r.handle, score: r.score, note: r.note, out: r.out, rank: r.rank })); delete c.log; save('comps'); }
+    else if (c.type === 'return' || c.type === 'discipline') for (const id of Object.keys(c.entrants)) if (own(S.members, id)) refreshAll(S.members[id]); // a few at a time (the refresh caps)
+    return rows; };
+  // each synced day of a survivor or journal competition's entrants is kept with the competition;
+  // a broken loss limit stays broken
+  const logCompDays = m => { let ch = false;
+    for (const c of Object.values(S.comps)) {
+      if (!(c.type === 'survivor' || c.type === 'journal') || !c.entrants[m.id] || c.final) continue;
+      const L = (c.log = c.log || {})[m.id] = (c.log[m.id] || []), byK = new Map(L.map(d => [d.k, d]));
+      for (const d of (m.stats && m.stats.days) || []) { if (d.k < c.start || d.k > c.end) continue;
+        const p = byK.get(d.k), n = { k: d.k, b: !!(d.b || (p && p.b)), j: !!d.j };
+        if (!p || p.b !== n.b || p.j !== n.j) { byK.set(d.k, n); ch = true; } }
+      if (ch) c.log[m.id] = [...byK.values()].sort((a, b) => a.k < b.k ? -1 : 1).slice(-100); }
+    return ch; };
   const compOut = (c, viewer, full) => { const st = compStatus(c, todayKey());
-    const rows = compStandings(c, members(), todayKey(), !!S.config.requireClaim, m => ({ approval: 'Wallet waiting for approval', rejected: 'Wallet not accepted' })[walletBlock(m)] || null);
+    const rows = compRows(c);
     const mine = viewer ? rows.find(r => r.id === viewer.id) || null : null;
     const o = { id: c.id, title: c.title, type: c.type, rule: c.rule, start: c.start, end: c.end, minDays: c.minDays, ddCap: c.ddCap,
       league: c.league && own(S.leagues, c.league) ? { id: c.league, name: S.leagues[c.league].name } : null,
       status: st, entrants: rows.length, joined: !!(viewer && c.entrants[viewer.id]), me: mine };
-    if (full) o.standings = rows.slice(0, 50).map(r => ({ rank: r.rank, handle: r.handle, note: r.note, out: r.out, score: r.score, me: !!viewer && r.id === viewer.id }));
+    if (full) o.standings = rows.slice(0, 50).map(r => ({ rank: r.rank, handle: r.handle, av: avUrl(S.members[r.id]), note: r.note, out: r.out, score: r.score, me: !!viewer && r.id === viewer.id }));
     return o; };
   const joinTimes = new Map();
 
   // ---- inbox and web push: nudges, mentor notes, season results and the daily reminders ----
   const push = opts.push || null; // { publicKey, send(sub, message) -> status }
-  const PUSH_KINDS = ['morning', 'eod', 'partner', 'mentor', 'season'];
-  const sanitizePrefs = (p, prev) => { const o = Object.assign({ morning: '08:30', eod: '20:30', partner: true, mentor: true, season: true, on: { morning: true, eod: true } }, prev || {});
+  const sanitizePrefs = (p, prev) => { const o = Object.assign({ morning: '08:30', eod: '20:30', partner: true, mentor: true, season: true, comment: true, on: { morning: true, eod: true } }, prev || {});
     if (p && typeof p === 'object') {
       for (const k of ['morning', 'eod']) if (typeof p[k] === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(p[k])) o[k] = p[k];
-      for (const k of ['partner', 'mentor', 'season']) if (typeof p[k] === 'boolean') o[k] = p[k];
+      for (const k of ['partner', 'mentor', 'season', 'comment']) if (typeof p[k] === 'boolean') o[k] = p[k];
       if (p.on && typeof p.on === 'object') o.on = { morning: p.on.morning !== false, eod: p.on.eod !== false }; }
     return o; };
   const sendPush = async (m, msg) => {
@@ -629,19 +888,19 @@ function createSocial(opts) {
     for (const sub of [...m.push.subs]) {
       try { const st = await push.send(sub, msg);
         // gone (404/410), or no longer ours (401/403: the server's key changed) — the device subscribes again
-        if (st === 404 || st === 410 || st === 401 || st === 403) { m.push.subs = m.push.subs.filter(x => x.endpoint !== sub.endpoint); save(); }
+        if (st === 404 || st === 410 || st === 401 || st === 403) { m.push.subs = m.push.subs.filter(x => x.endpoint !== sub.endpoint); save(m); }
         else if (st >= 200 && st < 300) sent++; } catch (e) { /* a push service outage drops this one message */ } }
     return sent; };
   // into the member's inbox (shown in the app) and, if they allow that kind, to their devices
   const notify = (m, kind, text, extra) => {
     if (!m || m.banned) return;
     const it = Object.assign({ id: crypto.randomBytes(5).toString('hex'), at: now(), kind, text: cleanText(text, 700) }, extra || {});
-    m.inbox = [...(m.inbox || []), it].slice(-INBOX_MAX);
-    const pr = m.push && m.push.prefs; if (pr && pr[kind] !== false) sendPush(m, { title: extra && extra.title || 'Pulse', body: it.text, tag: 'pulse-' + kind, url: extra && extra.url || '/pulse#today' });
+    m.inbox = [...(m.inbox || []), it].slice(-INBOX_MAX); touch(m);
+    const pr = m.push && m.push.prefs; if (pr && pr[kind] !== false) sendPush(m, { title: extra && extra.title || 'Pulse', body: it.text, tag: 'pulse-' + kind, url: extra && extra.url || '/pulse#today' }).catch(() => {});
   };
   // morning and evening reminders on the member's own clock, once a day each; the evening one
   // only on a day they traded and haven't reviewed yet
-  const localHM = (tz, ms) => { try { return new Intl.DateTimeFormat('en-GB', { timeZone: tz || 'UTC', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ms); } catch (e) { return new Date(ms).toISOString().slice(11, 16); } };
+  const localHM = (tz, ms) => { try { return fmtFor('hm', tz || 'UTC').format(ms); } catch (e) { return new Date(ms).toISOString().slice(11, 16); } };
   // a reminder goes from its time until four hours later (a server that was down at 08:30 still sends it at 09:10)
   const mins = hm => +hm.slice(0, 2) * 60 + +hm.slice(3, 5);
   const due = (hm, at) => { const d = mins(hm) - mins(at); return d >= 0 && d < 240; };
@@ -653,13 +912,13 @@ function createSocial(opts) {
         if (m.banned || !m.push || !Array.isArray(m.push.subs) || !m.push.subs.length) continue;
         const pr = m.push.prefs = sanitizePrefs(null, m.push.prefs), tz = (m.stats && m.stats.tz) || 'UTC', day = zoneKey(tz, t), hm = localHM(tz, t);
         const sent = m.push.sent = m.push.sent || {};
-        if (pr.on.morning && sent.morning !== day && due(hm, pr.morning)) { sent.morning = day;
+        if (pr.on.morning && sent.morning !== day && due(hm, pr.morning)) { sent.morning = day; touch(m);
           jobs.push(() => sendPush(m, { title: 'Morning check-in', body: 'Thirty seconds: sleep, calm, focus — then your rules for today.', tag: 'pulse-morning', url: '/pulse#checkin' })); }
         const today = m.stats && Array.isArray(m.stats.days) ? m.stats.days.find(d => d.k === day) : null;
-        if (pr.on.eod && sent.eod !== day && due(hm, pr.eod) && today && !today.r) { sent.eod = day;
+        if (pr.on.eod && sent.eod !== day && due(hm, pr.eod) && today && !today.r) { sent.eod = day; touch(m);
           jobs.push(() => sendPush(m, { title: 'Review your day', body: 'Five minutes: one lesson, one focus for tomorrow.', tag: 'pulse-eod', url: '/pulse#review' })); }
       }
-      if (jobs.length) save();
+      if (jobs.length) save(null); // the members touched above
       // eight at a time: one slow push service doesn't hold up everyone else's reminder
       for (let i = 0; i < jobs.length; i += 8) await Promise.all(jobs.slice(i, i + 8).map(f => f().catch(() => 0)));
       return jobs.length;
@@ -676,7 +935,7 @@ function createSocial(opts) {
       avg7: recent.length ? Math.round(recent.reduce((a, d) => a + d.s, 0) / recent.length) : null,
       slips7: recent.reduce((a, d) => a + d.f.length, 0), challenge: st.lastChallenge || '', habits: o.share.habits ? st.habits || [] : [], seen: o.statsAt || null }; };
   const pairOut = (p, m) => { const o = otherIn(p, m); if (!o || o.banned) return null;
-    const out = { id: p.id, handle: o.handle, status: p.status === 'active' ? 'active' : p.from === m.id ? 'sent' : 'received', since: p.since || p.at,
+    const out = { id: p.id, handle: o.handle, av: avUrl(o), status: p.status === 'active' ? 'active' : p.from === m.id ? 'sent' : 'received', since: p.since || p.at,
       challenge: p.challenge && p.challenge.week === S.league.week ? { text: p.challenge.text, mine: p.challenge.by === m.id } : null };
     if (p.status === 'active') out.view = partnerView(o);
     const last = p.nudged && p.nudged[m.id]; out.canNudge = !last || now() - last > 6 * 3600000;
@@ -688,7 +947,7 @@ function createSocial(opts) {
   const commentsFor = id => (S.comments[id] || []);
   const commentOut = c => { const by = own(S.members, c.by) ? S.members[c.by] : null; return { id: c.id, day: c.day, text: c.text, at: c.at, by: by ? by.handle : 'a mentor', read: !!c.read }; };
   const menteeSummary = o => { const st = o.stats || {}, days = (st.days || []).slice(-7);
-    return { handle: o.handle, level: st.level || 1, streak: st.streak || 0, avg7: days.length ? Math.round(days.reduce((a, d) => a + d.s, 0) / days.length) : null,
+    return { handle: o.handle, av: avUrl(o), level: st.level || 1, streak: st.streak || 0, avg7: days.length ? Math.round(days.reduce((a, d) => a + d.s, 0) / days.length) : null,
       slips7: days.reduce((a, d) => a + (d.f ? d.f.length : 0), 0), lastDay: days.length ? days[days.length - 1].k : null, seen: o.statsAt || null,
       notes: commentsFor(o.id).length }; };
 
@@ -724,6 +983,15 @@ function createSocial(opts) {
         if (!(L.hall || []).some(h => h.season === id)) try { closeSeason(L, id); } catch (e) {} } }
     if (ch) save(); };
 
+  // daily limits kept on the member (posts, uploads): deleting a post or picture doesn't give the slot back
+  const dayLimit = (m, k, n) => { const L = (Array.isArray(m[k]) ? m[k] : []).filter(t => now() - t < 86400000);
+    if (L.length >= n) { m[k] = L; return true; } L.push(now()); m[k] = L; touch(m); return false; };
+  const readRaw = (req, limit) => new Promise((resolve, reject) => { let size = 0; const ch = [];
+    req.on('data', c => { size += c.length; if (size > limit) { reject(new Error('too large')); req.destroy(); return; } ch.push(c); });
+    req.on('end', () => resolve(Buffer.concat(ch))); req.on('error', reject); });
+  const sniffImage = b => b.length > 12 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP' ? 'image/webp'
+    : b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff ? 'image/jpeg'
+    : b.length > 8 && b.toString('latin1', 0, 8) === '\x89PNG\r\n\x1a\n' ? 'image/png' : null;
   const readJson = async (req, limit) => {
     const raw = await new Promise((resolve, reject) => { let size = 0; const ch = [];
       req.on('data', c => { size += c.length; if (size > limit) { reject(new Error('too large')); req.destroy(); return; } ch.push(c); });
@@ -741,6 +1009,28 @@ function createSocial(opts) {
       const who = byKey(req); if (!who) return json(res, 401, { error: 'not a member' });
       if (who.banned) return json(res, 403, { error: 'This profile was removed from the league.' });
       if (!S.config.vaultOn) return json(res, 403, { error: 'Journal sync is switched off on this server.' }); }
+    // an image: raw bytes in, checked by their first bytes (WebP, JPEG or PNG only: never SVG or HTML)
+    if (head === 'media' && !parts[1] && M === 'POST') {
+      const who = byKey(req); if (!who) return json(res, 401, { error: 'not a member' });
+      if (who.banned) return json(res, 403, { error: 'This profile was removed from the league.' });
+      const kind = query.kind === 'avatar' ? 'avatar' : 'post', max = kind === 'avatar' ? MAX_AVATAR : MAX_IMAGE;
+      if (kind === 'post' && !(S.config.posts.on && S.config.posts.images)) return json(res, 403, { error: 'Images on posts are switched off on this server.' });
+      if (+req.headers['content-length'] > max) { res.setHeader('Connection', 'close'); return json(res, 413, { error: 'That image is too large.' }); }
+      // counted when the upload starts, so parallel uploads can't all slip under the limit
+      if (dayLimit(who, 'mediaLog', MEDIA_PER_DAY)) return json(res, 429, { error: 'That’s a lot of images today. Try again tomorrow.' });
+      save(who);
+      let buf; try { buf = await readRaw(req, max); } catch (e) { return json(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? 'That image is too large.' : 'invalid body' }); }
+      const mime = sniffImage(buf); if (!mime) return json(res, 415, { error: 'Images must be WebP, JPEG or PNG.' });
+      // pictures uploaded but never used (a post that wasn't sent) go after a day
+      dropMedia(q('SELECT id FROM media WHERE ref IS NULL AND at < ?').all(now() - 86400000));
+      if ((q('SELECT sum(size) AS n FROM media').get().n || 0) + buf.length > (opts.mediaTotalMax || MAX_MEDIA_TOTAL)) return json(res, 507, { error: 'This server is out of room for images. Tell its owner.' });
+      // one member can't fill the server's room for everyone
+      if ((q('SELECT sum(size) AS n FROM media WHERE member = ?').get(who.id).n || 0) + buf.length > (opts.mediaMemberMax || MAX_MEDIA_MEMBER)) return json(res, 507, { error: 'You’ve used your room for pictures on this server. Delete a few old posts with pictures first.' });
+      const id = crypto.randomBytes(12).toString('hex');
+      fs.mkdirSync(mediaDir, { recursive: true }); const f = mediaFile(id); fs.writeFileSync(f + '.tmp', buf); fs.renameSync(f + '.tmp', f);
+      q('INSERT INTO media (id, member, at, mime, size, kind, ref) VALUES (?, ?, ?, ?, ?, ?, NULL)').run(id, who.id, now(), mime, buf.length, kind);
+      return json(res, 200, { id, url: '/api/social/media/' + id });
+    }
     if ((M === 'POST' || M === 'PUT') && +req.headers['content-length'] > limit) { res.setHeader('Connection', 'close'); return json(res, 413, { error: 'That’s too large to store here.' }); }
     if (M === 'POST' || M === 'PUT') { try { body = await readJson(req, limit); }
       catch (e) { return json(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? 'That’s too large to store here.' : 'invalid body' }); }
@@ -751,10 +1041,10 @@ function createSocial(opts) {
 
     if (head === 'config' && M === 'GET')
       return json(res, 200, { enabled: adminConfigured, open: S.config.open, inviteRequired: !!S.config.inviteCode, unlocksOn: S.config.unlocksOn,
-        unlocks: S.config.unlocks, themes: S.config.themes, tiers: TIERS, week: S.league.week, members: members().filter(m => !m.banned).length,
+        unlocks: S.config.unlocks, tiers: TIERS, week: S.league.week, members: members().filter(m => !m.banned).length,
         claims: !!sig, passkeys: true, requireClaim: !!S.config.requireClaim, approveWallets: !!S.config.approveWallets, vaultOn: !!S.config.vaultOn,
         modules: S.config.modules, levels: S.config.levels, xp: S.config.xp, profiles: S.config.profiles,
-        coach: { members: S.config.coach.members, daily: S.config.coach.daily, detail: S.config.coach.detail },
+        coach: { members: S.config.coach.members, daily: S.config.coach.daily, detail: S.config.coach.detail }, posts: postCfgOut(),
         badges: Object.values(S.badges).map(b => ({ id: b.id, name: b.name, icon: b.icon, desc: b.desc, metric: b.metric, metricLabel: b.metric ? SC.BADGE_METRICS[b.metric] : null, op: b.op, value: b.value, xp: b.xp })),
         leagues: Object.values(S.leagues).filter(L => L.open).length });
 
@@ -771,11 +1061,12 @@ function createSocial(opts) {
       if (sub === 'me' && M === 'GET') return json(res, 200, { owner: who.owner, id: who.id || null, name: who.name });
       if (sub === 'log' && M === 'GET') return json(res, 200, { log: S.adminLog.slice(-200).reverse() });
       if (M !== 'GET') { S.adminLog.push({ at: now(), by: who.by, what: (M + ' ' + parts.slice(1).join('/') + (body && body.action ? ' · ' + String(body.action).slice(0, 20) : '')).slice(0, 120) });
-        if (S.adminLog.length > 500) S.adminLog = S.adminLog.slice(-400); }
+        if (S.adminLog.length > 500) S.adminLog = S.adminLog.slice(-400); touch('adminLog'); }
       if (sub === 'overview' && M === 'GET') {
         const wk = S.league.week, act = members().filter(m => now() - (m.lastSeen || 0) < 7 * 86400000);
         return json(res, 200, { adminConfigured, members: members().length, banned: members().filter(m => m.banned).length, active7: act.length,
-          events: S.events.length, comps: Object.keys(S.comps).length, week: wk, config: S.config,
+          events: q('SELECT count(*) AS n FROM events').get().n, posts: q("SELECT count(*) AS n FROM events WHERE type = 'post'").get().n,
+          reports: q('SELECT count(*) AS n FROM reports WHERE open = 1').get().n, mediaBytes: q('SELECT sum(size) AS n FROM media').get().n || 0, comps: Object.keys(S.comps).length, week: wk, config: S.config,
           walletsPending: S.config.approveWallets ? new Set(members().filter(m => m.address && walletStatus(m.address) === 'pending').map(m => m.address)).size : 0,
           claimed: members().filter(m => m.claimed).length, vaults: members().filter(m => m.vault).length, vaultBytes: vaultTotal(), claims: !!sig,
           originPinned: origins.length > 0 || !!opts.hostVetted,
@@ -792,6 +1083,7 @@ function createSocial(opts) {
           vault: m.vault ? m.vault.size : 0, share: m.share, banned: !!m.banned, unlocked: !!m.unlocked, coachDaily: m.coachDaily != null ? m.coachDaily : null,
           coachUsed: coachUsed(m), coachLimit: coachLimitFor(m), grants: m.grants || [], awards: Object.keys(m.awards || {}).filter(id => own(S.badges, id)),
           leagues: leaguesOf(m).map(L => ({ id: L.id, tier: leagueTier(L, m) })), adminMade: !!m.adminMade, mentor: !!m.mentor, admin: !!m.admin, keys: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0), verified: !!(m.share.verify && Array.isArray(m.vdays)), createdAt: m.createdAt, lastSeen: m.lastSeen || null,
+          av: avUrl(m), bio: m.bio || '',
           money: m.money && m.money.ret != null ? { ret: m.money.ret, dd: m.money.dd } : null })) });
       if (sub === 'members' && !parts[2] && M === 'POST') { // the owner adds someone; they sign in with the code it returns
         if (body.admin && !who.owner) return json(res, 403, { error: 'Only the owner can add admins.' });
@@ -805,7 +1097,7 @@ function createSocial(opts) {
           banned: false, adminMade: true, unlocked: !!body.unlocked, pendingCodes: [{ h: sha(code), exp: now() + 7 * 86400000 }] };
         if (body.admin) { m.admin = true; m.adminSince = now(); }
         if (address && S.config.approveWallets && !walletReview(address)) S.wallets[address] = { s: 'approved', at: now(), by: who.owner ? 'owner' : who.by, note: '' }; // the owner (or an admin) attached it: that's an approval
-        S.members[id] = m; S.follows[id] = [];
+        S.members[id] = m; S.follows[id] = []; reindex();
         const ls = body.leagues != null ? [].concat(body.leagues) : Object.values(S.leagues).filter(L => L.autoJoin).map(L => L.id);
         for (const lid of ls) if (own(S.leagues, lid)) joinLeague(S.leagues[lid], m);
         save(); refreshAll(m);
@@ -826,13 +1118,15 @@ function createSocial(opts) {
         else if (a === 'edit') {
           if (body.handle != null) { const h = cleanText(body.handle, 20).replace(/^@/, '');
             if (!HANDLE_RE.test(h)) return json(res, 400, { error: 'A name is 3–20 letters, numbers or underscores.' });
-            const o = byHandle(h); if (o && o.id !== m.id) return json(res, 409, { error: 'That name is taken.' }); m.handle = h; }
+            const o = byHandle(h); if (o && o.id !== m.id) return json(res, 409, { error: 'That name is taken.' }); m.handle = h; reindex(); }
           if (body.address !== undefined && !m.claimed) { const ad = typeof body.address === 'string' && ADDR_RE.test(body.address) ? body.address.toLowerCase() : null;
             if (ad && claimedBy(ad, m.id)) return json(res, 409, { error: 'That wallet is claimed by another profile.' });
             if (ad && S.config.approveWallets && !walletReview(ad)) S.wallets[ad] = { s: 'approved', at: now(), by: who.owner ? 'owner' : who.by, note: '' };
             if (ad !== m.address) { m.address = ad; m.vdays = null; m.vAt = 0; m.money = null; refreshAll(m); } }
           if (body.share && typeof body.share === 'object') m.share = sanitizeShare(body.share, m.share);
         }
+        else if (a === 'clearAvatar') { dropMedia(q('SELECT id FROM media WHERE member = ? AND kind = ?').all(m.id, 'avatar')); m.avatar = null; }
+        else if (a === 'clearBio') m.bio = '';
         else if (a === 'mentor' || a === 'unmentor') m.mentor = a === 'mentor'; // sees the days of members who let mentors in, and comments on them
         else if (a === 'unlock' || a === 'lock') m.unlocked = a === 'unlock'; // every feature, theme and the bigger coach allowance
         else if (a === 'coach') { if (body.daily === null || body.daily === '') m.coachDaily = null;
@@ -898,6 +1192,7 @@ function createSocial(opts) {
         if (body.xp) c.xp = SC.sanitizeXp(body.xp, c.xp);
         if (body.coach) c.coach = SC.sanitizeCoachCfg(body.coach, c.coach);
         if (body.profiles) c.profiles = SC.sanitizeProfiles(body.profiles, c.profiles);
+        if (body.posts) c.posts = sanitizePostCfg(body.posts, c.posts);
         if (typeof body.requireClaim === 'boolean' && body.requireClaim !== c.requireClaim) {
           c.requireClaim = body.requireClaim;
           // numbers read from wallets nobody signed for stop counting at once, and come back after a claim
@@ -911,8 +1206,6 @@ function createSocial(opts) {
             for (const m of members()) if (m.address && !walletReview(m.address)) S.wallets[m.address] = { s: 'approved', at: now(), by: 'existing', note: '' };
           for (const m of members()) { recheckWallet(m); if (walletFor(m)) refreshAll(m); }
         }
-        for (const [grp, keys] of [['themes', ['ember', 'aurora', 'gold']]])
-          if (body[grp] && typeof body[grp] === 'object') for (const k of keys) { const v = clampNum(body[grp][k], 1, 100); if (v != null) c[grp][k] = Math.round(v); }
         c.unlocks = { trends: c.modules.trends, share: c.modules.share, compete: c.modules.compete };
         save(); return json(res, 200, { ok: true, config: c });
       }
@@ -971,11 +1264,36 @@ function createSocial(opts) {
         const text = cleanText(body.text, 280); if (!text) return json(res, 400, { error: 'empty' });
         pushEvent(null, { type: 'announce', text }); save(); return json(res, 200, { ok: true });
       }
-      if (sub === 'events' && M === 'GET') return json(res, 200, { events: S.events.slice(-100).reverse().map(e => eventOut(e, null)) });
+      if (sub === 'events' && M === 'GET') { const page = feedPage(null, query.kind === 'posts' ? "type = 'post'" : '', [], query.before, 100);
+        return json(res, 200, { events: eventsOut(page.rows, null), next: page.next }); }
       if (sub === 'events' && parts[2] && M === 'DELETE') {
-        const n = S.events.length; S.events = S.events.filter(e => e.id !== parts[2]);
-        if (S.events.length === n) return json(res, 404, { error: 'no such event' });
-        save(); return json(res, 200, { ok: true });
+        if (!dropEvent(parts[2])) return json(res, 404, { error: 'no such event' });
+        return json(res, 200, { ok: true });
+      }
+      // reports from members: what was reported, by how many, and why
+      if (sub === 'reports' && M === 'GET') {
+        const rows = q('SELECT * FROM reports WHERE open = 1 ORDER BY at DESC LIMIT 500').all(), groups = new Map();
+        for (const r of rows) { const k = r.comment ? 'c:' + r.comment : 'e:' + r.event; const g = groups.get(k) || { ids: [], why: [], at: 0, comment: r.comment, event: r.event };
+          g.ids.push(r.id); if (r.why) g.why.push(r.why); g.at = Math.max(g.at, r.at); groups.set(k, g); }
+        const out = [];
+        for (const g of groups.values()) {
+          const c = g.comment ? q('SELECT * FROM comments WHERE id = ?').get(g.comment) : null, e = eventById(c ? c.event : g.event);
+          if (!e) { q('UPDATE reports SET open = 0 WHERE id IN (SELECT value FROM json_each(?))').run(JSON.stringify(g.ids)); continue; }
+          out.push({ id: g.ids[0], n: g.ids.length, why: g.why.slice(0, 5), at: g.at, post: eventOut(e, null), comment: c ? commentRowOut(c, null, e) : null });
+        }
+        return json(res, 200, { reports: out });
+      }
+      if (sub === 'reports' && parts[2] && M === 'POST') {
+        const r = /^[a-f0-9]{12}$/.test(parts[2]) ? q('SELECT * FROM reports WHERE id = ?').get(parts[2]) : null; if (!r) return json(res, 404, { error: 'no such report' });
+        const same = r.comment ? ['comment = ?', r.comment] : ['event = ? AND comment IS NULL', r.event];
+        if (body.action === 'remove') { if (r.comment) { const c = q('SELECT * FROM comments WHERE id = ?').get(r.comment); if (c) dropComment(c); } else dropEvent(r.event); }
+        else if (body.action !== 'dismiss') return json(res, 400, { error: 'unknown action' });
+        q('UPDATE reports SET open = 0 WHERE ' + same[0]).run(same[1]);
+        return json(res, 200, { ok: true });
+      }
+      if (sub === 'comments' && parts[2] && M === 'DELETE') {
+        const c = q('SELECT * FROM comments WHERE id = ?').get(parts[2]); if (!c) return json(res, 404, { error: 'no such comment' });
+        dropComment(c); return json(res, 200, { ok: true });
       }
       return json(res, 404, { error: 'not found' });
     }
@@ -991,6 +1309,18 @@ function createSocial(opts) {
         since: utcDayKey(m.createdAt || now()), discipline30: d30.avg == null ? null : Math.round(d30.avg), verified: ver, claimed: !!m.claimed,
         badges: st.badges || [], badgeN: st.badgeN || 0, badgeTotal: st.badgeTotal || 0, awards: awardsOut(m).map(a => ({ name: a.name, icon: a.icon, desc: a.desc, at: a.at })),
         leagues: leaguesOf(m).filter(L => L.open && !L.invite).map(L => ({ name: L.name, tier: L.tiers ? TIERS[leagueTier(L, m)] : null })) });
+    }
+
+    // ---------- images: anyone holding the link (ids are random and only handed out with the post or profile) ----------
+    if (head === 'media' && parts[1] && M === 'GET') {
+      const r = MEDIA_RE.test(arg) ? q('SELECT * FROM media WHERE id = ?').get(arg) : null;
+      const a = r && own(S.members, r.member) ? S.members[r.member] : null;
+      if (!r || !a || a.banned || !r.ref) return json(res, 404, { error: 'not found' });
+      if (req.headers['if-none-match'] === '"' + r.id + '"') { res.writeHead(304); return res.end(); }
+      let buf; try { buf = fs.readFileSync(mediaFile(r.id)); } catch (e) { return json(res, 404, { error: 'not found' }); }
+      res.writeHead(200, { 'Content-Type': r.mime, 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=31536000, immutable', ETag: '"' + r.id + '"',
+        'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Cross-Origin-Resource-Policy': 'same-origin' });
+      return res.end(buf);
     }
 
     // ---------- joining ----------
@@ -1013,11 +1343,11 @@ function createSocial(opts) {
       const key = crypto.randomBytes(24).toString('hex'), id = crypto.randomBytes(6).toString('hex');
       const m = { id, handle, keyHash: sha(key), createdAt: now(), lastSeen: now(), tier: 0, share: sanitizeShare(body.share),
         address, stats: null, weekXp: {}, money: null, banned: false, joinedWith: S.config.inviteCode ? 'invite' : 'open' };
-      S.members[id] = m; S.follows[id] = [];
+      S.members[id] = m; S.follows[id] = []; reindex();
       for (const L of Object.values(S.leagues)) if (L.autoJoin) joinLeague(L, m);
       recent.push(now()); joinTimes.set(ip, recent);
       if (m.share.feed) pushEvent(m, { type: 'join', text: 'joined the league' });
-      save(); refreshMoney(m, true); refreshBehavior(m, true);
+      save(m, 'follows', 'leagues'); refreshMoney(m, true); refreshBehavior(m, true);
       return json(res, 200, { key, me: publicMember(m, m), share: m.share, walletTaken: !address && !!body.address });
     }
 
@@ -1076,7 +1406,7 @@ function createSocial(opts) {
       const m = members().find(x => x.claimed === p.address);
       if (!m) return json(res, 404, { error: 'No profile has claimed this wallet yet. Join first, then claim it under Profile & privacy.' });
       if (m.banned) return json(res, 403, { error: 'This profile was removed from the league.' });
-      const key = addKey(m); m.lastSeen = now(); save();
+      const key = addKey(m); m.lastSeen = now(); save(m);
       return json(res, 200, { key, me: publicMember(m, m), share: m.share });
     }
     // ---------- passkeys: sign in ----------
@@ -1122,7 +1452,7 @@ function createSocial(opts) {
       const m = own(S.members, l.memberId) ? S.members[l.memberId] : null;
       if (!m) return json(res, 400, { error: 'That code didn’t work.' });
       if (m.banned) return json(res, 403, { error: 'This profile was removed from the league.' });
-      const key = addKey(m); m.lastSeen = now(); save();
+      const key = addKey(m); m.lastSeen = now(); save(m);
       return json(res, 200, { key, me: publicMember(m, m), share: m.share });
     }
 
@@ -1163,12 +1493,13 @@ function createSocial(opts) {
       save(); return json(res, 200, { me: publicMember(me, me) });
     }
     me.lastSeen = now();
+    if (now() - (me.seenSaved || 0) > 600000) { me.seenSaved = now(); save(me); } // last seen is written at most every ten minutes
 
     if (head === 'me' && M === 'GET') return json(res, 200, { me: publicMember(me, me), share: me.share, tier: me.tier || 0 });
 
     // ---- inbox: nudges, mentor notes, season results ----
     if (head === 'inbox' && M === 'GET') return json(res, 200, { items: (me.inbox || []).slice().reverse().map(x => Object.assign({}, x, { unread: x.at > (me.inboxRead || 0) })) });
-    if (head === 'inbox' && parts[1] === 'read' && M === 'POST') { me.inboxRead = now(); save(); return json(res, 200, { ok: true }); }
+    if (head === 'inbox' && parts[1] === 'read' && M === 'POST') { me.inboxRead = now(); save(me); return json(res, 200, { ok: true }); }
 
     // ---- web push: this device's subscription and when to remind ----
     if (head === 'push' && M === 'GET') return json(res, 200, { available: !!push, key: push ? push.publicKey : null, on: !!(me.push && me.push.subs && me.push.subs.length), prefs: sanitizePrefs(null, me.push && me.push.prefs) });
@@ -1177,14 +1508,14 @@ function createSocial(opts) {
       me.push = me.push || { subs: [], prefs: null, sent: {} };
       if (body.subscription !== undefined) { const sub = Push.sanitizeSubscription(body.subscription); if (!sub) return json(res, 400, { error: 'This browser’s push service isn’t one Pulse can send to.' });
         me.push.subs = [...(me.push.subs || []).filter(x => x.endpoint !== sub.endpoint), sub].slice(-5); }
-      me.push.prefs = sanitizePrefs(body.prefs, me.push.prefs); save();
+      me.push.prefs = sanitizePrefs(body.prefs, me.push.prefs); save(me);
       return json(res, 200, { ok: true, on: me.push.subs.length > 0, prefs: me.push.prefs });
     }
     // one device turns its reminders off (the endpoint names it); DELETE turns them off everywhere
     if (head === 'push' && parts[1] === 'remove' && M === 'POST') { const ep = String(body.endpoint || '');
-      if (me.push) me.push.subs = (me.push.subs || []).filter(x => x.endpoint !== ep); save();
+      if (me.push) me.push.subs = (me.push.subs || []).filter(x => x.endpoint !== ep); save(me);
       return json(res, 200, { ok: true, on: !!(me.push && me.push.subs.length) }); }
-    if (head === 'push' && !parts[1] && M === 'DELETE') { if (me.push) me.push.subs = []; save(); return json(res, 200, { ok: true, on: false }); }
+    if (head === 'push' && !parts[1] && M === 'DELETE') { if (me.push) me.push.subs = []; save(me); return json(res, 200, { ok: true, on: false }); }
     if (head === 'push' && parts[1] === 'test' && M === 'POST') {
       if (limited(req, 'pushtest', 5, 3600000)) return json(res, 429, { error: 'Try again later.' });
       const n = await sendPush(me, { title: 'Pulse', body: 'Reminders are on. You’ll hear from Pulse at the times you picked.', tag: 'pulse-test', url: '/pulse#today' });
@@ -1201,7 +1532,7 @@ function createSocial(opts) {
       if (ex && ex.from === o.id) { // they asked first: this accepts
         if (pairsOf(me).filter(p => p.status === 'active').length >= PARTNER_MAX) return json(res, 409, { error: 'You already have ' + PARTNER_MAX + ' partners.' });
         if (pairsOf(o).filter(p => p.status === 'active').length >= PARTNER_MAX) return json(res, 409, { error: '@' + o.handle + ' already has ' + PARTNER_MAX + ' partners.' });
-        ex.status = 'active'; ex.since = now(); notify(o, 'partner', '@' + me.handle + ' is now your accountability partner.', { title: 'New partner', url: '/pulse#social' }); save();
+        ex.status = 'active'; ex.since = now(); notify(o, 'partner', '@' + me.handle + ' is now your accountability partner.', { title: 'New partner', url: '/pulse#social' }); save('partners');
         return json(res, 200, { partner: pairOut(ex, me) }); }
       if (ex) return json(res, 409, { error: 'You’ve asked already — waiting for @' + o.handle + '.' });
       if (pairsOf(me).filter(p => p.status === 'active').length >= PARTNER_MAX) return json(res, 409, { error: 'You already have ' + PARTNER_MAX + ' partners.' });
@@ -1210,7 +1541,7 @@ function createSocial(opts) {
       const id = crypto.randomBytes(6).toString('hex');
       S.partners[id] = { id, a: me.id, b: o.id, from: me.id, status: 'pending', at: now(), nudged: {} };
       notify(o, 'partner', '@' + me.handle + ' wants to be accountability partners: you’d see each other’s streak, scores and slips.', { title: 'Partner request', url: '/pulse#social' });
-      save(); return json(res, 200, { partner: pairOut(S.partners[id], me) });
+      save('partners'); return json(res, 200, { partner: pairOut(S.partners[id], me) });
     }
     if (head === 'partners' && parts[1]) {
       const p = pairOf(me, arg); if (!p) return json(res, 404, { error: 'No such partnership.' });
@@ -1220,26 +1551,26 @@ function createSocial(opts) {
         if (pairsOf(me).filter(x => x.status === 'active').length >= PARTNER_MAX) return json(res, 409, { error: 'You already have ' + PARTNER_MAX + ' partners.' });
         if (o && pairsOf(o).filter(x => x.status === 'active').length >= PARTNER_MAX) return json(res, 409, { error: '@' + o.handle + ' already has ' + PARTNER_MAX + ' partners.' });
         p.status = 'active'; p.since = now(); if (o) notify(o, 'partner', '@' + me.handle + ' accepted — you’re accountability partners.', { title: 'New partner', url: '/pulse#social' });
-        save(); return json(res, 200, { partner: pairOut(p, me) }); }
-      if (!parts[2] && M === 'DELETE') { delete S.partners[p.id]; save(); return json(res, 200, { ok: true }); }
+        save('partners'); return json(res, 200, { partner: pairOut(p, me) }); }
+      if (!parts[2] && M === 'DELETE') { delete S.partners[p.id]; save('partners'); return json(res, 200, { ok: true }); }
       if (p.status !== 'active') return json(res, 409, { error: 'Not partners yet.' });
       if (parts[2] === 'nudge' && M === 'POST') {
         p.nudged = p.nudged || {}; if (p.nudged[me.id] && now() - p.nudged[me.id] < 6 * 3600000) return json(res, 429, { error: 'One nudge every six hours.' });
         p.nudged[me.id] = now(); const text = cleanText(body.text, 140) || 'Stick to your plan today.';
         notify(o, 'partner', '@' + me.handle + ': ' + text, { title: 'Nudge from @' + me.handle, url: '/pulse#today', from: me.handle });
-        save(); return json(res, 200, { ok: true }); }
+        save('partners'); return json(res, 200, { ok: true }); }
       if (parts[2] === 'challenge' && M === 'PUT') {
         const text = cleanText(body.text, 140); if (!text) return json(res, 400, { error: 'What’s the challenge?' });
         if (p.challenge && p.challenge.week === S.league.week && now() - p.challenge.at < 3600000) return json(res, 429, { error: 'One change an hour.' });
         p.challenge = { text, by: me.id, week: S.league.week, at: now() };
         notify(o, 'partner', '@' + me.handle + ' set this week’s shared challenge: ' + text, { title: 'Shared challenge', url: '/pulse#social' });
-        save(); return json(res, 200, { partner: pairOut(p, me) }); }
+        save('partners'); return json(res, 200, { partner: pairOut(p, me) }); }
       return json(res, 404, { error: 'not found' });
     }
 
     // ---- mentors: notes on the days of members who let mentors in ----
     if (head === 'notes' && M === 'GET') return json(res, 200, { notes: commentsFor(me.id).slice().reverse().map(commentOut), mentorsOn: !!me.share.mentor });
-    if (head === 'notes' && parts[1] === 'read' && M === 'POST') { for (const c of commentsFor(me.id)) c.read = true; save(); return json(res, 200, { ok: true }); }
+    if (head === 'notes' && parts[1] === 'read' && M === 'POST') { for (const c of commentsFor(me.id)) c.read = true; save('comments'); return json(res, 200, { ok: true }); }
     if (head === 'mentor') {
       if (!me.mentor) return json(res, 403, { error: 'Only mentors the owner appointed can see this.' });
       if (!parts[1] && M === 'GET') return json(res, 200, { mentees: menteesOf(me).map(menteeSummary).sort((a, b) => (b.seen || 0) - (a.seen || 0)) });
@@ -1255,39 +1586,47 @@ function createSocial(opts) {
         const c = { id: crypto.randomBytes(5).toString('hex'), by: me.id, day, text, at: now(), read: false };
         S.comments[o.id] = [...commentsFor(o.id), c].slice(-COMMENTS_MAX);
         notify(o, 'mentor', '@' + me.handle + ': ' + text, { title: 'A note from your mentor', url: '/pulse#today', day });
-        save(); return json(res, 200, { note: commentOut(c) }); }
+        save('comments'); return json(res, 200, { note: commentOut(c) }); }
       if (parts[2] === 'notes' && parts[3] && M === 'DELETE') {
-        S.comments[o.id] = commentsFor(o.id).filter(c => !(c.id === parts[3] && c.by === me.id)); save(); return json(res, 200, { ok: true }); }
+        S.comments[o.id] = commentsFor(o.id).filter(c => !(c.id === parts[3] && c.by === me.id)); save('comments'); return json(res, 200, { ok: true }); }
       return json(res, 404, { error: 'not found' });
     }
     if (head === 'me' && M === 'PUT') {
+      const r = typeof body.avatar === 'string' && MEDIA_RE.test(body.avatar) ? q('SELECT * FROM media WHERE id = ?').get(body.avatar) : null;
+      if (body.avatar !== undefined && body.avatar !== null && (!r || r.member !== me.id || r.kind !== 'avatar')) return json(res, 400, { error: 'That picture didn’t upload. Try again.' });
       const newAddr = body.address !== undefined && !me.claimed ? (typeof body.address === 'string' && ADDR_RE.test(body.address) ? body.address.toLowerCase() : null) : undefined;
       if (newAddr && claimedBy(newAddr, me.id)) return json(res, 409, { error: 'That wallet is claimed by another profile. Only a signature from it can move it.', walletTaken: true });
       if (body.handle != null) { const h = cleanText(body.handle, 20).replace(/^@/, '');
         if (!HANDLE_RE.test(h)) return json(res, 400, { error: 'Pick a name of 3–20 letters, numbers or underscores.' });
-        const other = byHandle(h); if (other && other.id !== me.id) return json(res, 409, { error: 'That name is taken.' }); me.handle = h; }
+        const other = byHandle(h); if (other && other.id !== me.id) return json(res, 409, { error: 'That name is taken.' }); me.handle = h; reindex(); }
       const prevAddr = me.address, prevVerify = !!me.share.verify, prevMoney = !!(me.share.ret || me.share.usd);
       if (body.share) me.share = sanitizeShare(body.share, me.share);
       if (typeof body.coachDetail === 'boolean') me.coachDetail = body.coachDetail;
+      if (body.bio !== undefined) me.bio = cleanText(body.bio, 160);
+      // a new picture replaces the old one (whose file goes); null takes it off
+      if (body.avatar !== undefined) {
+        if (!r || r.id !== me.avatar) { dropMedia(q('SELECT id FROM media WHERE member = ? AND kind = ? AND id != ?').all(me.id, 'avatar', r ? r.id : ''));
+          if (r) q('UPDATE media SET ref = ? WHERE id = ?').run('avatar:' + me.id, r.id); me.avatar = r ? r.id : null; } }
       // a claimed wallet stays put: only releasing it (or claiming another) changes the address
-      if (newAddr !== undefined) me.address = newAddr;
+      if (newAddr !== undefined) { if (newAddr !== me.address) me.money = null; /* the old wallet's numbers aren't this one's */ me.address = newAddr; }
       if (!(me.share.ret || me.share.usd)) me.money = null;
       if (!me.share.verify || me.address !== prevAddr) { me.vdays = null; me.vAt = 0; }
-      if (!me.share.ret) for (const c of Object.values(S.comps)) if (c.money) delete c.money[me.id]; // opting out hides past results too
-      save();
+      let compsCh = false;
+      if (!me.share.ret) for (const c of Object.values(S.comps)) if (c.money && own(c.money, me.id)) { delete c.money[me.id]; compsCh = true; } // opting out hides past results too
+      if (compsCh) save(me, 'comps'); else save(me);
       refreshMoney(me, me.address !== prevAddr || (!prevMoney && !!(me.share.ret || me.share.usd)));
       refreshBehavior(me, me.address !== prevAddr || (!prevVerify && !!me.share.verify));
       if (prevAddr && prevAddr !== me.address && opts.forgetAddress && !members().some(o => o.address === prevAddr)) opts.forgetAddress(prevAddr);
       return json(res, 200, { me: publicMember(me, me), share: me.share });
     }
     if (head === 'me' && M === 'DELETE') {
-      dropMember(me.id); save(); return json(res, 200, { ok: true });
+      dropMember(me.id); save('follows', 'comps', 'leagues', 'partners', 'comments'); return json(res, 200, { ok: true });
     }
     if (head === 'claim' && parts[1] === 'release' && M === 'POST') {
       if (!me.claimed) return json(res, 400, { error: 'You haven’t claimed a wallet.' });
       me.claimed = null; me.claimedAt = 0;
       if (S.config.requireClaim) { me.vdays = null; me.money = null; for (const c of Object.values(S.comps)) if (c.money) delete c.money[me.id]; }
-      save(); return json(res, 200, { me: publicMember(me, me), share: me.share });
+      save(me, 'comps'); return json(res, 200, { me: publicMember(me, me), share: me.share });
     }
     if (head === 'link' && parts[1] === 'start' && M === 'POST') {
       sweep(links);
@@ -1298,9 +1637,9 @@ function createSocial(opts) {
       return json(res, 200, { code, expiresAt: now() + 10 * 60000 });
     }
     if (head === 'devices' && M === 'DELETE') { // sign out every other device: only the key making this call keeps working
-      const h = sha(req.headers['x-pulse-key']); me.keyHash = h; me.keyHashes = [];
+      const h = sha(req.headers['x-pulse-key']); me.keyHash = h; me.keyHashes = []; reindex();
       for (const [k, l] of links) if (l.memberId === me.id) links.delete(k);
-      save(); return json(res, 200, { me: publicMember(me, me) });
+      save(me); return json(res, 200, { me: publicMember(me, me) });
     }
     // ---------- the encrypted journal (vault): ciphertext in, ciphertext out ----------
     if (head === 'vault' && M === 'GET') {
@@ -1321,13 +1660,13 @@ function createSocial(opts) {
       if (vaultTotal() - (me.vault ? me.vault.size : 0) + size > (opts.vaultTotalMax || MAX_VAULT_TOTAL)) return json(res, 507, { error: 'This server is out of room for synced journals. Tell its owner.' });
       fs.mkdirSync(vaultDir, { recursive: true });
       const f = vaultFile(me.id), tmp = f + '.tmp'; fs.writeFileSync(tmp, text); fs.renameSync(tmp, f);
-      me.vault = { rev: cur + 1, size, at: now() }; save();
+      me.vault = { rev: cur + 1, size, at: now() }; save(me);
       return json(res, 200, { rev: me.vault.rev, at: me.vault.at });
     }
     if (head === 'vault' && M === 'DELETE') {
       try { fs.unlinkSync(vaultFile(me.id)); } catch (e) {}
       // one past the last copy: a device still holding it gets a 409 with nothing in it (deleted), not a silent re-upload
-      me.vaultRev = vaultRev(me) + 1; me.vault = null; save(); return json(res, 200, { ok: true, rev: me.vaultRev });
+      me.vaultRev = vaultRev(me) + 1; me.vault = null; save(me); return json(res, 200, { ok: true, rev: me.vaultRev });
     }
     if (head === 'stats' && M === 'POST') {
       const next = sanitizeStats(body);
@@ -1342,7 +1681,7 @@ function createSocial(opts) {
       if (next.week) { me.weekXp = me.weekXp || {}; me.weekXp[next.week] = next.weekXp;
         const keep = Object.keys(me.weekXp).sort().slice(-16); /* a quarter's season needs 13 */ for (const k of Object.keys(me.weekXp)) if (!keep.includes(k)) delete me.weekXp[k]; }
       awardCheck(me);
-      save(); refreshAll(me);
+      if (logCompDays(me)) save(me, 'comps'); else save(me); refreshAll(me);
       return json(res, 200, { ok: true, tier: me.tier || 0 });
     }
     // ---- leagues: browse, join, leave ----
@@ -1351,7 +1690,7 @@ function createSocial(opts) {
       const q = cleanText(query.q, 40).toLowerCase().replace(/^#/, '');
       let list = Object.values(S.leagues).filter(L => L.open || own(L.members, me.id));
       if (q) list = list.filter(L => String(L.num) === q || L.name.toLowerCase().includes(q) || (L.desc || '').toLowerCase().includes(q));
-      const size = L => members().filter(m => own(L.members, m.id) && !m.banned).length;
+      const size = leagueSize;
       list.sort((a, b) => (own(b.members, me.id) ? 1 : 0) - (own(a.members, me.id) ? 1 : 0) || size(b) - size(a) || a.num - b.num);
       return json(res, 200, { q, leagues: list.slice(0, 50).map(L => leagueOut(L, me)) });
     }
@@ -1361,8 +1700,11 @@ function createSocial(opts) {
       if (!L || (!L.open && !own(L.members, me.id))) return json(res, 404, { error: 'No such league.' });
       const W = leagueWindow(L), top = boardRows(leagueMembers(L), L.metric, { week: S.league.week, weeks: L.metric === 'xp' && W.weeks ? W.weeks : undefined, dayFrom: L.metric === 'xp' ? W.dayFrom : undefined, dayTo: W.dayTo, days: W.days });
       return json(res, 200, { league: Object.assign(leagueOut(L, me), { createdAt: L.createdAt, hall: (L.hall || []).slice().reverse().map(h => ({ season: h.season, label: h.label, n: h.n,
-          podium: h.podium.map(r => ({ handle: own(S.members, r.id) ? S.members[r.id].handle : r.handle, value: r.value, me: r.id === me.id })) })),
-        top: top.slice(0, 5).map(r => ({ rank: r.rank, handle: r.handle, value: r.value, sub: r.sub, me: r.id === me.id })),
+          // as the members stand today: a suspended one isn't named, and returns or dollars only show while still shared
+          podium: h.podium.map(r => { const pm = own(S.members, r.id) ? S.members[r.id] : null;
+            const shown = !['ret', 'usd', 'riskadj'].includes(L.metric) || (pm && !pm.banned && (L.metric === 'usd' ? pm.share.usd : pm.share.ret));
+            return { handle: pm && pm.banned ? null : pm ? pm.handle : r.handle, value: shown ? r.value : null, me: r.id === me.id }; }) })),
+        top: top.slice(0, 5).map(r => ({ rank: r.rank, handle: r.handle, av: avUrl(S.members[r.id]), value: r.value, sub: r.sub, me: r.id === me.id })),
         tiersCount: L.tiers ? TIERS.map((t, i) => ({ tier: t, n: members().filter(m => own(L.members, m.id) && !m.banned && leagueTier(L, m) === i).length })) : null,
         comps: Object.values(S.comps).filter(c => c.league === L.id && compStatus(c, todayKey()) !== 'finished').map(c => ({ id: c.id, title: c.title, start: c.start, end: c.end, type: c.type })) }) });
     }
@@ -1373,7 +1715,7 @@ function createSocial(opts) {
           if (!sameText(cleanText(body.invite, 40), L.invite)) return json(res, 403, { error: 'That invite code isn’t right.' }); }
         const was = own(L.members, me.id); joinLeague(L, me); if (L.id === 'main' && !was) me.tier = 0;
         if (!was && L.open && !L.invite && me.share.feed) pushEvent(me, { type: 'league', text: 'joined ' + L.name }); }
-      save(); return json(res, 200, { league: leagueOut(L, me) });
+      save(me, 'leagues'); return json(res, 200, { league: leagueOut(L, me) });
     }
     // one league's own ranking (its measure, by tier when it has tiers); default: main, else the first one you're in
     if (head === 'league' && M === 'GET') {
@@ -1384,49 +1726,121 @@ function createSocial(opts) {
       const n = L.tiers ? members().filter(m => !m.banned && own(L.members, m.id) && leagueTier(L, m) === tier).length : rows.length, k = L.tiers ? leagueMoveCount(n) : 0;
       return json(res, 200, { league: leagueOut(L, me), tier, tierName: TIERS[tier], week: S.league.week, size: n, promote: tier < TIERS.length - 1 ? k : 0, demote: tier > 0 ? k : 0,
         board: L.metric, label: BOARDS[L.metric].label, mine: leaguesOf(me).map(x => ({ id: x.id, name: x.name })),
-        rows: rows.slice(0, 50).map(r => ({ rank: r.rank, handle: r.handle, value: r.value, sub: r.sub, me: r.id === me.id })), me: rows.find(r => r.id === me.id) || null });
+        rows: rows.slice(0, 50).map(r => ({ rank: r.rank, handle: r.handle, av: avUrl(S.members[r.id]), value: r.value, sub: r.sub, me: r.id === me.id })), me: rows.find(r => r.id === me.id) || null });
     }
     // boards: scope=global (everyone who opted in to global boards) or a league's members
     if (head === 'leaderboard' && M === 'GET') {
       const board = own(BOARDS, query.board) ? query.board : 'discipline', global = query.scope === 'global';
-      for (const m of members()) refreshAll(m); // background; boards show what's cached
+      refreshAll(me); // background, the viewer first; boards show what's cached
       let rows, L = null;
       if (global) rows = boardRows(members().filter(m => m.share.global), board, { week: S.league.week });
       else { L = own(S.leagues, query.league) && own(S.leagues[query.league].members, me.id) ? S.leagues[query.league] : own((S.leagues.main || {}).members || {}, me.id) ? S.leagues.main : leaguesOf(me)[0] || null;
         rows = L ? leagueBoard(L, board, me) : []; }
       const mine = rows.find(r => r.id === me.id) || null;
+      for (const r of rows.slice(0, 50)) if (own(S.members, r.id)) refreshAll(S.members[r.id]); // the rows on show, a few at a time
       const needKey = global && !me.share.global ? 'global' : !me.share[BOARDS[board].needs] ? BOARDS[board].needs : BOARDS[board].verified && !me.share.verify ? 'verify' : null;
       return json(res, 200, { board, label: BOARDS[board].label, scope: global ? 'global' : 'league', league: L ? { id: L.id, name: L.name } : null,
-        rows: rows.slice(0, 50).map(r => ({ rank: r.rank, handle: r.handle, tier: r.tier, value: r.value, sub: r.sub, me: r.id === me.id })),
+        rows: rows.slice(0, 50).map(r => ({ rank: r.rank, handle: r.handle, av: avUrl(S.members[r.id]), tier: r.tier, value: r.value, sub: r.sub, me: r.id === me.id })),
         me: mine, total: rows.length, optedIn: !needKey, need: needKey,
         verifyState: !BOARDS[board].verified || !me.share.verify ? null : !canVerify ? 'unavailable' : !me.address ? 'no-wallet' : !walletFor(me) ? walletBlock(me) : !Array.isArray(me.vdays) ? 'pending' : 'ok' });
     }
     if (head === 'feed' && M === 'GET') {
-      const scope = query.scope === 'discover' ? 'discover' : 'following';
-      const fol = new Set([...(S.follows[me.id] || []), me.id]);
-      const list = S.events.filter(e => visible(e, me) && (scope === 'discover' || !e.member || fol.has(e.member))).slice(-60).reverse();
-      const suggest = scope === 'discover' ? members().filter(m => m.id !== me.id && !m.banned && m.share.profile && !fol.has(m.id) && m.stats)
-        .map(m => ({ m, d: disciplineOver(m.share.verify && Array.isArray(m.vdays) ? m.vdays : m.stats.days, addDaysKey(todayKey(), -29), todayKey(), 3).avg }))
-        .sort((a, b) => (b.d || 0) - (a.d || 0)).slice(0, 3)
-        .map(({ m, d }) => ({ handle: m.handle, tierName: TIERS[m.tier || 0], why: 'Level ' + m.stats.level + (d != null ? ' · discipline ' + Math.round(d) : '') })) : [];
-      return json(res, 200, { scope, events: list.map(e => eventOut(e, me)), suggest });
+      const scope = query.scope === 'discover' ? 'discover' : 'following', postsOnly = query.kind === 'posts';
+      const fol = [...new Set([...(S.follows[me.id] || []), me.id])];
+      const where = [scope === 'following' ? '(member IS NULL OR member IN (SELECT value FROM json_each(?)))' : '', postsOnly ? "type = 'post'" : ''].filter(Boolean).join(' AND ');
+      const page = feedPage(me, where, scope === 'following' ? [JSON.stringify(fol)] : [], query.before, Math.round(clampNum(query.limit, 5, 60) || 30));
+      const folSet = new Set(fol);
+      const suggest = scope === 'discover' && !query.before ? topDiscipline().filter(x => own(S.members, x.id) && !S.members[x.id].banned && !folSet.has(x.id)).slice(0, 3)
+        .map(({ id, d }) => { const m = S.members[id]; return { handle: m.handle, av: avUrl(m), tierName: TIERS[m.tier || 0], why: 'Level ' + ((m.stats && m.stats.level) || 1) + (d != null ? ' · discipline ' + Math.round(d) : '') }; }) : [];
+      return json(res, 200, { scope, events: eventsOut(page.rows, me), next: page.next, suggest, posts: postCfgOut() });
     }
     if (head === 'kudos' && parts[1] && M === 'POST') {
-      const e = S.events.find(x => x.id === parts[1]); if (!e || !visible(e, me)) return json(res, 404, { error: 'no such post' });
+      const e = eventById(parts[1]); if (!e || !visible(e, me)) return json(res, 404, { error: 'no such post' });
       if (e.member === me.id) return json(res, 400, { error: 'That’s your own post.' });
-      const i = e.kudos.indexOf(me.id); if (i >= 0) e.kudos.splice(i, 1); else e.kudos.push(me.id);
-      save(); return json(res, 200, { kudos: e.kudos.length, liked: i < 0 });
+      const liked = tx(() => { if (q('DELETE FROM kudos WHERE event = ? AND member = ?').run(e.id, me.id).changes) { q('UPDATE events SET kudos = max(0, kudos - 1) WHERE id = ?').run(e.id); return false; }
+        q('INSERT INTO kudos (event, member, at) VALUES (?, ?, ?)').run(e.id, me.id, now()); q('UPDATE events SET kudos = kudos + 1 WHERE id = ?').run(e.id); return true; });
+      return json(res, 200, { kudos: q('SELECT kudos FROM events WHERE id = ?').get(e.id).kudos, liked });
     }
     if (head === 'profile' && parts[1] && M === 'GET') {
       const m = byHandle(arg); if (!m || m.banned) return json(res, 404, { error: 'No one by that name.' });
-      const ev = S.events.filter(e => e.member === m.id && visible(e, me)).slice(-10).reverse().map(e => eventOut(e, me));
-      return json(res, 200, { profile: publicMember(m, me), events: ev });
+      if (parts[2] === 'posts') { const page = feedPage(me, "member = ? AND type = 'post'", [m.id], query.before, 20);
+        return json(res, 200, { posts: eventsOut(page.rows, me), next: page.next }); }
+      const ev = feedPage(me, "member = ? AND type != 'post'", [m.id], null, 10).rows, posts = feedPage(me, "member = ? AND type = 'post'", [m.id], null, 10);
+      return json(res, 200, { profile: publicMember(m, me), events: eventsOut(ev, me), posts: eventsOut(posts.rows, me), postsNext: posts.next });
+    }
+    // ---- posts: a trade the member took or plans to take (with the thesis and pictures), or a note ----
+    if (head === 'posts' && !parts[1] && M === 'POST') {
+      const pc = S.config.posts;
+      if (!pc.on) return json(res, 403, { error: 'Posts are switched off on this server.' });
+      const kind = POST_KINDS.includes(body.kind) ? body.kind : 'note';
+      if (kind === 'plan' && !pc.plans) return json(res, 403, { error: 'Posts about planned trades are switched off on this server.' });
+      const text = cleanPost(body.text, 2000);
+      const trade = kind === 'note' ? null : sanitizeTrade(body.trade, null, { kind, usd: !!me.share.usd });
+      if (kind !== 'note' && !trade) return json(res, 400, { error: 'The trade needs a coin, a side and an entry, with the stop and target on the right sides of it.' });
+      if (!text && kind !== 'trade') return json(res, 400, { error: 'Write something first.' });
+      const media = sanitizeMediaIds(body.media, me, null); if (media === false) return json(res, 400, { error: 'One of the images is missing. Add it again.' });
+      if (media.length && !pc.images) return json(res, 403, { error: 'Images on posts are switched off on this server.' });
+      if (dayLimit(me, 'postLog', POSTS_PER_DAY)) return json(res, 429, { error: POSTS_PER_DAY + ' posts a day is the limit.' });
+      const id = crypto.randomBytes(6).toString('hex');
+      tx(() => { q("INSERT INTO events (id, at, member, type, text, quote, data) VALUES (?, ?, ?, 'post', ?, '', ?)").run(id, now(), me.id, text, JSON.stringify({ kind, trade, media }));
+        for (const mid of media) q('UPDATE media SET ref = ? WHERE id = ?').run('post:' + id, mid); });
+      save(me); verifyPost(id, me);
+      return json(res, 200, { post: eventOut(eventById(id), me, null) });
+    }
+    if (head === 'posts' && parts[1]) {
+      const e = eventById(arg); if (!e || e.type !== 'post' || !visible(e, me)) return json(res, 404, { error: 'That post isn’t here any more.' });
+      if (!parts[2] && M === 'GET') {
+        const cs = q('SELECT * FROM comments WHERE event = ? ORDER BY at DESC LIMIT 300').all(e.id).reverse().filter(c => own(S.members, c.member) && !S.members[c.member].banned);
+        return json(res, 200, { post: eventOut(e, me, likedBy(me, [e])), comments: cs.map(c => commentRowOut(c, me, e)) }); }
+      if (!parts[2] && M === 'PUT') {
+        if (e.member !== me.id) return json(res, 403, { error: 'Only its author can change a post.' });
+        let d = {}; try { d = JSON.parse(e.data || '{}') || {}; } catch (x) {}
+        let text = e.text, edited = e.edited || null;
+        // the thesis can be fixed for 15 minutes; after that only the outcome is added
+        if (body.text !== undefined && cleanPost(body.text, 2000) !== e.text) { if (now() - e.at > POST_EDIT_MS) return json(res, 409, { error: 'The thesis can only be edited in the first 15 minutes. Add an update instead.' });
+          text = cleanPost(body.text, 2000); edited = now(); }
+        // a plan can't have been taken before it was posted
+        if (body.trade && d.trade) d.trade = sanitizeTrade(body.trade, d.trade, { usd: !!me.share.usd, notBefore: d.kind === 'plan' ? e.at - 60000 : 0 });
+        // the update, like the thesis, can be fixed for 15 minutes after it's first written
+        if (body.outcome !== undefined) { const o = cleanPost(body.outcome, 500);
+          if (o !== (d.outcome || '')) { if (d.outcome && now() - (d.outcomeFirst || d.outcomeAt || 0) > POST_EDIT_MS) return json(res, 409, { error: 'The update can only be changed in its first 15 minutes.' });
+            if (!d.outcome) d.outcomeFirst = now(); d.outcome = o; d.outcomeAt = now(); } }
+        q('UPDATE events SET text = ?, data = ?, edited = ? WHERE id = ?').run(text, JSON.stringify(d), edited, e.id);
+        verifyPost(e.id, me);
+        return json(res, 200, { post: eventOut(eventById(e.id), me, likedBy(me, [e])) }); }
+      if (!parts[2] && M === 'DELETE') { if (e.member !== me.id) return json(res, 403, { error: 'Only its author can delete a post.' }); dropEvent(e.id); return json(res, 200, { ok: true }); }
+      if (parts[2] === 'comments' && M === 'POST') {
+        const text = cleanPost(body.text, 500); if (!text) return json(res, 400, { error: 'Write the comment first.' });
+        if (limited(req, 'comment:' + me.id, 60, 3600000, true)) return json(res, 429, { error: 'That’s a lot of comments this hour.' });
+        const id = crypto.randomBytes(6).toString('hex');
+        tx(() => { q('INSERT INTO comments (id, event, member, at, text) VALUES (?, ?, ?, ?, ?)').run(id, e.id, me.id, now(), text);
+          q('UPDATE events SET comments = comments + 1 WHERE id = ?').run(e.id); });
+        const author = own(S.members, e.member) ? S.members[e.member] : null;
+        if (author && author.id !== me.id) { notify(author, 'comment', '@' + me.handle + ' on your post: ' + text, { title: 'New comment', url: '/pulse#post/' + e.id, post: e.id }); save(author); }
+        return json(res, 200, { comment: commentRowOut(q('SELECT * FROM comments WHERE id = ?').get(id), me, e), comments: e.comments + 1 }); }
+      return json(res, 404, { error: 'not found' });
+    }
+    // a comment goes when its writer or the post's author deletes it
+    if (head === 'comments' && parts[1] && M === 'DELETE') {
+      const c = /^[a-f0-9]{12}$/.test(arg) ? q('SELECT * FROM comments WHERE id = ?').get(arg) : null, e = c ? eventById(c.event) : null;
+      if (!c || !e || (c.member !== me.id && e.member !== me.id)) return json(res, 404, { error: 'No such comment.' });
+      dropComment(c); return json(res, 200, { ok: true });
+    }
+    // anything someone finds out of line goes to the owner's queue
+    if (head === 'report' && M === 'POST') {
+      const c = typeof body.comment === 'string' && /^[a-f0-9]{12}$/.test(body.comment) ? q('SELECT * FROM comments WHERE id = ?').get(body.comment) : null;
+      const e = c ? eventById(c.event) : eventById(body.post);
+      if (!e || !visible(e, me) || (body.comment && !c)) return json(res, 404, { error: 'That isn’t here any more.' });
+      if ((c ? c.member : e.member) === me.id) return json(res, 400, { error: 'That’s your own.' });
+      if (limited(req, 'report:' + me.id, 20, 86400000, true)) return json(res, 429, { error: 'Too many reports today.' });
+      q('INSERT OR IGNORE INTO reports (id, event, comment, member, at, why) VALUES (?, ?, ?, ?, ?, ?)').run(crypto.randomBytes(6).toString('hex'), c ? null : e.id, c ? c.id : null, me.id, now(), cleanText(body.why, 200));
+      return json(res, 200, { ok: true });
     }
     if (head === 'follow' && parts[1] && (M === 'POST' || M === 'DELETE')) {
       const m = byHandle(arg); if (!m || m.banned || m.id === me.id) return json(res, 404, { error: 'No one by that name.' });
       const f = S.follows[me.id] = (S.follows[me.id] || []).filter(x => x !== m.id);
       if (M === 'POST') f.push(m.id);
-      save(); return json(res, 200, { following: M === 'POST' });
+      save('follows'); return json(res, 200, { following: M === 'POST' });
     }
     const compVisible = c => !c.league || (own(S.leagues, c.league) && own(S.leagues[c.league].members, me.id)) || !!c.entrants[me.id];
     if (head === 'competitions' && M === 'GET' && !parts[1]) {
@@ -1453,7 +1867,7 @@ function createSocial(opts) {
         if (me.share.feed) pushEvent(me, { type: 'compete', text: 'joined ' + c.title });
         if (c.type === 'return') refreshMoney(me, true);
       }
-      save(); return json(res, 200, { joined: M === 'POST' });
+      save('comps'); return json(res, 200, { joined: M === 'POST' });
     }
     return json(res, 404, { error: 'not found' });
   }
@@ -1465,10 +1879,11 @@ function createSocial(opts) {
     // reserve a message before asking the model (so parallel requests can't all pass), and give it back if no answer came
     count: (m, d = 1) => { if (m) { const used = coachUsed(m), tz = used ? coachTz(m) : (m.stats && m.stats.tz) || 'UTC';
         m.coachUse = { k: zoneKey(tz, now()), tz, n: Math.max(0, used + d) }; }
-      else { const k = utcDayKey(now()); S.ownerCoach = { k, n: Math.max(0, (S.ownerCoach.k === k ? S.ownerCoach.n : 0) + d) }; } save(); },
+      else { const k = utcDayKey(now()); S.ownerCoach = { k, n: Math.max(0, (S.ownerCoach.k === k ? S.ownerCoach.n : 0) + d) }; } save(m || 'ownerCoach'); },
   };
-  return { handle, coach, tick, memberOf: req => { const m = byKey(req); return m && !m.banned ? m : null; }, state: () => S };
+  save(); // what loading filled in (defaults, league numbers) is written once, so a restart reads the same
+  return { handle, coach, tick, memberOf: req => { const m = byKey(req); return m && !m.banned ? m : null; }, state: () => S, store, close: () => store.close() };
 }
 
-module.exports = { createSocial, sanitizeStats, sanitizeShare, sanitizeComp, sanitizeVaultBlob, siweMessage, eventsFromStats, portfolioStats, leagueRollover, leagueRolloverBy, isoWeekMonday,
+module.exports = { createSocial, sanitizeTrade, sanitizePostCfg, sanitizeStats, sanitizeShare, sanitizeComp, sanitizeVaultBlob, siweMessage, eventsFromStats, portfolioStats, leagueRollover, leagueRolloverBy, isoWeekMonday,
   boardRows, compStandings, compStatus, disciplineOver, isoWeekOfKey, seasonOf, seasonBounds, seasonLabel, weeksIn, TIERS, DEFAULT_CONFIG, DEFAULT_SHARE };

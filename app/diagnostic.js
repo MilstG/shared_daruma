@@ -312,7 +312,8 @@ function renderWhatIf(chron,name,pred,cond){
 // true out-of-sample confirmation. Thresholds are frozen at pin time (pin.params) so the
 // hypothesis being tested forward is exactly the one that was discovered, even as new
 // trades shift the live quartiles. Condition identity is the stable pid, not the display name.
-function pinsList(){ return Array.isArray(settings.pins)?settings.pins:[]; }
+// a pin restored or synced without its discovery stats (an old backup, a hand edit) is skipped, not a crash
+function pinsList(){ return Array.isArray(settings.pins)?settings.pins.filter(p=>p&&p.disc&&typeof p.disc==='object'&&isFinite(p.disc.exp)&&p.disc.n>0):[]; }
 function resolvePinPred(pin,closed,ST){
   if(!pin||typeof pin.pid!=='string')return null;
   const fams=minerFams(closed,ST,pin.params||{});
@@ -334,8 +335,8 @@ function resolvePinPred(pin,closed,ST){
   return fns.length===1?fns[0]:(t=>fns.every(f=>f(t)));
 }
 async function addPin(v,basis,famParams){
-  const pins=pinsList();
-  if(pins.some(p=>p.pid===v.pid&&p.basis===basis))return false;
+  const pins=Array.isArray(settings.pins)?settings.pins:[]; // all of them, including any the list skips
+  if(pins.some(p=>p&&p.pid===v.pid&&p.basis===basis))return false;
   pins.push({pid:v.pid,name:v.name,basis,params:famParams||{},pinnedAt:Date.now(),
     disc:{exp:v.exp,n:v.n,uplift:v.uplift,ci:(v.ci&&isFinite(v.ci[0])&&isFinite(v.ci[1]))?[v.ci[0],v.ci[1]]:null}});
   settings.pins=pins; await Store.set(S_KEY,settings); return true;
@@ -820,13 +821,12 @@ function renderDiagnostic(closed, allv){
    </div>`}
    <p class="lead" style="text-align:center;margin-top:8px">Diagnostic reflects the current view (${view}) and period. Bucket signals require ≥${MIN} trades to appear.</p>`;
   document.querySelectorAll('#trackedCard .unpin').forEach(b=>{ b.onclick=async()=>{
-    const i=+b.dataset.pi; const pins=Array.isArray(settings.pins)?settings.pins:[];
-    pins.splice(i,1); settings.pins=pins; await Store.set(S_KEY,settings);
+    // the index is into the listed pins (pinsList skips broken ones): remove that very pin
+    const pin=pinsList()[+b.dataset.pi]; settings.pins=(Array.isArray(settings.pins)?settings.pins:[]).filter(p=>p!==pin); await Store.set(S_KEY,settings);
     renderDiagnostic(periodTrades(),periodTradesAll()); }; });
   document.querySelectorAll('#trackedCard .pin-arch').forEach(b=>{ b.onclick=async()=>{
-    const i=+b.dataset.pi; const pins=Array.isArray(settings.pins)?settings.pins:[];
-    if(pins[i])pins[i].archived=!pins[i].archived;
-    settings.pins=pins; await Store.set(S_KEY,settings);
+    const pin=pinsList()[+b.dataset.pi]; if(pin)pin.archived=!pin.archived;
+    await Store.set(S_KEY,settings);
     renderDiagnostic(periodTrades(),periodTradesAll()); }; });
   const runBtn=$('runMiner');
   const repBtn=$('exportReport');
@@ -936,15 +936,19 @@ function tradeStates(closed){
   const byClose=[...closed].sort((a,b)=>a.closeTime-b.closeTime);
   const M=new Map(); let ci=0; const closedBefore=[];
   let dayKeyCur=null, idxDayCtr=0;
+  // the streak and the day's P&L are carried forward as trades close (one pass, not a walk back
+  // through every earlier trade for each one: long runs of scratches made that quadratic)
+  let st=0, dayFrom=0, dayPnl=0;
   for(const t of byOpen){
-    while(ci<byClose.length && byClose[ci].closeTime<=t.openTime){ closedBefore.push(byClose[ci]); ci++; }
-    let st=0;
-    for(let k=closedBefore.length-1;k>=0;k--){ const n=closedBefore[k].net;
-      if(isWin(n)){ if(st<0)break; st++; } else if(isLoss(n)){ if(st>0)break; st--; } }
+    while(ci<byClose.length && byClose[ci].closeTime<=t.openTime){ const c=byClose[ci]; closedBefore.push(c); ci++;
+      if(isWin(c.net))st=st>0?st+1:1; else if(isLoss(c.net))st=st<0?st-1:-1; // a scratch neither extends nor breaks it
+      dayPnl+=c.net; }
     const prev=closedBefore.length?closedBefore[closedBefore.length-1]:null;
     const dk=tzMidnight(t.openTime);
     if(dk!==dayKeyCur){ dayKeyCur=dk; idxDayCtr=0; } idxDayCtr++;
-    let dayPnl=0; for(let k=closedBefore.length-1;k>=0;k--){ if(closedBefore[k].closeTime<dk)break; dayPnl+=closedBefore[k].net; }
+    if(dayFrom<closedBefore.length&&closedBefore[dayFrom].closeTime<dk){ // a new day: sum it afresh (subtracting left rounding dust that flipped its sign)
+      while(dayFrom<closedBefore.length&&closedBefore[dayFrom].closeTime<dk)dayFrom++;
+      dayPnl=0; for(let k=dayFrom;k<closedBefore.length;k++)dayPnl+=closedBefore[k].net; }
     M.set(t.id,{streak:st, prevNet:prev?prev.net:null, gap:prev?(t.openTime-prev.closeTime):null, idxDay:idxDayCtr, dayPnl});
   }
   return M;

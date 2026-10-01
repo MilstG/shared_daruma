@@ -57,7 +57,8 @@ try{ if(window.Chart&&Chart.defaults)Chart.defaults.animation=false; }catch(e){}
   else try{ const h=FSA?await idbGet('handle'):null;
     if(h){ const p=await h.queryPermission({mode:'readwrite'});
       if(p==='granted'){ linkedHandle=h; linkedName=h.name; const file=await h.getFile(); const data=JSON.parse(await file.text());
-        await applySnapshot(data); renderWallets();
+        const pend=jPendingLoad(), localJ=pend.length?Object.assign({},journal):null;
+        await applySnapshot(data); await jPendingOverlay(localJ,pend); renderWallets();
         settings.rBasis=settings.rBasis||'avgloss'; $('rBasis').value=settings.rBasis;
         const fx=settings.rBasis==='fixed'; $('riskDefault').classList.toggle('hide',!fx); if(settings.riskDefault)$('riskDefault').value=settings.riskDefault;
         document.querySelectorAll('#viewtog button').forEach(x=>x.classList.toggle('on',x.dataset.v===(settings.view||view)));

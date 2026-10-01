@@ -61,9 +61,16 @@ function evaluateRules(closed, rules){
   return out;
 }
 // Today's realized net across ALL closed trades (tz-toggle day) — powers the live tripwire banner.
+// Today's realized result: every fill today (closes, partial closes of open positions, and fees),
+// not whole trades that happened to close today with losses from earlier days in them.
+// n counts the trades that closed today.
 function dailyLossToday(trades){
   const k=nfDayKey(Date.now()); let net=0, n=0;
-  for(const t of (trades||[])){ if(t.isOpen||!t.closeTime)continue; if(nfDayKey(t.closeTime)===k){ net+=t.net; n++; } }
+  for(const t of (trades||[])){
+    const today=!t.isOpen&&t.closeTime&&nfDayKey(t.closeTime)===k;
+    if(t.rz){ for(const [tm,v] of t.rz)if(nfDayKey(tm)===k)net+=v; }
+    else if(today)net+=t.net; // a trade built without per-fill results (imports, tests): whole trade on its close day
+    if(today)n++; }
   return {net, n};
 }
 function renderTripwire(){
@@ -341,7 +348,13 @@ async function removeCustomRule(pid){
 // One predicate per rule over closed AND open trades. Open trades join the state model with
 // closeTime=Infinity so entry-time states (streaks, day PnL, re-entry gaps) see exactly the
 // closes that preceded them; thresholds come from the rule's frozen params.
+// the same trades, rules and journal ask for the same predicates on every render: kept until one changes
 function customRulePreds(trades, rules){
+  const sig=JSON.stringify(rules||[])+'|'+_be+'|'+(trades?trades.length:0)+'|'+(typeof _jrev!=='undefined'?_jrev:0)+'|'+(settings.tz||'')+'|'+(settings.tzZone||''), m=customRulePreds._m;
+  if(m&&m.trades===trades&&m.sig===sig)return m.out;
+  const out=customRulePredsNow(trades, rules); customRulePreds._m={trades,sig,out}; return out;
+}
+function customRulePredsNow(trades, rules){
   const pool=(trades||[]).map(t=>(t.isOpen||!t.closeTime)?Object.assign({},t,{closeTime:Infinity}):t);
   const chron=pool.slice().sort((a,b)=>a.openTime-b.openTime);
   const ST=tradeStates(chron);

@@ -834,7 +834,8 @@ function pzDeepStats(trades, o){
   const tr=[...(trades||[])].filter(t=>!t.isOpen&&t.closeTime).sort((a,b)=>a.closeTime-b.closeTime);
   if(!tr.length)return null;
   const W=t=>o.isWin(t.net), L=t=>o.isLoss(t.net);
-  const agg=list=>{ let net=0,gp=0,gl=0,w=0,l=0; for(const t of list){ net+=t.net; if(W(t)){ w++; gp+=t.net; } else if(L(t)){ l++; gl-=t.net; } }
+  // counts use the break-even band; profit factor is gross over every trade (as in the main stats)
+  const agg=list=>{ let net=0,gp=0,gl=0,w=0,l=0; for(const t of list){ net+=t.net; if(t.net>0)gp+=t.net; else gl-=t.net; if(W(t))w++; else if(L(t))l++; }
     return {n:list.length,net,avg:list.length?net/list.length:null,winRate:w+l?w/(w+l):null,pf:gl>0?gp/gl:(gp>0?Infinity:null)}; };
   const group=(keyOf,order)=>{ const m=new Map(); for(const t of tr){ const k=keyOf(t); if(k==null)continue; if(!m.has(k))m.set(k,[]); m.get(k).push(t); }
     const rows=[...m].map(([k,v])=>({k,...agg(v)})); if(order)rows.sort(order); return rows; };

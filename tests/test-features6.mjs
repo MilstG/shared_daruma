@@ -56,9 +56,9 @@ t('Auto follows the device; Dark and Light are fixed; anything else counts as Au
   eq([isLight('auto', true), isLight('auto', false), isLight('dark', true), isLight('light', false), isLight(undefined, true), isLight('sepia', false)],
     [true, false, false, true, true, false]);
 });
-t('Pulse accents are deepened 40% toward black for light mode', () => {
-  const deepen = evalFn('pzDeepen');
-  eq(deepen('#3FE0A0'), '#268660'); eq(deepen('#FFFFFF'), '#999999'); eq(deepen('nope'), 'nope');
+t('Pulse’s mint accent has a deepened light-mode twin in the stylesheet (colour themes are gone)', () => {
+  ok(html.includes('#pz{--pz-acc:var(--pz-acc-d,#3FE0A0)'), 'mint on dark');
+  ok(html.includes('body.light #pz{--pz-acc:var(--pz-acc-l,#268660)'), 'mint deepened 40% toward black on light');
 });
 t('appearance syncs, rides backups, applies before first paint, and follows the device live', () => {
   ok(html.includes("'playbooks','appearance'];"), 'synced settings field');

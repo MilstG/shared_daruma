@@ -116,14 +116,14 @@ function pzCoachLine(D){
 }
 
 // ---- UI state (never stored) ----
-const PZ_TABS=['today','trends','checkin','progress','discipline','journal','social','sharing','account','deep','how','badges','report','review','coach','leagues','lessons','mentor','mentee'];
+const PZ_TABS=['compose','today','trends','checkin','progress','discipline','journal','social','sharing','account','deep','how','badges','report','review','coach','leagues','lessons','mentor','mentee'];
 var _pzQuiet=false; // a background refresh of data Pulse already shows: no status toasts
 var pzS={ring:'discipline',range:30,badge:null,ck:null,sheet:false,custom:null,jr:{},note:null};
 // a sign-in link from the league owner (/pulse#link=CODE): keep the code for the sign-in form, drop it from the address bar
 (function(){ const m=/^#link=([A-Za-z0-9-]{4,20})$/.exec(location.hash||''); if(!m)return; pzS.linkCode=m[1].toUpperCase(); pzS.acctOpen=true;
   try{ history.replaceState(null,'',location.pathname+location.search+'#today'); }catch(e){} })();
 function pzTab(){ const h=(location.hash||'').slice(1);
-  if(/^u\/[A-Za-z0-9_]{3,20}$/.test(h))return 'profile'; if(/^mentee\/[A-Za-z0-9_]{3,20}$/.test(h))return 'mentee'; if(/^c\/[0-9a-f]{4,24}$/.test(h))return 'comp'; if(/^lg\/[a-z0-9-]{1,40}$/.test(h))return 'lginfo';
+  if(/^u\/[A-Za-z0-9_]{3,20}$/.test(h))return 'profile'; if(/^mentee\/[A-Za-z0-9_]{3,20}$/.test(h))return 'mentee'; if(/^c\/[0-9a-f]{4,24}$/.test(h))return 'comp'; if(/^lg\/[a-z0-9-]{1,40}$/.test(h))return 'lginfo'; if(/^post\/[0-9a-f]{12}$/.test(h))return 'post';
   if(/^link=[A-Za-z0-9-]{4,20}$/.test(h))return 'today';
   return PZ_TABS.includes(h)?h:'today'; }
 function pzHashArg(){ return (location.hash||'').slice(1).split('/')[1]||''; }
@@ -141,6 +141,7 @@ const PZI={
   bolt:'<path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>',
   chat:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
   coach:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 10.5h.01M12 10.5h.01M15.5 10.5h.01"/>',
+  up:'<path d="M6 15l6-6 6 6"/>', down:'<path d="M6 9l6 6 6-6"/>',
   back:'<path d="M15 18l-6-6 6-6"/>', chev:'<path d="M9 6l6 6-6 6"/>', arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
   check:'<path d="M5 12l5 5 9-10"/>', minus:'<path d="M6 12h12"/>', plus:'<path d="M12 6v12M6 12h12"/>',
   x:'<path d="M6 6l12 12M18 6L6 18"/>', lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
@@ -202,8 +203,16 @@ const PZ_SECTIONS={
   stats:[['tiles','Headline numbers','Net, win rate, average trade and more',1],['daily','Daily P&L','',1],['findings','What moves your results','Your biggest edges and leaks',1],
     ['insights','Does discipline pay?','Results on good-discipline days vs the rest',1],['markets','Markets and time of day','Best and worst markets and hours',1]],
   progress:[['goals','Process goals','Targets you set for your process, with progress',1],['xpsources','Where your XP came from','',1],['challenge','Weekly challenge','',1],['habits','Your habits','Streaks for each habit you run',1],['reports','Report cards','Last week and this month',1],
-    ['leaks','Your leaks','What your slips cost, and plugging them',1],['lessons','Lessons library','Everything your reviews taught you',1],['moments','Good moments','',1],['badges','Badges','Your latest badges',1],['bests','Personal bests','',1],['themes','Themes','',1]],
+    ['leaks','Your leaks','What your slips cost, and plugging them',1],['lessons','Lessons library','Everything your reviews taught you',1],['moments','Good moments','',1],['badges','Badges','Your latest badges',1],['bests','Personal bests','',1]],
 };
+// Today's cards below the dials can also be put in your own order (the top of the screen stays put)
+const PZ_FLOW={today:[['tilt','insight','session','positions'],['next','now','good','inbox','partners','lesson','xp','week','yesterday']]};
+function pzOrdered(screen){ const all=(PZ_FLOW[screen]||[]).flat(), o=((settings.pzLayout||{})[screen]||{})._order;
+  if(!Array.isArray(o))return null;
+  return [...o.filter(id=>all.includes(id)),...all.filter(id=>!o.includes(id))]; }
+function pzMove(screen,id,d){ const cur=pzOrdered(screen)||(PZ_FLOW[screen]||[]).flat(), i=cur.indexOf(id), j=i+d;
+  if(i<0||j<0||j>=cur.length)return false; [cur[i],cur[j]]=[cur[j],cur[i]];
+  const L=settings.pzLayout=settings.pzLayout||{}, M=L[screen]=L[screen]||{}; M._order=cur; return true; }
 function pzShow(screen,id){ const L=(settings.pzLayout||{})[screen]; if(L&&Object.prototype.hasOwnProperty.call(L,id))return !!L[id];
   const d=(PZ_SECTIONS[screen]||[]).find(x=>x[0]===id); return d?!!d[3]:true; }
 const pzLayoutCss=screen=>{ const hid=(PZ_SECTIONS[screen]||[]).filter(x=>!pzShow(screen,x[0])).map(x=>`[data-sec="${screen}:${x[0]}"]`); return hid.length?`<style>${hid.join(',')}{display:none!important}</style>`:''; };
@@ -212,9 +221,15 @@ function pzCustomizeHtml(screen){
   const list=PZ_SECTIONS[screen]||[], name={today:'Today',stats:'Stats',progress:'Progress'}[screen]||screen;
   return `<div class="pz-sheet-bg" data-pz-close><div class="pz-sheet" role="dialog" aria-modal="true" aria-labelledby="pzCustT">
     <div style="display:flex;justify-content:space-between;align-items:center"><b id="pzCustT" style="font-size:18px">Customize ${esc(name)}</b><button type="button" class="pz-chip icon" data-pz-close aria-label="Close">${pzI('x',20)}</button></div>
-    <p class="pz-sub" style="font-size:13px">Show only what you use. Hidden sections keep working in the background.</p>
-    <section>${list.map(([id,label,hint])=>`<div class="pz-toggle"><span style="flex:1;min-width:0"><b id="pzCu_${id}">${esc(label)}</b>${hint?`<span class="pz-sub" style="display:block;font-size:12px">${esc(hint)}</span>`:''}</span>
-      <button type="button" role="switch" class="pz-switch" data-pz-sect="${screen}:${id}" aria-checked="${pzShow(screen,id)}" aria-labelledby="pzCu_${id}"><i></i></button></div>`).join('')}</section>
+    <p class="pz-sub" style="font-size:13px">Show only what you use${PZ_FLOW[screen]?', in the order you want':''}. Hidden sections keep working in the background.</p>
+    ${(()=>{ const flow=PZ_FLOW[screen]?(pzOrdered(screen)||PZ_FLOW[screen].flat()):null, byId=Object.fromEntries(list.map(x=>[x[0],x]));
+      const row=(id,i,n)=>{ const [,label,hint]=byId[id]; return `<div class="pz-toggle"><span style="flex:1;min-width:0"><b id="pzCu_${id}">${esc(label)}</b>${hint?`<span class="pz-sub" style="display:block;font-size:12px">${esc(hint)}</span>`:''}</span>
+        ${flow&&i!=null?`<span class="pz-moves"><button type="button" class="pz-chip icon" data-pz-move="${screen}:${id}:-1" aria-label="Move ${esc(label)} up"${i===0?' disabled':''}>${pzI('up',16)}</button><button type="button" class="pz-chip icon" data-pz-move="${screen}:${id}:1" aria-label="Move ${esc(label)} down"${i===n-1?' disabled':''}>${pzI('down',16)}</button></span>`:''}
+        <button type="button" role="switch" class="pz-switch" data-pz-sect="${screen}:${id}" aria-checked="${pzShow(screen,id)}" aria-labelledby="pzCu_${id}"><i></i></button></div>`; };
+      if(!flow)return `<section>${list.map(x=>row(x[0])).join('')}</section>`;
+      const top=list.filter(x=>!flow.includes(x[0]));
+      return `<section><span class="pz-lbl" style="color:var(--pz-muted)">At the top</span>${top.map(x=>row(x[0])).join('')}</section>
+        <section><span class="pz-lbl" style="color:var(--pz-muted)">Below the dials, in this order</span>${flow.filter(id=>byId[id]).map((id,i,a)=>row(id,i,a.length)).join('')}</section>`; })()}
     <button type="button" class="pz-ghost" data-pz-sectreset="${screen}">Reset to default</button></div></div>`;
 }
 // ---- Today, in more depth: the day in numbers, the session, the plan, open positions, context ----
@@ -564,8 +579,13 @@ function pzTodayHtml(D){
   return `${pzHead(dayLabel(D.todayK).replace(', ',' · '),'Today',pzChips(g,D.inbox.length))}
     ${sec('oneThing',()=>pzOneThingHtml(D))}
     <div class="pz-wide">${ringsHtml}<div class="pz-span" id="pzRingDetail">${detail}</div>${more('numbers',pzTodayStripHtml)}${sec('level',()=>pzProgressRowHtml(D))}
-      <div class="pz-col">${pzLinkCardHtml()}${pzNudgesHtml(D)}${sec('tilt',()=>pzTiltHtml(D))}${on('insight')?coach:''}${more('session',pzSessionHtml)}${more('positions',pzPositionsHtml)}</div>
-      <div class="pz-col">${sec('next',()=>pzNextHtml(D))}${more('now',pzNowHtml)}${sec('good',()=>pzGoodHtml(D))}${sec('inbox',()=>socInboxHtml())}${sec('partners',()=>socPartnerStripHtml())}${sec('lesson',()=>pzLessonDueHtml(D))}${on('xp')?bonus:''}${sec('week',()=>pzWeekSparkHtml(D))}${sec('yesterday',()=>pzYesterdayHtml(D))}</div></div>
+      ${(()=>{ const card={tilt:()=>sec('tilt',()=>pzTiltHtml(D)),insight:()=>on('insight')?coach:'',session:()=>more('session',pzSessionHtml),positions:()=>more('positions',pzPositionsHtml),
+          next:()=>sec('next',()=>pzNextHtml(D)),now:()=>more('now',pzNowHtml),good:()=>sec('good',()=>pzGoodHtml(D)),inbox:()=>sec('inbox',()=>socInboxHtml()),partners:()=>sec('partners',()=>socPartnerStripHtml()),
+          lesson:()=>sec('lesson',()=>pzLessonDueHtml(D)),xp:()=>on('xp')?bonus:'',week:()=>sec('week',()=>pzWeekSparkHtml(D)),yesterday:()=>sec('yesterday',()=>pzYesterdayHtml(D))};
+        const ord=pzOrdered('today'), lead=pzLinkCardHtml()+pzNudgesHtml(D);
+        // your own order reads top to bottom, then on into the second column on a wide screen
+        if(ord)return `<div class="pz-span pz-flow">${lead?`<div class="pz-col">${lead}</div>`:''}${ord.map(id=>card[id]()).filter(Boolean).map(h=>`<div class="pz-col">${h}</div>`).join('')}</div>`;
+        return `<div class="pz-col">${lead}${PZ_FLOW.today[0].map(id=>card[id]()).join('')}</div><div class="pz-col">${PZ_FLOW.today[1].map(id=>card[id]()).join('')}</div>`; })()}</div>
     ${pzCustomizeLink('today')}`;
 }
 
@@ -736,7 +756,7 @@ function pzEquitySvg(curve,byId){
     <text x="${L-8}" y="${DT+4}" font-size="11" text-anchor="end" fill="var(--pz-muted)">$0</text><text x="${L-8}" y="${f1(yd(dMin)+4)}" font-size="11" text-anchor="end" fill="var(--pz-muted)">${esc(pzSigned(dMin))}</text>
     <path d="${area}" fill="${PZ_COL.low}" fill-opacity=".38"/>
     <circle cx="${f1(x(ddI))}" cy="${f1(yd(curve[ddI].dd))}" r="4" fill="${PZ_COL.low}" stroke="var(--pz-card)" stroke-width="2"/>
-    ${lab(x(ddI)+(anc(x(ddI))==='end'?-8:8),yd(curve[ddI].dd)+4,'Max drawdown '+pzSigned(curve[ddI].dd),PZ_COL.low,anc(x(ddI))==='end'?'end':'start')}
+    ${(()=>{ const r=x(ddI)>W/2; /* a trough on the right half labels to its left, so the text stays inside */ return lab(x(ddI)+(r?-8:8),yd(curve[ddI].dd)+4,'Max drawdown '+pzSigned(curve[ddI].dd),PZ_COL.low,r?'end':'start'); })()}
     ${xt.map(i=>`<text x="${f1(x(i))}" y="${H-5}" font-size="11" text-anchor="${i===0?'start':i===n-1?'end':'middle'}" fill="var(--pz-muted)">${esc(fmtD(curve[i].at))}</text>`).join('')}
     <line class="pz-eqx" x1="0" x2="0" y1="${T}" y2="${DT+DH}" stroke="var(--pz-soft)" stroke-width="1" style="display:none"/>
     <circle class="pz-eqd" r="4" fill="var(--pz-text)" style="display:none"/>
@@ -972,7 +992,7 @@ function pzJournalHtml(D){
       <input type="text" id="pzSetup_${esc(t.id)}" aria-label="Setup" placeholder="Setup (breakout, fade, retest…)" autocomplete="off">
       ${setups.length?`<div class="pz-chiprow pz-wrapr" aria-label="Your setups">${setups.map(x=>`<button type="button" class="pz-chipbtn" data-pz-setupchip="${esc(x)}">${esc(x)}</button>`).join('')}</div>`:''}
       <textarea id="pzNoteT_${esc(t.id)}" rows="2" aria-label="${esc(q)}" placeholder="${esc(q)}"></textarea>
-      <button type="button" class="pz-ghost" data-pz-jsave>Save</button></section>`; };
+      <div style="display:flex;gap:8px"><button type="button" class="pz-ghost" data-pz-jsave style="flex:1">Save</button>${SOC.me&&!pzS.demo&&!(SOC.cfg&&SOC.cfg.posts&&!SOC.cfg.posts.on)?`<button type="button" class="pz-ghost" data-soc-share="${esc(t.id)}">Share</button>`:''}</div></section>`; };
   return `${back}${pzHead(D.inbox.length+' to journal','Journal')}<p class="pz-sub" style="margin-top:-6px">Rate how well you executed each trade, not how it paid. One line is enough.</p>
     <div class="pz-jgrid">${list.map(card).join('')}</div>${jpg.html}`;
 }
@@ -1047,7 +1067,7 @@ function pzSheetHtml(){
     <section><span class="pz-lbl" style="color:var(--pz-muted)">Wallets</span>
       ${settings.wallets.map((w,i)=>`<div class="pz-wl"><span>${w.label?esc(w.label)+' · ':''}<code>${esc(walletShort(w.address))}</code></span><button type="button" class="pz-ghost pz-sm" data-pz-rmw="${i}" aria-label="Remove wallet ${esc(labelFor(w))}">Remove</button></div>`).join('')||'<p class="pz-sub">No wallets yet.</p>'}
       <div class="pz-field" style="margin-top:10px"><label for="pzAddr2" style="font-size:13px">Add another address</label><input type="text" id="pzAddr2" placeholder="0x…" autocomplete="off" autocapitalize="off" spellcheck="false">
-        <div style="display:flex;gap:8px"><button type="button" class="pz-ghost pz-sm" id="pzAdd2">Add &amp; load</button><button type="button" class="pz-ghost pz-sm" id="pzRefresh">Refresh now</button></div></div>
+        <div style="display:flex;gap:8px"><button type="button" class="pz-ghost pz-sm" id="pzAdd2">Add &amp; load</button>${settings.wallets.length?'<button type="button" class="pz-ghost pz-sm" id="pzRefresh">Refresh now</button>':''}</div></div>
       ${pzS.cex?pzCexFormHtml():`<button type="button" class="pz-ghost pz-sm" data-pz-cex="bybit" style="margin-top:8px">Connect Bybit or Binance</button>`}</section>
     <section><span class="pz-lbl" style="color:var(--pz-muted)">Appearance</span>
       <div class="pz-seg" role="group" aria-label="Appearance" style="margin-top:6px">${[['auto','Auto'],['dark','Dark'],['light','Light']].map(([v,l])=>`<button type="button" data-pz-appear="${v}" aria-pressed="${(settings.appearance||'auto')===v}" style="flex:1">${l}</button>`).join('')}</div>
@@ -1068,7 +1088,8 @@ function pzNote(m, kind){
   const el=$('pzNote'); if(!el)return;
   el.className='pz-note'+(kind==='err'?' err':'');
   el.innerHTML=m?(kind==='busy'?'<span class="pz-spin"></span>':'')+esc(m):'';
-  clearTimeout(pzNote._t); if(m&&kind!=='busy'&&kind!=='err')pzNote._t=setTimeout(()=>{ if(el.textContent===m){ el.textContent=''; pzS.note=null; } },5000);
+  // messages go by themselves (errors stay a little longer), or with a tap, or when you change screens
+  clearTimeout(pzNote._t); if(m&&kind!=='busy')pzNote._t=setTimeout(()=>{ if(el.textContent===m){ el.textContent=''; pzS.note=null; } },kind==='err'?9000:5000);
   // the first-run and loading screens show the message inline too
   if(!allTrades.length&&$('pzView'))pzRender();
 }
@@ -1078,25 +1099,29 @@ function pzRender(){
   // keep what's typed across re-renders (a background sync or auto-refresh can land mid-edit)
   const root=$('pz'), keep={}; root.querySelectorAll('input[id],textarea[id]').forEach(el=>{ keep[el.id]=el.value; });
   const act=document.activeElement, actId=act&&root.contains(act)?act.id:null;
-  const actSel=act&&act.dataset?(act.dataset.pzCk?`[data-pz-ck="${act.dataset.pzCk}"][data-n="${act.dataset.n}"]`:act.dataset.pzRing?`[data-pz-ring="${act.dataset.pzRing}"]`:act.dataset.pzRange?`[data-pz-range="${act.dataset.pzRange}"]`:act.dataset.pzBk?`[data-pz-bk="${act.dataset.pzBk}"]`:act.dataset.pzBadge?`[data-pz-badge="${act.dataset.pzBadge}"]`:null):null;
+  // the focused control without an id is found again by its data-* attributes, so a click that
+  // re-renders the screen doesn't drop keyboard focus to the page
+  const actSel=act&&!actId&&root.contains(act)&&act.attributes?([...act.attributes].filter(a=>a.name.startsWith('data-')).map(a=>`[${a.name}="${CSS.escape(a.value)}"]`).join('')||null):null;
   let html;
   if(!allTrades.length){ socBoot(); html=_loading&&settings.wallets.length?pzLoadingHtml():pzConnectHtml(); }
   else { const tab=pzTab(); let D;
-    try{ D=_pzLastD=pzData(); }catch(e){ console.error(e); view.innerHTML=`<div class="pz-connect"><p class="pz-sub pz-err">Pulse hit an error reading your data (${esc(e.message)}).</p><a class="pz-ghost" href="${esc(pzFullHref())}">Open the full journal</a></div>`; return; }
+    try{ D=_pzLastD=pzData(); }catch(e){ console.error(e); view.inert=false; view.innerHTML=`<div class="pz-connect"><p class="pz-sub pz-err">Pulse hit an error reading your data (${esc(e.message)}).</p><a class="pz-ghost" href="${esc(pzFullHref())}">Open the full journal</a></div>`; return; }
     ensureWeekChallenge(D.ctx).then(made=>{ if(made)pzRender(); }).catch(()=>{});
     socBoot(); pzWearSync(); pzPushCheck();
     const lv=D.g.level.level;
     const body=tab==='trends'?pzTrendsHtml(D):tab==='deep'?pzDeepHtml(D):tab==='how'?pzHowHtml():tab==='badges'?pzBadgesHtml(D):tab==='report'?pzReportHtml(D)
       :tab==='review'?pzReviewHtml(D):tab==='coach'?pzCoachHtml(D):tab==='leagues'?socFindHtml(D):tab==='lginfo'?socLeagueInfoHtml(D,pzHashArg()):tab==='checkin'?pzCheckinHtml(D):tab==='progress'?pzProgressHtml(D)
       :tab==='discipline'?pzDisciplineHtml(D):tab==='journal'?pzJournalHtml(D):tab==='social'?socSocialHtml(D):tab==='sharing'?socSharingHtml(D):tab==='account'?socAccountHtml(D)
-      :tab==='lessons'?(()=>{ try{ return pzLessonsHtml(D); }catch(e){ console.warn('lessons',e); return `<a class="pz-back" href="#progress">${pzI('back',20)}Progress</a><p class="pz-sub pz-err">Your lessons couldn’t be read (${esc(e.message)}).</p>`; } })():tab==='mentor'?socMentorHtml(D):tab==='mentee'?socMenteeHtml(D,pzHashArg()):tab==='profile'?socProfileHtml(D,pzHashArg()):tab==='comp'?socCompHtml(D,pzHashArg()):pzTodayHtml(D);
+      :tab==='lessons'?(()=>{ try{ return pzLessonsHtml(D); }catch(e){ console.warn('lessons',e); return `<a class="pz-back" href="#progress">${pzI('back',20)}Progress</a><p class="pz-sub pz-err">Your lessons couldn’t be read (${esc(e.message)}).</p>`; } })():tab==='mentor'?socMentorHtml(D):tab==='mentee'?socMenteeHtml(D,pzHashArg()):tab==='profile'?socProfileHtml(D,pzHashArg()):tab==='post'?socPostHtml(D,pzHashArg()):tab==='compose'?socComposeHtml(D):tab==='comp'?socCompHtml(D,pzHashArg()):pzTodayHtml(D);
     html=`${pzNav(tab,lv)}<main class="pz-main" id="pzMain">${body}</main>`;
-    pzApplyTheme(lv); socSync(D.g); }
+    socSync(D.g); }
   view.innerHTML=html;
   pzQuietMount(allTrades.length?_pzLastD:null);
   const sh=$('pzSheet'); if(sh)sh.innerHTML=pzS.sheet?pzSheetHtml():pzS.custom?pzCustomizeHtml(pzS.custom):'';
+  view.inert=!!(sh&&(pzS.sheet||pzS.custom)); // with a sheet open, Tab stays inside it
   for(const id in keep){ const el=$(id); if(el&&root.contains(el)&&keep[id]&&!el.value)el.value=keep[id]; }
-  const f=(actId&&$(actId))||(actSel&&root.querySelector(actSel)); if(f&&f.focus)f.focus({preventScroll:true});
+  // (by data-* only when they name a single control: several identical Save buttons stay unfocused rather than jumping to the first)
+  const f=(actId&&$(actId))||(actSel&&(()=>{ const all=root.querySelectorAll(actSel+':not([disabled])'); return all.length===1?all[0]:null; })()); if(f&&f.focus)f.focus({preventScroll:true});
 }
 async function pzConnect(inputId){
   const el=$(inputId); const a=(el&&el.value||'').trim();
@@ -1105,6 +1130,8 @@ async function pzConnect(inputId){
   for(let i=0;_loading&&i<240;i++)await sleep(250); // a background refresh is running: let it finish, then load
   $('walletAddr').value=a;
   await loadAll();
+  // real trades loaded: sample-data mode is over (not before, in case the load didn't happen)
+  if(allTrades.length&&settings.wallets.some(w=>w.address.toLowerCase()===a.toLowerCase()))pzS.demo=false;
 }
 async function pzToken(){
   const tok=($('pzTok')||{value:''}).value.trim(); if(!tok)return;
@@ -1137,9 +1164,12 @@ function wirePulse(){
     if(ds.pzSheet!==undefined){ pzS.sheet=true; pzRender(); const c=$('pzSheet').querySelector('[data-pz-close].pz-chip'); if(c)c.focus(); return; }
     if(ds.pzClose!==undefined){ if(t.classList.contains('pz-sheet-bg')&&ev.target!==t)return; pzS.sheet=false; pzS.custom=null; pzRender(); return; }
     if(ds.pzCustomize){ pzS.custom=ds.pzCustomize; pzRender(); const c=$('pzSheet').querySelector('[data-pz-close].pz-chip'); if(c)c.focus(); return; }
+    if(ds.pzMove){ const [sc,id,d]=ds.pzMove.split(':'); if(pzMove(sc,id,+d)){ await Store.set(S_KEY,settings); pzRender();
+        const b=$('pzSheet').querySelector(`[data-pz-move="${sc}:${id}:${d}"]:not([disabled])`)||$('pzSheet').querySelector(`[data-pz-move^="${sc}:${id}:"]:not([disabled])`); if(b)b.focus(); } return; }
     if(ds.pzSect){ const [sc,id]=ds.pzSect.split(':'), L=settings.pzLayout=settings.pzLayout||{}, M=L[sc]=L[sc]||{}; M[id]=!pzShow(sc,id); await Store.set(S_KEY,settings); pzRender(); return; }
     if(ds.pzSectreset){ if(settings.pzLayout)delete settings.pzLayout[ds.pzSectreset]; await Store.set(S_KEY,settings); pzRender(); return; }
-    if(ds.pzRmw!==undefined){ await removeWallet(+ds.pzRmw); pzRender(); return; }
+    if(ds.pzRmw!==undefined){ const w=settings.wallets[+ds.pzRmw]; if(w&&!confirm('Remove '+labelFor(w)+'? Its trades leave Pulse; your notes on them stay saved.'))return;
+      await removeWallet(+ds.pzRmw); pzRender(); return; }
     if(ds.pzCex){ pzS.cex={venue:ds.pzCex}; pzRender(); const f=$('pzCexKey'); if(f)f.focus(); return; }
     if(await socAction(t))return;
     switch(t.id){
@@ -1148,7 +1178,7 @@ function wirePulse(){
       case 'pzCexGo': return pzCexGo();
       case 'pzCexX': pzS.cex=null; pzRender(); return;
       case 'pzDemo': pzS.demo=true; pzNote('Generating sample data…','busy'); await loadDemo();
-        if(allTrades.length)pzNote('Sample trades come with no journal, so discipline starts low. Do a check-in and journal a couple to watch the dials move.');
+        if(allTrades.length)pzNote('These are sample trades. Discipline is read from the fills; check in and journal a few to earn XP and watch the rest fill in.');
         return;
       case 'pzRefresh': pzS.sheet=false; pzRender(); pzNote('Refreshing…','busy'); return loadAll();
       case 'pzCkSave': return pzSaveCheckin();
@@ -1162,7 +1192,7 @@ function wirePulse(){
         await setWeekChallenge(c[i],i); pzRender(); return; }
     }
   });
-  root.addEventListener('input',ev=>{ const t=ev.target; if(t.id==='socHandle2'){ SOC.draftHandle=t.value; return; }
+  root.addEventListener('input',ev=>{ const t=ev.target; if(t.id==='socHandle2'){ SOC.draftHandle=t.value; return; } if(t.id==='socBio'){ SOC.draftBio=t.value; return; }
     if(t.id==='socLq'){ clearTimeout(SOC.lqT); SOC.lqT=setTimeout(()=>{ SOC.lq=t.value.trim(); pzRender(); const el=$('socLq'); if(el){ el.focus(); el.setSelectionRange(el.value.length,el.value.length); } },300); return; }
     if(t.id==='pzLq'){ clearTimeout(pzS.lqT); pzS.lqT=setTimeout(()=>{ pzS.lq=t.value.trim(); pzRender(); const el=$('pzLq'); if(el){ el.focus(); el.setSelectionRange(el.value.length,el.value.length); } },250); return; }
     if(pzS.ck&&t.id==='pzUntil'){ (pzS.ck.rules=pzS.ck.rules||{}).until=t.value; return; }
@@ -1171,6 +1201,7 @@ function wirePulse(){
     if(!pzS.ck)return;
     if(t.id==='pzPlan')pzS.ck.plan=t.value; else if(t.id==='pzLoss')pzS.ck.maxLoss=t.value; });
   root.addEventListener('change',async ev=>{ const t=ev.target;
+    if(t.type==='file'&&await socFilePicked(t))return;
     if(t.id==='socBoardSel'){ SOC.board=t.value; pzRender(); return; }
     if((t.id==='pzPushAm'||t.id==='pzPushPm')&&/^\d{2}:\d{2}$/.test(t.value)){ const pr=Object.assign({},SOC.me&&SOC.me.push&&SOC.me.push.prefs,t.id==='pzPushAm'?{morning:t.value}:{eod:t.value});
       try{ const r=await socFetch('/push',{method:'PUT',body:JSON.stringify({prefs:pr})}); SOC.me.push.prefs=r.prefs; pzNote('Saved.'); }catch(e){ pzNote(e.message,'err'); } return; }
@@ -1188,8 +1219,13 @@ function wirePulse(){
     else if(ev.key==='Enter'&&ev.target.id==='pzSetupAdd'){ ev.preventDefault(); const b=$('pzSetupAddGo'); if(b)b.click(); }
     else if(ev.key==='Enter'&&(ev.target.id==='socLinkIn'||ev.target.id==='vaultPass'||ev.target.id==='vaultPass2')){ ev.preventDefault();
       const b=$(ev.target.id==='socLinkIn'?'socLinkGo':$('vaultUnlock')?'vaultUnlock':'vaultOn'); if(b)b.click(); }
-    else if(ev.key==='Escape'&&(pzS.sheet||pzS.custom)){ pzS.sheet=false; pzS.custom=null; pzRender(); const g=document.querySelector('[data-pz-sheet]'); if(g)g.focus(); } });
-  let prevTab=pzTab(); window.addEventListener('hashchange',()=>{ const tb=pzTab(); if(tb==='checkin')pzS.ck=null; if(tb==='sharing'&&prevTab!=='account')SOC.draft=null; prevTab=tb; pzRender(); window.scrollTo(0,0); });
+  });
+  // Escape closes an open sheet wherever focus is (it can sit on the page itself after a re-render)
+  document.addEventListener('keydown',ev=>{ if(ev.key==='Escape'&&(pzS.sheet||pzS.custom)){ pzS.sheet=false; pzS.custom=null; pzRender(); const g=document.querySelector('[data-pz-sheet]'); if(g)g.focus(); } });
+  { const n=$('pzNote'); if(n)n.addEventListener('click',()=>{ if(pzS.note&&pzS.note.kind!=='busy')pzNote(null); }); }
+  let prevTab=pzTab(); window.addEventListener('hashchange',()=>{ const tb=pzTab(); SOC.confirm=null; if(pzS.note&&pzS.note.kind==='err')pzNote(null);
+    // a half-typed comment or update belongs to the post it was written on
+    for(const id of ['socCText','socUNote','socUExit']){ const el=$(id); if(el)el.value=''; } if(tb==='checkin')pzS.ck=null; if(tb==='sharing'&&prevTab!=='account'){ SOC.draft=null; SOC.draftHandle=null; SOC.draftBio=null; } prevTab=tb; pzRender(); window.scrollTo(0,0); });
   window.addEventListener('beforeinstallprompt',()=>{ if(pzS.sheet)pzRender(); });
 }
 if(PZ)wirePulse();

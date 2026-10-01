@@ -23,8 +23,30 @@ function reconstructTrades(fills, addr, market){
   // Spot fees paid in a stable quote are dollars; anything else (a buy's fee comes out of the
   // token bought) is in the base token and is converted at the fill price.
   const SPOT_QUOTES={USDC:1,USDT0:1,USDT:1,USDH:1,USDE:1};
+  // each recent fill's realized result (closedPnl − fee), on the trade it belongs to: the daily loss
+  // limit counts what was realized today, including partial closes of a position still open
+  const rzSince=Date.now()-3*86400000;
   const pred = market==='spot' ? (c=>!isPerp(c)) : (c=>isPerp(c));
-  const sorted=fills.filter(f=>pred(f.coin)).sort((a,b)=>a.time-b.time);
+  // Fills that share a millisecond can arrive in any order (a close and a reopen in one ms, TWAP
+  // slices): within such a group, one coin's fills are put in the order their positions chain —
+  // each fill's startPosition is where the one before it left the position.
+  const chainSameTime=arr=>{ const pos={};
+    for(let i=0;i<arr.length;){ let j=i+1; while(j<arr.length&&arr[j].time===arr[i].time)j++;
+      if(j-i>1){ const byCoin=new Map(); for(let k=i;k<j;k++){ const c=arr[k].coin; if(!byCoin.has(c))byCoin.set(c,[]); byCoin.get(c).push(arr[k]); }
+        const out=[];
+        for(const [c,g] of byCoin){ if(g.length<2){ out.push(...g); continue; }
+          const sp=f=>parseFloat(f.startPosition), end=f=>sp(f)+(f.side==='B'?1:-1)*Math.abs(parseFloat(f.sz)), same=(a,b)=>Math.abs(a-b)<=1e-9*Math.max(1,Math.abs(a),Math.abs(b));
+          const left=g.slice(), seq=[];
+          // start where the position stood before this millisecond, else at the fill no other fill leads into
+          let cur=pos[c]; let k=cur!=null?left.findIndex(f=>same(sp(f),cur)):-1;
+          if(k<0)k=left.findIndex(f=>!left.some(o=>o!==f&&same(end(o),sp(f))));
+          while(left.length){ if(k<0){ seq.push(...left); break; } const f=left.splice(k,1)[0]; seq.push(f); cur=end(f); k=left.findIndex(o=>same(sp(o),cur)); }
+          out.push(...seq); }
+        for(let k=i;k<j;k++)arr[k]=out[k-i]; }
+      for(let k=i;k<j;k++){ const f=arr[k]; pos[f.coin]=parseFloat(f.startPosition)+(f.side==='B'?1:-1)*Math.abs(parseFloat(f.sz)); }
+      i=j; }
+    return arr; };
+  const sorted=chainSameTime(fills.filter(f=>pred(f.coin)).sort((a,b)=>a.time-b.time));
   const open={}, trades=[], EPS=1e-9, spot=market==='spot', lastAfter={};
   // Spot only: a sell run followed by more buying (or the end of the history) is a realized
   // trade for the amount sold, at the position's average cost; what's still held carries on.
@@ -37,9 +59,11 @@ function reconstructTrades(fills, addr, market){
     trades.push(r);
     const nt=newTrade(coin,f,'Long',held,avg!=null?held*avg:0,0); nt.openTime=r.closeTime+1; nt.closeTime=r.closeTime+1; nt.maxSize=held;
     if(avg==null)nt.partialHistory=true; nt.firstEntryPx=avg!=null?avg:t.firstEntryPx; nt.carried=true;
+    nt.bagOpen=t.bagOpen||t.openTime; // the holding it came from: the still-held rest keeps one id across sells
     return nt; };
   for(const f of sorted){
     const coin=f.coin, sz=Math.abs(parseFloat(f.sz));
+    if(!(sz>0))continue; // a zero-size fill moves nothing (it used to open a phantom trade)
     const signed=f.side==='B'?sz:-sz;
     const before=parseFloat(f.startPosition);
     const px=parseFloat(f.px), pnl=parseFloat(f.closedPnl||'0');
@@ -59,6 +83,7 @@ function reconstructTrades(fills, addr, market){
     // counting the whole fill on both inflated volume, taker share and the fee-tier model
     const feeHere=flipped&&sz>0?fee*Math.abs(before)/sz:fee;
     t.fills++; t.fees+=feeHere; if(feeBasis)t.feesInBasis=(t.feesInBasis||0)+feeBasis; t.pnl+=pnl; t.closeTime=f.time; tallyFill(t,f,feeHere,flipped?Math.abs(before):null);
+    if(f.time>rzSince)(t.rz||(t.rz=[])).push([f.time,pnl-(fee-feeBasis)]); // the whole fill once (a flip's opening fee included; a spot buy's token fee is already in closedPnl's basis)
     if(flipped){
       // one fill that closes the whole |before| position AND opens |after| the other way:
       // only the closing portion belongs to this trade; the opening portion seeds the next trade.
@@ -90,7 +115,8 @@ function reconstructTrades(fills, addr, market){
     // entry drift: how far your size-weighted entry landed from your first fill, in the adverse direction
     t.entryDrift=(!t.partialHistory&&t.firstEntryPx>0&&t.avgEntry>0)
       ? (t.dir==='Short' ? t.firstEntryPx/t.avgEntry-1 : t.avgEntry/t.firstEntryPx-1) : null;
-    t.id=(market==='spot'?(addr||'paste')+':spot:':(addr||'paste')+':')+t.coin+':'+t.openTime; });
+    // a spot holding sold down in steps keeps one id while it's still held, so notes on it stay put
+    t.id=(market==='spot'?(addr||'paste')+':spot:':(addr||'paste')+':')+t.coin+':'+(t.isOpen&&t.carried&&t.bagOpen?t.bagOpen+':held':t.openTime); });
   return trades.sort((a,b)=>b.openTime-a.openTime);
 }
 function attributeFunding(trades,fundingRows){
@@ -1111,6 +1137,9 @@ function computeStats(closed, allv){
   allv=allv||closed;
   const wins=closed.filter(t=>isWin(t.net)), losses=closed.filter(t=>isLoss(t.net)), scratches=closed.filter(t=>isBE(t.net));
   const gp=wins.reduce((s,t)=>s+t.net,0), gl=Math.abs(losses.reduce((s,t)=>s+t.net,0));
+  // profit factor is gross profit ÷ gross loss over every trade: small losses inside the
+  // break-even band are still losses (nine −$40 trades against one +$200 isn't "∞")
+  const gpAll=closed.reduce((s,t)=>s+(t.net>0?t.net:0),0), glAll=closed.reduce((s,t)=>s+(t.net<0?-t.net:0),0);
   // PnL totals include realized from open positions (allv)
   const net=allv.reduce((s,t)=>s+t.net,0), fees=allv.reduce((s,t)=>s+t.fees,0);
   const fund=allv.reduce((s,t)=>s+(t.funding||0),0);
@@ -1146,7 +1175,7 @@ function computeStats(closed, allv){
   const median=_sortedNets.length?(_sortedNets.length%2?_sortedNets[(_sortedNets.length-1)/2]:(_sortedNets[_sortedNets.length/2-1]+_sortedNets[_sortedNets.length/2])/2):null;
   return {n:closed.length,openN:allv.filter(t=>t.isOpen).length,net,fees,fund,volume:allv.reduce((a,t)=>a+((t.makerNotional||0)+(t.takerNotional||0)+(t.unkNotional||0)),0),wins:wins.length,losses:losses.length,breakeven:scratches.length,
     winRate:(wins.length+losses.length)?wins.length/(wins.length+losses.length):0,
-    profitFactor:gl>0?gp/gl:(gp>0?Infinity:0),avgWin:avgW,avgLoss:avgL,payoff,breakevenWR,
+    profitFactor:glAll>0?gpAll/glAll:(gpAll>0?Infinity:0),avgWin:avgW,avgLoss:avgL,payoff,breakevenWR,
     expectancy,maxDD,maxDDpct,
     curStreak:cur,curSign,longW,longL,avgR,totalR,rCount:withR.length,avgHold,
     sharpe:sh?sh.sr:null,sharpeLo:sh?sh.lo:null,sharpeHi:sh?sh.hi:null,sharpeN:sh?sh.N:0,sharpeDaily:sh?sh.srDaily:null,

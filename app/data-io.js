@@ -15,8 +15,11 @@ async function addWalletFromInput(){
   const raw=$('walletAddr').value.trim(), label=$('walletLabel').value.trim();
   const forced=/^lighter:/i.test(raw), address=raw.replace(/^lighter:/i,'');
   if(!/^0x[0-9a-fA-F]{40}$/.test(address)){ setErr('That doesn\u2019t look like a 0x wallet address (42 chars). For Bybit or Binance, use \u201cConnect exchange\u201d.'); return false; }
+  // trade ids (and so your notes) include the address as written: a wallet added again in other
+  // letter case takes the spelling its notes already use; a new one is stored in lower case
+  const lc=address.toLowerCase(), known=Object.keys(journal).map(k=>k.split(':')[0]).find(a=>a.toLowerCase()===lc);
   setStatus('Looking for '+walletShort(address)+' on Hyperliquid and Lighter\u2026',true);
-  const ids=await walletIdsFor(address,forced?['lighter']:null);
+  const ids=(await walletIdsFor(address,forced?['lighter']:null)).map(id=>venueOfAddr(id)==='lighter'?'lighter:'+lc:(known||lc));
   const have=new Set(settings.wallets.map(w=>String(w.address).toLowerCase()));
   const add=ids.filter(id=>!have.has(id.toLowerCase()));
   if(!add.length){ setErr('That wallet is already in the list.'); return false; }
@@ -275,7 +278,7 @@ function parseFillsCsv(text){
   const ALIAS={
     time:[['time','date','datetime','timestamp','ts'],['filledat','executedat','tradetime','createdat']],
     coin:[['coin','symbol','pair'],['market','asset','ticker','instrument','contract']],
-    side:[['side','direction','buysell'],['action']],
+    side:[['side','direction','buysell'],['action','dir']], // Hyperliquid's own export has dir: "Open Long", "Close Short"…
     px:[['px','price','fillprice'],['avgprice','execprice','dealprice','filledprice']],
     sz:[['sz','size','qty','quantity'],['amount','filled','baseqty','executedqty','filledqty','vol','volume']],
     fee:[['fee','fees','commission'],['feepaid','tradingfee']],
@@ -305,8 +308,10 @@ function parseFillsCsv(text){
     }
     const t=Date.parse(v); return isNaN(t)?null:t;
   };
-  const sideOf=v=>{ const s=norm(v); if(['b','buy','long','open','bid'].includes(s))return 'B';
-    if(['a','s','sell','short','close','ask'].includes(s))return 'A'; return null; };
+  // "open"/"close" alone don't say buy or sell (closing a short is a buy), so they aren't read as sides;
+  // "Open Long"/"Close Short" (and "Long > Short" flips) say both
+  const sideOf=v=>{ const s=norm(v); if(['b','buy','long','bid','openlong','closeshort','shortlong'].includes(s))return 'B';
+    if(['a','s','sell','short','ask','openshort','closelong','longshort'].includes(s))return 'A'; return null; };
   const fills=[]; let skipped=0;
   for(let r=1;r<rows.length;r++){ const row=rows[r];
     const time=parseT(String(row[col.time]||'').trim());
@@ -640,8 +645,14 @@ $('modalLoad').onclick=async()=>{
     if(data.journal||data.wallets||data.settings){ // full backup
       // applySnapshot is the one restore path that knows the whole backup shape — including
       // the v9 fill caches and saved MAE/MFE rows that pasting used to silently drop.
-      const before=journal;
+      const before=journal, incoming=data.journal&&typeof data.journal==='object'?data.journal:null;
+      const nIn=incoming?Object.keys(incoming).length:0, nOnlyHere=Object.keys(before).filter(k=>!incoming||!(k in incoming)).length;
+      if(!confirm('Restore this backup ('+nIn+' journal entr'+(nIn===1?'y':'ies')+')?\n\nWallets and settings come from the backup. Your journal is merged: entries only in the backup are added, and your own notes are kept'
+        +(nOnlyHere?' (including '+nOnlyHere+' the backup doesn’t have)':'')+' unless the backup’s copy is newer.'))return;
       await applySnapshot(data);
+      // merge, not replace: a note written here since the backup was made survives the restore
+      if(incoming){ let kept=0; for(const [k,v] of Object.entries(before)){ const b=incoming[k]; if(!b||(v&&(v.updatedAt||0)>=(b.updatedAt||0))){ journal[k]=v; kept++; } }
+        if(kept){ _jrev++; await rawSet(J_KEY,journal); } }
       resetDerivedState(); // restored wallet set replaces the loaded world — derived state goes with it
       vaultMarkAll(before); // a member's encrypted sync: the restore wins the next merge instead of being undone
       schedulePersist(); // applySnapshot writes via rawSet (no sync triggers) — push the restored state explicitly
