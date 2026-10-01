@@ -196,7 +196,11 @@ your fills — and gets sharper the more you log.
 
 Five tabs: **Today**, **Stats** (P&L, win rate, average trade, profit factor,
 fees, daily P&L, best and worst markets and hours; deeper insights unlock with
-level), **Check-in** (readiness, today's trade cap,
+level. **See in-depth stats** opens the full picture for the same range: equity
+curve and drawdown, results/risk/consistency figures, what each Discipline slip
+cost against clean trades, plan vs execution, how trades land, P&L by hour and
+weekday, and tables by market, side, position size, holding time and month;
+**How the scores work** spells out every formula), **Check-in** (readiness, today's trade cap,
 loss limit and plan) and **Progress** (level, XP, streak and shields, the
 weekly challenge, badges, share cards). A quick journal screen rates and notes
 unjournaled trades. On a wide screen the tabs become a sidebar.

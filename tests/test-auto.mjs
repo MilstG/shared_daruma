@@ -9,7 +9,7 @@ const html = readFileSync(new URL('../ledger.html', import.meta.url).pathname, '
 const { grabFn } = makeExtractor(html);
 const ctx = { Math, Object, Array, String, JSON, Set, Map };
 vm.createContext(ctx);
-vm.runInContext(['nfMedian', 'addedToLoser', 'pzBehaviorDays', 'pzBonus', 'pzForm', 'pzLoad'].map(grabFn).join('\n'), ctx);
+vm.runInContext(['nfMedian', 'addedToLoser', 'pzBehaviorDays', 'pzBonus', 'pzForm', 'pzLoad', 'pzDeepStats', 'pzSlipCost'].map(grabFn).join('\n'), ctx);
 
 const MIN = 60000, DAY = 86400000, T0 = Date.UTC(2026, 8, 1);
 const dayOf = ms => new Date(ms).toISOString().slice(0, 10);
@@ -106,6 +106,48 @@ t('the app and the server use one fixed loss rule, not the personal break-even s
   ok(html.includes('const PZ_LOSS=n=>n<-1;'));
   ok(grabFn('gameContext').includes('isLoss:PZ_LOSS'));
   ok(readFileSync(new URL('../server.js', import.meta.url).pathname, 'utf8').includes("isLoss: n => n < -1"));
+});
+
+console.log('\nIn-depth stats');
+t('each slip keeps its trades, so Stats can show what slips cost against clean trades', () => {
+  const d = today([tr(0, 9, 0, 60, -40), tr(0, 10, 10, 30, -20), tr(0, 12, 0, 30, 30)]);
+  eq(d.slips.map(x => [x.net, x.f]), [[-20, ['revenge']], [30, ['afterTwo']]]);
+  const c = ctx.pzSlipCost([{ behavior: d }]);
+  eq([c.slipN, c.slipNet, c.cleanN, c.cleanNet, c.by.revenge], [2, 10, 1, -40, { n: 1, net: -20 }]);
+});
+t('breakdowns: equity and drawdown, streaks, after a loss, sides, hours, size quarters, holding time, spread', () => {
+  const nets = [50, -30, -20, -10, 40, 60, -5, 30, 20, -50];
+  const T = nets.map((n, i) => tr(i, 9 + (i % 3), 0, 10 + i * 30, n, { dir: i % 2 ? 'Short' : 'Long', maxSize: i + 1, coin: i < 5 ? 'BTC' : 'ETH' }));
+  const X = ctx.pzDeepStats(T, { isWin: n => n > 1, isLoss: loss, coin: t => t.coin, hourOf: ms => new Date(ms).getUTCHours(), dowOf: ms => new Date(ms).getUTCDay(), monthOf: ms => dayOf(ms).slice(0, 7) });
+  eq(X.all.n, 10); eq(X.all.net, 85); eq(X.curve.at(-1).cum, 85);
+  eq(X.maxDD, -60, 'from +50 down to −10');
+  eq([X.streaks.bestW, X.streaks.bestL, X.streaks.current], [2, 3, -1]);
+  eq(X.after.loss.n, 4); eq(X.after.win.n, 5);
+  eq(X.side.map(r => [r.k, r.n]), [['Long', 5], ['Short', 5]]);
+  eq(X.markets.map(r => r.k), ['ETH', 'BTC']);
+  eq(X.hours.map(r => r.k), [9, 10, 11]);
+  eq(X.bySize.map(r => r.n), [3, 2, 3, 2], 'quarters by rank');
+  eq(X.byHold.map(r => r.label), ['5–60 min', '1–4 hours', '4–24 hours']);
+  eq(X.dist.reduce((s, b) => s + b.n, 0), 10, 'every trade lands in one bucket');
+  eq([X.best, X.worst], [60, -50]);
+  eq(ctx.pzDeepStats([], {}), null);
+});
+const O = { isWin: n => n > 1, isLoss: loss, coin: () => 'X', hourOf: () => 0, dowOf: () => 0, monthOf: () => '2026-09' };
+t('size quarters stay quarters when many trades share a size', () => {
+  const T = Array.from({ length: 12 }, (_, i) => tr(i, 9, 0, 10, 5, { maxSize: i < 9 ? 1 : 2 + i }));
+  eq(ctx.pzDeepStats(T, O).bySize.map(r => r.n), [3, 3, 3, 3]);
+});
+t('break-even trades neither extend nor break a run', () => {
+  const X = ctx.pzDeepStats([10, 10, 0, 10, -10, -10, 0, -10].map((n, i) => tr(i, 9, 0, 10, n)), O);
+  eq([X.streaks.bestW, X.streaks.bestL, X.streaks.current], [3, 3, -3]);
+});
+t('the trade after a loss is found even with another position open in between', () => {
+  const A = tr(0, 9, 0, 70, -40), B = tr(0, 8, 59, 91, 20), C = tr(0, 10, 15, 30, 10); // A closes 10:10, B closes 10:30, C opens 10:15
+  eq(ctx.pzDeepStats([A, B, C], O).after.loss.n, 1);
+});
+t('break-even trades get their own row in how trades land', () => {
+  const X = ctx.pzDeepStats([0, 0, 0, 10, -10, 20, -20].map((n, i) => tr(i, 9, 0, 10, n)), O);
+  eq(X.dist.find(b => b.kind === 'even').n, 3); eq(X.dist.filter(b => b.kind === 'loss').reduce((s, b) => s + b.n, 0), 2);
 });
 
 report('auto');
