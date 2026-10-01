@@ -559,6 +559,15 @@ dotted lines, and ✕ marks at the worst and best prices while the trade was on.
 When price traded through your planned stop and the position stayed open, the
 chart says so.
 
+**Replay** plays that chart forward one candle at a time, from just before the
+entry, so you can watch the trade unfold the way you lived it. Fills appear when
+they happened. The exit line and the worst/best marks appear only at the end. A
+readout shows the position, average entry and P&L so far at each bar (gross,
+before fees, and in R when the risk is known), and your journal note sits
+underneath. You can play, pause, step a bar back or forward, scrub, and switch
+between 1×, 3× and 8×. **📎 Attach chart** saves the chart as it looks right now
+to the trade's screenshots, ready to mark up with ✎.
+
 Everything you journal becomes analytical fuel: tags, setups, ratings, and
 mistake flags are all mined as pattern-miner families, and the Review view
 tracks journaling completeness. Once you've run Price excursions, each trade's

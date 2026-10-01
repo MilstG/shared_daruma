@@ -399,7 +399,7 @@ function replayExtremes(t,candles,ms){
 }
 async function openReplay(id,btn){
   const box=document.getElementById('replay-'+id); if(!box)return;
-  if(_replayFor===id&&_replayChart){ _replayChart.destroy(); _replayChart=null; _replayFor=null; box.innerHTML=''; return; }
+  if(_replayFor===id&&_replayChart){ clearInterval(_replayTimer); _replayChart.destroy(); _replayChart=null; _replayFor=null; box.innerHTML=''; return; }
   const t=allTrades.find(x=>x.id===id); if(!t){ box.innerHTML='<p class="lead">Trade not found.</p>'; return; }
   if(btn)btn.textContent='Loading candles…';
   const got=await ensureTradeCandles(t);
@@ -452,6 +452,7 @@ async function openReplay(id,btn){
     {type:'bar',data:body,backgroundColor:bodyBg,grouped:false,barPercentage:0.82,categoryPercentage:1,maxBarThickness:14,borderWidth:0,minBarLength:2,order:3},
     hline(t.avgEntry,'rgba(230,180,80,.8)',[4,3]),
   ];
+  const XDS=!t.isOpen&&t.avgExit>0?dsets.length:-1; // the avg-exit line: hidden while replaying, until the close
   if(!t.isOpen&&t.avgExit>0)dsets.push(hline(t.avgExit,'rgba(47,208,140,.8)',[4,3]));
   if(plan&&plan.stop>0)dsets.push(hline(plan.stop,'rgba(244,88,106,.9)',[2,3]));
   if(plan&&plan.target>0)dsets.push(hline(plan.target,'rgba(47,208,140,.95)',[2,3]));
@@ -492,6 +493,81 @@ async function openReplay(id,btn){
       y:{min:ylo,max:yhi,beginAtZero:false,grid:{color:GRID,drawTicks:false},border:{display:false},
         ticks:{callback:v=>{const a=Math.abs(v);return v.toLocaleString(undefined,{maximumFractionDigits:a>=1000?2:a>=1?4:6});}}}},
     interaction:{intersect:false,mode:'nearest'}}});
+  replayWire(box,t,{candles,wick,wickBg,body,bodyBg,marks,EDS,MDS,XDS,cIdx,fpx});
+}
+
+/* ---- bar-by-bar replay: watch the trade unfold the way you lived it ---- */
+// The chart above, played forward one candle at a time from a few bars before the entry:
+// fills appear as they happened, the exit line and the worst/best marks only at the end, and
+// a readout shows the position and its P&L at each bar (gross, before fees). The journal note
+// sits underneath, so the replay is a review: what did you know, and what did you do?
+let _replayTimer=null;
+// Pure. Position and P&L at time ts with the bar's close at `price`, from the trade's fill
+// events [time, px, size, +1 add | -1 reduce]: running average entry, realized on reductions.
+function replayPnlAt(dir, events, ts, price){
+  const sgn=dir==='Short'?-1:1; let pos=0, avg=0, realized=0;
+  for(const e of events||[]){ if(e[0]>ts)break; const px=e[1], sz=e[2];
+    if(e[3]>0){ avg=pos+sz>0?(avg*pos+px*sz)/(pos+sz):px; pos+=sz; }
+    else { const q=Math.min(sz,pos); realized+=(px-avg)*q*sgn; pos-=q; if(pos<=1e-12){ pos=0; } } }
+  const open=pos>0&&isFinite(price)?(price-avg)*pos*sgn:0;
+  return {pos,avg:pos>0?avg:null,realized,open,total:realized+open};
+}
+function replayWire(box,t,S){
+  clearInterval(_replayTimer); _replayTimer=null;
+  const ch=_replayChart, n=S.candles.length;
+  const start=Math.max(0,S.cIdx(t.openTime)-5), end=n-1;
+  let k=end, speed=1;
+  const evs=[...(t.events||[])].sort((a,b)=>a[0]-b[0]);
+  const risk=typeof riskFor==='function'?riskFor(t):null;
+  const j=journal[t.id]||{};
+  const ctl=document.createElement('div'); ctl.className='rpctl';
+  ctl.innerHTML=`<div class="rprow" role="group" aria-label="Replay">
+      <button type="button" class="btn ghost" data-rp="start" title="Back to before the entry" aria-label="Back to before the entry">⏮</button>
+      <button type="button" class="btn ghost" data-rp="back" title="One bar back" aria-label="One bar back">◀</button>
+      <button type="button" class="btn" data-rp="play" aria-label="Play">▶ Replay</button>
+      <button type="button" class="btn ghost" data-rp="fwd" title="One bar forward" aria-label="One bar forward">▶|</button>
+      <input type="range" min="${start}" max="${end}" value="${end}" step="1" aria-label="Replay position">
+      <select aria-label="Replay speed"><option value="1">1×</option><option value="3">3×</option><option value="8">8×</option></select>
+      <button type="button" class="btn ghost" data-rp="attach" title="Save this chart, as it looks now, to the trade’s screenshots — then mark it up with ✎">📎 Attach chart</button></div>
+    <div class="rpread" aria-live="polite"></div>
+    ${j.notes?`<div class="rpnote"><b>Your note</b> ${esc(j.notes)}</div>`:''}`;
+  box.appendChild(ctl);
+  const slider=ctl.querySelector('input[type=range]'), read=ctl.querySelector('.rpread'), playBtn=ctl.querySelector('[data-rp="play"]');
+  const show=i=>{ k=Math.max(start,Math.min(end,i)); slider.value=k;
+    const D=ch.data.datasets, upTo=S.candles[k][0], done=k===end;
+    D[0].data=S.wick.slice(0,k+1); D[0].backgroundColor=S.wickBg.slice(0,k+1);
+    D[1].data=S.body.slice(0,k+1); D[1].backgroundColor=S.bodyBg.slice(0,k+1);
+    if(S.marks.length&&D[S.MDS]){ const vis=S.marks.map((m,i)=>m.x<=upTo?i:-1).filter(i=>i>=0);
+      D[S.MDS].data=vis.map(i=>S.marks[i]); D[S.MDS].rotation=vis.map(i=>S.marks[i].k>0?0:180);
+      D[S.MDS].backgroundColor=vis.map(i=>S.marks[i].k>0?'rgba(230,180,80,.95)':'rgba(47,208,140,.95)'); }
+    if(S.XDS>=0&&D[S.XDS])D[S.XDS].hidden=!done;
+    if(S.EDS>=0&&D[S.EDS])D[S.EDS].hidden=!done;
+    ch.update('none');
+    const c=S.candles[k], px=isFinite(c[3])?c[3]:(c[1]+c[2])/2, barEnd=c[0]+(k+1<n?S.candles[k+1][0]-c[0]:0)-1;
+    const p=replayPnlAt(t.dir,evs,barEnd,px);
+    const r=risk>0?' ('+(p.total/risk>=0?'+':'')+(p.total/risk).toFixed(2)+'R)':'';
+    read.innerHTML=`<span>${esc(new Date(c[0]).toLocaleString())}</span> · close ${esc(S.fpx(px))} · `
+      +(p.pos>0?`holding ${esc(+p.pos.toPrecision(6)+'')} @ ${esc(S.fpx(p.avg))} · `:barEnd<t.openTime?'not in yet · ':'flat · ')
+      +`P&L so far <b class="${cls(p.total)}">${esc(fmtUsd(p.total))}${esc(r)}</b> <span style="color:var(--faint)">gross, before fees</span>`;
+  };
+  const stop=()=>{ clearInterval(_replayTimer); _replayTimer=null; playBtn.textContent='▶ Replay'; playBtn.setAttribute('aria-label','Play'); };
+  const play=()=>{ if(k>=end)show(start); playBtn.textContent='⏸ Pause'; playBtn.setAttribute('aria-label','Pause');
+    _replayTimer=setInterval(()=>{ if(!document.body.contains(slider)||_replayChart!==ch){ stop(); return; } if(k>=end){ stop(); return; } show(k+1); },Math.round(450/speed)); };
+  ctl.addEventListener('click',async e=>{ const b=e.target.closest('[data-rp]'); if(!b)return; const a=b.dataset.rp;
+    if(a==='play'){ if(_replayTimer)stop(); else play(); return; }
+    stop();
+    if(a==='start')show(start); else if(a==='back')show(k-1); else if(a==='fwd')show(k+1);
+    else if(a==='attach'){ try{
+        const src=ch.canvas, out=document.createElement('canvas'); out.width=src.width; out.height=src.height;
+        const x=out.getContext('2d'); x.fillStyle=getComputedStyle(document.body).getPropertyValue('--panel').trim()||'#0d1117'; x.fillRect(0,0,out.width,out.height); x.drawImage(src,0,0);
+        const arr=(await idbGet('att:'+t.id))||[]; if(arr.length>=12){ setErr('Max 12 images per trade — remove one first.'); return; }
+        arr.push(out.toDataURL('image/jpeg',0.85)); await idbSet('att:'+t.id,arr); loadAttachments(t.id); syncAttUp(t.id);
+        b.textContent='📎 Attached'; setTimeout(()=>{ b.textContent='📎 Attach chart'; },1500);
+      }catch(err){ setErr('Couldn’t attach the chart: '+err.message); } }
+  });
+  slider.addEventListener('input',()=>{ stop(); show(+slider.value); });
+  ctl.querySelector('select').addEventListener('change',e=>{ speed=+e.target.value||1; if(_replayTimer){ stop(); play(); } });
+  show(end);
 }
 
 /* ============================ benchmark: you vs buy-and-hold ============================ */
