@@ -149,6 +149,7 @@ function renderDistribution(closed){
       scales:{x:{grid:{display:false},ticks:{color:muted,font:{size:10},maxRotation:45,minRotation:45,autoSkip:false},title:{display:true,text:pct?'trade result (% of notional)':'trade result ($)',color:muted,font:{size:11}}},
         y:{grid:{color:grid},border:{display:false},ticks:{color:muted,font:{size:11},precision:0},title:{display:true,text:'number of trades',color:muted,font:{size:11}}}}},
     plugins:[overlay]});
+  explain(_diagCharts.dist,'How your trade results are spread: each bar counts trades in one range. Purple line: mean · blue dashed: median · grey: zero.');
   const caps={ shape:'<b>Repeatable edge</b>: same win rate, profit spread across more mid-sized winners. Where your green bars fall short near the middle and overshoot on the far right, that\'s outlier dependence to trim.',
     survival: sf?(pct
         ? `<b>Survival floor</b>: at your ${(sf.p*100).toFixed(0)}% win rate and ${sf.b.toFixed(2)} payoff, risking more than <b>${Math.abs(sf.floor).toFixed(1)}% of account per trade</b> exceeds a full-Kelly bet \u2014 the shaded zone is over-betting, whatever your size.`
@@ -209,6 +210,7 @@ function wireWalkForward(wf){
                 :gap>0?fmtUsd(gap)+'/trade worse than predicted'
                       :fmtUsd(-gap)+'/trade better than predicted'); }}}},
       scales:scales()}});
+  explain(_diagCharts.wf,'Each block is judged on trades the rule never saw: bars are what it really made, the dashed line what the training window promised.');
 }
 function destroyDiagCharts(){ Object.values(_diagCharts).forEach(c=>c&&c.destroy()); _diagCharts={}; }
 // Snapshot the whole Diagnostic view — including any miner/excursion results already on
@@ -304,8 +306,10 @@ function renderWhatIf(chron,name,pred,cond){
     {label:'without it',data:m.series.cf,borderColor:'#8a7bd8',borderWidth:1.6,borderDash:[5,4],pointRadius:0,tension:.1,fill:false}]},
     options:{responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:'index'},
       plugins:{legend:{display:true,labels:{color:TXT,boxWidth:10,font:{size:11}}},
-        tooltip:{callbacks:{label:c=>' '+c.dataset.label+': '+fmtUsd(c.parsed.y)}}},
+        tooltip:{callbacks:{label:c=>' '+c.dataset.label+': '+fmtUsd(c.parsed.y),
+          afterBody:it=>{ const i=it[0].dataIndex, d=m.series.actual[i]-m.series.cf[i]; return [' Trade '+(i+1)+' · the condition '+(d>=0?'made':'cost')+' you '+fmtUsd(Math.abs(d))+' so far']; }}}},
       scales:scales()}});
+  explain(_wiChart,'Solid: your real running total. Dashed: the same trades without the ones matching this condition.');
 }
 /* ============================ forward pattern tracker ============================ */
 // Patterns pinned from the miner are re-measured on ONLY trades closed after the pin —
@@ -353,7 +357,8 @@ function decaySparkSvg(roll, bandLo, healthy){
   const X=i=>P+(W-2*P)*i/(roll.length-1), Y=v=>H-P-(H-2*P)*(v-mn)/(mx-mn);
   const pts=roll.map((v,i)=>X(i).toFixed(1)+','+Y(v).toFixed(1)).join(' ');
   const by=Y(bandLo).toFixed(1);
-  return '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" style="display:block;margin-top:5px" aria-hidden="true">'
+  const tip='Since you pinned it: the solid line is the average per trade on new trades only (rolling); the dashed line is the bottom of the range the pattern showed when it was found. '+(healthy?'Holding up so far.':'Below or near the floor: the edge may be fading.');
+  return '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" style="display:block;margin-top:5px" aria-hidden="true" data-tip="'+esc(tip)+'">'
     +'<line x1="'+P+'" y1="'+by+'" x2="'+(W-P)+'" y2="'+by+'" stroke="var(--faint)" stroke-width="1" stroke-dasharray="3,3"/>'
     +'<polyline points="'+pts+'" fill="none" stroke="'+(healthy?'var(--muted)':'var(--lbl)')+'" stroke-width="1.4"/></svg>';
 }
@@ -863,6 +868,7 @@ function renderDiagnostic(closed, allv){
             footer:items=>{const o=by[items[0].label];return 'net '+fmtUsd(o.price+o.fund+o.fees);}}}},
         scales:{x:{stacked:true,grid:{color:GRID,drawTicks:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
                 y:{stacked:true,grid:{color:GRID,drawTicks:false},border:{display:false}}}}});
+    explain(_diagCharts.decomp,'Each month’s result split into what price moves made, what funding paid or cost, and what fees took.');
   })();
   // --- per-setup equity curves ---
   (function(){ const el=$('setupCurves'); if(!el)return;
@@ -873,10 +879,11 @@ function renderDiagnostic(closed, allv){
       borderColor:PAL[i%PAL.length], borderWidth:1.5, pointRadius:0, pointHoverRadius:3, fill:false, tension:0 }))},
       options:{responsive:true,maintainAspectRatio:false,
         plugins:{legend:{display:true,labels:{color:TXT,boxWidth:10,font:{size:11}}},
-          tooltip:{callbacks:{label:c=>' '+c.dataset.label+' · trade '+c.parsed.x+' · cum '+fmtUsd(c.parsed.y)}}},
+          tooltip:{callbacks:{label:c=>' '+c.dataset.label+' · trade '+c.parsed.x+' · total '+fmtUsd(c.parsed.y)}}},
         scales:{x:{type:'linear',grid:{color:GRID,drawTicks:false},border:{display:false},ticks:{maxTicksLimit:8,precision:0}},
                 y:{grid:{color:GRID,drawTicks:false},border:{display:false},ticks:{callback:v=>'$'+Number(v).toLocaleString()}}},
         interaction:{intersect:false,mode:'nearest'}}});
+    explain(_diagCharts.setups,'Running total for each setup, trade by trade. A setup whose line climbs steadily is one worth trading more.');
   })();
   // --- equity vs HWM chart ---
   const chronAll=[...allv].sort((a,b)=>a.closeTime-b.closeTime);
@@ -887,8 +894,10 @@ function renderDiagnostic(closed, allv){
     _diagCharts.eq=new Chart($('diagEq'),{type:'line',data:{labels:pickIdx(ts,di).map(fmtDate),datasets:[
       {data:pickIdx(hwmD,di),borderColor:'#3A4560',borderWidth:1.2,borderDash:[4,4],pointRadius:0,fill:false},
       {data:pickIdx(eqD,di),borderColor:'#2FD08C',borderWidth:1.6,pointRadius:0,pointHoverRadius:3,tension:.1,fill:'-1',backgroundColor:'rgba(244,88,106,.14)'}]},
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+(c.datasetIndex?'equity ':'high-water ')+fmtUsd(c.parsed.y)}}},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+(c.datasetIndex?'equity ':'high-water ')+fmtUsd(c.parsed.y),
+        afterBody:it=>{ const a=it.find(x=>x.datasetIndex===1), b=it.find(x=>x.datasetIndex===0); if(!a||!b)return []; const dd=a.parsed.y-b.parsed.y; return [dd<0?' Drawdown '+fmtUsd(dd)+(b.parsed.y>0?' ('+Math.round(-dd/b.parsed.y*100)+'% of the high)':''):' At the high']; }}}},
         scales:scales(),interaction:{intersect:false,mode:'index'}}});
+    explain(_diagCharts.eq,'Green: your running total. Dashed: its highest point so far. The red gap between them is the drawdown you were sitting in.');
   }
   // --- rolling 30-trade expectancy ---
   const chronClosed=[...closed].sort((a,b)=>a.closeTime-b.closeTime);
@@ -902,8 +911,9 @@ function renderDiagnostic(closed, allv){
     _diagCharts.roll=new Chart($('diagRoll'),{type:'line',data:{labels:pickIdx(rt,ri).map(fmtDate),datasets:[
       {data:pickIdx(roll,ri),borderColor:'#2FD08C',borderWidth:1.6,pointRadius:0,pointHoverRadius:3,tension:.1,
        segment:{borderColor:c=>c.p1.parsed.y>=0?'rgba(63,207,142,.95)':'rgba(240,97,109,.95)'},fill:{target:{value:0}},backgroundColor:'rgba(47,208,140,.07)'}]},
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+fmtUsd(c.parsed.y)+'/trade (last '+W+')'}}},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+fmtUsd(c.parsed.y)+' a trade over the last '+W,afterLabel:c=>' '+fmtUsd(c.parsed.y*W)+' in total over those '+W+' trades'}}},
         scales:scales(),interaction:{intersect:false,mode:'index'}}});
+    explain(_diagCharts.roll,'Your average trade over a sliding window of the last '+W+'. Above zero, your recent trading is making money; a falling line is an edge fading.');
   } else if($('diagRoll')){ $('diagRoll').style.display='none'; $('diagRollEmpty').classList.remove('hide'); }
   if(runBtn){
     const basis=settings.anaBasis||'usd';

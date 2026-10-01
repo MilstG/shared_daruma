@@ -8,7 +8,7 @@ import { readAppSource } from '../app-source.js';
 const html = readAppSource(new URL('../ledger.html', import.meta.url).pathname);
 const { grabFn, evalModule } = makeExtractor(html);
 const pre = html.match(/const RV_BLIND=\[[^\]]*\];/)[0] + '\n' + html.slice(html.indexOf('const RV_HABITS=['), html.indexOf('];', html.indexOf('const RV_HABITS=[')) + 2);
-const { routineVsResults } = await evalModule(['routineVsResults'], null, pre);
+const { routineVsResults } = await evalModule(['routineVsResults', '_spearmanWith'], null, pre);
 
 // a history of N weeks x 4 trading days x 3 trades; `effect` links the day's discipline to its results
 function history(N, effect, opts = {}) {

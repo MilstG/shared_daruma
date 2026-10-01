@@ -228,8 +228,9 @@ function renderDowHour(trades){
   const el=$('dowHour'); if(!el)return;
   const hint=$('dowHint'); if(hint)hint.textContent='net PnL by weekday and hour ('+tzLabel()+')';
   const grid=Array.from({length:7},()=>Array(24).fill(null));
+  const cnt=Array.from({length:7},()=>Array.from({length:24},()=>({n:0,w:0,l:0})));
   trades.forEach(t=>{ const day=tzDow(t.closeTime), hr=tzHour(t.closeTime);
-    grid[day][hr]=(grid[day][hr]||0)+t.net; });
+    grid[day][hr]=(grid[day][hr]||0)+t.net; const c=cnt[day][hr]; c.n++; if(isWin(t.net))c.w++; else if(isLoss(t.net))c.l++; });
   let mx=1; for(const row of grid)for(const v of row)if(v!=null)mx=Math.max(mx,Math.abs(v));
   const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   let html='<table class="dh-tbl" aria-label="Net PnL by weekday and hour of day"><thead><tr><th></th>'+Array.from({length:24},(_,h)=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>';
@@ -238,7 +239,7 @@ function renderDowHour(trades){
       if(v==null){ html+='<td class="dh-cell" style="background:var(--panel2)" aria-hidden="true"></td>'; continue; }
       const inten=0.25+0.65*Math.min(1,Math.abs(v)/mx);
       const bg=v>=0?`rgba(47,208,140,${inten})`:`rgba(244,88,106,${inten})`;
-      html+=`<td class="dh-cell" style="background:${bg}" data-tip="${DOW[d]} ${h}:00–${h}:59 · ${esc(fmtUsd(v))}" role="img" aria-label="${DOW[d]} ${h} o'clock, ${esc(fmtUsd(v))}"></td>`; }
+      html+=`<td class="dh-cell" style="background:${bg}" data-tip="${DOW[d]} ${h}:00–${h}:59 · ${esc(fmtUsd(v))} · ${cnt[d][h].n} trade${cnt[d][h].n===1?'':'s'}${cnt[d][h].w+cnt[d][h].l?' · '+Math.round(100*cnt[d][h].w/(cnt[d][h].w+cnt[d][h].l))+'% wins':''} · avg ${esc(fmtUsd(v/Math.max(1,cnt[d][h].n)))}" role="img" aria-label="${DOW[d]} ${h} o'clock, ${esc(fmtUsd(v))}"></td>`; }
     html+='</tr>'; }
   html+='</tbody></table>';
   el.innerHTML=html;
@@ -247,6 +248,20 @@ function renderDowHour(trades){
 /* ============================ charts ============================ */
 let charts={}; let GRID='rgba(26,34,51,.9)', TXT='#5C6578';
 Chart.defaults.font.family="'IBM Plex Mono', monospace"; Chart.defaults.font.size=11; Chart.defaults.color=TXT;
+// Every chart explains itself on hover: a chart's own lines first (the numbers behind the point,
+// and any footer of its own), then, under them, what the chart shows (chart.$explain, set with
+// explain()) — as the tooltip's after-footer, so it never displaces a chart's own footer. Canvas tooltips
+// don't wrap, so the explanation is broken into short lines here.
+function wrapTip(text,n){ n=n||52; const out=[]; for(const para of String(text).split('\n')){ let line='';
+  for(const w of para.split(/\s+/)){ if(!w)continue; if(line&&(line+' '+w).length>n){ out.push(line); line=w; } else line=line?line+' '+w:w; }
+  out.push(line); } return out; }
+function explain(chart,text){ if(chart)chart.$explain=text; return chart; }
+try{ Object.assign(Chart.defaults.plugins.tooltip,{padding:10,boxPadding:4,bodySpacing:3,footerMarginTop:8,footerSpacing:1,footerColor:'rgba(205,214,228,.82)',
+    footerFont:{weight:'normal',size:10.5},caretPadding:6});
+  Chart.defaults.interaction.mode='index'; Chart.defaults.interaction.intersect=false;
+  Chart.defaults.plugins.tooltip.callbacks.afterFooter=function(items){ const c=this&&this.chart, ex=c&&c.$explain; if(!ex)return '';
+    const t=typeof ex==='function'?ex(items):ex; return t?wrapTip(t):''; };
+}catch(e){}
 const THEMES={ ink:{grid:'rgba(26,34,51,.9)',txt:'#5C6578'}, bb:{grid:'rgba(44,44,40,.9)',txt:'#8C8C84'}, light:{grid:'rgba(18,24,38,.09)',txt:'#6B7488'} };
 // Appearance (settings.appearance): 'auto' follows the device's light/dark setting, or 'dark' /
 // 'light' by hand. The colorway (INK/BB) is a dark-mode choice; light replaces it.
@@ -296,15 +311,23 @@ function decimateIdx(ys,maxN){
   return idx;
 }
 const pickIdx=(arr,idx)=>idx?idx.map(i=>arr[i]):arr;
-function bar(canvas,labels,data,opt={}){ return new Chart($(canvas),{type:'bar',
+// per-bucket numbers for a bar's tooltip: trades, wins, losses, best and worst
+function grpStats(trades,keyOf){ const m={}; for(const t of trades){ const k=keyOf(t), o=m[k]||(m[k]={n:0,w:0,l:0,net:0,best:-Infinity,worst:Infinity});
+  o.n++; o.net+=t.net; if(isWin(t.net))o.w++; else if(isLoss(t.net))o.l++; if(t.net>o.best)o.best=t.net; if(t.net<o.worst)o.worst=t.net; } return m; }
+const grpLines=o=>!o||!o.n?[' No trades']:[' '+o.n+' trade'+(o.n===1?'':'s')+' · '+o.w+' W · '+o.l+' L'+(o.w+o.l?' · '+Math.round(100*o.w/(o.w+o.l))+'% wins':''),
+  ' Average trade '+fmtUsd(o.net/o.n),' Best '+fmtUsd(o.best)+' · worst '+fmtUsd(o.worst)];
+function bar(canvas,labels,data,opt={}){ const G=opt.groups;
+  const tip=opt.tip||{callbacks:{label:c=>' Net '+fmtUsd(c.parsed.y),...(G?{afterLabel:c=>grpLines(G[c.dataIndex])}:{})}};
+  return explain(new Chart($(canvas),{type:'bar',
   data:{labels,datasets:[{data,backgroundColor:signCol(data),borderRadius:4,...(opt.ds||{})}]},
-  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:opt.tip||usdTip},scales:scales(opt.x||{})}});}
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:tip},scales:scales(opt.x||{})}}),opt.explain);}
 function renderCharts(closed, allv){
   allv=allv||closed;
   destroyCharts();
   const chron=[...allv].sort((a,b)=>a.closeTime-b.closeTime);
   let cum=0; const eqT=[],eqY=[];
-  for(const t of chron){ cum+=t.net; eqT.push(t.closeTime); eqY.push(cum); }
+  const eqDD=[]; let eqHi=0;
+  for(const t of chron){ cum+=t.net; eqT.push(t.closeTime); eqY.push(cum); if(cum>eqHi)eqHi=cum; eqDD.push(cum-eqHi); }
   const eqIdx=decimateIdx(eqY); // labels are formatted AFTER decimation — never 30k fmtDate calls
   const keptT=pickIdx(eqT,eqIdx), keptY=pickIdx(eqY,eqIdx);
   // deposit/withdrawal markers on the curve: capital events explain its steps in context —
@@ -328,10 +351,15 @@ function renderCharts(closed, allv){
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
       tooltip:{callbacks:{label:c=>c.datasetIndex===1&&flowAmt[c.dataIndex]!=null
         ? ' '+(flowAmt[c.dataIndex]>=0?'deposit +':'withdrawal −')+'$'+Math.abs(Math.round(flowAmt[c.dataIndex])).toLocaleString('en-US')
-        : ' '+fmtUsd(c.parsed.y)}}},scales:scales(),interaction:{intersect:false,mode:'index'}}});
+        : ' Total '+fmtUsd(c.parsed.y),
+        afterLabel:c=>{ if(c.datasetIndex!==0)return []; const i=eqIdx?eqIdx[c.dataIndex]:c.dataIndex, t=chron[i]; if(!t)return [];
+          return [' After trade '+(i+1)+' of '+chron.length+': '+dispMarket(dcoin(t))+' '+(t.dir||'')+' '+fmtUsd(t.net),
+            eqDD[i]<0?' '+fmtUsd(eqDD[i])+' below the high so far':' At a new high']; }}}},scales:scales(),interaction:{intersect:false,mode:'index'}}});
+  explain(charts.eq,'Your running total of closed-trade P&L, trade by trade. Triangles mark deposits (up) and withdrawals (down).');
   const byCoin={}; allv.forEach(t=>{const k=dcoin(t);byCoin[k]=(byCoin[k]||0)+t.net;});
   const coins=Object.entries(byCoin).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1])).slice(0,10);
-  charts.coin=bar('byCoin',coins.map(c=>dispMarket(c[0])),coins.map(c=>c[1]));
+  const gCoin=grpStats(allv,t=>dcoin(t));
+  charts.coin=bar('byCoin',coins.map(c=>dispMarket(c[0])),coins.map(c=>c[1]),{groups:coins.map(c=>gCoin[c[0]]),explain:'Net P&L per market, your ten biggest by size of result. The longest bars are where most of your money is made or lost.'});
   const byMon={}; allv.forEach(t=>{ const p=tzParts(t.closeTime); const k=p.y+'-'+String(p.mo+1).padStart(2,'0'); byMon[k]=(byMon[k]||0)+t.net; }); // tzParts, not local Date — keeps this chart on the same clock as the monthly decomposition
   // zero-fill skipped months — omitting them visually compressed inactive stretches out of the timeline
   { const mks=Object.keys(byMon).sort();
@@ -339,27 +367,39 @@ function renderCharts(closed, allv){
       while(y0<y1||(y0===y1&&m0<=m1)){ const k=y0+'-'+String(m0).padStart(2,'0'); if(byMon[k]==null)byMon[k]=0; if(++m0>12){m0=1;y0++;} } } }
   const mons=Object.keys(byMon).sort().slice(-12);
   const MONL=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  charts.month=bar('byMonth',mons.map(k=>MONL[+k.slice(5)-1]+' '+k.slice(2,4)),mons.map(k=>byMon[k]));
+  const gMon=grpStats(allv,t=>{ const p=tzParts(t.closeTime); return p.y+'-'+String(p.mo+1).padStart(2,'0'); });
+  charts.month=bar('byMonth',mons.map(k=>MONL[+k.slice(5)-1]+' '+k.slice(2,4)),mons.map(k=>byMon[k]),{groups:mons.map(k=>gMon[k]),explain:'Net P&L per calendar month (the last 12). How many months are green, and how lumpy the good ones are.'});
   const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; const dow=Array(7).fill(0);
   allv.forEach(t=>dow[tzDow(t.closeTime)]+=t.net);
-  charts.dow=bar('byDow',DOW,dow);
+  const gDow=grpStats(allv,t=>tzDow(t.closeTime));
+  charts.dow=bar('byDow',DOW,dow,{groups:DOW.map((_,i)=>gDow[i]),explain:'Net P&L by the weekday trades closed on ('+tzLabel()+'). Shows which days you trade well or poorly.'});
   const hrs=Array(24).fill(0); allv.forEach(t=>hrs[tzHour(t.closeTime)]+=t.net);
-  charts.hour=bar('byHour',hrs.map((_,i)=>i),hrs,{tip:{callbacks:{title:c=>c[0].label+':00',label:c=>' '+fmtUsd(c.parsed.y)}}});
+  const gHr=grpStats(allv,t=>tzHour(t.closeTime));
+  charts.hour=bar('byHour',hrs.map((_,i)=>i),hrs,{tip:{callbacks:{title:c=>c[0].label+':00–'+c[0].label+':59',label:c=>' Net '+fmtUsd(c.parsed.y),afterLabel:c=>grpLines(gHr[c.dataIndex])}},
+    explain:'Net P&L by the hour trades closed ('+tzLabel()+'). Your best and worst hours of the day.'});
   // Sessions are market-clock concepts, pinned to UTC regardless of the tz toggle —
   // bucketing them by the toggled hour mislabeled every session for non-UTC viewers.
   const SESS=[['Asia',0,8],['London',8,13],['Overlap',13,16],['NY',16,21],['Late NY',21,24]];
   const utcH=ms=>new Date(ms).getUTCHours();
   const sessIdx=h=>SESS.findIndex(([,a,b])=>a<b?(h>=a&&h<b):(h>=a||h<b));
   const sess=Array(SESS.length).fill(0); allv.forEach(t=>sess[sessIdx(utcH(t.closeTime))]+=t.net);
+  const gSess=grpStats(allv,t=>sessIdx(utcH(t.closeTime)));
   charts.sess=bar('bySession',SESS.map(([n,a,b])=>[n,String(a).padStart(2,'0')+'–'+String(b).padStart(2,'0')]),sess,
-    {ds:{maxBarThickness:60},x:{ticks:{maxRotation:0,autoSkip:false}}});
+    {ds:{maxBarThickness:60},x:{ticks:{maxRotation:0,autoSkip:false}},groups:SESS.map((_,i)=>gSess[i]),
+     tip:{callbacks:{title:c=>{ const s2=SESS[c[0].dataIndex]; return s2[0]+' session · '+String(s2[1]).padStart(2,'0')+':00–'+String(s2[2]).padStart(2,'0')+':00 UTC'; },label:c=>' Net '+fmtUsd(c.parsed.y),afterLabel:c=>grpLines(gSess[c.dataIndex])}},
+     explain:'Net P&L by market session, from the UTC hour each trade closed (sessions run on the market’s clock, so the time-zone toggle doesn’t move them).'});
   const sides={}; allv.forEach(t=>sides[t.dir]=(sides[t.dir]||0)+t.net);
   const sideLabels=['Long','Short','Spot'].filter(k=>k in sides);
-  charts.side=bar('bySide',sideLabels,sideLabels.map(k=>sides[k]),{ds:{barThickness:60}});
+  const gSide=grpStats(allv,t=>t.dir);
+  charts.side=bar('bySide',sideLabels,sideLabels.map(k=>sides[k]),{ds:{barThickness:60},groups:sideLabels.map(k=>gSide[k]),explain:'Net P&L split by direction. A big gap means you’re much better one way than the other.'});
   const w=closed.filter(t=>isWin(t.net)).length,l=closed.filter(t=>isLoss(t.net)).length,be=closed.filter(t=>isBE(t.net)).length;
   charts.dist=new Chart($('dist'),{type:'doughnut',data:{labels:['Wins','Losses','Break-even'],
     datasets:[{data:[w,l,be],backgroundColor:['rgba(47,208,140,.85)','rgba(244,88,106,.85)','rgba(91,100,120,.6)'],borderColor:getComputedStyle(document.body).getPropertyValue('--bg').trim()||'#0A0E18',borderWidth:3}]},
-    options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'right',labels:{boxWidth:10,padding:12}}}}});
+    options:{responsive:true,maintainAspectRatio:false,cutout:'62%',interaction:{mode:'nearest',intersect:true},plugins:{legend:{position:'right',labels:{boxWidth:10,padding:12}},
+      tooltip:{callbacks:{label:c=>' '+c.parsed+' '+c.label.toLowerCase()+' · '+(closed.length?Math.round(100*c.parsed/closed.length):0)+'% of trades',
+        afterLabel:c=>{ const g=[closed.filter(t=>isWin(t.net)),closed.filter(t=>isLoss(t.net)),closed.filter(t=>isBE(t.net))][c.dataIndex]; const sum=g.reduce((a,t)=>a+t.net,0);
+          return g.length?[' Total '+fmtUsd(sum)+' · average '+fmtUsd(sum/g.length)]:[]; }}}}}});
+  explain(charts.dist,'Closed trades by outcome. Break-even trades are those too small to count as a win or a loss.');
   const rs=closed.map(rFor).filter(r=>r!==null);
   const buckets=['≤-2','-2⋯-1','-1⋯0','0⋯1','1⋯2','2⋯3','>3']; const bc=Array(7).fill(0);
   rs.forEach(r=>{ let i; if(r<=-2)i=0;else if(r<-1)i=1;else if(r<0)i=2;else if(r<1)i=3;else if(r<2)i=4;else if(r<3)i=5;else i=6; bc[i]++; });
@@ -367,8 +407,9 @@ function renderCharts(closed, allv){
   if(rs.length){ rdEmpty.classList.add('hide'); rdCanvas.style.display='';
     charts.rdist=new Chart(rdCanvas,{type:'bar',data:{labels:buckets,
     datasets:[{data:bc,backgroundColor:buckets.map((_,i)=>i<3?'rgba(244,88,106,.75)':'rgba(47,208,140,.75)'),borderRadius:4}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+c.parsed.y+' trades'}}},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{title:c=>c[0].label+' R',label:c=>' '+c.parsed.y+' trade'+(c.parsed.y===1?'':'s')+' · '+Math.round(100*c.parsed.y/rs.length)+'% of trades with a risk set'}}},
       scales:{x:{grid:{color:GRID,drawTicks:false},border:{display:false}},y:{grid:{color:GRID,drawTicks:false},border:{display:false},ticks:{precision:0}}}}});
+    explain(charts.rdist,'R = a trade’s result ÷ the risk you planned for it. Bars on the right (above 1R) are winners bigger than your risk.');
   } else { rdEmpty.classList.remove('hide'); rdCanvas.style.display='none'; }
 }
 

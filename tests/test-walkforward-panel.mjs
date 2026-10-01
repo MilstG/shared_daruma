@@ -29,6 +29,7 @@ const env = (0, eval)(`(() => {
   const $ = id => ({ id });
   let cfg = null, made = 0;
   class Chart { constructor(el, c) { cfg = c; made++; } destroy() {} }
+  const explain = (ch, text) => { if (ch) ch.$explain = text; return ch; };
   ${grabFn('walkForward')}
   ${grabFn('wireWalkForward')}
   return { walkForward, wireWalkForward, _diagCharts, cfg: () => cfg, made: () => made };

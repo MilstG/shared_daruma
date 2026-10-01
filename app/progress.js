@@ -297,7 +297,7 @@ function progressSectionHtml(){
     <div class="gm-grid">
       <div class="diag-card gm"><h3 data-tip="XP per trading day = that day's Discipline score (0–100, read from your fills: no revenge entries, sizing up after losses, adding to losers, trading on after two losses, overtrading or holding losers too long), plus bonus XP for what you log: check-in +10, plan before the first trade +15, trades journaled +15, stops written +10, loss limit respected +10. Also +25 per focus-habit day, +150 per completed weekly challenge, +50 per achievement.">Level</h3>
         <div class="gm-big">${L.level} · ${esc(L.title)}</div>
-        <div class="xpbar" role="progressbar" aria-valuemin="0" aria-valuemax="${L.need}" aria-valuenow="${L.into}"><i style="width:${pct}%"></i></div>
+        <div class="xpbar" role="progressbar" aria-valuemin="0" aria-valuemax="${L.need}" aria-valuenow="${L.into}" data-tip="${esc(L.into.toLocaleString()+' of '+L.need.toLocaleString()+' XP into level '+L.level+' ('+pct+'%). '+(L.need-L.into).toLocaleString()+' XP to go.')}"><i style="width:${pct}%"></i></div>
         <div class="gm-sub">${L.into.toLocaleString()} / ${L.need.toLocaleString()} XP to ${esc(pzLevelTitle(L.level+1))} · +${g.weekXp.toLocaleString()} this week</div></div>
       <div class="diag-card gm"><h3 data-tip="Consecutive trading days with process 70+. Days you don't trade never break it. A finished perfect week (every trading day 70+, at least three) earns a shield, max two; a shield absorbs one missed day instead of resetting the streak.">Discipline streak</h3>
         <div class="gm-big">${g.streak.current} day${g.streak.current===1?'':'s'} ${shieldsHtml(g.streak.shields)}</div>
@@ -614,8 +614,11 @@ function pzSnapSvg(t, candles, ms, plan){
   let lo=Math.min(...cs.map(x=>x.l),...lv), hi=Math.max(...cs.map(x=>x.h),...lv); const pad=(hi-lo)*0.06||hi*0.001; lo-=pad; hi+=pad;
   const Y=v=>T+ph*(hi-v)/(hi-lo), X=ms0=>L+pw*Math.max(0,Math.min(1,(ms0-cs[0].t)/((cs[cs.length-1].t+ms*k)-cs[0].t)));
   const fx=n=>n.toFixed(1), px=v=>{ const d=v>=100?2:v>=1?4:6; return (+v).toFixed(d).replace(/\.?0+$/,''); };
+  const tf=ms0=>new Date(ms0).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
   const body=cs.map((x,i)=>{ const up=x.c>=x.o, col=up?'#2E9E74':'#B5533C', cx=L+step*(i+0.5), w=Math.max(1,step*0.62);
-    return `<line x1="${fx(cx)}" x2="${fx(cx)}" y1="${fx(Y(x.h))}" y2="${fx(Y(x.l))}" stroke="${col}" stroke-width="1"/><rect x="${fx(cx-w/2)}" y="${fx(Y(Math.max(x.o,x.c)))}" width="${fx(w)}" height="${fx(Math.max(1,Math.abs(Y(x.o)-Y(x.c))))}" fill="${col}"/>`; }).join('');
+    const ch=x.o>0?(x.c/x.o-1)*100:null, tip=tf(x.t)+'\nOpen '+px(x.o)+' · High '+px(x.h)+'\nLow '+px(x.l)+' · Close '+px(x.c)+(ch!=null?' ('+(ch>=0?'+':'')+ch.toFixed(2)+'%)':'')
+      +(t.avgEntry>0?'\nvs your entry '+((x.c/t.avgEntry-1)*100*(t.dir==='Short'?-1:1)>=0?'+':'')+((x.c/t.avgEntry-1)*100*(t.dir==='Short'?-1:1)).toFixed(2)+'% for your '+(t.dir==='Short'?'short':'long'):'');
+    return `<g data-pz-tip="${esc(tip)}"><rect x="${fx(L+step*i)}" y="${T}" width="${fx(step)}" height="${ph}" fill="transparent"/><line x1="${fx(cx)}" x2="${fx(cx)}" y1="${fx(Y(x.h))}" y2="${fx(Y(x.l))}" stroke="${col}" stroke-width="1"/><rect x="${fx(cx-w/2)}" y="${fx(Y(Math.max(x.o,x.c)))}" width="${fx(w)}" height="${fx(Math.max(1,Math.abs(Y(x.o)-Y(x.c))))}" fill="${col}"/></g>`; }).join('');
   // labels sit at their line, nudged apart so two close prices stay readable
   const labs=[], win=t.net>=0, line=(v,col,dash,lab)=>{ if(!(v>0))return ''; labs.push({y:Y(v),col,lab}); return `<line x1="${L}" x2="${W-R}" y1="${fx(Y(v))}" y2="${fx(Y(v))}" stroke="${col}" stroke-width="1.5"${dash?` stroke-dasharray="${dash}"`:''}/>`; };
   const vx=(ms0,col)=>`<line x1="${fx(X(ms0))}" x2="${fx(X(ms0))}" y1="${T}" y2="${H-B}" stroke="${col}" stroke-width="1" stroke-dasharray="2 3" opacity=".8"/>`;
@@ -823,10 +826,10 @@ function pzStatsFor(trades, fromMs){
   const mk={}, hr={}, dy={};
   for(const t of all){ const m=dcoin(t); (mk[m]=mk[m]||{net:0,n:0}); mk[m].net+=t.net; mk[m].n++;
     const h=tzParts(t.openTime||t.closeTime).h; (hr[h]=hr[h]||{net:0,n:0}); hr[h].net+=t.net; hr[h].n++;
-    const d=dayKey(t.closeTime); dy[d]=(dy[d]||0)+t.net; }
+    const d=dayKey(t.closeTime), o=dy[d]=dy[d]||{net:0,n:0,w:0,l:0}; o.net+=t.net; o.n++; if(isWin(t.net))o.w++; else if(isLoss(t.net))o.l++; }
   const markets=Object.entries(mk).map(([k,v])=>({k,...v})).sort((a,b)=>b.net-a.net);
   const hours=Object.entries(hr).map(([k,v])=>({h:+k,...v})).filter(x=>x.n>=3).sort((a,b)=>b.net-a.net);
-  return {s,markets,hours,days:Object.keys(dy).sort().map(k=>({k,net:dy[k]}))};
+  return {s,markets,hours,days:Object.keys(dy).sort().map(k=>({k,...dy[k]}))};
 }
 // In-depth stats for a window: the breakdowns behind the Stats tab. Pure given its inputs
 // (o: isWin, isLoss, coin, hourOf, dowOf, monthOf). trades = closed trades in the window.
