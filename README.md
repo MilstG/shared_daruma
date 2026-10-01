@@ -835,8 +835,10 @@ switches moved into **Settings**).
    important auto-saves to it (~1s after each edit) and loads on every visit —
    survives reboots and redeploys, works across devices. The status bar shows
    `☁ Server sync · rev N · saved`. Concurrent edits from two devices are
-   revision-checked: a stale write is refused and that client loads the newer
-   state instead of silently clobbering it.
+   revision-checked: a stale write is refused, and that client loads the newer
+   state, re-applies the journal entries and settings fields it changed since
+   its last sync on top, and saves the merge — neither device's edit to a
+   different entry is lost.
 
 In all modes, image attachments and the fill/candle caches stay in the browser
 (large; re-fetchable or re-attachable). "Backup all" is the full portable copy.
@@ -985,6 +987,12 @@ behavior.
   attachments/snapshots. Safe to hand to a script or a friend's dashboard.
 - `CORS_ORIGIN` (optional, exact origin) — lets a browser app on another
   origin call `/api/*`. Off by default.
+- **Brute-force lockout.** Every 401 is delayed 300 ms, and wrong tokens are
+  counted per client address: `AUTH_FAIL_MAX` (default 20) wrong guesses inside
+  10 minutes lock that address out of every token-gated route for
+  `AUTH_LOCK_MIN` (default 15) minutes — a 429 with `Retry-After`, even for the
+  right token. A request with no token at all, or a `READ_TOKEN` asking for a
+  full-token route, never counts as a guess.
 
 ```bash
 # examples
@@ -1050,8 +1058,11 @@ curl -H "Authorization: Bearer $READ_TOKEN" -o trades.csv 'https://your.app/api/
 - The miner is correlational and in-sample. "Validated" means it survived
   multiple-comparison correction on *your past data* — a hypothesis to trade
   deliberately and re-test, never a guarantee.
-- Server sync is last-writer-wins with conflict detection (no silent
-  clobbering), not field-level merge.
+- Server sync merges at the level of journal entries and settings fields:
+  when two devices edit *different* entries or fields, both edits survive a
+  conflict. When both edit the *same* journal entry before syncing, the device
+  that syncs second keeps its version of that entry — there is no
+  character-level merge inside one note.
 - Open-position monitoring compares against your full winner history; if you
   mix long-horizon spot bags with perp scalps in Combined view, that baseline
   comparison is apples-to-oranges — read those flags with judgment.

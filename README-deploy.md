@@ -86,6 +86,8 @@ tests/          test suites (`npm test`; CI runs them on every push)
 | `PORT`                 | `8080`                           | Railway injects this automatically |
 | `AUTH_TOKEN`           | *(empty = API open — don't)*     | Bearer token — everything |
 | `READ_TOKEN`           | *(unset)*                        | Optional second token: `GET /api/v1/*` only. Safe for scripts/dashboards |
+| `AUTH_FAIL_MAX`        | `20`                             | Wrong tokens from one address within 10 minutes before that address is locked out (429) of every token-gated route |
+| `AUTH_LOCK_MIN`        | `15`                             | How long that lockout lasts, in minutes |
 | `CORS_ORIGIN`          | *(unset)*                        | Exact origin allowed to call `/api/*` from a browser app |
 | `PUBLIC_ORIGIN`        | *(unset)*                        | The address people open Pulse at (e.g. `https://pulse.example.com`; comma-separate several). Wallet sign-in messages name only this site, so a look-alike site can't collect a valid signature. Not needed on Railway, whose edge only passes the service's own domains (custom ones included); set it when self-hosting |
 | `TRUST_PROXY`          | on when on Railway               | Read the visitor's address from `X-Forwarded-For` (the last entry) for rate limits. Only turn on behind a proxy that sets it |

@@ -69,6 +69,25 @@ await t('data API accepts the right token', async () => {
   eq(await r.json(), { rev: 0, snapshot: null });
 });
 
+await t('wrong tokens lock the address out (429, right token included); no-token and READ_TOKEN calls never count', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'ledger-lock-'));
+  const app = createApp({ dataDir, auth: 'secret', readAuth: 'reader', authFailMax: 3, htmlPath: join(here, '..', 'ledger.html') });
+  const b = await listen(app);
+  // a tokenless visitor and a READ_TOKEN script on a full-token route are not guesses
+  for (let i = 0; i < 5; i++) eq((await fetch(b + '/api/data')).status, 401);
+  for (let i = 0; i < 5; i++) eq((await fetch(b + '/api/data', { headers: { Authorization: 'Bearer reader' } })).status, 401);
+  eq((await fetch(b + '/api/data', { headers: authH })).status, 200, 'still open after 10 non-guesses');
+  // parallel guesses: the 300ms delay alone wouldn't stop these
+  const rs = await Promise.all([1, 2, 3].map(i => fetch(b + '/api/data', { headers: { Authorization: 'Bearer guess' + i } })));
+  eq(rs.map(r => r.status), [401, 401, 401]);
+  const locked = await fetch(b + '/api/data', { headers: authH });
+  eq(locked.status, 429, 'even the right token is refused while locked');
+  ok(+locked.headers.get('retry-after') > 0, 'Retry-After set');
+  eq((await fetch(b + '/api/v1/stats', { headers: { Authorization: 'Bearer reader' } })).status, 429, 'read token locked too');
+  eq((await fetch(b + '/api/health')).status, 200, 'tokenless public routes still answer');
+  await new Promise(res => app.close(res));
+});
+
 console.log('\nServer: persistence round-trip');
 await t('PUT then GET round-trips the snapshot with incremented rev', async () => {
   const snap = { app: 'ledger', journal: { 'w:BTC:1': { notes: 'test entry', tags: ['a'] } }, wallets: [] };

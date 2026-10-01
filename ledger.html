@@ -1496,6 +1496,7 @@ async function initServerSync(){
       if(!SRV.token){ renderDatafile(); return true; } }
     const d=(early&&await early)||await srvFetch('/api/data');
     if(d.status===401){ SRV.badAuth=true; renderDatafile(); return true; }
+    if(d.status===429){ SRV.badAuth=true; renderDatafile(); setErr(srvLockMsg(d)); return true; } // locked out: never sync blind at rev 0
     if(d.ok){ const j=await d.json(); SRV.rev=j.rev||0;
       if(j.snapshot)await applySnapshot(j.snapshot);
       _lastSyncedS=_snapS(); } // baseline for the field-level 409 settings merge
@@ -1506,6 +1507,9 @@ async function initServerSync(){
   }catch(e){ SRV.enabled=false; return false; }
   return true;
 }
+// the server locks an address out after too many wrong tokens (AUTH_FAIL_MAX): say so, and for how long
+const srvLockMsg=d=>{ const s=+(d.headers&&d.headers.get('retry-after'))||0;
+  return 'Too many wrong tokens from this network — try again'+(s?' in about '+Math.max(1,Math.ceil(s/60))+' min':' in a few minutes')+'.'; };
 async function connectServerToken(){
   const inp=$('srvTok'); if(!inp)return;
   const tok=inp.value.trim(); if(!tok)return;
@@ -1513,6 +1517,7 @@ async function connectServerToken(){
   SRV.token=tok; SRV.badAuth=false;
   const d=await srvFetch('/api/data');
   if(d.status===401){ SRV.badAuth=true; renderDatafile(); setErr('Server rejected that token.'); return; }
+  if(d.status===429){ SRV.badAuth=true; renderDatafile(); setErr(srvLockMsg(d)); return; }
   setStatus('Server sync connected — reloading…');
   location.reload(); // clean boot with the token applies server data in the right order
 }
@@ -10992,6 +10997,7 @@ async function pzToken(){
   SRV.token=tok; SRV.badAuth=false;
   const d=await srvFetch('/api/data');
   if(d.status===401){ SRV.badAuth=true; pzNote('The server rejected that token.','err'); pzRender(); return; }
+  if(d.status===429){ SRV.badAuth=true; pzNote(srvLockMsg(d),'err'); pzRender(); return; }
   pzNote('Connected — reloading…','busy'); location.reload();
 }
 function wirePulse(){

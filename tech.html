@@ -239,7 +239,7 @@ html{scroll-behavior:smooth}
   </ul>
   <h3>Access control</h3>
   <ul>
-    <li><code>AUTH_TOKEN</code> — everything, compared with a timing-safe equality check; 401 responses carry a flat 300 ms delay to blunt online brute force.</li>
+    <li><code>AUTH_TOKEN</code> — everything, compared with a timing-safe equality check; 401 responses carry a flat 300 ms delay to blunt online brute force, and wrong tokens are counted per client address: <code>AUTH_FAIL_MAX</code> (20) inside 10 minutes locks the address out for <code>AUTH_LOCK_MIN</code> (15) minutes — a 429 with <code>Retry-After</code>, right token included, so parallel guessing gets nowhere.</li>
     <li><code>READ_TOKEN</code> — exactly <code>GET /api/v1/*</code>; it can never touch <code>/api/data</code>, attachments, snapshots, backups, or refresh.</li>
     <li><code>CORS_ORIGIN</code> — one exact origin, off by default. Responses set <code>nosniff</code> and <code>no-store</code>; CSV exports guard against spreadsheet formula injection.</li>
   </ul>

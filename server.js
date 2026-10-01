@@ -541,15 +541,52 @@ function createApp(opts) {
       });
     } catch (e) { return []; }
   };
+  // Brute-force lockout. The 300ms 401 delay below slows one connection, not a hundred in
+  // parallel, so wrong bearer tokens are also counted per client address: AUTH_FAIL_MAX
+  // wrong guesses inside the window lock that address out of every token-gated route for
+  // AUTH_LOCK_MIN minutes (429, even with the right token — otherwise guessing would carry
+  // on). Only a presented token that matches neither credential counts: a visitor with no
+  // token at all, or a READ_TOKEN script asking for a full-token route, is never a guess.
+  const failMax = opts.authFailMax || parseInt(process.env.AUTH_FAIL_MAX, 10) || 20;
+  const failWindowMs = 10 * 60000;
+  const lockMs = (opts.authLockMin || parseInt(process.env.AUTH_LOCK_MIN, 10) || 15) * 60000;
+  const authFails = new Map(); // ip -> {n, since, until}
+  const failCounted = new WeakSet(); // one request checked twice (authOk then readOk) is one guess
+  let ipOf = req => (req.socket && req.socket.remoteAddress) || ''; // replaced by clientIp once the proxy setting is read
+  const lockedOut = (req) => {
+    const f = authFails.get(ipOf(req));
+    return !!(f && f.until && f.until > Date.now());
+  };
+  const noteBadToken = (req) => {
+    if (failCounted.has(req)) return;
+    failCounted.add(req);
+    const ip = ipOf(req), now = Date.now();
+    let f = authFails.get(ip);
+    if (!f || now - f.since > failWindowMs) { f = { n: 0, since: now, until: 0 }; authFails.set(ip, f); }
+    if (++f.n >= failMax && !f.until) {
+      f.until = now + lockMs;
+      console.warn('[ledger] auth: ' + f.n + ' wrong tokens from ' + (ip || 'unknown address') + ' — locked out for ' + Math.round(lockMs / 60000) + ' min');
+    }
+    if (authFails.size > 5000) { // a sweep from many addresses must not grow this without bound
+      for (const [k, v] of authFails) if ((v.until || v.since + failWindowMs) < now) authFails.delete(k);
+    }
+  };
+  const tokenCheck = (req) => {
+    const h = req.headers['authorization'] || '';
+    const full = timingSafeEq(h, 'Bearer ' + auth);
+    if (!full && h && !(readAuth && timingSafeEq(h, 'Bearer ' + readAuth))) noteBadToken(req);
+    return full;
+  };
   const authOk = (req) => {
     if (!auth) return true;
-    return timingSafeEq(req.headers['authorization'] || '', 'Bearer ' + auth);
+    if (lockedOut(req)) return false;
+    return tokenCheck(req);
   };
   // READ_TOKEN grants exactly one thing: GETs under /api/v1. It never opens /api/data,
   // attachments, snapshots, or any write path. When no AUTH_TOKEN is set at all the whole
   // server is open (unchanged from before) and this distinction is moot.
   const readOk = (req) => authOk(req)
-    || (!!readAuth && timingSafeEq(req.headers['authorization'] || '', 'Bearer ' + readAuth));
+    || (!!readAuth && !lockedOut(req) && timingSafeEq(req.headers['authorization'] || '', 'Bearer ' + readAuth));
   const json = (res, code, obj) => {
     const body = JSON.stringify(obj);
     const write = () => {
@@ -1896,6 +1933,7 @@ function createApp(opts) {
   const clientIp = req => { const xf = trustProxy && req.headers['x-forwarded-for'];
     if (xf) { const last = String(xf).split(',').map(x => x.trim()).filter(Boolean).pop(); if (last) return last.slice(0, 64); }
     return (req.socket && req.socket.remoteAddress) || ''; };
+  ipOf = clientIp;
   // web push: the server's own VAPID identity, made once in DATA_DIR (PUSH=0 switches it off)
   let pushCfg = null;
   if (opts.push !== false && process.env.PUSH !== '0') {
@@ -1930,6 +1968,13 @@ function createApp(opts) {
       res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Pulse-Key');
       res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS');
       if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+    }
+
+    // a locked-out address gets a clear 429 for anything carrying a bearer token (see noteBadToken)
+    if (auth && req.headers['authorization'] && lockedOut(req)) {
+      const f = authFails.get(ipOf(req));
+      res.setHeader('Retry-After', String(Math.max(1, Math.ceil((f.until - Date.now()) / 1000))));
+      return json(res, 429, { error: 'too many wrong tokens from this address — try again in a few minutes' });
     }
 
     // --- static: the app itself ---
