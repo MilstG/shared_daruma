@@ -9,13 +9,14 @@ import { webcrypto } from 'node:crypto';
 import http from 'node:http';
 import vm from 'node:vm';
 import { t, ok, eq, report, makeExtractor } from './harness.mjs';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
 const require = createRequire(import.meta.url);
 const S = require('../social.js');
 const sig = require('../vendor/eth-sig.js');
 const server = require('../server.js');
 const htmlPath = new URL('../ledger.html', import.meta.url).pathname;
-const html = readFileSync(htmlPath, 'utf8');
+const html = readAppSource(htmlPath);
 const vectors = JSON.parse(readFileSync(new URL('./eth-vectors.json', import.meta.url), 'utf8'));
 
 console.log('\nSignatures');

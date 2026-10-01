@@ -3,8 +3,9 @@
 // three-state verdict, direction-awareness for pinned leaks, and the addPin CI capture shape.
 import fs from 'node:fs';
 import { t, ok, eq, near, report, makeExtractor } from './harness.mjs';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
-const html = fs.readFileSync(new URL('../ledger.html', import.meta.url), 'utf8');
+const html = readAppSource(new URL('../ledger.html', import.meta.url).pathname);
 const { grabFn } = makeExtractor(html);
 
 // decayAssess needs _avg/_std/cusumDrift in scope — evaluate them together.

@@ -3,9 +3,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { t, ok, report, makeExtractor } from './harness.mjs';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
 const here = dirname(fileURLToPath(import.meta.url));
-const html = readFileSync(join(here, '..', 'ledger.html'), 'utf8');
+const html = readAppSource(join(here, '..', 'ledger.html'));
 const { grabFn } = makeExtractor(html);
 
 // Bundle the filter fns with mutable state they close over (view/dexView/dexSel/allTrades/openPositions).

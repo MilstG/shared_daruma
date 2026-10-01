@@ -95,7 +95,7 @@ html{scroll-behavior:smooth}
 <main>
 <header class="hero">
   <h1>Ledger Technical Reference</h1>
-  <p class="tagline">How Ledger is built: the single-file architecture, the trade-reconstruction and analytics engine, the sync protocol, the zero-dependency server, and the extraction trick that keeps the server, the tests, and the app running the exact same code.</p>
+  <p class="tagline">How Ledger is built: one page with ordered, build-free scripts, the trade-reconstruction and analytics engine, the sync protocol, the zero-dependency server, and the extraction trick that keeps the server, the tests, and the app running the exact same code.</p>
   <a class="backlink" href="/">← Back to Ledger</a>
   <a class="backlink" href="help">User guide →</a>
 </header>
@@ -105,9 +105,9 @@ html{scroll-behavior:smooth}
   <h2>Architecture overview</h2>
   <p>Three deliberate constraints shape everything:</p>
   <ul>
-    <li><b>Single file.</b> The entire app — UI, styles, vendored Chart.js, analytics engine, and Web Worker source — is <code>ledger.html</code>. It works opened from disk (<code>file://</code>), from any static host, or served by the companion server. There is no build step, no bundler, no framework.</li>
+    <li><b>One page, ordered scripts, no build.</b> <code>ledger.html</code> holds the markup, styles and fonts. It loads vendored Chart.js and the app's fourteen parts from <code>app/</code> as classic scripts, in order (<code>core.js</code>, <code>engine.js</code>, … <code>boot.js</code> last), sharing one global scope as the single inline script once did. Rule: code that runs while a part loads may only use names from that part or an earlier one. A function body called later may use anything. It works opened from disk (<code>file://</code>, with <code>app/</code> beside it), from any static host, or served by the companion server, which sends each part gzipped under a content hash (<code>?v=</code>, cached immutable for a year). There is no build step, no bundler, no framework.</li>
     <li><b>Zero dependencies.</b> <code>server.js</code> uses only Node built-ins (<code>http</code>, <code>fs</code>, <code>zlib</code>, <code>node:vm</code>, global <code>fetch</code>). <code>npm install</code> installs nothing.</li>
-    <li><b>Single source of truth.</b> The server and the test suites do not reimplement any math. Both <em>extract</em> the pure functions out of <code>ledger.html</code>'s source text and evaluate them — the server into a <code>node:vm</code> context, the tests into ephemeral ES modules. When the app's logic changes, the API's answers and the tests' subjects change with it automatically.</li>
+    <li><b>Single source of truth.</b> The server and the test suites do not reimplement any math. Both <em>extract</em> the pure functions out of the app's source text (<code>app-source.js</code> returns <code>ledger.html</code> with every <code>app/</code> part inlined in load order) and evaluate them — the server into a <code>node:vm</code> context, the tests into ephemeral ES modules. When the app's logic changes, the API's answers and the tests' subjects change with it automatically.</li>
   </ul>
   <p>The client is read-only against Hyperliquid's public info API. It never holds keys and has no code path that could place an order.</p>
 </section>
@@ -178,7 +178,7 @@ html{scroll-behavior:smooth}
 <section id="worker">
   <p class="kicker">06</p>
   <h2>The runtime worker</h2>
-  <p>Heavy jobs (reconstruction, mining, projections, diagnostic Monte Carlo) run off the main thread — without a separate worker file, which the single-file constraint forbids. At startup the app builds a <b>Blob worker from its own source</b>:</p>
+  <p>Heavy jobs (reconstruction, mining, projections, diagnostic Monte Carlo) run off the main thread — without a separate worker file to keep in step. At startup the app builds a <b>Blob worker from its own source</b>:</p>
   <ul>
     <li><code>_WORKER_LIB</code> names the top-level functions to lift; their source text is concatenated with <code>_WORKER_PRELUDE</code> (the handful of consts they close over) and a <code>_WORKER_DISPATCH</code> message router into a Blob URL.</li>
     <li>Every job has a synchronous fallback: if workers are unavailable or a job exceeds the 120-second stall watchdog, the same function runs inline. Results are byte-identical by construction — it is literally the same source.</li>

@@ -1,0 +1,747 @@
+// Ledger app · part 8 of 14: tax PDF, fee tiers, the weekly review, variance, risk creep, guardrails, demo mode, notifications, PWA.
+// ledger.html loads the parts in order as classic scripts sharing one global scope. Code that
+// runs while a part loads (not inside a function called later) may only use names declared in
+// this part or an earlier one; the boot part runs last. See "Development and testing" in README.md.
+
+/* ============================ tax statement PDF ============================ */
+// Minimal single-purpose PDF writer: US-letter pages, base-14 Courier fonts, zero deps —
+// keeps the app self-contained and CSP-clean. Courier is fixed-width (600/1000 em) so
+// column alignment is exact and the Node harness can verify layout math.
+class MiniPDF{
+  constructor(){ this.pages=[]; this._imgs=[]; this.newPage(); }
+  newPage(){ this._ops=[]; this.pages.push(this._ops); }
+  usePage(i){ this._ops=this.pages[i]; }
+  _sub(s){ return String(s)
+      .replace(/[\u2014\u2013\u2212]/g,'-').replace(/\u00b7/g,'.').replace(/\u2248/g,'~')
+      .replace(/\u00d7/g,'x').replace(/\u2192/g,'->').replace(/[\u2018\u2019]/g,"'")
+      .replace(/[\u201c\u201d]/g,'"').replace(/[^\x20-\x7E]/g,'?'); }
+  _esc(s){ return this._sub(s).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)'); }
+  // Measure the SUBSTITUTED string: '\u2192' renders as two glyphs ('->'), and measuring the
+  // raw string shifted every right-aligned cell containing an arrow by one glyph.
+  w(s,size){ return this._sub(s).length*0.6*(size||8); } // Courier advance = 600/1000 em
+  text(x,y,s,o={}){ const size=o.size||8, f=o.bold?'F2':(o.italic?'F3':'F1'), c=o.color||[0,0,0];
+    this._ops.push(`BT /${f} ${size} Tf ${c[0]} ${c[1]} ${c[2]} rg 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${this._esc(s)}) Tj ET`); }
+  textR(x,y,s,o={}){ this.text(x-this.w(s,o.size||8),y,s,o); } // right-aligned
+  line(x1,y1,x2,y2,o={}){ const c=o.color||[0.72,0.74,0.78];
+    this._ops.push(`${c[0]} ${c[1]} ${c[2]} RG ${(o.w||0.7)} w ${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`); }
+  rect(x,y,w,h,o={}){ const c=o.fill||[0.95,0.95,0.96];
+    this._ops.push(`${c[0]} ${c[1]} ${c[2]} rg ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re f`); }
+  // Register a JPEG (from canvas.toDataURL('image/jpeg')) as an image XObject. Returns an
+  // index for drawImage, or -1 if the data URL isn't a parseable JPEG. Dimensions are read
+  // from the SOF marker; pixel data is embedded verbatim with /Filter /DCTDecode, so no
+  // decompression or re-encoding happens here.
+  image(dataUrl){
+    const m=/^data:image\/jpeg;base64,(.+)$/.exec(dataUrl||''); if(!m)return -1;
+    let bin; try{ bin=atob(m[1]); }catch(e){ return -1; }
+    let w=0,h=0;
+    for(let i=2;i<bin.length-9;){
+      if(bin.charCodeAt(i)!==0xFF){ i++; continue; }
+      const mk=bin.charCodeAt(i+1);
+      if(mk===0xFF){ i++; continue; } // 0xFF fill bytes are legal padding — stepping past them read a bogus segment length
+      if(mk===0xD8||mk===0x01||(mk>=0xD0&&mk<=0xD9)){ i+=2; continue; }
+      const len=(bin.charCodeAt(i+2)<<8)|bin.charCodeAt(i+3);
+      if(mk>=0xC0&&mk<=0xCF&&mk!==0xC4&&mk!==0xC8&&mk!==0xCC){
+        h=(bin.charCodeAt(i+5)<<8)|bin.charCodeAt(i+6);
+        w=(bin.charCodeAt(i+7)<<8)|bin.charCodeAt(i+8); break; }
+      i+=2+len;
+    }
+    if(!(w>0&&h>0))return -1;
+    this._imgs.push({data:bin,w,h}); return this._imgs.length-1;
+  }
+  imgSize(i){ const im=this._imgs[i]; return im?{w:im.w,h:im.h}:null; }
+  drawImage(i,x,y,w,h){ if(i==null||i<0||!this._imgs[i])return;
+    this._ops.push(`q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm /Im${i} Do Q`); }
+  output(){
+    const n=this.pages.length, objs=[];
+    const pageRefs=[]; let num=6;
+    for(let i=0;i<n;i++){ pageRefs.push({page:num,content:num+1}); num+=2; }
+    const imgBase=num; num+=this._imgs.length;
+    objs[1]='<< /Type /Catalog /Pages 2 0 R >>';
+    objs[2]=`<< /Type /Pages /Kids [${pageRefs.map(r=>r.page+' 0 R').join(' ')}] /Count ${n} >>`;
+    objs[3]='<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>';
+    objs[4]='<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>';
+    objs[5]='<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Oblique >>';
+    const xo=this._imgs.length?` /XObject << ${this._imgs.map((im,i)=>`/Im${i} ${imgBase+i} 0 R`).join(' ')} >>`:'';
+    for(let i=0;i<n;i++){ const r=pageRefs[i];
+      objs[r.page]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >>${xo} >> /Contents ${r.content} 0 R >>`;
+      objs[r.content]={stream:this.pages[i].join('\n')};
+    }
+    this._imgs.forEach((im,i)=>{
+      objs[imgBase+i]={stream:im.data,
+        dict:`/Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode `};
+    });
+    let out='%PDF-1.4\n'; const offs=[0];
+    for(let i=1;i<num;i++){ offs[i]=out.length; const o=objs[i];
+      out+=(o&&o.stream!==undefined)
+        ? `${i} 0 obj\n<< ${o.dict||''}/Length ${o.stream.length} >>\nstream\n${o.stream}\nendstream\nendobj\n`
+        : `${i} 0 obj\n${o}\nendobj\n`;
+    }
+    const xref=out.length;
+    out+=`xref\n0 ${num}\n0000000000 65535 f \n`;
+    for(let i=1;i<num;i++) out+=String(offs[i]).padStart(10,'0')+' 00000 n \n';
+    out+=`trailer\n<< /Size ${num} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    return out;
+  }
+  // The text-only statement path serializes fine as a plain string; embedded JPEG bytes need
+  // a latin1-faithful byte array (a UTF-8 Blob would mangle every byte >127).
+  outputBytes(){ const s=this.output(); const u=new Uint8Array(s.length);
+    for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i)&0xFF; return u; }
+}
+// Pure statement model: chronological realized trades grouped by UTC tax year with monthly
+// subtotals and a running balance (cumulative realized net from the first trade onward).
+// Sign convention matches the tax CSV: fees shown as a negative cost; pnl+fees+funding=net.
+function taxStatementModel(trades,wallets,nowIso){
+  const rows=trades.filter(t=>!t.isOpen&&t.closeTime).sort((a,b)=>a.closeTime-b.closeTime);
+  if(!rows.length)return null;
+  const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const dU=ms=>new Date(ms).toISOString().slice(0,10);
+  let bal=0; const years=[]; let Y=null,M=null;
+  const grand={n:0,pnl:0,fees:0,funding:0,net:0};
+  for(const t of rows){ const d=new Date(t.closeTime), yr=d.getUTCFullYear(), mo=d.getUTCMonth();
+    if(!Y||Y.year!==yr){ Y={year:yr,open:bal,close:bal,totals:{n:0,pnl:0,fees:0,funding:0,net:0},months:[],lines:[]}; years.push(Y); M=null; }
+    if(!M||M.mo!==mo){ M={mo,label:MON[mo]+' '+yr,n:0,wins:0,losses:0,pnl:0,fees:0,funding:0,net:0,endBal:bal}; Y.months.push(M); }
+    const fees=-t.fees, fund=t.funding||0;
+    bal+=t.net;
+    Y.lines.push({date:dU(t.closeTime),symbol:dcoin(t),market:t.market,dir:t.dir,
+      held:t.durationMs?t.durationMs/86400000:0,pnl:t.pnl,fees,funding:fund,net:t.net,balance:bal,
+      wallet:t.wallet&&(t.wallet.label||(t.wallet.address?t.wallet.address.slice(0,10):''))||''});
+    M.n++; if(t.net>0)M.wins++; else if(t.net<0)M.losses++;
+    M.pnl+=t.pnl; M.fees+=fees; M.funding+=fund; M.net+=t.net; M.endBal=bal;
+    Y.totals.n++; Y.totals.pnl+=t.pnl; Y.totals.fees+=fees; Y.totals.funding+=fund; Y.totals.net+=t.net; Y.close=bal;
+    grand.n++; grand.pnl+=t.pnl; grand.fees+=fees; grand.funding+=fund; grand.net+=t.net;
+  }
+  return { generated:(nowIso||new Date().toISOString()).replace(/\.\d{3}Z$/,'Z'),
+    from:dU(rows[0].closeTime), to:dU(rows[rows.length-1].closeTime),
+    wallets:(wallets||[]).map(w=>({label:w.label||'',address:w.address||''})),
+    years, grand, endBalance:bal };
+}
+// Renders the statement model into PDF ops. Pure aside from fmtUsd.
+function renderTaxPdfDoc(model){
+  const pdf=new MiniPDF(); const W=612,H=792,Mg=42;
+  const gray=[0.44,0.46,0.52], faint=[0.6,0.62,0.67], dark=[0.09,0.10,0.13];
+  const pos=[0.05,0.52,0.33], neg=[0.75,0.19,0.24];
+  const colFor=v=>v>0.004?pos:v<-0.004?neg:dark;
+  const money=v=>fmtUsd(v);
+  let y;
+  const runHead=()=>{ pdf.text(Mg,H-30,'LEDGER - ACCOUNT STATEMENT',{size:7,bold:true,color:gray});
+    pdf.textR(W-Mg,H-30,model.from+' to '+model.to,{size:7,color:gray});
+    pdf.line(Mg,H-36,W-Mg,H-36); y=H-52; };
+  const page=()=>{ pdf.newPage(); runHead(); };
+  const ensure=h=>{ if(y-h<Mg+26)page(); };
+  // ---- cover header ----
+  pdf.text(Mg,H-64,'LEDGER',{size:20,bold:true,color:dark});
+  pdf.textR(W-Mg,H-64,'ACCOUNT STATEMENT',{size:11,color:gray});
+  pdf.text(Mg,H-80,'Hyperliquid trading activity - realized PnL',{size:8.5,color:gray});
+  pdf.line(Mg,H-90,W-Mg,H-90,{w:1.1,color:dark});
+  y=H-108;
+  pdf.text(Mg,y,'Period covered:',{size:8,color:gray}); pdf.text(Mg+110,y,model.from+'  to  '+model.to,{size:8,bold:true}); y-=13;
+  pdf.text(Mg,y,'Generated:',{size:8,color:gray});      pdf.text(Mg+110,y,model.generated,{size:8}); y-=13;
+  if(model.wallets.length){ pdf.text(Mg,y,'Wallets:',{size:8,color:gray});
+    for(const w of model.wallets){ pdf.text(Mg+110,y,(w.label?w.label+'  ':'')+w.address,{size:8}); y-=11; } y-=2; }
+  y-=8;
+  // ---- statement summary (per year) ----
+  const cols={yr:Mg, n:Mg+92, pnl:Mg+205, fees:Mg+285, fund:Mg+365, net:Mg+445, bal:W-Mg};
+  const sumHead=(title)=>{ ensure(40); pdf.rect(Mg-4,y-4,W-2*Mg+8,15); pdf.text(Mg,y,title,{size:8,bold:true,color:dark}); y-=16;
+    pdf.text(cols.yr,y,'TAX YEAR',{size:7,color:gray}); pdf.textR(cols.n,y,'TRADES',{size:7,color:gray});
+    pdf.textR(cols.pnl,y,'REALIZED PNL',{size:7,color:gray}); pdf.textR(cols.fees,y,'FEES',{size:7,color:gray});
+    pdf.textR(cols.fund,y,'FUNDING',{size:7,color:gray}); pdf.textR(cols.net,y,'NET',{size:7,color:gray});
+    pdf.textR(cols.bal,y,'CLOSING BAL',{size:7,color:gray}); y-=4; pdf.line(Mg,y,W-Mg,y); y-=11; };
+  sumHead('STATEMENT SUMMARY');
+  for(const Y of model.years){ ensure(12);
+    pdf.text(cols.yr,y,String(Y.year),{size:8,bold:true});
+    pdf.textR(cols.n,y,String(Y.totals.n),{size:8});
+    pdf.textR(cols.pnl,y,money(Y.totals.pnl),{size:8,color:colFor(Y.totals.pnl)});
+    pdf.textR(cols.fees,y,money(Y.totals.fees),{size:8,color:colFor(Y.totals.fees)});
+    pdf.textR(cols.fund,y,money(Y.totals.funding),{size:8,color:colFor(Y.totals.funding)});
+    pdf.textR(cols.net,y,money(Y.totals.net),{size:8,bold:true,color:colFor(Y.totals.net)});
+    pdf.textR(cols.bal,y,money(Y.close),{size:8});
+    y-=12; }
+  pdf.line(Mg,y+4,W-Mg,y+4); y-=2;
+  pdf.text(cols.yr,y,'TOTAL',{size:8,bold:true});
+  pdf.textR(cols.n,y,String(model.grand.n),{size:8,bold:true});
+  pdf.textR(cols.pnl,y,money(model.grand.pnl),{size:8,bold:true,color:colFor(model.grand.pnl)});
+  pdf.textR(cols.fees,y,money(model.grand.fees),{size:8,bold:true,color:colFor(model.grand.fees)});
+  pdf.textR(cols.fund,y,money(model.grand.funding),{size:8,bold:true,color:colFor(model.grand.funding)});
+  pdf.textR(cols.net,y,money(model.grand.net),{size:8,bold:true,color:colFor(model.grand.net)});
+  pdf.textR(cols.bal,y,money(model.endBalance),{size:8,bold:true});
+  y-=24;
+  // ---- per-year detail ----
+  const dcols={date:Mg, sym:Mg+52, dir:Mg+150, held:Mg+218, pnl:Mg+286, fees:Mg+348, fund:Mg+410, net:Mg+468, bal:W-Mg};
+  const detHead=()=>{ pdf.text(dcols.date,y,'CLOSE',{size:6.5,color:gray}); pdf.text(dcols.sym,y,'MARKET',{size:6.5,color:gray});
+    pdf.text(dcols.dir,y,'SIDE',{size:6.5,color:gray}); pdf.textR(dcols.held,y,'HELD(D)',{size:6.5,color:gray});
+    pdf.textR(dcols.pnl,y,'PNL',{size:6.5,color:gray}); pdf.textR(dcols.fees,y,'FEES',{size:6.5,color:gray});
+    pdf.textR(dcols.fund,y,'FUNDING',{size:6.5,color:gray}); pdf.textR(dcols.net,y,'NET',{size:6.5,color:gray});
+    pdf.textR(dcols.bal,y,'BALANCE',{size:6.5,color:gray}); y-=3.5; pdf.line(Mg,y,W-Mg,y); y-=9.5; };
+  const ensureDet=h=>{ if(y-h<Mg+26){ page(); detHead(); } };
+  for(const Y of model.years){
+    ensure(78);
+    pdf.rect(Mg-4,y-4,W-2*Mg+8,15,{fill:[0.92,0.93,0.94]});
+    pdf.text(Mg,y,'TAX YEAR '+Y.year,{size:8.5,bold:true});
+    pdf.textR(W-Mg,y,'opening '+money(Y.open)+'   closing '+money(Y.close),{size:7.5,color:gray});
+    y-=18;
+    // monthly summary — re-emit the label after a page break so continuation rows
+    // aren't a headless block of numbers
+    const monHead=cont=>{ pdf.text(Mg,y,'Monthly summary'+(cont?' (continued)':''),{size:7,italic:true,color:gray}); y-=11; };
+    monHead(false);
+    const mc={mo:Mg, n:Mg+120, wl:Mg+185, pnl:Mg+265, fees:Mg+330, fund:Mg+395, net:Mg+455, bal:W-Mg};
+    for(const m of Y.months){ if(y-10<Mg+26){ page(); monHead(true); }
+      pdf.text(mc.mo,y,m.label,{size:7.5});
+      pdf.textR(mc.n,y,m.n+' trades',{size:7.5,color:gray});
+      pdf.textR(mc.wl,y,m.wins+'W/'+m.losses+'L',{size:7.5,color:gray});
+      pdf.textR(mc.pnl,y,money(m.pnl),{size:7.5,color:colFor(m.pnl)});
+      pdf.textR(mc.fees,y,money(m.fees),{size:7.5,color:colFor(m.fees)});
+      pdf.textR(mc.fund,y,money(m.funding),{size:7.5,color:colFor(m.funding)});
+      pdf.textR(mc.net,y,money(m.net),{size:7.5,bold:true,color:colFor(m.net)});
+      pdf.textR(mc.bal,y,money(m.endBal),{size:7.5});
+      y-=10.5; }
+    y-=6;
+    // transaction detail
+    ensure(30);
+    pdf.text(Mg,y,'Transactions ('+Y.lines.length+')',{size:7,italic:true,color:gray}); y-=11;
+    detHead();
+    let alt=false;
+    for(const ln of Y.lines){ ensureDet(9.5);
+      if(alt)pdf.rect(Mg-2,y-2.4,W-2*Mg+4,9.2,{fill:[0.965,0.968,0.975]}); alt=!alt;
+      pdf.text(dcols.date,y,ln.date,{size:7});
+      pdf.text(dcols.sym,y,String(ln.symbol).slice(0,15)+(ln.market==='spot'?' (s)':''),{size:7});
+      pdf.text(dcols.dir,y,ln.dir,{size:7,color:gray});
+      pdf.textR(dcols.held,y,ln.held<0.01?'<0.01':ln.held.toFixed(2),{size:7,color:gray});
+      pdf.textR(dcols.pnl,y,money(ln.pnl),{size:7,color:colFor(ln.pnl)});
+      pdf.textR(dcols.fees,y,money(ln.fees),{size:7,color:colFor(ln.fees)});
+      pdf.textR(dcols.fund,y,money(ln.funding),{size:7,color:colFor(ln.funding)});
+      pdf.textR(dcols.net,y,money(ln.net),{size:7,bold:true,color:colFor(ln.net)});
+      pdf.textR(dcols.bal,y,money(ln.balance),{size:7});
+      y-=9.5; }
+    y-=8; pdf.line(Mg,y+5,W-Mg,y+5,{color:faint});
+    pdf.textR(W-Mg,y-3,'Year '+Y.year+' net: '+money(Y.totals.net),{size:8,bold:true,color:colFor(Y.totals.net)});
+    y-=20;
+  }
+  // ---- footers (need final page count) ----
+  const nP=pdf.pages.length;
+  for(let i=0;i<nP;i++){ pdf.usePage(i);
+    pdf.line(Mg,Mg-8,W-Mg,Mg-8);
+    pdf.text(Mg,Mg-19,'Realized PnL only - no unrealized positions or transferred cost basis. Not tax advice.',{size:6.5,color:faint});
+    pdf.textR(W-Mg,Mg-19,'Page '+(i+1)+' of '+nP,{size:6.5,color:faint});
+  }
+  return pdf.output();
+}
+// Pure diagnostic-PDF renderer over a plain model (stats rows, JPEG charts, recommendation
+// text) — the print-grade sibling of the HTML report export. Layout mirrors the statement
+// PDF; charts arrive pre-rendered as canvas JPEGs and are embedded via MiniPDF image
+// XObjects (DCTDecode), so the document opens anywhere without a browser.
+function renderDiagPdfDoc(model){
+  const pdf=new MiniPDF(); const W=612,H=792,Mg=42,CW=W-2*Mg;
+  const gray=[0.44,0.46,0.52], faint=[0.6,0.62,0.67], dark=[0.09,0.10,0.13];
+  let y;
+  const runHead=()=>{ pdf.text(Mg,H-30,'LEDGER - TRADING DIAGNOSTIC',{size:7,bold:true,color:gray});
+    pdf.textR(W-Mg,H-30,model.periodDesc,{size:7,color:gray});
+    pdf.line(Mg,H-36,W-Mg,H-36); y=H-52; };
+  const page=()=>{ pdf.newPage(); runHead(); };
+  const ensure=h=>{ if(y-h<Mg+26)page(); };
+  const wrap=(txt,size,maxW)=>{ const words=String(txt).split(/\s+/).filter(Boolean);
+    const lines=[]; let cur='';
+    for(const wd of words){ const t=cur?cur+' '+wd:wd;
+      if(pdf.w(t,size)>maxW&&cur){ lines.push(cur); cur=wd; } else cur=t; }
+    if(cur)lines.push(cur); return lines; };
+  // ---- cover header ----
+  pdf.text(Mg,H-64,'LEDGER',{size:20,bold:true,color:dark});
+  pdf.textR(W-Mg,H-64,'TRADING DIAGNOSTIC',{size:11,color:gray});
+  pdf.text(Mg,H-80,'Hyperliquid trading activity - performance diagnostic snapshot',{size:8.5,color:gray});
+  pdf.line(Mg,H-90,W-Mg,H-90,{w:1.1,color:dark});
+  y=H-108;
+  pdf.text(Mg,y,'View / period:',{size:8,color:gray}); pdf.text(Mg+110,y,model.view+'  -  '+model.periodDesc,{size:8,bold:true}); y-=13;
+  pdf.text(Mg,y,'Generated:',{size:8,color:gray});     pdf.text(Mg+110,y,model.generated+'  ('+model.tz+')',{size:8}); y-=13;
+  if(model.wallets.length){ pdf.text(Mg,y,'Wallets:',{size:8,color:gray});
+    for(const w of model.wallets){ pdf.text(Mg+110,y,(w.label?w.label+'  ':'')+w.address,{size:8}); y-=11; } y-=2; }
+  y-=8;
+  // ---- headline stats, two columns ----
+  ensure(30); pdf.rect(Mg-4,y-4,CW+8,15); pdf.text(Mg,y,'HEADLINE',{size:8,bold:true,color:dark}); y-=18;
+  const colW=CW/2, rows=model.stats||[];
+  for(let i=0;i<rows.length;i+=2){ ensure(13);
+    for(let c=0;c<2;c++){ const r2=rows[i+c]; if(!r2)continue; const x=Mg+c*colW;
+      pdf.text(x,y,r2.k,{size:7.5,color:gray});
+      pdf.textR(x+colW-14,y,r2.v+(r2.sub?'  ('+r2.sub+')':''),{size:7.5,bold:true}); }
+    y-=12; }
+  y-=8;
+  // ---- charts ----
+  for(const ch of (model.charts||[])){
+    const idx=pdf.image(ch.img); if(idx<0)continue;
+    const sz=pdf.imgSize(idx); let w=CW, h=w*sz.h/sz.w;
+    if(h>300){ w=w*300/h; h=300; } // clamp height by shrinking BOTH axes — stretching tall charts distorted them
+    ensure(h+26);
+    pdf.text(Mg,y,ch.title.toUpperCase(),{size:8,bold:true,color:dark}); y-=6;
+    pdf.drawImage(idx,Mg,y-h,w,h); y-=h+16;
+  }
+  // ---- recommendations ----
+  if((model.recs||[]).length){
+    ensure(30); pdf.rect(Mg-4,y-4,CW+8,15); pdf.text(Mg,y,'RECOMMENDATIONS',{size:8,bold:true,color:dark}); y-=18;
+    model.recs.forEach((r2,i)=>{ const lines=wrap(r2,7.5,CW-16); ensure(lines.length*10+6);
+      pdf.text(Mg,y,String(i+1)+'.',{size:7.5,bold:true});
+      for(const ln of lines){ pdf.text(Mg+16,y,ln,{size:7.5}); y-=10; } y-=4; });
+  }
+  const nP=pdf.pages.length;
+  for(let i=0;i<nP;i++){ pdf.usePage(i);
+    pdf.line(Mg,Mg-8,W-Mg,Mg-8);
+    pdf.text(Mg,Mg-19,'In-sample diagnostic of realized trades. Not financial advice.',{size:6.5,color:faint});
+    pdf.textR(W-Mg,Mg-19,'Page '+(i+1)+' of '+nP,{size:6.5,color:faint});
+  }
+  return pdf;
+}
+// Gathers the live Diagnostic tab into a renderDiagPdfDoc model: headline stats from
+// computeStats, every visible chart canvas as a JPEG (composited over the theme background
+// first — canvases are transparent and JPEG has no alpha), and the recommendation texts.
+function exportDiagPdf(){
+  const closed=periodTrades(), allv=periodTradesAll();
+  if(!closed.length){ setStatus('No closed trades in this view to report on.'); return; }
+  const st=computeStats(closed,allv);
+  const pf=st.profitFactor===Infinity?'inf':st.profitFactor.toFixed(2);
+  const stats=[
+    {k:'Net PnL',v:fmtUsd(st.net),sub:st.n+' trades'},
+    {k:'Win rate',v:(st.winRate*100).toFixed(1)+'%',sub:st.wins+'W/'+st.losses+'L'},
+    {k:'Expectancy / trade',v:fmtUsd(st.expectancy)},
+    {k:'Profit factor',v:pf},
+    {k:'Max drawdown',v:fmtUsd(st.maxDD)},
+    {k:'Sharpe (daily, ann.)',v:st.sharpe!=null?st.sharpe.toFixed(2):'-'},
+    {k:'Fees / funding',v:fmtUsd(st.fees)+' / '+fmtUsd(st.fund)},
+    {k:'Avg hold',v:fmtDur(st.avgHold)},
+  ];
+  const bg=getComputedStyle(document.body).backgroundColor||'#101318';
+  const charts=[];
+  document.querySelectorAll('#diagView canvas').forEach(cv=>{
+    if(!cv.width||!cv.height||cv.offsetParent===null)return; // skip hidden cards
+    try{
+      const off=document.createElement('canvas'); off.width=cv.width; off.height=cv.height;
+      const ctx=off.getContext('2d'); ctx.fillStyle=bg; ctx.fillRect(0,0,off.width,off.height);
+      ctx.drawImage(cv,0,0);
+      const card=cv.closest('.diag-card,.card');
+      const h3=card&&card.querySelector('h3,h2');
+      const title=(h3?h3.textContent:'Chart').replace(/\s+/g,' ').trim().slice(0,70);
+      charts.push({title,img:off.toDataURL('image/jpeg',0.82)});
+    }catch(e){}
+  });
+  const recs=!document.querySelector('#diagView .fnd')
+    ?[...document.querySelectorAll('#recsFallback li')].map(li=>li.textContent.replace(/\s+/g,' ').trim()).slice(0,10)
+    :[...document.querySelectorAll('#diagView .fnd')].map(c=>{ const q=sel=>{ const e=c.querySelector(sel); return e?e.textContent.replace(/\s+/g,' ').trim():''; };
+    return q('.fnd-title')+'. '+q('.fnd-body')+' Do this: '+q('.fnd-do').replace(/^Do this\s*/,''); }).slice(0,10);
+  const periodDesc=rangeActive()
+    ? 'custom range'+(customRange.from?' from '+fmtDate(customRange.from):'')+(customRange.to?' to '+fmtDate(customRange.to):'')
+    : (period===0?'all time':'last '+period+' days');
+  const model={ generated:new Date().toISOString().replace(/\.\d{3}Z$/,'Z'),
+    wallets:settings.wallets.map(w=>({label:w.label||'',address:w.address||''})),
+    view, periodDesc, tz:tzLabel(), stats, charts, recs };
+  let pdf; try{ pdf=renderDiagPdfDoc(model); }catch(e){ console.error(e); setErr('Could not build the diagnostic PDF ('+e.message+').'); return; }
+  const blob=new Blob([pdf.outputBytes()],{type:'application/pdf'});
+  dlBlob(blob,'ledger-diagnostic-'+new Date().toISOString().slice(0,10)+'.pdf');
+  setStatus('Diagnostic PDF exported ('+(blob.size/1024/1024).toFixed(1)+' MB, '+charts.length+' chart'+(charts.length===1?'':'s')+'). Run the miner / excursions first if you want their charts included.');
+}
+$('exportTaxPdf').onclick=()=>{
+  const model=taxStatementModel(allTrades,settings.wallets);
+  if(!model){ setStatus('No closed trades to export.'); return; }
+  let doc; try{ doc=renderTaxPdfDoc(model); }catch(e){ console.error(e); setErr('Could not build the PDF ('+e.message+').'); return; }
+  const blob=new Blob([doc],{type:'application/pdf'});
+  dlBlob(blob,'ledger-statement-'+new Date().toISOString().slice(0,10)+'.pdf');
+  setStatus(`Exported statement PDF: ${model.grand.n} realized trades across ${model.years.length} tax year${model.years.length===1?'':'s'}, net ${fmtUsd(model.grand.net)}. Realized PnL only — not tax advice.`);
+};
+$('exportTax').onclick=()=>{
+  // realized (closed) trades across ALL markets/wallets, ignoring view/period filters
+  const rows=allTrades.filter(t=>!t.isOpen&&t.closeTime).sort((a,b)=>a.closeTime-b.closeTime);
+  if(!rows.length){ setStatus('No closed trades to export for tax.'); return; }
+  const q=v=>{ v=v==null?'':String(v);
+    // formula-injection guard: notes/tags open in Excel/Sheets, where a leading = @
+    // (or +/- that isn't a number) executes as a formula; real negatives pass untouched
+    if(/^[=@]/.test(v)||(/^[+-]/.test(v)&&!isFinite(Number(v))))v="'"+v;
+    return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  const isoU=ms=>new Date(ms).toISOString().replace(/\.\d{3}Z$/,'Z'); // ISO-8601 UTC, no milliseconds
+  const dateU=ms=>new Date(ms).toISOString().slice(0,10);            // YYYY-MM-DD (UTC)
+  // ONE rectangular table — no embedded summary or comment lines, so every spreadsheet / tax tool parses it cleanly.
+  const head=['tax_year','close_date','open_utc','close_utc','holding_days','market','symbol','direction','realized_pnl','fees','funding','net','wallet_label','wallet_address'];
+  const lines=[head.join(',')]; const byYear={};
+  for(const t of rows){ const yr=new Date(t.closeTime).getUTCFullYear(); const hold=t.durationMs?(t.durationMs/86400000):0;
+    const addr=t.wallet&&t.wallet.address?t.wallet.address:''; const lbl=t.wallet&&t.wallet.label?t.wallet.label:'';
+    lines.push([yr,dateU(t.closeTime),isoU(t.openTime),isoU(t.closeTime),hold.toFixed(2),t.market,dcoin(t),t.dir,
+      t.pnl.toFixed(2),(-t.fees).toFixed(2),(t.funding||0).toFixed(2),t.net.toFixed(2),lbl,addr].map(q).join(','));
+    const b=byYear[yr]||(byYear[yr]={n:0,net:0}); b.n++; b.net+=t.net; }
+  const blob=new Blob([lines.join('\r\n')],{type:'text/csv'});
+  dlBlob(blob,'ledger-tax-'+new Date().toISOString().slice(0,10)+'.csv');
+  const yrs=Object.keys(byYear).sort();
+  const summary=yrs.map(y=>`${y}: net ${fmtUsd(byYear[y].net)} (${byYear[y].n} trade${byYear[y].n===1?'':'s'})`).join(' · ');
+  setStatus(`Exported ${rows.length} realized trades → ${summary}. Realized PnL only (no unrealized or transferred cost basis) — not tax advice.`);
+};
+$('exportSpotLots').onclick=async()=>{
+  // FIFO lot rows are built straight from the cached raw fills (not the reconstructed
+  // trades), because lots need the individual buy/sell legs, not netted round-trips.
+  if(!settings.wallets.length){ setStatus('Add a wallet and Load all first \u2014 lots are built from the cached fills.'); return; }
+  const q=v=>{ v=v==null?'':String(v);
+    // formula-injection guard: notes/tags open in Excel/Sheets, where a leading = @
+    // (or +/- that isn't a number) executes as a formula; real negatives pass untouched
+    if(/^[=@]/.test(v)||(/^[+-]/.test(v)&&!isFinite(Number(v))))v="'"+v;
+    return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  const dateU=ms=>ms==null?'':new Date(ms).toISOString().slice(0,10);
+  const head=['tax_year','symbol','quantity','date_acquired','date_disposed','proceeds','cost_basis','gain','term','basis_note','wallet_label','wallet_address'];
+  const lines=[head.join(',')];
+  let totalRows=0, unknown=0, openLots=0; const byYear={};
+  for(const w of settings.wallets){
+    let cache=null; try{ cache=await unpackFillCache(await idbGet('flc:'+w.address)); }catch(e){}
+    if(!cache||!Array.isArray(cache.fills))continue;
+    const m=spotFifoLots(cache.fills, spotMaps.nameByCoin);
+    for(const r of m.rows){
+      const yr=new Date(r.disposed).getUTCFullYear();
+      lines.push([yr,r.symbol,r.qty.toFixed(8),dateU(r.acquired),dateU(r.disposed),
+        r.proceeds.toFixed(2),r.basis.toFixed(2),r.gain.toFixed(2),r.term,
+        r.unknownBasis?'UNKNOWN BASIS \u2014 acquired off-exchange (transfer/airdrop); zero-cost assumed':'',
+        w.label||'',w.address].map(q).join(','));
+      const b=byYear[yr]=byYear[yr]||{n:0,gain:0}; b.n++; b.gain+=r.gain;
+      totalRows++; if(r.unknownBasis)unknown++;
+    }
+    openLots+=m.open.length;
+  }
+  if(!totalRows){ setStatus('No spot disposals found in the cached fills. If you have traded spot, hit Load all first (Shift-click for a full re-fetch).'); return; }
+  const blob=new Blob([lines.join('\r\n')],{type:'text/csv'});
+  dlBlob(blob,'ledger-spot-lots-'+new Date().toISOString().slice(0,10)+'.csv');
+  const yrs=Object.keys(byYear).sort();
+  const summary=yrs.map(y=>`${y}: ${byYear[y].n} lot${byYear[y].n===1?'':'s'}, gain ${fmtUsd(byYear[y].gain)}`).join(' \u00b7 ');
+  setStatus(`Exported ${totalRows} FIFO lot rows \u2192 ${summary}${unknown?` \u00b7 \u26a0 ${unknown} row${unknown===1?'':'s'} with UNKNOWN basis (tokens acquired off-exchange, zero cost assumed \u2014 your accountant must resolve these)`:''}${openLots?` \u00b7 ${openLots} lot${openLots===1?'':'s'} still open (not in the file)`:''}. FIFO, from cached fills \u2014 not tax advice.`);
+};
+$('exportJ').onclick=()=>{ const blob=new Blob([JSON.stringify(journal,null,2)],{type:'application/json'});
+  dlBlob(blob,'hl-journal-'+new Date().toISOString().slice(0,10)+'.json'); };
+// Full backup = snapshot (journal + wallets + settings) + per-wallet fill caches.
+// Caches make the backup restorable past the API's 60-page history cap, and are
+// deliberately NOT in the auto-synced linked file (they'd bloat every debounced write).
+// Shared by the download button and the server-backup button.
+async function buildBackupData(){
+  const data={...snapshot(),version:9,fillCaches:{}};
+  for(const w of settings.wallets){ try{ const c=await unpackFillCache(await idbGet('flc:'+w.address));
+    if(validFillCache(w.address,c)) data.fillCaches[w.address]=c; }catch(e){} }
+  try{ const p=await idbGet('excRows'); if(p&&p.v===1&&p.rows)data.excRows=p; }catch(e){}
+  return data;
+}
+$('backupAll').onclick=async()=>{
+  const data=await buildBackupData();
+  const blob=new Blob([JSON.stringify(data)],{type:'application/json'});
+  dlBlob(blob,'ledger-backup-'+new Date().toISOString().slice(0,10)+'.json');
+  const nc=Object.keys(data.fillCaches).length;
+  setStatus('Backup exported ('+(blob.size/1024/1024).toFixed(1)+' MB)'+(nc?' incl. fill cache for '+nc+' wallet'+(nc===1?'':'s')+' — restoring it preserves history beyond the 60-page API cap':'')+'.'); };
+$('backupSrv').onclick=async()=>{
+  if(!SRV.enabled){ setErr('No sync server detected.'); return; }
+  setStatus('Building backup…');
+  try{
+    const data=await buildBackupData();
+    const r=await srvFetch('/api/backup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    if(!r.ok){ const e=await r.json().catch(()=>({})); throw new Error(e.error||('HTTP '+r.status)); }
+    const j=await r.json();
+    setStatus('Backup stored on the server as '+j.name+' (newest 10 kept).');
+  }catch(e){ setErr('Server backup failed: '+e.message); }
+};
+$('clearCandles').onclick=async()=>{
+  const keys=await idbKeys('cnd:');
+  if(!keys.length){ setStatus('Candle cache is empty.'); return; }
+  let bytes=0; for(const k of keys){ try{ const v=await idbGet(k); bytes+=JSON.stringify(v||'').length; }catch(e){} }
+  for(const k of keys)await idbDel(k);
+  _excCache={key:null,rows:null,skippedCoins:null,skippedN:0};
+  setStatus('Cleared '+keys.length+' cached candle set'+(keys.length===1?'':'s')+' ('+(bytes/1024/1024).toFixed(1)+' MB). Candles re-fetch on the next run; saved MAE/MFE measurements are kept.'); };
+
+/* ============================ fee-tier optimizer ============================ */
+// Hyperliquid perp fees step by trailing-14-day volume. This table is the BASE schedule
+// (no staking discounts, no referral rebates) — VERIFY against app.hyperliquid.xyz/fees
+// before trusting the dollar figures; last checked September 2026. Rates are decimals.
+const FEE_TIERS=[
+  {min:0,    taker:0.00045, maker:0.00015},
+  {min:5e6,  taker:0.00040, maker:0.00012},
+  {min:25e6, taker:0.00035, maker:0.00008},
+  {min:100e6,taker:0.00030, maker:0.00004},
+  {min:500e6,taker:0.00028, maker:0},
+  {min:2e9,  taker:0.00026, maker:0},
+];
+// Rolling volume from the per-fill events each reconstructed trade carries ([time,px,sz,k]),
+// so the 14-day window is exact even when a trade spans it. The "what would last month have
+// cost" answers use the recorded maker/taker split. Pure; null when there is no flow at all.
+function feeTierModel(trades, now){
+  now=now||Date.now();
+  const cut14=now-14*86400000, cut30=now-30*86400000;
+  let vol14=0, fees30=0, takerN30=0, makerN30=0, unk30=0;
+  for(const t of (trades||[])){
+    for(const ev of (t.events||[])){ const n=Math.abs((ev[1]||0)*(ev[2]||0)); if(ev[0]>=cut14&&ev[0]<=now)vol14+=n; }
+    const last=t.closeTime||t.openTime;
+    if(last>=cut30&&last<=now){ fees30+=t.fees||0; takerN30+=t.takerNotional||0; makerN30+=t.makerNotional||0; unk30+=t.unkNotional||0; }
+  }
+  if(!(vol14>0)&&!(takerN30+makerN30+unk30>0))return null;
+  let tier=0; for(let i=0;i<FEE_TIERS.length;i++)if(vol14>=FEE_TIERS[i].min)tier=i;
+  const cur=FEE_TIERS[tier], next=FEE_TIERS[tier+1]||null;
+  const takerFee30=takerN30*cur.taker;
+  return {vol14, tier, cur, next, toNext:next?Math.max(0,next.min-vol14):null,
+    takerN30, makerN30, unk30, fees30, takerFee30,
+    saveAsMaker30:takerFee30-takerN30*cur.maker,
+    saveNextTier30:next?takerFee30-takerN30*next.taker:null};
+}
+
+/* ============================ weekly review wizard + lessons ============================ */
+// ISO week key ('week:GGGG-Www') from the tz-toggle calendar date — rides the existing
+// journal plumbing (sync, backup, conflict merge) exactly like the 'day:' entries.
+function isoWeekKey(ms){
+  const p=tzParts(ms);
+  const d=new Date(Date.UTC(p.y,p.mo,p.day));
+  d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7)+3);      // this week's Thursday fixes the ISO year
+  const ft=new Date(Date.UTC(d.getUTCFullYear(),0,4));
+  ft.setUTCDate(ft.getUTCDate()-((ft.getUTCDay()+6)%7)+3);   // first ISO week's Thursday
+  const week=1+Math.round((d-ft)/(7*86400000));
+  return 'week:'+d.getUTCFullYear()+'-W'+String(week).padStart(2,'0');
+}
+function lastCompletedWeekRange(now){
+  now=now||Date.now();
+  const p=tzParts(now);
+  const dow=(new Date(Date.UTC(p.y,p.mo,p.day)).getUTCDay()+6)%7; // Mon=0 on the tz calendar
+  const thisMon=tzMidnight(now-dow*86400000);
+  return {from:tzMidnight(thisMon-7*86400000+43200000), to:thisMon};
+}
+function weeklyReviewSectionHtml(){
+  const {from,to}=lastCompletedWeekRange();
+  const wkKey=isoWeekKey(from+3.5*86400000);
+  const e=journal[wkKey]||{};
+  const closed=allTrades.filter(t=>!t.isOpen&&t.closeTime>=from&&t.closeTime<to&&viewFilter(t));
+  const net=closed.reduce((s,t)=>s+t.net,0);
+  const sorted=[...closed].sort((a,b)=>b.net-a.net);
+  const best=sorted[0], worst=sorted[sorted.length-1];
+  const tl=t=>t?`<b>${esc(dispMarket(dcoin(t)))}</b> ${t.dir} · <span class="${cls(t.net)}">${fmtUsd(t.net)}</span>`:'—';
+  const lessons=Object.keys(journal).filter(k=>k.startsWith('week:')&&journal[k]&&journal[k].lesson)
+    .sort().reverse().map(k=>({k,e:journal[k]}));
+  const lrows=lessons.slice(0,12).map(x=>`<div class="metric-row"><span class="ml">${esc(x.k.slice(5))}</span><span class="mv" style="max-width:70%;text-align:right;white-space:normal;font-weight:400">${esc(x.e.lesson)}</span></div>`).join('');
+  return `<div class="diag-section"><h2>Weekly review <span style="font-size:11px;color:var(--faint);font-weight:400">${esc(wkKey.slice(5))} · last completed week</span></h2>
+    <div class="diag-grid">
+      <div class="diag-card" data-draft-scope="${esc(wkKey)}"><h3 data-tip="Three questions, once a week, about the week that just ended. The digest automates the numbers; this automates the learning — every answer feeds the lessons library.">Guided review — ${closed.length} trade${closed.length===1?'':'s'}, net <span class="${cls(net)}">${fmtUsd(net)}</span></h3>
+        ${lastWeekFocusHtml(from)}
+        <div class="metric-row"><span class="ml">Best trade</span><span class="mv">${tl(best)}</span></div>
+        <div class="metric-row"><span class="ml">Worst trade</span><span class="mv">${tl(worst)}</span></div>
+        <div class="field" style="margin-top:8px"><label>What worked — worth repeating?</label><textarea id="wrRepeat" placeholder="setups, conditions, behaviors that paid">${esc(e.repeat||'')}</textarea></div>
+        <div class="field"><label>What didn't — what changes next week?</label><textarea id="wrChange" placeholder="the leak you'll plug">${esc(e.change||'')}</textarea></div>
+        <div class="field"><label>One-line lesson</label><input type="text" id="wrLesson" maxlength="160" value="${esc(e.lesson||'')}" placeholder="the sentence future-you should re-read"></div>
+        <div><button class="btn ghost" id="wrSave">Save week</button> <span id="wrSaved" style="color:var(--faint);font-size:11px"></span></div>
+      </div>
+      <div class="diag-card"><h3 data-tip="Every one-line lesson from your saved weekly reviews, newest first. Rereading these before a session is the cheapest edge available.">Lessons library</h3>
+        ${lessons.length?`<p class="lead" style="margin-bottom:8px">Latest: <b>${esc(lessons[0].e.lesson)}</b></p>`:''}
+        ${lrows||'<p class="lead">No lessons saved yet. Answer the three questions and the library builds itself.</p>'}
+      </div>
+    </div><div id="coachLetter" style="margin-top:14px"></div></div>`;
+}
+// Last week's focus habit, how often it was kept, and a one-click carry-over to this week.
+function lastWeekFocusHtml(from){
+  if(!coachOn())return '';
+  const e=journal[isoWeekKey(from+3.5*86400000)]; const h=e&&e.focus&&habitById(e.focus); if(!h||h.retired)return '';
+  let p={total:0,kept:0,res:[]}; try{ const ctx=coachContext(); const all=habitProgress(h,ctx,from);
+    const toK=dayKey(lastCompletedWeekRange().to); p.res=all.res.filter(r=>r.key<toK); Object.assign(p,habitSummary(p.res)); }catch(err){}
+  const cur=weekFocus();
+  return `<div class="focus-recap"><div class="focus-k">Last week\u2019s focus</div><div class="focus-sent">${esc(habitSentence(h))}</div>
+    <div class="focus-prog">${p.total?`${dotsHtml(p.res)} kept on ${p.kept} of ${p.total} trading day${p.total===1?'':'s'}`:'No trading days that week.'}
+    ${cur===h.id?'<span class="fnd-adopted" style="margin-left:8px">\u2713 still this week\u2019s focus</span>':`<button class="btn ghost" id="wrKeepFocus" data-id="${esc(h.id)}" style="margin-left:8px">Keep it this week</button>`}</div></div>`;
+}
+function wireWeeklyReview(){
+  const kf=$('wrKeepFocus'); if(kf)kf.onclick=async()=>{ await setWeekFocus(kf.dataset.id); renderReview(); renderCoach(); };
+  const b=$('wrSave'); if(!b)return;
+  b.onclick=()=>{
+    const {from}=lastCompletedWeekRange();
+    const wkKey=isoWeekKey(from+3.5*86400000);
+    const e={repeat:$('wrRepeat').value.trim(), change:$('wrChange').value.trim(), lesson:$('wrLesson').value.trim()};
+    const prev=journal[wkKey]||{};
+    if(!(e.repeat||e.change||e.lesson||prev.focus)) delete journal[wkKey];
+    else journal[wkKey]={...prev,...e,updatedAt:Date.now()}; // keeps that week's focus habit
+    markJEdit(wkKey); Store.set(J_KEY,journal);
+    const s=$('wrSaved'); if(s){ s.textContent='saved'; setTimeout(()=>{ s.textContent=''; },1400); }
+    renderReview(); // the lessons library updates in place
+  };
+}
+
+/* ============================ variance expectations ============================ */
+// From YOUR OWN win rate, frequency, and net distribution (seeded MC): how likely a given
+// loss streak is over the next 200 trades, and what a 1-in-20 bad month looks like at
+// current sizing. Deciding NOW what normal-bad looks like is the single best antidote to
+// abandoning an edge mid-drawdown — live pain then reads as variance, not falsification.
+function varianceModel(closed, opts){
+  opts=opts||{};
+  const dec=(closed||[]).filter(t=>isWin(t.net)||isLoss(t.net));
+  if(!closed||closed.length<20||dec.length<10)return null;
+  const p=dec.filter(t=>isWin(t.net)).length/dec.length;
+  const nets=closed.map(t=>t.net);
+  const times=closed.map(t=>t.closeTime);
+  const span=Math.max(1,(Math.max(...times)-Math.min(...times))/86400000);
+  const perMonth=Math.max(1,Math.round(closed.length/span*30.44));
+  const N=opts.horizon||200, SIM=opts.sims||2000, MAXL=10;
+  _srand(_hashSeed(opts.seed||('variance|'+closed.length+'|'+dec.length)));
+  const hit=new Array(MAXL+1).fill(0);
+  for(let s=0;s<SIM;s++){
+    let run=0,best=0;
+    for(let i=0;i<N;i++){ if(_rng()>=p){ run++; if(run>best)best=run; } else run=0; }
+    for(let L=1;L<=MAXL;L++)if(best>=L)hit[L]++;
+  }
+  const streaks=[]; for(let L=3;L<=MAXL;L++){ const pr=hit[L]/SIM; if(pr>=0.01)streaks.push({len:L,prob:pr}); }
+  const months=[];
+  for(let s=0;s<1000;s++){ let m=0; for(let i=0;i<perMonth;i++)m+=nets[Math.floor(_rng()*nets.length)]; months.push(m); }
+  months.sort((a,b)=>a-b);
+  const q=x=>months[Math.min(months.length-1,Math.floor(x*months.length))];
+  return {p, n:closed.length, perMonth, horizon:N, streaks, monthP5:q(0.05), monthP25:q(0.25), monthMed:q(0.5)};
+}
+
+/* ============================ risk-creep detector ============================ */
+// Median entry notional of the last 20 trades vs the 20 before, compared with how much
+// capital actually changed over the same stretch. Sizing that outruns equity is the
+// classic post-win-streak failure. Pure; needs 40 closed trades.
+function riskCreepModel(closed, acctNow){
+  const chron=(closed||[]).filter(t=>!t.isOpen&&t.closeTime).sort((a,b)=>a.closeTime-b.closeTime);
+  if(chron.length<40)return null;
+  const notional=t=>(t.maxSize||0)*(t.avgEntry||0);
+  const last=chron.slice(-20), prior=chron.slice(-40,-20);
+  const m2=nfMedian(last.map(notional)), m1=nfMedian(prior.map(notional));
+  if(!(m1>0)||!(m2>0))return null;
+  const sizeGrowth=m2/m1-1;
+  let eqGrowth=null;
+  if(acctNow>0){
+    const netSince=last.reduce((s,t)=>s+t.net,0); // realized change over the last-20 stretch
+    const acctThen=acctNow-netSince;
+    if(acctThen>0)eqGrowth=acctNow/acctThen-1;
+  }
+  // creep = sizing clearly up AND clearly ahead of capital (or way up with no equity data)
+  const creep=sizeGrowth>0.25&&(eqGrowth==null?sizeGrowth>0.5:sizeGrowth>eqGrowth+0.25);
+  return {m1, m2, sizeGrowth, eqGrowth, creep};
+}
+
+/* ============================ unplanned-trading guardrail ============================ */
+// The day journal knows whether today has a plan; the tape knows whether you're trading.
+// Pure given the journal object; today = tz-toggle day, opens and closes both count.
+function unplannedToday(trades, journalObj, now){
+  now=now||Date.now();
+  const d0=tzMidnight(now);
+  let n=0;
+  for(const t of (trades||[])){
+    if(t.isOpen){ if(t.openTime>=d0)n++; }
+    else if(t.closeTime>=d0)n++;
+  }
+  const dj=(journalObj||{})[dayJKey(now)];
+  const hasPlan=!!(dj&&(dj.plan||dj.bias||dj.maxLoss>0));
+  return {n, hasPlan, unplanned:n>=2&&!hasPlan};
+}
+
+/* ============================ demo mode ============================ */
+// Seeded synthetic history so a fresh visitor (or a screenshot) sees every panel populated
+// without pasting a wallet: ~5 months of perp round trips across four coins (52% win rate,
+// fat left tail, mild size-follows-wins creep) plus PURR/USDC spot accumulation with a
+// partial take-profit. Deterministic per seed, and it goes through the exact paste-import
+// path — nothing about the pipeline is special-cased. Rows use the exchange fill schema.
+function demoFills(seed, now){
+  now=now||Date.now();
+  _srand(_hashSeed('demo|'+(seed==null?1:seed)));
+  const R=()=>_rng();
+  const DAY=86400000, H=3600000;
+  const coins=[{c:'ETH',px:2600},{c:'BTC',px:64000},{c:'SOL',px:150},{c:'DOGE',px:0.12}];
+  const out=[]; let tid=1;
+  const F=(coin,side,sz,px,time,sp,pnl,fee,crossed)=>out.push({coin,side,
+    sz:String(+sz.toFixed(5)), px:String(+px.toFixed(8)), time:Math.round(time),
+    startPosition:String(+sp.toFixed(5)), closedPnl:String(+pnl.toFixed(2)),
+    fee:String(+fee.toFixed(4)), crossed, dir:'', tid:tid++, oid:9000+tid});
+  let size=1;
+  const free={}; // per-coin next-free time — overlapping same-coin round trips would read as adds
+  for(let day=150;day>=1;day--){
+    const t0=now-day*DAY;
+    const dow=new Date(t0).getUTCDay();
+    if(R()<(dow===0||dow===6?0.75:0.35)){continue;}
+    const nTr=R()<0.3?2:1;
+    for(let i=0;i<nTr;i++){
+      const A=coins[Math.floor(R()*coins.length)];
+      let open=t0+(7+R()*11)*H;
+      if(free[A.c]&&open<free[A.c])open=free[A.c]+H;
+      const hold=(0.4+R()*(R()<0.85?7:30))*H;
+      const close=open+hold;
+      if(close>now-2*H)continue;
+      const px0=A.px*(1+(R()-0.5)*0.24);
+      const long=R()<0.58;
+      const notional=(3000+R()*9000)*size;
+      const sz=notional/px0;
+      const win=R()<0.52;
+      // decisive moves (0.4–4.5% of notional) so the default $50 break-even band doesn't
+      // turn the whole demo into scratches; ~15% of losses draw the fat left tail
+      const gross=win?notional*(0.005+R()*0.04):-notional*(0.004+R()*(R()<0.15?0.09:0.03));
+      const px1=px0+(long?1:-1)*gross/sz;
+      const maker=R()<0.3, feeR=maker?0.00015:0.00045;
+      F(A.c, long?'B':'A', sz, px0, open, 0, 0, notional*feeR, !maker);
+      F(A.c, long?'A':'B', sz, px1, close, long?sz:-sz, gross, Math.abs(px1*sz)*feeR, !maker);
+      free[A.c]=close;
+      size*=win?1.004:0.999;
+    }
+  }
+  // spot: four PURR buys, one partial sale near the end
+  let bag=0, cost=0;
+  for(let k=0;k<4;k++){
+    const px=0.14+R()*0.1, sz=3000+R()*3000;
+    F('PURR/USDC','B',sz,px,now-(130-k*25)*DAY+10*H,bag,0,sz*px*0.0004,true);
+    bag+=sz; cost+=sz*px;
+  }
+  const sellSz=bag*0.4, sellPx=(cost/bag)*1.35;
+  F('PURR/USDC','A',sellSz,sellPx,now-9*DAY+15*H,bag,(sellPx-cost/bag)*sellSz,sellSz*sellPx*0.0004,true);
+  out.sort((a,b)=>a.time-b.time);
+  return out;
+}
+async function loadDemo(){
+  setStatus('Generating sample data…',true);
+  try{ await loadFromPaste(demoFills(1),{offline:true}); }
+  catch(e){ setErr('Demo generation failed: '+e.message); return; }
+  setStatus('Sample data loaded — '+allTrades.length+' synthetic trades across perps and spot. Nothing was fetched or saved to a wallet; add a real address whenever you like.');
+}
+(function(){ for(const id of ['demoBtn','demoBtn2']){ const b=$(id); if(b)b.onclick=loadDemo; } })();
+(function(){ const b=$('helpBtn'); if(b)b.onclick=()=>window.open('help','_blank','noopener'); })();
+// Docs entry points show whenever the page is SERVED (http/https) — the /help and /docs
+// routes come from server.js, so from file:// they'd 404 and stay hidden. Protocol-gated
+// rather than SRV-gated so they're findable even before/without the sync handshake.
+(function(){ if(/^https?:$/.test(location.protocol))
+  for(const id of ['appfoot','helpBtn','helpLink']){ const el=$(id); if(el)el.classList.remove('hide'); } })();
+
+/* ============================ tab-visible tripwire notifications ============================ */
+// The webhook covers the phone; this covers the desktop: when the app sits in a background
+// tab and the tripwire trips, the OS notification fires. Permission is only ever requested
+// on an explicit save gesture (rules / day plan) — never on load.
+const _notified={};
+function maybeNotify(key, title, body){
+  try{
+    if(!('Notification' in window)||Notification.permission!=='granted')return;
+    if(_notified[key])return;
+    _notified[key]=1;
+    new Notification(title,{body, tag:key});
+  }catch(e){}
+}
+function askNotifyPerm(){
+  try{ if(('Notification' in window)&&Notification.permission==='default')Notification.requestPermission().catch(()=>{}); }catch(e){}
+}
+
+/* ============================ PWA ============================ */
+// Installable when served over http(s): the manifest + icons above handle "Add to home screen".
+// Full offline caching needs a companion service worker file at the origin (see self-hosting notes),
+// so registration is best-effort and silently no-ops from file:// or when no sw.js is present.
+let _deferredInstall=null;
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); _deferredInstall=e;
+  const b=$('installPWA'); if(b)b.classList.remove('hide'); });
+(function(){ const b=$('installPWA'); if(b)b.onclick=async()=>{ if(!_deferredInstall)return;
+  _deferredInstall.prompt(); try{ await _deferredInstall.userChoice; }catch(e){} _deferredInstall=null; b.classList.add('hide'); }; })();
+window.addEventListener('appinstalled',()=>{ const b=$('installPWA'); if(b)b.classList.add('hide'); });
+(function(){ try{
+  if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
+    navigator.serviceWorker.register('sw.js').catch(()=>{}); // present only if the app is self-hosted with a sw.js
+  }
+}catch(e){} })();
+
+/* ============================================================================
+   NEW FEATURES BUILD — added as extracted, mostly-pure functions.
+   1 Capital: cash-flow ledger + money-weighted return (XIRR)
+   2 Leverage survivability (liq-proximity from realized MAE)
+   3 Pre-trade position sizer (Project tab)
+   4 Rule engine + live daily-loss tripwire
+   5 Trade-plan capture + adherence scoring
+   6 Wallet / setup leaderboard (Review tab)
+   7 Funding-carry lens
+   Pure fns take their inputs explicitly so the Node harness / server engine can
+   call them without DOM. Render fns touch the DOM and reuse existing primitives.
+   ============================================================================ */
+
+/* ---- small local helpers (nf* prefix to avoid collisions) ---- */
+const nfPct=(x,dp=1)=>x==null||!isFinite(x)?'\u2014':(x*100).toFixed(dp)+'%';
+const nfSignPct=(x,dp=1)=>x==null||!isFinite(x)?'\u2014':((x>=0?'+':'')+(x*100).toFixed(dp)+'%');
+// Day bucket honoring the tz toggle. This used to be a raw UTC day (floor(ms/86400000)),
+// so a US-timezone trader's "daily loss limit" and max-trades/day reset at 4-5pm local
+// while every other day analytic used tzMidnight. One clock now.
+const nfDayKey=ms=>tzMidnight(ms);
+function nfMedian(a){ if(!a||!a.length)return null; const s=[...a].sort((x,y)=>x-y),n=s.length; return n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2; }

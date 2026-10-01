@@ -27,7 +27,7 @@ catch (e) {
 const { createApp } = require(join(here, '..', 'server.js'));
 
 const SLOW = Math.max(1, +process.env.E2E_SLOW || 1);
-const BUDGET_MS = { boot: 3000, demo: 4000, tab: 2500, pulse: 4000, admin: 3000 }; // measured ~0.4–0.6 s locally
+const BUDGET_MS = { boot: 3000, reload: 2000, demo: 4000, tab: 2500, pulse: 4000, admin: 3000, file: 4000 }; // measured ~0.4–0.6 s locally
 const within = (what, ms) => ok(ms <= BUDGET_MS[what] * SLOW, `${what} took ${ms} ms — over its ${BUDGET_MS[what] * SLOW} ms budget`);
 const timings = {};
 
@@ -45,7 +45,7 @@ async function openPage(viewport, opts = {}) {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|frame-ancestors/.test(m.text())) errors.push(m.text()); });
-  await page.route('**/*', r => r.request().url().startsWith(BASE) ? r.continue() : r.abort());
+  await page.route('**/*', r => { const u = r.request().url(); return u.startsWith(BASE) || u.startsWith('file://') ? r.continue() : r.abort(); });
   if (opts.token !== false) await page.addInitScript(tok => { try { localStorage.setItem('srv_token', tok); } catch (e) {} }, TOKEN);
   return { page, errors };
 }
@@ -82,6 +82,18 @@ try {
       eq(errors, [], 'no uncaught errors');
     });
   }
+  await t('a reload gets every app script from the browser cache, inside the budget', async () => {
+    within('reload', await timed('reload', async () => {
+      await page.reload();
+      await page.waitForFunction(() => typeof SRV !== 'undefined' && SRV.enabled && !SRV.badAuth);
+    }));
+    const net = await page.evaluate(() => performance.getEntriesByType('resource')
+      .filter(e => /\/app\/[a-z0-9.-]+\.js/.test(e.name) && e.transferSize > 0).map(e => e.name));
+    eq(net, [], 'hashed app scripts are cached long-term, not refetched');
+    await page.click('#demoBtn');
+    await page.waitForSelector('#tbody tr.trow');
+    eq(errors, [], 'no uncaught errors');
+  });
   let tradeId;
   await t('a journal note saves, syncs to the server, and survives a reload', async () => {
     const row = page.locator('#tbody tr.trow').first();
@@ -101,6 +113,43 @@ try {
     eq(errors, [], 'no uncaught errors');
   });
   await page.close();
+
+  console.log('\nOffline (service worker)');
+  await t('after one visit the app opens offline, scripts and all, from the service worker cache', async () => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    const p = await ctx.newPage(); const errs = [];
+    p.on('pageerror', e => errs.push(e.message));
+    await p.goto(BASE + '/');
+    await p.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller, null, { timeout: 15000 }).catch(() => {});
+    if (!(await p.evaluate(() => !!(navigator.serviceWorker && navigator.serviceWorker.controller)))) await p.reload(); // first visit installs; the reload is controlled
+    await p.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 15000 });
+    await p.reload(); await p.waitForSelector('#demoBtn', { state: 'visible' }); // fetched through the worker: now cached
+    // empty the browser's HTTP cache, so what loads next can only come from the service worker
+    const cdp = await ctx.newCDPSession(p); await cdp.send('Network.clearBrowserCache');
+    await ctx.setOffline(true);
+    await p.reload();
+    await p.waitForSelector('#demoBtn', { state: 'visible' });
+    await p.click('#demoBtn');
+    await p.waitForSelector('#tbody tr.trow');
+    eq(errs, [], 'no uncaught errors offline');
+    await ctx.close();
+  });
+
+  console.log('\nOpened from disk (file://, no server)');
+  await t('ledger.html opened straight from disk loads its app/ scripts and works offline', async () => {
+    const { page: p, errors: errs } = await openPage({ width: 1366, height: 900 }, { token: false });
+    await p.route('file://**', r => r.continue());
+    within('file', await timed('file', async () => {
+      await p.goto('file://' + join(here, '..', 'ledger.html'));
+      await p.waitForSelector('#demoBtn', { state: 'visible' });
+      await p.click('#demoBtn');
+      await p.waitForSelector('#tbody tr.trow');
+    }));
+    ok(await p.evaluate(() => allTrades.length) >= 50);
+    eq(await p.evaluate(() => SRV.enabled), false, 'no server, no sync');
+    eq(errs, [], 'no uncaught errors');
+    await p.close();
+  });
 
   console.log('\nPulse (phone)');
   await t('Pulse opens at phone width with sample data and no errors, inside the budget', async () => {

@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { t, ok, eq, report } from './harness.mjs';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
 const require = createRequire(import.meta.url);
 const SC = require('../social-config.js');
@@ -210,7 +211,7 @@ try {
 console.log('\nAdmin panel');
 t('the Routines tab shows the same default questions the app asks', () => {
   const lit = (src, start) => { const i = src.indexOf(start); ok(i >= 0, start); const j = i + src.slice(i).search(/\n\s*};/); return (0, eval)('(' + src.slice(i + start.length - 1, src.indexOf('}', j + 1) + 1) + ')'); };
-  const app = lit(readFileSync(htmlPath, 'utf8'), 'const PZ_ROUTINES={');
+  const app = lit(readAppSource(htmlPath), 'const PZ_ROUTINES={');
   const admin = lit(readFileSync(new URL('../admin.html', import.meta.url).pathname, 'utf8'), 'const ROUTINES={');
   eq(Object.keys(admin), Object.keys(app));
   for (const k of Object.keys(app)) eq([admin[k].name, admin[k].morning, admin[k].eod], [app[k].name, app[k].morning, app[k].eod], k);

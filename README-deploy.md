@@ -9,7 +9,9 @@ measurements — so they survive reboots, redeploys, and device switches.
 ## Repo layout
 
 ```
-ledger.html     the app (unchanged single file — still works from file:// too)
+ledger.html     the app's page (markup, styles, fonts) — still works from file:// with app/ beside it
+app/            the app's code: chart.umd.js + 14 parts loaded in order (core.js … boot.js)
+app-source.js   the page with app/ inlined — what the analytics engine and the tests read
 server.js       companion server: persistence + read-only analytics API (/api/v1),
                 scheduled refresh, webhook alerts, weekly digests, server backups
 help.html       built-in user guide, served at /help (a Help button appears in the app)
@@ -76,8 +78,8 @@ tests/          test suites (`npm test`; CI runs them on every push)
   Members' encrypted journals (ciphertext only; the server can't read them) live in
   `DATA_DIR/vault/`. Wallet claims need `vendor/eth-sig.js` deployed next to
   `social.js` — it's in the repo, with no install step.
-- **Standalone still works:** the same `ledger.html` opened from disk or any
-  static host simply skips server sync (the boot probe gets no answer) and
+- **Standalone still works:** the same `ledger.html` (with the `app/` folder beside
+  it) opened from disk or any static host simply skips server sync (the boot probe gets no answer) and
   falls back to the linked-data-file / browser storage modes.
 
 ## Environment variables

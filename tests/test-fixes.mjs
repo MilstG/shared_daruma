@@ -10,11 +10,12 @@ import { join } from 'node:path';
 import zlib from 'node:zlib';
 import vm from 'node:vm';
 import { t, ok, eq, near, report, makeExtractor } from './harness.mjs';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
 const require = createRequire(import.meta.url);
 const server = require('../server.js');
 const htmlPath = new URL('../ledger.html', import.meta.url).pathname;
-const html = readFileSync(htmlPath, 'utf8');
+const html = readAppSource(htmlPath);
 const { grabFn } = makeExtractor(html);
 
 const DAY = 86400000;
@@ -22,7 +23,7 @@ const DAY = 86400000;
 console.log('\nDay stepping across DST');
 // runs in a child so TZ can be set: Santiago's DST starts at midnight, so that day begins at 01:00
 const dstScript = `
-  const { readFileSync } = require('fs'); const html = readFileSync(${JSON.stringify(htmlPath)}, 'utf8');
+  const html = require(${JSON.stringify(new URL('../app-source.js', import.meta.url).pathname)}).readAppSource(${JSON.stringify(htmlPath)});
   const grab = n => { const i = html.indexOf('function ' + n + '('); let d = 0, j = html.indexOf('{', i);
     for (;; j++) { if (html[j] === '{') d++; else if (html[j] === '}' && --d === 0) break; } return (0, eval)('(' + html.slice(i, j + 1) + ')'); };
   globalThis.settings = { tz: 'local' };

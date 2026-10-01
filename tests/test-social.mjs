@@ -7,12 +7,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import vm from 'node:vm';
 import { t, ok, eq, near, report, makeExtractor } from './harness.mjs';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
 const require = createRequire(import.meta.url);
 const S = require('../social.js');
 const server = require('../server.js');
 const htmlPath = new URL('../ledger.html', import.meta.url).pathname;
-const html = readFileSync(htmlPath, 'utf8');
+const html = readAppSource(htmlPath);
 const { grabFn } = makeExtractor(html);
 
 console.log('\nValidation');

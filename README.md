@@ -5,10 +5,11 @@ turns it into something you can actually learn from: a journal, a statistics
 engine that knows the difference between edge and noise, a pattern miner with
 proper multiple-comparison correction, and candle-based stop/exit analysis.
 
-It is one HTML file. No build step, no framework, no account, no tracking. All
-computation happens in your browser, talking directly to Hyperliquid's public
-API. Open `ledger.html` from disk and it works; serve it with the included
-companion server and your journal persists across devices and reboots.
+It is one HTML page and its scripts in `app/`. No build step, no framework, no
+account, no tracking. All computation happens in your browser, talking directly to
+Hyperliquid's public API. Open `ledger.html` from disk (keep the `app/` folder next
+to it) and it works; serve it with the included companion server and your journal
+persists across devices and reboots.
 
 ---
 
@@ -38,7 +39,9 @@ companion server and your journal persists across devices and reboots.
 ## Getting started
 
 1. Open `ledger.html` in a modern browser (Chrome/Edge recommended — the
-   optional link-a-data-file feature needs the File System Access API).
+   optional link-a-data-file feature needs the File System Access API). Copy or
+   download it together with the `app/` folder beside it; the page loads its code
+   from there.
 2. Paste a wallet address (0x…) and click **Add**. Add as many as you like;
    each can be labeled.
 3. Click **Load all**. Ledger pages through your fill history, reconstructs
@@ -341,7 +344,7 @@ leaks; trades and notes are added only when the member switches that on (and
 the owner allows it). Wallet addresses are scrubbed. Messages aren't stored on
 the server, only the daily count.
 
-Pulse is the same `ledger.html`: the page switches on its own path (or `?pulse`
+Pulse is the same page (`ledger.html` and its `app/` scripts): it switches on its own path (or `?pulse`
 when opened from disk), so every loader, cache and sync path is shared. It
 always shows the coach and progress layers, whatever the full app's coach-mode
 switch says. It has its own install metadata (`/pulse.webmanifest`), so "Add to
@@ -1122,24 +1125,37 @@ real HTTP (auth, revision conflicts, restart survival, the capital endpoint,
 digest lifecycle, server-held backups, the metrics endpoint). The suites extract functions **directly from `ledger.html`**, so
 they test exactly what ships — there is no second copy of the code to drift
 out of sync. `tests/test-budget.mjs` adds a size budget: the build fails if
-`ledger.html` grows past 1750 KB raw or 680 KB gzipped (what visitors download),
-so growth is a choice rather than a drift.
+app (`ledger.html` plus every `app/` script, what a visitor downloads) grows past
+its raw or gzipped budget, so growth is a choice rather than a drift.
 
 **Browser smoke tests** (`e2e/run.mjs`) run the real app in Chromium against the
 real server, fully offline (every request off the local server is blocked). They
 boot the full journal with a token, load sample data, open every tab, save a journal
-note and check it reaches the server and survives a reload, open Pulse at phone
-width (no sideways scroll), and open every admin tab, failing on any uncaught page
-error. Each step also has a time budget (boot 3 s, sample data 4 s, a tab switch
+note and check it reaches the server and survives a reload, check that a reload
+takes every `app/` script from cache, open the app offline through the service
+worker, open `ledger.html` straight from disk, open Pulse at phone width (no
+sideways scroll), and open every admin tab, failing on any uncaught page error. Each step also has a time budget (boot 3 s, sample data 4 s, a tab switch
 2.5 s; `E2E_SLOW=2` doubles them for slow machines, and CI uses that). Playwright is
 deliberately not a dependency of the repo: install it with
 `npm i --no-save playwright && npx playwright install chromium`. CI runs these in a
 separate job on every push.
 
-Architecture in one paragraph: everything is in `ledger.html` — UI, engine,
-and a Web Worker built at runtime from a Blob of the page's own function
-sources (single-file constraint, no separate worker script). Chart.js and fonts
-are inlined; the CSP allows network access to `api.hyperliquid.xyz` and the
-app's own origin only. Heavy compute (reconstruction, permutation mining) runs
+Architecture in one paragraph: `ledger.html` holds the markup, styles and fonts,
+and loads its code from `app/` as ordinary scripts, in order: vendored Chart.js,
+then fourteen parts from `core.js` (storage, sync, the exchange API) and
+`engine.js` (reconstruction and analytics) through the views and Pulse to
+`boot.js`, which runs last. The parts share one global scope, the way the single
+inline script did. **The one rule:** code that runs *while a part loads* (as
+opposed to inside a function called later) may only use names from that part or
+an earlier one. The browser smoke tests catch a break, since every part loads on
+every page. No build step: edit a part, reload. The server sends each part
+gzipped under a content hash (`app/engine.js?v=…`), so browsers keep them for a
+year and still pick up a deploy at once, and the offline cache stores them. The
+server's analytics engine and the test suites read the app through
+`app-source.js`, which returns the page with every part inlined in load order,
+so they still extract the exact code that ships. The Web Worker is built at
+runtime from a Blob of the app's own function sources (no separate worker
+script). The CSP allows network access to `api.hyperliquid.xyz` and the app's own
+origin only. Heavy compute (reconstruction, permutation mining) runs
 in the worker with a synchronous fallback; fills and candles cache in
 IndexedDB with incremental refresh.

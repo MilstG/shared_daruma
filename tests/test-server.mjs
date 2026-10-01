@@ -9,9 +9,10 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const here = dirname(fileURLToPath(import.meta.url));
 const { createApp } = require(join(here, '..', 'server.js'));
-const html = readFileSync(join(here, '..', 'ledger.html'), 'utf8');
+const html = readAppSource(join(here, '..', 'ledger.html'));
 
 import { t, ok, eq, near, report } from './harness.mjs';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
 function listen(app){ return new Promise(res => app.listen(0, () => res('http://127.0.0.1:' + app.address().port))); }
 function makeServer(auth){
@@ -33,7 +34,23 @@ await t('serves the app HTML at / with no-cache and nosniff', async () => {
   ok((r.headers.get('content-type') || '').includes('text/html'));
   ok((r.headers.get('x-content-type-options') || '') === 'nosniff');
   const body = await r.text();
-  ok(body.includes('initServerSync'), 'served file is the sync-capable app');
+  const srcs = [...body.matchAll(/<script src="(app\/[a-z0-9.-]+\.js\?v=[0-9a-f]{12})"><\/script>/g)].map(m => m[1]);
+  ok(srcs.length >= 10, 'the page loads its app/ scripts by content hash: ' + srcs.length);
+  let code = '';
+  for (const s of srcs) {
+    const a = await fetch(base + '/' + s);
+    eq(a.status, 200, s);
+    ok(/immutable/.test(a.headers.get('cache-control') || ''), 'hashed scripts are cached long-term');
+    code += await a.text();
+  }
+  ok(code.includes('initServerSync'), 'the served app is the sync-capable one');
+});
+await t('app scripts: only real app/*.js files are served; a stale hash revalidates; 304 on a known ETag', async () => {
+  for (const p of ['/app/../server.js', '/app/.hidden.js', '/app/nope.js', '/app/core.json', '/app/%2e%2e%2fserver.js'])
+    eq((await fetch(base + p)).status, 404, p);
+  const r = await fetch(base + '/app/core.js?v=000000000000');
+  eq(r.status, 200); eq(r.headers.get('cache-control'), 'no-cache');
+  eq((await fetch(base + '/app/core.js', { headers: { 'If-None-Match': r.headers.get('etag') } })).status, 304);
 });
 await t('health is unauthenticated and reports auth mode + app sync capability', async () => {
   const r = await fetch(base + '/api/health');

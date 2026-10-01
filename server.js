@@ -74,6 +74,7 @@ const { createSocial } = require('./social.js');
 const Push = require('./push.js');
 const Wear = require('./wear.js');
 const Offsite = require('./offsite.js');
+const { readAppSource, appScripts } = require('./app-source.js');
 
 const MAX_BODY = 25 * 1024 * 1024; // journal snapshots are small; this is generous headroom
 
@@ -146,8 +147,8 @@ function grabFn(html, name) {
 // reads those mutable knobs. Don't add settings/_be/_oneR dependence to fetch-path functions.
 function buildEngine(htmlPath, fetchImpl) {
   let html;
-  try { html = fs.readFileSync(htmlPath, 'utf8'); }
-  catch (e) { return { ok: false, missing: ['<ledger.html unreadable: ' + e.message + '>'] }; }
+  try { html = readAppSource(htmlPath); } // the page with its app/*.js inlined: the whole app's source
+  catch (e) { return { ok: false, missing: ['<ledger.html or its app/ scripts unreadable: ' + e.message + '>'] }; }
   const missing = [], blocks = [];
   for (const n of ENGINE_FNS) {
     const b = grabFn(html, n);
@@ -535,7 +536,7 @@ function createApp(opts) {
   // the API would work while the app silently ran browser-only (no token prompt, no sync).
   // Detected once at boot, surfaced in the logs and on /api/health.
   let appSyncCapable = false;
-  try { appSyncCapable = fs.readFileSync(htmlPath, 'utf8').includes('initServerSync'); } catch (e) {}
+  try { appSyncCapable = readAppSource(htmlPath).includes('initServerSync'); } catch (e) {}
 
   // Analytics engine — extracted from the same HTML this server serves.
   const engine = buildEngine(htmlPath, opts.fetchImpl || ((...a) => globalThis.fetch(...a)));
@@ -789,6 +790,24 @@ function createApp(opts) {
 
   /* ---------------- trades: rebuilt from caches, memoized ---------------- */
   let _appHtml = null; // the app HTML, its gzip and ETag, rebuilt when the file changes
+  // The app's code lives in app/*.js next to the HTML. Each file is served gzipped with a content
+  // hash; the HTML is sent with every <script src="app/x.js"> rewritten to "app/x.js?v=<hash>", so
+  // browsers can keep those for a year and still pick up a new deploy at once.
+  const appDir = path.join(path.dirname(htmlPath), 'app');
+  const _appFiles = new Map(); // name -> {mtime, size, buf, gz, hash}
+  const appFile = (name) => {
+    if (!/^[a-z0-9.-]+\.js$/.test(name) || name.startsWith('.')) return null; // no paths, no dotfiles
+    const file = path.join(appDir, name);
+    let st; try { st = fs.statSync(file); } catch (e) { return null; }
+    if (!st.isFile()) return null;
+    let f = _appFiles.get(name);
+    if (!f || f.mtime !== st.mtimeMs || f.size !== st.size) {
+      const buf = fs.readFileSync(file);
+      f = { mtime: st.mtimeMs, size: st.size, buf, gz: zlib.gzipSync(buf, { level: 9 }), hash: crypto.createHash('sha1').update(buf).digest('hex').slice(0, 12) };
+      _appFiles.set(name, f);
+    }
+    return f;
+  };
   let _tradesMemo = null; // {sig, trades, builtAt}
   function cacheSig() {
     const parts = [];
@@ -2094,13 +2113,18 @@ function createApp(opts) {
       return res.end();
     }
     if (req.method === 'GET' && (url === '/' || url === '/index.html' || url === '/ledger.html' || url === '/pulse')) {
-      // the app is ~1.4 MB: sent gzipped (~0.55 MB), and a browser that already has this
+      // the page is ~0.3 MB (its code is in app/*.js, below): sent gzipped, and a browser that already has this
       // version gets a 304 instead of the whole file on every open
       let st; try { st = fs.statSync(htmlPath); } catch (e) { return json(res, 500, { error: 'app HTML not found on server' }); }
-      if (!_appHtml || _appHtml.mtime !== st.mtimeMs || _appHtml.size !== st.size) {
-        try { const buf = fs.readFileSync(htmlPath);
-          _appHtml = { mtime: st.mtimeMs, size: st.size, buf, gz: zlib.gzipSync(buf, { level: 9 }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 20) + '"' };
-        } catch (e) { return json(res, 500, { error: 'app HTML not found on server' }); }
+      let raw; try { raw = _appHtml && _appHtml.mtime === st.mtimeMs && _appHtml.size === st.size ? _appHtml.raw : fs.readFileSync(htmlPath, 'utf8'); }
+      catch (e) { return json(res, 500, { error: 'app HTML not found on server' }); }
+      const names = appScripts(raw).map(r => r.slice(4)), files = names.map(appFile);
+      if (files.some(f => !f)) return json(res, 500, { error: 'app scripts missing on server: deploy the app/ folder next to ledger.html' });
+      const sig = st.mtimeMs + ':' + st.size + ':' + files.map(f => f.hash).join(',');
+      if (!_appHtml || _appHtml.sig !== sig) {
+        let i = 0;
+        const buf = Buffer.from(raw.replace(/<script src="app\/([a-z0-9.-]+\.js)"><\/script>/g, (m, n) => '<script src="app/' + n + '?v=' + files[i++].hash + '"></script>'));
+        _appHtml = { mtime: st.mtimeMs, size: st.size, raw, sig, buf, gz: zlib.gzipSync(buf, { level: 9 }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 20) + '"' };
       }
       const head = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'ETag': _appHtml.etag, 'Vary': 'Accept-Encoding',
         'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
@@ -2108,6 +2132,19 @@ function createApp(opts) {
       const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
       res.writeHead(200, gz ? Object.assign(head, { 'Content-Encoding': 'gzip' }) : head);
       return res.end(gz ? _appHtml.gz : _appHtml.buf);
+    }
+
+    // --- the app's scripts (app/*.js): long-lived when asked for by their current hash
+    if (req.method === 'GET' && url.startsWith('/app/')) {
+      const f = appFile(url.slice(5));
+      if (!f) return json(res, 404, { error: 'not found' });
+      const etag = '"' + f.hash + '"';
+      const head = { 'Content-Type': 'text/javascript; charset=utf-8', 'ETag': etag, 'Vary': 'Accept-Encoding', 'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': query.v === f.hash ? 'public, max-age=31536000, immutable' : 'no-cache' };
+      if ((req.headers['if-none-match'] || '') === etag) { res.writeHead(304, head); return res.end(); }
+      const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+      res.writeHead(200, gz ? Object.assign(head, { 'Content-Encoding': 'gzip' }) : head);
+      return res.end(gz ? f.gz : f.buf);
     }
 
     // --- built-in documentation: /help (user guide) and /docs (technical reference).
@@ -2138,14 +2175,18 @@ function createApp(opts) {
       return res.end(
         // Only the app shell is cached: '/' and '/pulse' serve the same file, so either one
         // refreshes the copy; other pages (help, docs) pass through and never overwrite it.
-        "const C='ledger-v3',S=['/','/index.html','/ledger.html','/pulse'];" +
+        "const C='ledger-v4',S=['/','/index.html','/ledger.html','/pulse'];" +
         "self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.add('/')))});" +
         "self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C).map(x=>caches.delete(x)))).then(()=>clients.claim()))});" +
         "self.addEventListener('fetch',e=>{const u=new URL(e.request.url);" +
         "if(u.origin!==location.origin||u.pathname.startsWith('/api/')||e.request.method!=='GET')return;" +
         "if(S.includes(u.pathname)){const net=fetch(e.request).then(r=>{if(r.ok){const cp=r.clone();caches.open(C).then(c=>c.put('/',cp));}return r;});" +
         "e.waitUntil(net.then(()=>{},()=>{}));" +
-        "e.respondWith(caches.match('/').then(c=>c||net).catch(()=>net));}});" +
+        "e.respondWith(caches.match('/').then(c=>c||net).catch(()=>net));return;}" +
+        // the app's scripts: versioned URLs never change, so cache first; a new version replaces the old copy
+        "if(u.pathname.startsWith('/app/')){e.respondWith(caches.open(C).then(c=>c.match(e.request).then(hit=>hit||fetch(e.request).then(r=>{" +
+        "if(r.ok&&u.search){const cp=r.clone();c.keys().then(ks=>Promise.all(ks.filter(k=>{const x=new URL(k.url);return x.pathname===u.pathname&&x.search!==u.search}).map(k=>c.delete(k)))).then(()=>c.put(e.request,cp));}" +
+        "return r;}))));}});" +
         // reminders, nudges and mentor notes arrive as web push; a tap opens (or focuses) Pulse there
         "self.addEventListener('push',e=>{let d={};try{d=e.data?e.data.json():{}}catch(x){d={body:e.data&&e.data.text()}}" +
         "e.waitUntil(self.registration.showNotification(d.title||'Pulse',{body:d.body||'',tag:d.tag||'pulse',data:{url:d.url||'/pulse'},icon:'/pulse-icon.svg',badge:'/pulse-icon.svg'}))});" +

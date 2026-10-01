@@ -3,8 +3,9 @@
 // eval them in a stubbed sandbox, assert behaviour. Run: node test-newfeatures.mjs
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
-const html = readFileSync(new URL('../ledger.html', import.meta.url), 'utf8');
+const html = readAppSource(new URL('../ledger.html', import.meta.url).pathname);
 function grab(name){
   for (const hdr of ['async function '+name+'(', 'function '+name+'(']) {
     const i = html.indexOf(hdr); if (i < 0) continue;

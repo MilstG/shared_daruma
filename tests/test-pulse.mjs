@@ -6,11 +6,12 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import { t, ok, eq, report, makeExtractor } from './harness.mjs';
+import { readAppSource } from '../app-source.js'; // ledger.html with its app/*.js inlined, in load order
 
 const require = createRequire(import.meta.url);
 const server = require('../server.js');
 const htmlPath = new URL('../ledger.html', import.meta.url).pathname;
-const html = readFileSync(htmlPath, 'utf8');
+const html = readAppSource(htmlPath);
 const { grabFn } = makeExtractor(html);
 const grabConst = (name) => { const i = html.indexOf('const ' + name + '='); if (i < 0) throw new Error(name);
   return html.slice(i, html.indexOf(';\n', i) + 1); };
