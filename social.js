@@ -450,6 +450,9 @@ function createSocial(opts) {
   // October 2026: the coach goes to 3 messages a day for everyone (admins unlimited). Applied once,
   // so a different number the owner sets later in the Coach tab stays.
   if (!S.migrations.coach3) { S.config.coach.daily = 3; S.config.coach.dailyUnlocked = 3; S.migrations.coach3 = Date.now(); }
+  // October 2026: duels unlock at level 3 instead of being free. Once, for servers that took the
+  // first default (level 1); a level the owner sets afterwards in Features stays.
+  if (!S.migrations.duels3) { if (S.config.modules.duels === 1) S.config.modules.duels = 3; S.migrations.duels3 = Date.now(); }
   if (!S.partners || typeof S.partners !== 'object') S.partners = {};
   if (!S.comments || typeof S.comments !== 'object') S.comments = {};
   if (!S.leagues || typeof S.leagues !== 'object') { // one league for everyone until the owner makes more

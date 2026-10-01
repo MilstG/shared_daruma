@@ -94,6 +94,11 @@ const inbox = async key => (await call('/inbox', { key })).d.items.map(x => x.te
 let ann, bob, cat, dee;
 try {
   ann = await join_('ann'); bob = await join_('bob'); cat = await join_('cat'); dee = await join_('dee');
+  await t('duels unlock at level 3 by default', async () => {
+    eq((await call('/config')).d.modules.duels, 3);
+    const r = await send(ann, 'bob'); eq(r.status, 403); ok(/level 3/.test(r.d.error));
+    await call('/admin/config', { method: 'PUT', owner: true, body: { modules: { duels: 1 } } }); // the rest of this file plays at level 1
+  });
   let id;
   await t('a challenge reaches the other side; verified duels need verification switched on', async () => {
     ok(/Verify my discipline/.test((await send(ann, 'bob', { verified: true })).d.error));
@@ -209,6 +214,17 @@ try {
     eq((await call('/admin/duels', { owner: true })).d.config.maxOpen, 1);
     eq((await mine(ann)).record, { w: 1, l: 1, d: 0 }, 'won the first, lost the staked one');
     const c = (await call('/config')).d; eq([c.modules.duels, c.duels.on], [1, true]);
+  });
+  await t('a server still on the first default (free duels) moves to level 3 once; a level the owner set stays', async () => {
+    await new Promise(r => app.close(r));
+    const { DatabaseSync } = await import('node:sqlite'), db = new DatabaseSync(join(dataDir, 'pulse.db'));
+    const kv = k => JSON.parse(db.prepare('SELECT v FROM kv WHERE k = ?').get(k).v), put = (k, v) => db.prepare('UPDATE kv SET v = ? WHERE k = ?').run(JSON.stringify(v), k);
+    const mg = kv('migrations'); ok(mg.duels3, 'the update is recorded'); delete mg.duels3; put('migrations', mg); db.close(); // as before this release
+    app = mk(); B = await listen();
+    eq((await call('/config')).d.modules.duels, 3, 'level 1 from the old default becomes 3');
+    await call('/admin/config', { method: 'PUT', owner: true, body: { modules: { duels: 1 } } });
+    await new Promise(r => app.close(r)); app = mk(); B = await listen();
+    eq((await call('/config')).d.modules.duels, 1, 'the owner’s choice survives a restart');
   });
 } finally { await new Promise(r => app.close(r)); }
 

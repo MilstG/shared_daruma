@@ -1030,8 +1030,9 @@ follow and your leagues' members). Money is never staked; XP can be.
     the limits and XP stakes (on or off, the most per duel, the most of a
     member's XP at stake).
   - See every duel running or waiting, and cancel one without a result.
-  - "Duels" is a Pulse feature, free at level 1; set a level under Features to
-    make it an unlock (the server enforces it too).
+  - "Duels" is a Pulse feature that unlocks at level 3 (1,200 XP on the default
+    curve), so members have a record to compete on and XP to stake. Change the
+    level under Features (1 makes it free); the server enforces it too.
 
 ### Traders like you
 
