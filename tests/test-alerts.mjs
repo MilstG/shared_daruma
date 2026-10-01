@@ -143,6 +143,12 @@ t('disk alerts under the free floor or past the used percentage, not otherwise',
   eq(healthAlertsFrom({ failStreak: 0, disk: { free: 50 * 1024 * 1024, total: 0.2 * GB } }, HC).length, 1, 'under the MB floor');
   eq(healthAlertsFrom({ failStreak: 0, disk: null }, HC).length, 0, 'no statfs = no disk alert');
 });
+t('a failing off-site backup alerts; a healthy or absent one does not', () => {
+  const a = healthAlertsFrom({ failStreak: 0, offsite: { lastError: 'bucket PUT HTTP 403 AccessDenied', lastOkAt: 0 } }, HC);
+  eq(a.length, 1); eq(a[0].key, 'health:offsite'); ok(a[0].text.includes('AccessDenied') && a[0].text.includes('no off-site copy has succeeded'), a[0].text);
+  eq(healthAlertsFrom({ failStreak: 0, offsite: { lastError: null, lastOkAt: 1 } }, HC).length, 0);
+  eq(healthAlertsFrom({ failStreak: 0, offsite: null }, HC).length, 0);
+});
 
 await t('scheduled refresh: 3 failed runs post one health alert, a recovery posts once, and meta reports it', async () => {
   const here = dirname(fileURLToPath(import.meta.url));

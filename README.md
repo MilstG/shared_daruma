@@ -903,6 +903,13 @@ All opt-in via environment variables, still zero dependencies:
   channels (repeated at most daily while it lasts), plus a one-line "working
   again" when the refresh recovers. `GET /api/v1/meta` reports the current
   failure streak, last error, and disk free/total.
+- `OFFSITE_*` — **encrypted off-site backups** to any S3-compatible bucket
+  (R2, S3, B2, MinIO). Every server backup is mirrored, and a bundle of
+  `DATA_DIR` ships daily. Both are encrypted with AES-256-GCM from the
+  `OFFSITE_KEY` passphrase before upload, and the newest `OFFSITE_KEEP` (30) of
+  each are kept. A failed upload is sent to the delivery channels. Restore
+  with `node offsite.js restore <key> <dir>`. Setup and the full variable list
+  are in [README-deploy.md](README-deploy.md#off-site-backups).
 - `NUDGE_HOUR=18` — an **end-of-day journaling nudge**: once a day, on the
   first scheduled run after that hour — in the app's own day-journal time zone
   (UTC when the app's clock toggle is on UTC, otherwise the browser zone the app

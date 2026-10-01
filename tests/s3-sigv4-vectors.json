@@ -1,0 +1,34 @@
+[
+ {
+  "method": "PUT",
+  "url": "https://acct.r2.cloudflarestorage.com/my-bucket/ledger/backup/2026-10-01T12-00-00-000Z.json.gz.enc",
+  "body": "hello world",
+  "region": "auto",
+  "extra": {
+   "content-type": "application/octet-stream"
+  },
+  "amzDate": "20261001T122233Z",
+  "sha": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+  "auth": "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20261001/auto/s3/aws4_request, SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date, Signature=c5c2783e669b7ea28ede873ba0a417c777cf811b72f6b866cef582524f70254f"
+ },
+ {
+  "method": "GET",
+  "url": "https://s3.eu-west-1.amazonaws.com/my-bucket?continuation-token=abc%2Bdef%3D%3D&list-type=2&prefix=ledger%2Fdata%2F",
+  "body": "",
+  "region": "eu-west-1",
+  "extra": {},
+  "amzDate": "20261001T122233Z",
+  "sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "auth": "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20261001/eu-west-1/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=bf6aaaba0870a35d8aedb16e932df1ea6eb9193f3a655263ca66c3436d8264cc"
+ },
+ {
+  "method": "DELETE",
+  "url": "http://127.0.0.1:9000/base/b/a%20key%20with%20spaces%2B%28x%29.enc",
+  "body": "",
+  "region": "us-east-1",
+  "extra": {},
+  "amzDate": "20261001T122233Z",
+  "sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "auth": "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20261001/us-east-1/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=c36f654c86bbfc3509d680de774a42bb36577fb52966ab44ffba448746158d2e"
+ }
+]

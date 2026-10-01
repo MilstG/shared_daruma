@@ -20,6 +20,7 @@ badges.html     a member's public badge page, served at /b/<name>
 vendor/         eth-sig.js — signature recovery for wallet claims (bundled, no install)
 tech.html       technical reference, served at /docs
 package.json    start script + node version (one optional dependency, the Anthropic SDK, used only with COACH_AI)
+offsite.js      encrypted off-site backups to any S3-compatible bucket, plus the restore CLI
 tests/          test suites (`npm test`; CI runs them on every push)
 ```
 
@@ -100,6 +101,15 @@ tests/          test suites (`npm test`; CI runs them on every push)
 | `HEALTH_FAIL_RUNS`     | `3`                              | Tell the alert channels when this many scheduled refreshes fail in a row (and once more when it recovers). `0` = off |
 | `HEALTH_DISK_PCT`      | `90`                             | Tell the alert channels when the data volume is this % full (`0` = off) … |
 | `HEALTH_DISK_MIN_MB`   | `100`                            | … or has less than this many MB free (`0` = off). Health alerts repeat at most once a day; needs `REFRESH_INTERVAL_MIN` |
+| `OFFSITE_ENDPOINT`     | *(unset = off)*                  | S3-compatible endpoint for **encrypted off-site backups**, e.g. `https://<account>.r2.cloudflarestorage.com` (R2), `https://s3.eu-west-1.amazonaws.com` (AWS), `https://s3.us-west-004.backblazeb2.com` (B2) |
+| `OFFSITE_BUCKET`       | *(unset)*                        | Bucket name (create it first; path-style addressing) |
+| `OFFSITE_ACCESS_KEY_ID` / `OFFSITE_SECRET_ACCESS_KEY` | *(unset)* | An API key that can put, get, list and delete objects in that bucket — scope it to that one bucket |
+| `OFFSITE_KEY`          | *(unset)*                        | Encryption passphrase. Everything is encrypted before upload; **lose this and the off-site copies are unreadable** — keep it somewhere other than Railway |
+| `OFFSITE_REGION`       | `auto` on R2, else `us-east-1`   | Signing region |
+| `OFFSITE_PREFIX`       | `ledger/`                        | Key prefix inside the bucket |
+| `OFFSITE_KEEP`         | `30`                             | Newest N of each kind (backups, data bundles) kept in the bucket |
+| `OFFSITE_EVERY_H`      | `24`                             | How often a full `DATA_DIR` bundle ships |
+| `OFFSITE_MAX_MB`       | `256`                            | Bundle size cap: past it, attachments are left out first, then fill caches; the journal always ships |
 | `TELEGRAM_BOT_TOKEN`   | *(unset)*                        | Telegram bot (from @BotFather): alert/digest delivery + read-only commands |
 | `TELEGRAM_CHAT_ID`     | *(unset)*                        | Comma-separated chat-id allowlist; other chats are ignored silently |
 | `NUDGE_HOUR`           | *(unset = off)*                  | End-of-day journaling nudge after this hour (0–23); needs `REFRESH_INTERVAL_MIN` and a delivery channel |
@@ -115,6 +125,32 @@ tests/          test suites (`npm test`; CI runs them on every push)
 
 The analytics API, scheduled refresh, alerts, and weekly digests are documented
 in the main [README](README.md).
+
+## Off-site backups
+
+The server's backups sit on the same volume as the data they protect. Set the five
+required `OFFSITE_*` variables (endpoint, bucket, the two keys, and the passphrase) and
+the server also sends an **encrypted** copy to an S3-compatible bucket: every
+"Backup to server" as it's made, and a bundle of `DATA_DIR` (journal, members, vault,
+caches, attachments, reports) once a day. Encryption is AES-256-GCM, keyed from
+`OFFSITE_KEY`, done before anything leaves the server, so the storage provider only
+ever holds ciphertext. If only some of the variables are set, the boot log warns and
+off-site backups stay off. A failed upload goes to the alert channels.
+`GET /api/v1/meta` shows the last success or error, and `POST /api/offsite/run` (full
+token) ships a bundle right away, which is a good way to test the setup.
+
+Cloudflare R2 is the cheapest fit: no egress fees, and 10 GB is free. Create a bucket and
+an R2 API token with *Object Read & Write* on that one bucket.
+
+To restore, run this on any machine with Node and the same `OFFSITE_*` variables:
+
+```bash
+node offsite.js list                                  # what's in the bucket
+node offsite.js restore ledger/data/<stamp>.bundle.gz.enc ./data   # unpack a DATA_DIR
+node offsite.js get ledger/backup/<stamp>.json.gz.enc backup.json  # an app backup → "Open existing"
+```
+
+Point `DATA_DIR` at the restored folder (or copy it onto a fresh volume) and start the server.
 
 ## Verifying persistence
 

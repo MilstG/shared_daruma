@@ -30,6 +30,8 @@
 //   GET/PUT/DELETE /api/att/<key>                                     (AUTH_TOKEN)
 //   POST /api/backup , GET /api/backups , GET /api/backups/<name>     (AUTH_TOKEN)
 //        server-held copies of the app's "Backup all" JSON (gzipped, newest 10 kept)
+//   POST /api/offsite/run                                             (AUTH_TOKEN)
+//        ship an encrypted DATA_DIR bundle to the OFFSITE_* bucket now (see offsite.js)
 //   GET  /help , GET /docs  -> built-in user guide / technical reference (no auth)
 //
 // Analytics API v1 (read-only; GET = AUTH_TOKEN or READ_TOKEN, POST = AUTH_TOKEN):
@@ -71,6 +73,7 @@ const vm = require('vm');
 const { createSocial } = require('./social.js');
 const Push = require('./push.js');
 const Wear = require('./wear.js');
+const Offsite = require('./offsite.js');
 
 const MAX_BODY = 25 * 1024 * 1024; // journal snapshots are small; this is generous headroom
 
@@ -290,7 +293,7 @@ function zonedDayHour(ms, tz) {
   return { day: parts.year + '-' + parts.month + '-' + parts.day, hour: parseInt(parts.hour, 10) % 24 };
 }
 // Ops health (the server watching itself), pure like alertsFrom:
-//   h   = {failStreak, lastError, lastOkAt, now, disk: {free, total} | null}
+//   h   = {failStreak, lastError, lastOkAt, now, disk: {free, total} | null, offsite: {lastError, lastOkAt} | null}
 //   cfg = {failRuns, diskMinBytes, diskPct}
 // -> [{key, text}]. A refresh that keeps failing means every alert, nudge and bot answer is
 // quietly working from stale data; a full volume means journal saves start failing. Both
@@ -314,6 +317,10 @@ function healthAlertsFrom(h, cfg) {
       out.push({ key: 'health:disk', text: '⚠️ Data volume nearly full: ' + mb(d.free) + ' free of ' + mb(d.total)
         + ' (' + Math.round(used * 100) + '% used). Journal saves fail once it fills — delete old backups/attachments or grow the volume.' });
   }
+  const o = h.offsite;
+  if (o && o.lastError)
+    out.push({ key: 'health:offsite', text: '⚠️ Off-site backup failed: ' + String(o.lastError).slice(0, 160)
+      + (o.lastOkAt ? '' : ' — no off-site copy has succeeded since this server started') + '. Check the OFFSITE_* settings.' });
   return out;
 }
 // (state, cfg) -> {key, text} | null. Fires once per day, at or after cfg.hour, only when
@@ -503,6 +510,19 @@ function createApp(opts) {
   fs.mkdirSync(backupsDir, { recursive: true });
   const BACKUP_RE = /^backup-[A-Za-z0-9-]+\.json\.gz$/;
   const BACKUP_KEEP = 10;
+  // Encrypted off-site copies (offsite.js): every server backup as it's made, plus a daily
+  // DATA_DIR bundle, to any S3-compatible bucket. Off unless all OFFSITE_* vars are set.
+  const offsiteCfg = opts.offsite ? Object.assign({ enabled: true, partial: false, missing: [] }, opts.offsite) : Offsite.configFrom(process.env);
+  const offsite = offsiteCfg.enabled ? Offsite.createOffsite({ cfg: offsiteCfg, dataDir, fetchImpl: opts.offsiteFetch,
+    maxBundleBytes: (parseFloat(process.env.OFFSITE_MAX_MB) || 256) * 1024 * 1024 }) : null;
+  const offsiteEveryMs = (opts.offsiteEveryH || parseFloat(process.env.OFFSITE_EVERY_H) || 24) * 3600e3;
+  const offsiteStateFile = path.join(dataDir, 'offsite-state.json');
+  if (offsite) { // the daily cadence survives redeploys: a redeploy shouldn't mean another full upload
+    try { const st = JSON.parse(fs.readFileSync(offsiteStateFile, 'utf8')); if (isFinite(st.lastDataAt)) offsite.state.lastDataAt = st.lastDataAt; } catch (e) {}
+  }
+  const saveOffsiteState = () => { try { const tmp = offsiteStateFile + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify({ lastDataAt: offsite.state.lastDataAt, lastOkAt: offsite.state.lastOkAt, lastError: offsite.state.lastError }));
+    fs.renameSync(tmp, offsiteStateFile); } catch (e) {} };
   const ATT_KEY = /^[A-Za-z0-9_-]{1,200}$/;   // base64url of the trade id
   const MAX_ATT = 8 * 1024 * 1024;            // per-trade attachment set
   const MAX_ATT_TOTAL = 512 * 1024 * 1024;    // whole store — Railway volumes are small, and per-key caps alone allow unbounded growth
@@ -1262,7 +1282,7 @@ function createApp(opts) {
   }
   async function maybeHealthAlert() {
     const now = Date.now();
-    const due = healthAlertsFrom({ ..._health, now, disk: diskOf() }, healthCfg);
+    const due = healthAlertsFrom({ ..._health, now, disk: diskOf(), offsite: offsite && offsite.state }, healthCfg);
     for (const a of due) if (!_alertSent.has(a.key)) console.warn('[ledger] health: ' + a.text);
     // the refresh is healthy again after we told someone it wasn't: close the loop
     if (!due.some(a => a.key === 'health:refresh') && _alertSent.has('health:refresh') && _health.failStreak === 0) {
@@ -1385,6 +1405,19 @@ function createApp(opts) {
       + (nudgeCfg.hour != null && hasDelivery() ? '; journaling nudge after ' + nudgeCfg.hour + ':00 (app time zone, fallback ' + nudgeCfg.tz + ')' : ''));
   } else if (nudgeCfg.hour != null) {
     console.warn('[ledger] NUDGE_HOUR is set but REFRESH_INTERVAL_MIN is not — the nudge runs on the refresh schedule, so it will never fire');
+  }
+
+  // off-site: checked hourly, ships a DATA_DIR bundle once per OFFSITE_EVERY_H (24); runs on
+  // its own timer so it works without REFRESH_INTERVAL_MIN, and reports through health
+  if (offsite && opts.offsiteTimer !== false) {
+    const tick = () => offsite.maybeShipData(offsiteEveryMs).then(r => { if (r !== null || offsite.state.lastError) saveOffsiteState(); })
+      .then(() => maybeHealthAlert()).catch(() => {});
+    const ot = setInterval(tick, 3600e3); if (ot.unref) ot.unref();
+    const ob = setTimeout(tick, 120000); if (ob.unref) ob.unref();
+    console.log('[ledger] off-site backups on: ' + offsiteCfg.endpoint.replace(/^https?:\/\//, '') + '/' + offsiteCfg.bucket + '/' + offsiteCfg.prefix
+      + ' — every server backup, plus a DATA_DIR bundle every ' + Math.round(offsiteEveryMs / 3600e3) + ' h (newest ' + offsiteCfg.keep + ' of each kept)');
+  } else if (offsiteCfg.partial) {
+    console.warn('[ledger] WARNING: off-site backups are half-configured and OFF — missing ' + offsiteCfg.missing.join(', '));
   }
 
   /* ---------------- v1 endpoint docs (served at GET /api/v1) ---------------- */
@@ -1551,6 +1584,8 @@ function createApp(opts) {
           refresh: { running: _refreshing, lastAt: _lastRefreshAt || null,
             failStreak: _health.failStreak, lastError: _health.lastError, lastOkAt: _health.lastOkAt || null },
           disk: diskOf(),
+          offsite: offsite ? { enabled: true, lastOkAt: offsite.state.lastOkAt || null, lastError: offsite.state.lastError,
+            lastKey: offsite.state.lastKey, lastBundleAt: offsite.state.lastDataAt || null } : { enabled: false },
         });
       }
 
@@ -2235,8 +2270,21 @@ function createApp(opts) {
           const files = fs.readdirSync(backupsDir).filter(f => BACKUP_RE.test(f)).sort();
           while (files.length > BACKUP_KEEP) fs.unlinkSync(path.join(backupsDir, files.shift()));
         } catch (e) {}
-        return json(res, 200, { ok: true, name });
+        if (offsite) { // the off-site copy uploads in the background: the local copy is already safe
+          let gz = null; try { gz = fs.readFileSync(path.join(backupsDir, name)); } catch (e) {}
+          if (gz) offsite.shipBackup(gz).then(saveOffsiteState, saveOffsiteState);
+        }
+        return json(res, 200, { ok: true, name, offsite: offsite ? 'uploading' : 'off' });
       });
+      return;
+    }
+    if (url === '/api/offsite/run') {
+      if (!authOk(req)) return json(res, 401, { error: 'unauthorized' });
+      if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
+      if (!offsite) return json(res, 409, { error: offsiteCfg.partial ? 'off-site backups half-configured — missing ' + offsiteCfg.missing.join(', ') : 'off-site backups are off (set the OFFSITE_* variables)' });
+      if (offsite.state.busy) return json(res, 409, { error: 'an upload is already running' });
+      offsite.shipData().then(r => { saveOffsiteState(); json(res, 200, { ok: true, ...r }); },
+        e => { saveOffsiteState(); json(res, 502, { error: e.message }); });
       return;
     }
     if (url === '/api/backups') {
@@ -2420,6 +2468,7 @@ function createApp(opts) {
   server._gatherAlertState = gatherAlertState; // exposed for tests
   server._buildBotState = buildBotState;       // exposed for tests — the loop itself needs a live bot
   server._runScheduledRefresh = runScheduledRefresh; // exposed for tests — the schedule itself is a timer
+  server._offsite = offsite; // exposed for tests
   server._social = social; // tests reach the coach allowance through this
   server.pushTick = () => social.tick(); // the reminder pass, for tests and one-off runs
   return server;
