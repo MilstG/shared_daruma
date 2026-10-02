@@ -60,6 +60,7 @@ t('no money anywhere in the model: no money fields, no dollar signs, no P&L', ()
   const money = keys.filter(k => /net|pnl|usd|profit|money|amount|dollar|balance|equity|value|stake|fee|return|ret$|dd$/i.test(k));
   eq(money, [], 'money fields');
   ok(!strs.some(s => /\$|profit|p&l|pnl|in the black/i.test(s)), strs.join(' | '));
-  eq(Object.keys(m).sort(), ['badges', 'cleanDays', 'discipline', 'duel', 'from', 'level', 'streak', 'to', 'tradingDays']);
+  // traderAge: years of process (verified only), never money
+  eq(Object.keys(m).sort(), ['badges', 'cleanDays', 'discipline', 'duel', 'from', 'level', 'streak', 'to', 'traderAge', 'tradingDays']);
 });
 report('week card');

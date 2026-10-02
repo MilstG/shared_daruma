@@ -114,6 +114,8 @@ const ENGINE_FNS = [
   'isJournaled',
   // Pulse's Discipline score, recomputed from a member's public fills to verify the social boards
   'nfMedian', 'addedToLoser', 'pzBehaviorDays',
+  // Trader Age (app/features/trader-age.js): members' verified Trader Age, from their wallets' fills
+  'taConf', 'taYears', 'traderAge', 'isoWeekOfKey',
   // live tilt alerts, pushed to those members while Pulse is closed (same patterns and rules as the app)
   'pzTiltAlerts', 'pzTiltAlertPick',
   // the anonymous summary a seed wallet contributes to the "traders like you" benchmarks
@@ -129,6 +131,7 @@ const _std=a=>{ if(a.length<2)return 0; const m=_avg(a); return Math.sqrt(a.redu
 const dayKey=ms=>{ const p=tzParts(ms); return p.y+'-'+String(p.mo+1).padStart(2,'0')+'-'+String(p.day).padStart(2,'0'); };
 const tzHour=ms=>tzParts(ms).h;
 const tzDow=ms=>tzParts(ms).dow;
+const TA=taConf();
 const isWin =n=>n>_be;
 const isLoss=n=>n<-_be;
 const isBE  =n=>Math.abs(n)<=_be;
@@ -2240,25 +2243,31 @@ function createApp(opts) {
     if (!behaviorInflight.has(k)) behaviorInflight.set(k, behaviorForOnce(addr, tz).finally(() => behaviorInflight.delete(k)));
     return behaviorInflight.get(k);
   };
-  // the wallet's last 50 days of fills, topped up from the exchange and kept gzipped per address
+  // the wallet's last 6 months of fills (Trader Age reads that far back), topped up from the exchange
+  // and kept gzipped per address
+  const SOCIAL_FILLS_DAYS = 183;
   const fillsInflight = new Map(), fillsFresh = new Map();
   // a wallet read in the last two minutes isn't fetched again (a burst of posts or board refreshes shares it)
   const recentFills = addr => { const a = String(addr).toLowerCase(), f = fillsFresh.get(a);
     if (f && (opts.now || Date.now)() - f.at < 120000) return Promise.resolve(f.fills);
-    if (!fillsInflight.has(a)) fillsInflight.set(a, recentFillsOnce(a).then(fills => { if (fills) { fillsFresh.set(a, { at: (opts.now || Date.now)(), fills });
-        if (fillsFresh.size > 500) fillsFresh.delete(fillsFresh.keys().next().value); } return fills; }).finally(() => fillsInflight.delete(a)));
+    if (!fillsInflight.has(a)) fillsInflight.set(a, recentFillsOnce(a).then(fills => { if (fills) { const t = (opts.now || Date.now)();
+        // 6 months of fills per wallet is big: keep only the ones read in the last two minutes, and at most 50
+        for (const [k, v] of fillsFresh) if (t - v.at >= 120000) fillsFresh.delete(k);
+        fillsFresh.set(a, { at: t, fills }); if (fillsFresh.size > 50) fillsFresh.delete(fillsFresh.keys().next().value); } return fills; }).finally(() => fillsInflight.delete(a)));
     return fillsInflight.get(a); };
   const recentFillsOnce = async (a) => {
     if (!engine.ok || !/^0x[0-9a-f]{40}$/.test(a)) return null;
-    const f = path.join(socialFillsDir, a + '.json.gz'), since = (opts.now || Date.now)() - 50 * 86400000;
-    const c = gzRead(f), have = c && c.v === 1 && Array.isArray(c.fills) ? c.fills : [];
+    const f = path.join(socialFillsDir, a + '.json.gz'), since = (opts.now || Date.now)() - SOCIAL_FILLS_DAYS * 86400000;
+    // a cache from before the window grew (v1 held 50 days) or that starts later than the window is
+    // read again from the start of the window once, so the older months get filled in
+    const c = gzRead(f), whole = c && c.v === 2 && Array.isArray(c.fills) && c.from <= since + 86400000, have = whole ? c.fills : [];
     // the cache is saved sorted, so its last fill is the newest (no spread over huge arrays)
     const from = have.length ? Math.max(since, have[have.length - 1].time + 1) : since;
     const r = await E.fetchAllFills(a, from);
     const seen = new Set(), fills = [];
     for (const x of have.concat(r.fills || [])) { if (!x || x.time < since) continue; const k = x.tid + ':' + x.time; if (seen.has(k)) continue; seen.add(k); fills.push(x); }
     fills.sort((x, y) => x.time - y.time);
-    gzWrite(f, { v: 1, fills, savedAt: Date.now() });
+    gzWrite(f, { v: 2, from: whole ? Math.min(c.from, since) : since, fills, savedAt: Date.now() });
     return fills;
   };
   // A trade a member posts is "on chain" when their wallet has fills that match it: a buy for a long's
@@ -2281,7 +2290,7 @@ function createApp(opts) {
     const closed = trades.filter(t => !t.isOpen && t.closeTime);
     // days on the member's own clock (the zone their app reports), so both sides score the same days
     return E.pzBehaviorDays(closed, { dayOf: zoneDay(tz || 'UTC'), isLoss: n => n < -1 /* same fixed rule as the app's PZ_LOSS */ })
-      .map(d => ({ k: d.key, s: d.score, n: d.n }));
+      .map(d => ({ k: d.key, s: d.score, n: d.n, f: Object.keys(d.flags || {}).filter(x => d.flags[x] > 0) }));
   };
   // Live tilt alerts for a member with Pulse closed: the same cached fills, today's patterns by the
   // app's pzTiltAlerts on the member's clock, and its once-a-day / 30-minute rules (state: theirs, kept
@@ -2362,7 +2371,7 @@ function createApp(opts) {
   const twofa = Admin2fa.create({ dataDir, json, now: opts.now, lockedOut, noteBadToken, lockMs, sessionMs: opts.admin2faSessionMs,
     mode: opts.admin2fa !== undefined ? opts.admin2fa : process.env.ADMIN_2FA, reset: opts.admin2faReset !== undefined ? opts.admin2faReset : process.env.ADMIN_2FA_RESET });
   const social = createSocial({ dataDir, json, authOk, adminConfigured: !!auth, fetchImpl: opts.fetchImpl, now: opts.now, push: pushCfg, onDrop: id => wearRef.forget && wearRef.forget('m:' + id),
-    behaviorFor, tiltFor: opts.tiltFor || tiltFor, peerSummaryFor: opts.peerSummaryFor || peerSummaryFor, seedDelay: opts.seedDelay, tradeCheck: opts.tradeCheck || tradeCheck, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled, twofa });
+    behaviorFor, traderAge: engine.ok ? E.traderAge : null, tiltFor: opts.tiltFor || tiltFor, peerSummaryFor: opts.peerSummaryFor || peerSummaryFor, seedDelay: opts.seedDelay, tradeCheck: opts.tradeCheck || tradeCheck, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled, twofa });
   // readiness from WHOOP, Oura or Apple Health: the owner (AUTH_TOKEN) or a member (Pulse key)
   const wearOrigin = req => { if (publicOrigins[0]) { try { return new URL(publicOrigins[0]).origin; } catch (e) {} }
     return hostVetted && req.headers.host ? 'https://' + req.headers.host : opts.wearOrigin || null; };
