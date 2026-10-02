@@ -595,7 +595,7 @@ function pzInstallCardHtml(){
   try{ if(localStorage.getItem('pz_install_x'))return ''; }catch(e){}
   const ios=pzIsIOS(); if(!_deferredInstall&&!ios)return '';
   return `<section class="pz-banner pz-span" aria-label="Install Pulse"><span class="pz-ico" style="width:40px;height:40px;background:var(--pz-tint-good);color:var(--pz-good)">${pzI('plus',20)}</span>
-    <div style="flex:1;min-width:0"><b style="font-size:14px">Put Pulse on your home screen</b><p class="pz-fine" style="margin-top:2px">${ios?'Tap <b>Share</b> in Safari’s toolbar, then <b>Add to Home Screen</b>. It opens full screen, like an app.':'It opens full screen, like an app, and can remind you to check in.'}</p></div>
+    <div style="flex:1;min-width:0"><b style="font-size:14px">Put Pulse on your home screen</b><p class="pz-fine" style="margin-top:2px">${ios?'Tap <b>Share</b> in Safari’s toolbar, then <b>Add to Home Screen</b>. It opens full screen, like an app.':'It opens full screen, like an app, and can remind you to prep.'}</p></div>
     ${ios?'':'<button type="button" class="pz-ghost pz-sm" id="pzInstallCard" style="flex:0 0 auto">Install</button>'}<button type="button" class="pz-chip icon" id="pzInstallX" aria-label="Not now" style="flex:0 0 auto;height:36px;padding:0 10px">${pzI('x',16)}</button></section>`;
 }
 function pzTodayHtml(D){
@@ -841,7 +841,7 @@ function pzTrendsHtml(D){
     deep=`<section class="pz-card pz-span" data-sec="stats:insights" style="display:flex;flex-direction:column;gap:12px"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px"><span><span class="pz-lbl" style="color:${PZ_COL.good}">Discipline</span><br><span class="pz-sub" style="font-size:13px">${bc.unit}</span></span><span style="display:flex;align-items:baseline;gap:6px"><span class="pz-sub" style="font-size:12px">avg</span><span style="font-family:var(--pz-num);font-size:40px;font-weight:600;line-height:1">${ts.avg==null?'—':ts.avg}</span></span></div>${chart}</section>
       <div class="pz-col pz-span" data-sec="stats:insights"><section style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Does discipline pay?</b><div class="pz-grid2">${tile('good','Days 70+',ts.hi)}${tile('hot','Under 70',ts.lo)}</div>
         ${pzLongViewHtml()}
-        ${rl?`<div class="pz-tile cool"><span class="pz-t" style="font-size:13px;line-height:1.45">On days you checked in at readiness 70+, your discipline averaged <b>${rl.hi}</b>; on the other days you prepped, <b>${rl.lo}</b>.</span></div>`:''}</section></div>
+        ${rl?`<div class="pz-tile cool"><span class="pz-t" style="font-size:13px;line-height:1.45">On days you prepped at readiness 70+, your discipline averaged <b>${rl.hi}</b>; on the other days you prepped, <b>${rl.lo}</b>.</span></div>`:''}</section></div>
       <div class="pz-col pz-span" data-sec="stats:findings"><section class="pz-card" style="padding:6px 16px"><b style="display:block;font-size:15px;margin:10px 0 2px">What moves your results <span class="pz-sub" style="font-weight:400;font-size:12px">· ${R==='all'?'all time':'last '+R+' days'}${RF.n?', '+RF.n+' trades':''}</span></b>${RF.few?`<p class="pz-sub" style="font-size:13px;padding:6px 0 12px">Needs at least 10 closed trades in this range to find patterns — there ${RF.n===1?'is':'are'} ${RF.n}. Try a longer range.</p>`:''}${F.length?F.map(f=>`<div class="pz-ins"><span class="pz-tag ${esc(f.tone)}">${esc(TONE_TAG[f.tone]||'Note')}</span><span><b>${esc(f.title)}</b><span>${esc(pzPlain(f.action||f.body||''))}</span>${f.evidence?`<details class="pz-why"><summary>Why</summary><span>${esc(f.evidence)} · ${esc(confWords(f.conf))}</span></details>`:''}</span></div>`).join(''):(RF.few?'':'<p class="pz-sub" style="padding:12px 0">Patterns show up here after about five closed trades.</p>')}</section></div>`; }
   if(!lock)deep=pzHabitLinkHtml(g,ctx,fromKey)+deep; // the plain answer first, then the detail
   deep+=pzPeersHtml(g)+pzImproversHtml(g);
@@ -1127,7 +1127,7 @@ function pzCheckinHtml(D){
       ${pzRulesFormHtml(ck)}
       <div class="pz-field"><label for="pzPlan">One-line plan</label><textarea id="pzPlan" rows="2" placeholder="Only A+ setups at the open. Stop after two losses.">${esc(ck.plan)}</textarea></div>
       <button type="button" class="pz-cta" id="pzCkSave">Lock in my day <span class="pz-xpb">+${pzXpCfg().checkin+(opened?Math.round(pzXpCfg().plan/2):pzXpCfg().plan)} XP</span></button>
-      <p class="pz-fine">All optional — your dials work without it. On a trading day your prep earns +${pzXpCfg().checkin} XP; a plan or loss limit saved before your first trade earns +${pzXpCfg().plan}${opened?' (you’ve already traded today, so a plan now earns half — tomorrow, check in first)':''}.</p>
+      <p class="pz-fine">All optional — your dials work without it. On a trading day your prep earns +${pzXpCfg().checkin} XP; a plan or loss limit saved before your first trade earns +${pzXpCfg().plan}${opened?' (you’ve already traded today, so a plan now earns half — tomorrow, prep first)':''}.</p>
     </div>
   </div>`;
 }
@@ -1377,7 +1377,7 @@ function wirePulse(){
       case 'pzCexGo': return pzCexGo();
       case 'pzCexX': pzS.cex=null; pzRender(); return;
       case 'pzDemo': pzS.demo=true; pzNote('Generating sample data…','busy'); await loadDemo();
-        if(allTrades.length)pzNote('These are sample trades. Discipline is read from the fills; check in and journal a few to earn XP and watch the rest fill in.');
+        if(allTrades.length)pzNote('These are sample trades. Discipline is read from the fills; prep and journal a few to earn XP and watch the rest fill in.');
         return;
       case 'pzRefresh': pzS.sheet=false; pzRender(); pzNote('Refreshing…','busy'); return loadAll();
       case 'pzCkSave': return pzSaveCheckin();

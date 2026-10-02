@@ -229,7 +229,7 @@ The coach card shows your level and shields and the week's challenge.
 everything added with the coach, habits and progress work: the coach card,
 habits and the weekly focus, wins, progress (XP, streaks, challenges,
 achievements, cards), the process score and the calendar's Process view, the
-journal inbox, the session check-in (and its pattern-miner conditions), rules
+journal inbox, prep (and its pattern-miner conditions), rules
 from findings (+ rule buttons, their rules-card section, the live warning chip),
 the missing-stop chip, live-plan badges and rows, the replay chart's plan lines,
 the question after each trade, the AI letter and the server's end-of-day nudge.
@@ -899,7 +899,7 @@ with the trade journal, and **clicking any day in the calendar heatmap**
 opens that date's entry (the heatmap scales its colors over the visible
 window and toggles between 26 and 52 weeks).
 
-The day journal also carries a **session check-in** — sleep, stress and
+The day journal also carries a **Prep** score — sleep, stress and
 focus, 1–5. Once about ten trades carry one, the pattern miner tests them as
 conditions (`slept badly`, `high stress`, `low focus`, `sharp focus`), so how
 you felt becomes a measured edge or leak. Day entries record `plannedAt`, when

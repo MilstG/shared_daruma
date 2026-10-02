@@ -420,7 +420,7 @@ function pzXpToGo(need,g){ const s=pzLevelStart(need); return isFinite(s)?Math.m
 function pzLockedHtml(title, need, g){
   const L=g.level;
   return `${pzHead('Unlocks at level '+need,title)}<section class="pz-card pz-lock">${pzRing(L.level,L.into/L.need,PZ_COL.xp,{size:96,cap:'Level'})}
-    <div class="pz-big">${esc(title)} unlocks at level ${need}</div><p class="pz-sub">${pzXpToGo(need,g)} XP comes from process: check in, plan before your first trade, keep your stops and journal every trade.</p>
+    <div class="pz-big">${esc(title)} unlocks at level ${need}</div><p class="pz-sub">${pzXpToGo(need,g)} XP comes from process: prep, plan before your first trade, keep your stops and journal every trade.</p>
     <a class="pz-cta" href="#checkin" style="max-width:320px">Earn XP: do today’s prep</a></section>`;
 }
 // ---- posts: trades members took or plan to take, with the thesis, pictures and comments ----

@@ -912,6 +912,26 @@ function createApp(opts) {
     }
     return f;
   };
+  // The app page with its script URLs versioned, and the version itself: a hash of the HTML and every
+  // script, written into the page (<meta name="app-version">) and answered by /api/version, so an app
+  // that's only ever resumed (an installed phone app) can tell a deploy has happened and reload.
+  const appShell = () => {
+    let st; try { st = fs.statSync(htmlPath); } catch (e) { return { error: 'app HTML not found on server' }; }
+    let raw; try { raw = _appHtml && _appHtml.mtime === st.mtimeMs && _appHtml.size === st.size ? _appHtml.raw : fs.readFileSync(htmlPath, 'utf8'); }
+    catch (e) { return { error: 'app HTML not found on server' }; }
+    const names = appScripts(raw).map(r => r.slice(4)), files = names.map(appFile);
+    if (files.some(f => !f)) return { error: 'app scripts missing on server: deploy the app/ folder next to ledger.html' };
+    const rawHash = _appHtml && _appHtml.raw === raw ? _appHtml.rawHash : crypto.createHash('sha1').update(raw).digest('hex');
+    const sig = rawHash + ':' + files.map(f => f.hash).join(',');
+    if (!_appHtml || _appHtml.sig !== sig) {
+      let i = 0;
+      const ver = crypto.createHash('sha1').update(sig).digest('hex').slice(0, 12);
+      const buf = Buffer.from(raw.replace(/<script src="app\/([a-z0-9.-]+\.js)"><\/script>/g, (m, n) => '<script src="app/' + n + '?v=' + files[i++].hash + '"></script>')
+        .replace('<head>', '<head>\n<meta name="app-version" content="' + ver + '">'));
+      _appHtml = { mtime: st.mtimeMs, size: st.size, raw, rawHash, sig, ver, buf, gz: zlib.gzipSync(buf, { level: 9 }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 20) + '"' };
+    }
+    return _appHtml;
+  };
   let _tradesMemo = null; // {sig, trades, builtAt}
   function cacheSig() {
     const parts = [];
@@ -2373,17 +2393,8 @@ function createApp(opts) {
     if (req.method === 'GET' && (url === '/' || url === '/index.html' || url === '/ledger.html' || url === '/pulse')) {
       // the page is ~0.3 MB (its code is in app/*.js, below): sent gzipped, and a browser that already has this
       // version gets a 304 instead of the whole file on every open
-      let st; try { st = fs.statSync(htmlPath); } catch (e) { return json(res, 500, { error: 'app HTML not found on server' }); }
-      let raw; try { raw = _appHtml && _appHtml.mtime === st.mtimeMs && _appHtml.size === st.size ? _appHtml.raw : fs.readFileSync(htmlPath, 'utf8'); }
-      catch (e) { return json(res, 500, { error: 'app HTML not found on server' }); }
-      const names = appScripts(raw).map(r => r.slice(4)), files = names.map(appFile);
-      if (files.some(f => !f)) return json(res, 500, { error: 'app scripts missing on server: deploy the app/ folder next to ledger.html' });
-      const sig = st.mtimeMs + ':' + st.size + ':' + files.map(f => f.hash).join(',');
-      if (!_appHtml || _appHtml.sig !== sig) {
-        let i = 0;
-        const buf = Buffer.from(raw.replace(/<script src="app\/([a-z0-9.-]+\.js)"><\/script>/g, (m, n) => '<script src="app/' + n + '?v=' + files[i++].hash + '"></script>'));
-        _appHtml = { mtime: st.mtimeMs, size: st.size, raw, sig, buf, gz: zlib.gzipSync(buf, { level: 9 }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 20) + '"' };
-      }
+      const shell = appShell();
+      if (shell.error) return json(res, 500, { error: shell.error });
       const head = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'ETag': _appHtml.etag, 'Vary': 'Accept-Encoding',
         'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
         // no other site can frame the journal (a <meta> tag can't say this; browsers ignore it there)
@@ -2429,9 +2440,9 @@ function createApp(opts) {
     // --- PWA assets (tiny, inline — no extra files to deploy) ---
     if (req.method === 'GET' && url === '/sw.js') {
       res.writeHead(200, { 'Content-Type': 'text/javascript', 'Cache-Control': 'no-cache' });
-      // the app shell opens from the cached copy at once and is refreshed in the background
-      // (the server answers 304 when nothing changed), so a new version shows on the next open;
-      // with no cached copy yet it comes from the network. API and exchange calls are never intercepted.
+      // the app shell comes from the network first (the server answers 304 when nothing changed), so a
+      // deploy shows on the very next open; offline, or with no answer within 3 s, the cached copy opens
+      // instead. API and exchange calls are never intercepted.
       return res.end(
         // Only the app shell is cached: '/' and '/pulse' serve the same file, so either one
         // refreshes the copy; other pages (help, docs) pass through and never overwrite it.
@@ -2442,7 +2453,10 @@ function createApp(opts) {
         "if(u.origin!==location.origin||u.pathname.startsWith('/api/')||e.request.method!=='GET')return;" +
         "if(S.includes(u.pathname)){const net=fetch(e.request).then(r=>{if(r.ok){const cp=r.clone();caches.open(C).then(c=>c.put('/',cp));}return r;});" +
         "e.waitUntil(net.then(()=>{},()=>{}));" +
-        "e.respondWith(caches.match('/').then(c=>c||net).catch(()=>net));return;}" +
+        "const old=()=>caches.match('/');" +
+        "e.respondWith(new Promise(done=>{let sent=false;const send=r=>{if(!sent&&r){sent=true;done(r);}};" +
+        "const t=setTimeout(()=>old().then(send),3000);" +
+        "net.then(r=>r.ok?(clearTimeout(t),send(r)):old().then(c=>{clearTimeout(t);send(c||r);}),()=>old().then(c=>{clearTimeout(t);send(c||Response.error());}));}));return;}" +
         // the app's scripts: versioned URLs never change, so cache first; a new version replaces the old copy
         "if(u.pathname.startsWith('/app/')){e.respondWith(caches.open(C).then(c=>c.match(e.request).then(hit=>hit||fetch(e.request).then(r=>{" +
         "if(r.ok&&u.search){const cp=r.clone();c.keys().then(ks=>Promise.all(ks.filter(k=>{const x=new URL(k.url);return x.pathname===u.pathname&&x.search!==u.search}).map(k=>c.delete(k)))).then(()=>c.put(e.request,cp));}" +
@@ -2541,6 +2555,12 @@ function createApp(opts) {
     // --- health: unauthenticated so the client can detect the server and whether auth is on ---
     if (req.method === 'GET' && url === '/api/health') {
       return json(res, 200, { ok: true, auth: !!auth, appSyncCapable });
+    }
+    // --- the app version the page would be served at now (unauthenticated, like the page itself) ---
+    if (req.method === 'GET' && url === '/api/version') {
+      const shell = appShell();
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify({ v: shell.error ? null : shell.ver }));
     }
 
     // --- analytics API v1 (read-only) ---

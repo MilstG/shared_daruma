@@ -825,6 +825,29 @@ window.addEventListener('appinstalled',()=>{ _deferredInstall=null; showInstall(
     navigator.serviceWorker.register('sw.js').catch(()=>{}); // present only if the app is self-hosted with a sw.js
   }
 }catch(e){} })();
+// An installed phone app is resumed far more often than it's reloaded, so a deploy could go unseen
+// for days. Coming back to the foreground (at most once a minute) it asks the server which version
+// it would serve now; a newer one reloads the page at once, unless something typed here would be
+// lost, in which case a bar offers the update instead.
+function appTyped(){ return [...document.querySelectorAll('textarea,input:not([type]),input[type=text],input[type=number],input[type=search]')]
+  .some(el=>el.offsetParent!==null&&el.value!==''&&el.value!==el.defaultValue); }
+function appUpdateBar(){ if(document.getElementById('appUpdate'))return;
+  const d=document.createElement('div'); d.id='appUpdate'; d.setAttribute('role','status');
+  d.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom));z-index:9999;display:flex;gap:12px;align-items:center;padding:10px 12px 10px 16px;border-radius:12px;background:#1B2027;color:#E8ECF1;font:500 14px/1.3 Inter,system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.35);max-width:calc(100vw - 32px);width:max-content;white-space:nowrap';
+  d.innerHTML='<span>A new version is ready.</span><button type="button" style="border:0;border-radius:8px;padding:7px 12px;background:#3B82F6;color:#fff;font:600 13px Inter,system-ui,sans-serif;cursor:pointer">Update</button>';
+  d.querySelector('button').onclick=()=>location.reload(); document.body.appendChild(d); }
+(function(){ try{
+  const meta=document.querySelector('meta[name="app-version"]'), mine=meta&&meta.content;
+  if(!mine||!/^https?:$/.test(location.protocol))return; // served by our server only
+  let last=Date.now(), busy=false;
+  async function check(){ if(busy||document.hidden||Date.now()-last<60000)return; busy=true; last=Date.now();
+    try{ const r=await fetch('/api/version',{cache:'no-store'}); const j=r.ok?await r.json():null;
+      if(!j||!j.v||j.v===mine)return;
+      if(appTyped())appUpdateBar(); else location.reload();
+    }catch(e){} finally{ busy=false; } }
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden)check(); });
+  window.addEventListener('focus',check);
+}catch(e){} })();
 
 /* ============================================================================
    NEW FEATURES BUILD — added as extracted, mostly-pure functions.
