@@ -808,11 +808,18 @@ function askNotifyPerm(){
 // Full offline caching needs a companion service worker file at the origin (see self-hosting notes),
 // so registration is best-effort and silently no-ops from file:// or when no sw.js is present.
 let _deferredInstall=null;
-window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); _deferredInstall=e;
-  const b=$('installPWA'); if(b)b.classList.remove('hide'); });
-(function(){ const b=$('installPWA'); if(b)b.onclick=async()=>{ if(!_deferredInstall)return;
-  _deferredInstall.prompt(); try{ await _deferredInstall.userChoice; }catch(e){} _deferredInstall=null; b.classList.add('hide'); }; })();
-window.addEventListener('appinstalled',()=>{ const b=$('installPWA'); if(b)b.classList.add('hide'); });
+// Android and desktop Chrome hand over an install prompt; iPhone Safari never does, so there the
+// button explains Share → Add to Home Screen. Hidden once the app runs installed (standalone).
+const installedNow=()=>{ try{ return matchMedia('(display-mode: standalone)').matches||navigator.standalone===true; }catch(e){ return false; } };
+const isIOSSafari=()=>/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+function showInstall(on){ for(const id of ['installPWA','installSide']){ const b=$(id); if(b)b.classList.toggle('hide',!on); } }
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); _deferredInstall=e; showInstall(true); });
+async function doInstall(){
+  if(_deferredInstall){ _deferredInstall.prompt(); try{ await _deferredInstall.userChoice; }catch(e){} _deferredInstall=null; showInstall(false); return; }
+  if(isIOSSafari())alert('To install Ledger on your iPhone or iPad: tap the Share button in Safari’s toolbar, then “Add to Home Screen”. It opens full screen, like an app.'); }
+(function(){ for(const id of ['installPWA','installSide']){ const b=$(id); if(b)b.onclick=doInstall; }
+  if(/^https?:$/.test(location.protocol)&&!installedNow()&&isIOSSafari())showInstall(true); })();
+window.addEventListener('appinstalled',()=>{ _deferredInstall=null; showInstall(false); });
 (function(){ try{
   if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
     navigator.serviceWorker.register('sw.js').catch(()=>{}); // present only if the app is self-hosted with a sw.js

@@ -352,6 +352,25 @@ try {
     await p.close();
   });
 
+  console.log('\nInstall as an app');
+  await t('the journal and Pulse both pass Chrome’s installability check, with PNG home-screen icons', async () => {
+    for (const [path, icon] of [['/', '/icons/ledger-180.png'], ['/pulse', '/icons/pulse-180.png']]) {
+      const { page: p, errors: errs } = await openPage({ width: 390, height: 844 });
+      await p.goto(BASE + path);
+      await p.waitForFunction(() => !!(navigator.serviceWorker && navigator.serviceWorker.controller), null, { timeout: 15000 });
+      const cdp = await p.context().newCDPSession(p);
+      const man = await cdp.send('Page.getAppManifest');
+      ok(/\/(manifest|pulse)\.webmanifest$/.test(man.url), path + ' manifest: ' + man.url);
+      eq((await cdp.send('Page.getInstallabilityErrors')).installabilityErrors, [], path + ' is installable');
+      eq(await p.$eval('link[rel=apple-touch-icon]', l => l.getAttribute('href')), icon);
+      const M = JSON.parse(man.data);
+      ok(M.icons.some(i => i.sizes === '512x512' && i.purpose === 'maskable') && M.icons.some(i => i.sizes === '192x192'), JSON.stringify(M.icons));
+      for (const i of M.icons) eq((await fetch(BASE + i.src)).headers.get('content-type'), 'image/png', i.src);
+      eq(errs, []);
+      await p.close();
+    }
+  });
+
   console.log('\nAdmin panel');
   await t('every admin tab renders for the owner, inside the budget', async () => {
     const { page: p, errors: errs } = await openPage({ width: 1280, height: 900 });

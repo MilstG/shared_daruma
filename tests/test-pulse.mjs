@@ -161,7 +161,7 @@ await t('/pulse serves the app, /pulse/ redirects, and Pulse has its own manifes
     const r = await fetch(b + '/pulse'); eq(r.status, 200); ok((await r.text()).includes('id="pzView"'));
     const rd = await fetch(b + '/pulse/?x=1', { redirect: 'manual' }); eq(rd.status, 302); eq(rd.headers.get('location'), '/pulse?x=1');
     const m = await (await fetch(b + '/pulse.webmanifest')).json();
-    eq(m.start_url, '/pulse'); eq(m.id, '/pulse'); eq(m.short_name, 'Pulse'); eq(m.icons[0].src, '/pulse-icon.svg');
+    eq(m.start_url, '/pulse'); eq(m.id, '/pulse'); eq(m.short_name, 'Pulse'); eq(m.icons.map(i => i.src + ' ' + i.purpose), ['/icons/pulse-192.png any', '/icons/pulse-512.png any', '/icons/pulse-maskable-512.png maskable']);
     const ic = await fetch(b + '/pulse-icon.svg'); eq(ic.headers.get('content-type'), 'image/svg+xml');
     const sw = await (await fetch(b + '/sw.js')).text();
     ok(sw.includes("'/pulse'") && !sw.includes("mode==='navigate'"), 'only the app shell is cached — help pages never overwrite it');
