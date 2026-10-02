@@ -119,7 +119,7 @@ html{scroll-behavior:smooth}
     <li>Explore the four tabs: <b>Trades</b>, <b>Diagnostic</b>, <b>Review</b>, and <b>Project</b>.</li>
   </ol>
   <h3>Just looking?</h3>
-  <p>Click <b>Load sample data</b> (on the welcome screen, or <b>Sample data</b> in the setup panel). It generates a realistic five-month synthetic history and runs it through the normal import pipeline, so every panel is populated. Nothing is fetched and nothing is saved — reload or add a real address to clear it.</p>
+  <p>Click <b>Load sample data</b> (on the welcome screen, or <b>Sample data</b> in the setup panel). It generates a realistic five-month synthetic history and runs it through the normal import pipeline, so every panel is populated; the charts draw candles from the sample trades’ own prices. Nothing is saved — reload or add a real address to clear it.</p>
   <h3>No wallet, or fills from another venue?</h3>
   <p><b>Paste data</b> accepts raw fill JSON or a <b>CSV</b> (a header row with time, symbol, side, price, size — common column aliases are matched automatically, and you can also pick a file instead of pasting). The modal tells you live what format it detected. Imported fills feed the exact same engine.</p>
 </section>

@@ -34,7 +34,8 @@ function chunkRanges(ranges,maxSpan){ const out=[];
   return out; }
 // candles are per venue: a Lighter or Bybit trade is measured on its own exchange's prices
 const venueCoin=(venue,coin)=>(venue?VENUE_NAMES[venue]+' ':'')+coin;
-const excKey=(coin,itvName,venue)=>(venue?venue+':':'')+coin+'|'+itvName;
+// sample candles get keys of their own, so they never sit in (or read from) a real coin's cache
+const excKey=(coin,itvName,venue)=>(typeof isDemoData==='function'&&isDemoData()?'demo:':'')+(venue?venue+':':'')+coin+'|'+itvName;
 function mergeRanges(wins,gap){ const s=[...wins].sort((a,b)=>a[0]-b[0]); const out=[];
   for(const w of s){ const L=out[out.length-1];
     if(L&&w[0]<=L[1]+(gap||0)){ if(w[1]>L[1])L[1]=w[1]; } else out.push([w[0],w[1]]); }
@@ -183,12 +184,13 @@ async function runExcursions(closed,openTrades){
   pending=pending.concat(pseudo);
   let grandReq=0;
   const MAXPASS=3; // pass 0 = age-aware interval; each retry pass one interval coarser
+  const demo=typeof isDemoData==='function'&&isDemoData(); // sample candles are drawn, never cached
   for(let pass=0;pass<MAXPASS&&pending.length;pass++){
     const plan=planExcursions(pending,now,pass);
     const jobs=[]; let reqTotal=0;
     for(const [k,e] of plan){
       if(skippedCoins.has(venueCoin(e.venue,e.coin)))continue;
-      let cache=null; try{ cache=await idbGet('cnd:'+k); }catch(err){}
+      let cache=null; if(!demo){ try{ cache=await idbGet('cnd:'+k); }catch(err){} }
       if(!cache||cache.v!==1||!Array.isArray(cache.candles)||!Array.isArray(cache.ranges))cache={v:1,candles:[],ranges:[]};
       const missing=[]; for(const r of e.ranges)for(const u of uncoveredRanges(r,cache.ranges))if(u[1]-u[0]>e.itv.ms)missing.push(u);
       jobs.push({k,e,cache,missing}); reqTotal+=missing.length;
@@ -205,7 +207,7 @@ async function runExcursions(closed,openTrades){
           await sleep(90);
         }catch(err){ skippedCoins.add(venueCoin(j.e.venue,j.e.coin)); } // no candles for this coin (some HIP-3/spot names) — skip, don't sink the run
       }
-      try{ await idbSet('cnd:'+j.k,j.cache); }catch(err){}
+      if(!demo){ try{ await idbSet('cnd:'+j.k,j.cache); }catch(err){} }
       store.set(j.k,{candles:j.cache.candles,ms:j.e.itv.ms});
     }
     const still=[];
@@ -366,11 +368,12 @@ function candleOpen(candles,i){ const k=candles[i];
   if(i>0&&isFinite(candles[i-1][3]))return candles[i-1][3];
   return isFinite(k[3])?k[3]:(k[1]+k[2])/2; }
 async function ensureTradeCandles(t){
-  // fetch (cache-aware) candles for one trade's window, falling back coarser like the main scan
-  const now=Date.now();
+  // fetch (cache-aware) candles for one trade's window, falling back coarser like the main scan.
+  // Sample candles are drawn, not fetched, and never cached: the sample trades move with the clock.
+  const now=Date.now(), demo=typeof isDemoData==='function'&&isDemoData();
   for(let pass=0;pass<3;pass++){
     const itv=chooseItv(t,now,pass), k=excKey(t.coin,itv.name,candleVenue(t));
-    let cache=null; try{ cache=await idbGet('cnd:'+k); }catch(e){}
+    let cache=null; if(!demo){ try{ cache=await idbGet('cnd:'+k); }catch(e){} }
     if(!cache||cache.v!==1||!Array.isArray(cache.candles)||!Array.isArray(cache.ranges))cache={v:1,candles:[],ranges:[]};
     const want=[t.openTime-itv.ms,(t.isOpen?now:t.closeTime)+itv.ms];
     for(const u of uncoveredRanges(want,cache.ranges)){
@@ -380,7 +383,7 @@ async function ensureTradeCandles(t){
         if(c.coveredTo>u[0]) cache.ranges=mergeRanges([...cache.ranges,[u[0],c.coveredTo]],1);
       }catch(e){ return null; }
     }
-    try{ await idbSet('cnd:'+k,cache); }catch(e){}
+    if(!demo){ try{ await idbSet('cnd:'+k,cache); }catch(e){} }
     const a=t.openTime-itv.ms, b=(t.isOpen?now:t.closeTime)+itv.ms;
     const win=cache.candles.filter(c=>c[0]>=a&&c[0]<=b);
     if(win.length)return {candles:win,itv};

@@ -331,6 +331,7 @@ async function cexCandles(venue, coin, itvName, a, b){
 // the venue-aware candle source: Hyperliquid's for its own trades (and anything unknown)
 function candleVenue(t){ return t&&t.venue&&t.venue!=='hyperliquid'?t.venue:''; }
 async function venueFetchCandles(venue, coin, itvName, a, b){
+  if(typeof isDemoData==='function'&&isDemoData())return demoCandles(coin,itvName,a,b); // sample mode: never the exchange
   if(venue==='lighter')return ltCandles(coin,itvName,a,b);
   if(isCexVenue(venue))return cexCandles(venue,coin,itvName,a,b);
   return fetchCandles(coin,itvName,a,b); }

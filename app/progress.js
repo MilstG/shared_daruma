@@ -665,40 +665,78 @@ function pzCostHtml(tr){
     ${c.advice.map(a=>`<p class="pz-sub" style="font-size:13px;margin-top:4px">${esc(a)}</p>`).join('')}</section>`;
 }
 // ---- a chart on every journal card: candles around the trade, with entry, exit, stop and target ----
+// one price format everywhere a price is shown: thousands separated, decimals by size, no trailing noise
+function pzPx(v){
+  if(v==null||!isFinite(v))return '—';
+  const a=Math.abs(v), d=a>=1000?2:a>=1?4:a>=0.01?5:7;
+  let s=(+v).toFixed(d); if(d>2)s=s.replace(/(\.\d\d\d*?)0+$/,'$1');
+  const [i,f]=s.split('.'); return (i.startsWith('-')?'−':'')+Math.abs(+i).toLocaleString('en-US')+(f?'.'+f:'');
+}
+function pzHeld(ms){ const m=Math.max(0,Math.round(ms/60000)); if(m<60)return m+'m'; const h=Math.floor(m/60); if(h<24)return h+'h '+(m%60)+'m'; const d=Math.floor(h/24); return d+'d '+(h%24)+'h'; }
+// about n round-number gridlines between lo and hi
+function pzTicks(lo,hi,n){ const span=hi-lo; if(!(span>0))return []; const raw=span/n, p=Math.pow(10,Math.floor(Math.log10(raw))), m=raw/p, step=(m>=5?5:m>=2?2:1)*p, out=[];
+  for(let v=Math.ceil(lo/step)*step;v<=hi+step*1e-6;v+=step)out.push(+v.toFixed(10)); return out; }
 const PZ_SNAP={}, _pzSnapQ=[]; let _pzSnapBusy=false;
+const PZ_ITV_NAME={60e3:'1m',300e3:'5m',900e3:'15m',3600e3:'1h',14400e3:'4h',86400e3:'1d'};
 function pzSnapSvg(t, candles, ms, plan, mk){
   if(!candles||candles.length<2)return '';
-  // at most 80 candles: merge neighbours on long trades
-  const k=Math.max(1,Math.ceil(candles.length/80)), cs=[];
+  // at most 90 candles: merge neighbours on long trades
+  const k=Math.max(1,Math.ceil(candles.length/90)), cs=[];
   for(let i=0;i<candles.length;i+=k){ const g=candles.slice(i,i+k), o=g[0][4]!=null?g[0][4]:(i?candles[i-1][3]:g[0][3]);
     cs.push({t:g[0][0],h:Math.max(...g.map(x=>x[1])),l:Math.min(...g.map(x=>x[2])),c:g[g.length-1][3],o}); }
-  const W=340, H=150, L=6, R=58, T=8, B=16, pw=W-L-R, ph=H-T-B, step=pw/cs.length;
-  const lv=[t.avgEntry,t.isOpen?null:t.avgExit,plan&&plan.stop,plan&&plan.target].filter(v=>v>0);
-  let lo=Math.min(...cs.map(x=>x.l),...lv), hi=Math.max(...cs.map(x=>x.h),...lv); const pad=(hi-lo)*0.06||hi*0.001; lo-=pad; hi+=pad;
-  const Y=v=>T+ph*(hi-v)/(hi-lo), X=ms0=>L+pw*Math.max(0,Math.min(1,(ms0-cs[0].t)/((cs[cs.length-1].t+ms*k)-cs[0].t)));
-  const fx=n=>n.toFixed(1), px=v=>{ const d=v>=100?2:v>=1?4:6; return (+v).toFixed(d).replace(/\.?0+$/,''); };
-  const tf=ms0=>new Date(ms0).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-  const body=cs.map((x,i)=>{ const up=x.c>=x.o, col=up?'#2E9E74':'#B5533C', cx=L+step*(i+0.5), w=Math.max(1,step*0.62);
-    const ch=x.o>0?(x.c/x.o-1)*100:null, tip=tf(x.t)+'\nOpen '+px(x.o)+' · High '+px(x.h)+'\nLow '+px(x.l)+' · Close '+px(x.c)+(ch!=null?' ('+(ch>=0?'+':'')+ch.toFixed(2)+'%)':'')
-      +(t.avgEntry>0?'\nvs your entry '+((x.c/t.avgEntry-1)*100*(t.dir==='Short'?-1:1)>=0?'+':'')+((x.c/t.avgEntry-1)*100*(t.dir==='Short'?-1:1)).toFixed(2)+'% for your '+(t.dir==='Short'?'short':'long'):'');
-    return `<g data-pz-tip="${esc(tip)}"><rect x="${fx(L+step*i)}" y="${T}" width="${fx(step)}" height="${ph}" fill="transparent"/><line x1="${fx(cx)}" x2="${fx(cx)}" y1="${fx(Y(x.h))}" y2="${fx(Y(x.l))}" stroke="${col}" stroke-width="1"/><rect x="${fx(cx-w/2)}" y="${fx(Y(Math.max(x.o,x.c)))}" width="${fx(w)}" height="${fx(Math.max(1,Math.abs(Y(x.o)-Y(x.c))))}" fill="${col}"/></g>`; }).join('');
-  // labels sit at their line, nudged apart so two close prices stay readable
-  const labs=[], win=t.net>=0, line=(v,col,dash,lab)=>{ if(!(v>0))return ''; labs.push({y:Y(v),col,lab}); return `<line x1="${L}" x2="${W-R}" y1="${fx(Y(v))}" y2="${fx(Y(v))}" stroke="${col}" stroke-width="1.5"${dash?` stroke-dasharray="${dash}"`:''}/>`; };
-  const vx=(ms0,col)=>`<line x1="${fx(X(ms0))}" x2="${fx(X(ms0))}" y1="${T}" y2="${H-B}" stroke="${col}" stroke-width="1" stroke-dasharray="2 3" opacity=".8"/>`;
-  return `<svg class="pz-snapsvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(dispMarket(dcoin(t)))} price around the trade: entry ${px(t.avgEntry)}${t.isOpen?'':', exit '+px(t.avgExit)}${plan&&plan.stop>0?', stop '+px(plan.stop):''}${plan&&plan.target>0?', target '+px(plan.target):''}">
-    ${body}${vx(t.openTime,'#F4C04E')}${mk&&mk.px>0?vx(mk.t,'#FFFFFF'):''}${t.isOpen?'':vx(t.closeTime,win?'#3FE0A0':'#FF7A59')}
-    ${line(plan&&plan.stop,'#FF7A59','2 3','stop')}${line(plan&&plan.target,'#3FE0A0','2 3','target')}${line(t.avgEntry,'#F4C04E','','in '+px(t.avgEntry))}${t.isOpen?'':line(t.avgExit,win?'#3FE0A0':'#FF7A59','','out '+px(t.avgExit))}
-    ${(()=>{ labs.sort((a,b)=>a.y-b.y); for(let i=1;i<labs.length;i++)if(labs[i].y-labs[i-1].y<11)labs[i].y=labs[i-1].y+11;
-      const over=labs.length?labs[labs.length-1].y-(H-B):0; if(over>0)labs.forEach(l=>{ l.y-=over; });
-      return labs.map(l=>`<text x="${W-R+4}" y="${fx(l.y+4)}" font-size="10" font-weight="700" fill="${l.col}">${esc(l.lab)}</text>`).join(''); })()}
-    ${mk&&mk.px>0?`<circle cx="${fx(X(mk.t))}" cy="${fx(Y(mk.px))}" r="5.5" fill="${mk.k>0?'#F4C04E':'#3FE0A0'}" stroke="#0E1216" stroke-width="2" data-pz-tip="${esc((mk.k>0?'In':'Out')+' at '+px(mk.px)+'\n'+tf(mk.t))}"/>`:''}
-    <text x="${L}" y="${H-3}" font-size="10" fill="#8B95A1">${esc(dayLabel(dayKey(cs[0].t)))}</text></svg>`;
+  const W=360, H=200, L=8, R=74, T=10, B=22, pw=W-L-R, ph=H-T-B, step=pw/cs.length, cms=ms*k, t0=cs[0].t, t1=cs[cs.length-1].t+cms;
+  const ev=(t.events||[]).filter(e=>e[1]>0), endT=t.isOpen?t1:t.closeTime, short=t.dir==='Short';
+  const lv=[t.avgEntry,t.isOpen?null:t.avgExit,plan&&plan.stop,plan&&plan.target,...ev.map(e=>e[1])].filter(v=>v>0);
+  let lo=Math.min(...cs.map(x=>x.l),...lv), hi=Math.max(...cs.map(x=>x.h),...lv); const pad=(hi-lo)*0.08||hi*0.002; lo-=pad; hi+=pad;
+  const Y=v=>T+ph*(hi-v)/(hi-lo), X=m=>L+pw*Math.max(0,Math.min(1,(m-t0)/(t1-t0)));
+  const fx=n=>n.toFixed(1), up=PZ_COL.good, dn=PZ_COL.low, gold=PZ_COL.mid, win=t.net>=0, exitCol=win?up:dn;
+  const tf=m=>new Date(m).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false});
+  const sz=v=>(+(+v).toPrecision(5)).toLocaleString('en-US');
+  // the holding period, and the ground covered between the entry and exit prices
+  const x0=X(t.openTime), x1=X(endT), hw=Math.max(1,x1-x0);
+  const hold=`<rect x="${fx(x0)}" y="${T}" width="${fx(hw)}" height="${ph}" fill="currentColor" opacity=".05"/>`;
+  const zone=!t.isOpen&&t.avgExit>0?`<rect x="${fx(x0)}" y="${fx(Math.min(Y(t.avgEntry),Y(t.avgExit)))}" width="${fx(hw)}" height="${fx(Math.max(1,Math.abs(Y(t.avgEntry)-Y(t.avgExit))))}" fill="${exitCol}" opacity=".12"/>`:'';
+  // the axis: in, out, stop and target as pills at their price, nudged apart; gridlines fill the rest
+  const pills=[], pill=(v,col,lab)=>{ if(v>0)pills.push({y:Y(v),col,lab}); };
+  pill(t.avgEntry,gold,'in '+pzPx(t.avgEntry)); if(!t.isOpen)pill(t.avgExit,exitCol,'out '+pzPx(t.avgExit));
+  if(plan&&plan.stop>0)pill(plan.stop,dn,'stop '+pzPx(plan.stop)); if(plan&&plan.target>0)pill(plan.target,up,'target '+pzPx(plan.target));
+  pills.sort((a,b)=>a.y-b.y); for(let i=1;i<pills.length;i++)if(pills[i].y-pills[i-1].y<14)pills[i].y=pills[i-1].y+14;
+  const over=pills.length?pills[pills.length-1].y+7-(H-B):0; if(over>0)pills.forEach(p=>{ p.y-=over; });
+  const ticks=pzTicks(lo,hi,4).filter(v=>Y(v)>T+6&&Y(v)<H-B-6);
+  const grid=ticks.map(v=>`<line x1="${L}" x2="${W-R}" y1="${fx(Y(v))}" y2="${fx(Y(v))}" stroke="currentColor" opacity=".08"/>${pills.some(p=>Math.abs(p.y-Y(v))<13)?'':`<text x="${W-R+6}" y="${fx(Y(v)+3.5)}" class="pz-snap-ax">${pzPx(v)}</text>`}`).join('');
+  const pillsHtml=pills.map(p=>`<rect x="${W-R+3}" y="${fx(p.y-7)}" width="${R-7}" height="14" rx="4" fill="${p.col}"/><text x="${W-R+3+(R-7)/2}" y="${fx(p.y+3.5)}" text-anchor="middle" class="pz-snap-pill">${esc(p.lab)}</text>`).join('');
+  // candles, each with its own tooltip
+  const body=cs.map((x,i)=>{ const u=x.c>=x.o, col=u?up:dn, cx=L+step*(i+0.5), w=Math.max(1.5,step-2);
+    const ch=x.o>0?(x.c/x.o-1)*100:null, vs=t.avgEntry>0?(x.c/t.avgEntry-1)*100*(short?-1:1):null;
+    const tip=tf(x.t)+'\nO '+pzPx(x.o)+' · H '+pzPx(x.h)+'\nL '+pzPx(x.l)+' · C '+pzPx(x.c)+(ch!=null?' ('+(ch>=0?'+':'')+ch.toFixed(2)+'%)':'')+(vs!=null?'\n'+(vs>=0?'+':'')+vs.toFixed(2)+'% vs your entry, for your '+(short?'short':'long'):'');
+    return `<g data-pz-tip="${esc(tip)}"><rect x="${fx(L+step*i)}" y="${T}" width="${fx(step)}" height="${ph}" fill="transparent"/><line x1="${fx(cx)}" x2="${fx(cx)}" y1="${fx(Y(x.h))}" y2="${fx(Y(x.l))}" stroke="${col}" stroke-width="1"/><rect x="${fx(cx-w/2)}" y="${fx(Y(Math.max(x.o,x.c)))}" width="${fx(w)}" height="${fx(Math.max(1.5,Math.abs(Y(x.o)-Y(x.c))))}" rx=".6" fill="${col}"/></g>`; }).join('');
+  // price lines: entry from its fill on, exit across the hold, stop and target dashed across it
+  const hline=(v,col,from,to,dash)=>v>0?`<line x1="${fx(from)}" x2="${fx(to)}" y1="${fx(Y(v))}" y2="${fx(Y(v))}" stroke="${col}" stroke-width="1.2"${dash?' stroke-dasharray="3 3"':''} opacity=".9"/>`:'';
+  const lines=hline(plan&&plan.stop,dn,x0,W-R,true)+hline(plan&&plan.target,up,x0,W-R,true)+hline(t.avgEntry,gold,x0,W-R)+(t.isOpen?'':hline(t.avgExit,exitCol,x0,W-R));
+  // every fill on its candle: a triangle up for a buy, down for a sell; the one being stepped through is ringed
+  const tri=(x,y,upward,col)=>`<path d="M${fx(x-4.5)} ${fx(upward?y+4:y-4)}L${fx(x+4.5)} ${fx(upward?y+4:y-4)}L${fx(x)} ${fx(upward?y-4.5:y+4.5)}Z" fill="${col}" stroke="#0E1216" stroke-width="1"/>`;
+  const marks=ev.map(e=>{ const buy=e[3]>0, x=X(e[0]), y=Y(e[1]), cur=mk&&mk.t===e[0]&&mk.px===e[1];
+    const what=buy?(short?'Sold short':'Bought'):(short?'Covered':'Sold');
+    return `<g data-pz-tip="${esc(what+' '+sz(e[2])+' at '+pzPx(e[1])+'\n'+tf(e[0]))}">${cur?`<circle cx="${fx(x)}" cy="${fx(y)}" r="8" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".9"/>`:''}${tri(x,y,buy,buy?gold:exitCol)}</g>`; }).join('');
+  // the worst and best points while held
+  let ext='';
+  if(typeof replayExtremes==='function'&&!t.isOpen){ const E=replayExtremes(t,candles,ms)||{};
+    for(const [p,lab] of [[E.worst,'worst'],[E.best,'best']]){ if(!p||Math.abs(p.pct)<0.1)continue; const x=X(p.x+ms/2), y=Y(p.y);
+      if(ev.some(e=>Math.abs(X(e[0])-x)<10&&Math.abs(Y(e[1])-y)<10))continue; // the extreme is a fill itself (the exit at the top): nothing to add
+      const right=x<W-R-70, txt=lab+' '+(p.pct>=0?'+':'')+p.pct.toFixed(2)+'%';
+      ext+=`<g data-pz-tip="${esc('The '+lab+' point while you held: '+pzPx(p.y)+' ('+(p.pct>=0?'+':'')+p.pct.toFixed(2)+'% from your entry)\n'+tf(p.x))}"><circle cx="${fx(x)}" cy="${fx(y)}" r="3" fill="#0E1216" stroke="${lab==='worst'?dn:up}" stroke-width="1.5"/><text x="${fx(right?x+6:x-6)}" y="${fx(y+(lab==='worst'?10:-5))}" text-anchor="${right?'start':'end'}" class="pz-snap-ax" fill="${lab==='worst'?dn:up}">${esc(txt)}</text></g>`; } }
+  // the time axis: when it starts and ends, how long it was held, the candle size
+  const axis=`<text x="${L}" y="${H-7}" class="pz-snap-ax">${esc(tf(t0))}</text><text x="${W-R}" y="${H-7}" text-anchor="end" class="pz-snap-ax">${esc(tf(t1))}</text>`
+    +`<text x="${fx(L+pw/2)}" y="${H-7}" text-anchor="middle" class="pz-snap-ax" opacity=".8">${esc((t.isOpen?'open ':'held ')+pzHeld(endT-t.openTime)+' · '+(PZ_ITV_NAME[cms]||(k>1?'~'+Math.round(cms/60000)+'m':PZ_ITV_NAME[ms]||''))+' candles')}</text>`;
+  const label=`${dispMarket(dcoin(t))} ${short?'short':'long'}: in at ${pzPx(t.avgEntry)}${t.isOpen?', still open':', out at '+pzPx(t.avgExit)}${plan&&plan.stop>0?', stop '+pzPx(plan.stop):''}${plan&&plan.target>0?', target '+pzPx(plan.target):''}, ${ev.length} fill${ev.length===1?'':'s'}`;
+  return `<svg class="pz-snapsvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">${hold}${zone}${grid}${body}${lines}${ext}${marks}${pillsHtml}${axis}</svg>`;
 }
 function pzSnapHtml(t){
   const s=PZ_SNAP[t.id];
-  if(!s){ pzSnapWant(t); return '<div class="pz-snapph"><span class="pz-spin"></span>Loading the chart…</div>'; }
-  if(s.st==='busy')return '<div class="pz-snapph"><span class="pz-spin"></span>Loading the chart…</div>';
-  if(s.st!=='ok'){ if(Date.now()-(s.at||0)>5*60000){ delete PZ_SNAP[t.id]; return pzSnapHtml(t); } return ''; }
+  const ph='<div class="pz-snapph" aria-busy="true"><span class="pz-spin"></span>Loading the chart…</div>';
+  if(!s){ pzSnapWant(t); return ph; }
+  if(s.st==='busy')return ph;
+  if(s.st!=='ok'){ if(Date.now()-(s.at||0)>5*60000){ delete PZ_SNAP[t.id]; return pzSnapHtml(t); } return '<div class="pz-snapph">No candles for this market yet.</div>'; }
   return pzSnapSvg(t,s.c,s.ms,typeof nfPlan==='function'?nfPlan(journal[t.id]):null,typeof planPzMark==='function'?planPzMark(t):null);
 }
 function pzSnapWant(t){ if(PZ_SNAP[t.id]||typeof ensureTradeCandles!=='function')return; PZ_SNAP[t.id]={st:'busy'}; _pzSnapQ.push(t); pzSnapRun(); }

@@ -1181,16 +1181,20 @@ function pzJournalHtml(D){
   const jpg=pzPage('journal',D.inbox,6), list=jpg.items, setups=pzSetups().slice(0,8);
   const back=`<a class="pz-back" href="#today">${pzI('back',20)}Today</a>`;
   if(!list.length)return `${back}${pzHead('Journal','All caught up')}<p class="pz-sub">Every trade from the last 30 days has a note, a setup or a rating. That’s the habit — keep it going.</p>`;
-  const card=t=>{ const r=pzS.jr[t.id]||0, q=tradeQuestion(t,journal[t.id],_excM[t.id]).q;
-    const p=tzParts(t.closeTime);
-    return `<section class="pz-card pz-trade" data-pz-trade="${esc(t.id)}"><div class="pz-trade-h"><b>${esc(dispMarket(dcoin(t)))} ${esc(String(t.dir||'').toLowerCase())}</b><span style="font-family:var(--pz-num);font-size:20px;font-weight:600;color:${isBE(t.net)?'var(--pz-soft)':t.net>=0?PZ_COL.good:PZ_COL.low}">${isBE(t.net)?'B/E':signedPlain(t.net)}</span></div>
-      <span class="pz-sub" style="font-size:12px">${esc(dayLabel(dayKey(t.closeTime)))} · ${String(p.h).padStart(2,'0')}:${String(p.min).padStart(2,'0')}</span>
+  const card=t=>{ const r=pzS.jr[t.id]||0, q=tradeQuestion(t,journal[t.id],_excM[t.id]).q, short=t.dir==='Short';
+    const be=isBE(t.net), col=be?'var(--pz-soft)':t.net>=0?PZ_COL.good:PZ_COL.low, hm=x=>String(x.h).padStart(2,'0')+':'+String(x.min).padStart(2,'0');
+    const pct=!t.isOpen&&t.avgEntry>0&&t.avgExit>0?(t.avgExit/t.avgEntry-1)*100*(short?-1:1):null, nf=(t.events||[]).length;
+    const openK=dayKey(t.openTime), closeK=dayKey(t.closeTime), when=dayLabel(openK)+' · '+hm(tzParts(t.openTime))+(t.isOpen?' · still open':' → '+(closeK===openK?'':dayLabel(closeK)+' · ')+hm(tzParts(t.closeTime)));
+    const size=t.maxSize>0?(+(+t.maxSize).toPrecision(5)).toLocaleString('en-US')+' '+dispMarket(dcoin(t)):'';
+    return `<section class="pz-card pz-trade" data-pz-trade="${esc(t.id)}"><div class="pz-trade-h"><div class="pz-trade-t"><b>${esc(dispMarket(dcoin(t)))}</b><span class="pz-side" style="--c:${short?PZ_COL.low:PZ_COL.good}">${short?'Short':'Long'}</span></div>
+        <div class="pz-trade-net" style="color:${col}"><b>${be?'B/E':signedPlain(t.net)}</b>${pct!=null?`<span>${(pct>=0?'+':'−')+Math.abs(pct).toFixed(2)}%</span>`:''}</div></div>
+      <div class="pz-trade-meta"><span>${esc(when)}</span><span>${esc((t.isOpen?'open ':'held ')+pzHeld((t.isOpen?Date.now():t.closeTime)-t.openTime))}</span>${size?`<span>${esc(size)}</span>`:''}<span>${nf} fill${nf===1?'':'s'}</span></div>
       <div class="pz-snap" data-pz-snap="${esc(t.id)}">${pzSnapHtml(t)}</div>${planPzRpHtml(t)}
-      <div role="radiogroup" aria-label="How well did you execute it, 1 to 5"><div class="pz-stars">${[1,2,3,4,5].map(n=>`<button type="button" role="radio" data-pz-rate="${n}" aria-checked="${r===n}" aria-label="${n} of 5">${n}</button>`).join('')}</div></div>
+      <div class="pz-trade-q"><span class="pz-lbl" style="color:var(--pz-muted)">How well did you execute it?</span><div role="radiogroup" aria-label="How well did you execute it, 1 to 5"><div class="pz-stars">${[1,2,3,4,5].map(n=>`<button type="button" role="radio" data-pz-rate="${n}" aria-checked="${r===n}" aria-label="${n} of 5">${n}</button>`).join('')}</div></div></div>
       <input type="text" id="pzSetup_${esc(t.id)}" aria-label="Setup" placeholder="Setup (breakout, fade, retest…)" autocomplete="off">
       ${setups.length?`<div class="pz-chiprow pz-wrapr" aria-label="Your setups">${setups.map(x=>`<button type="button" class="pz-chipbtn" data-pz-setupchip="${esc(x)}">${esc(x)}</button>`).join('')}</div>`:''}
       <textarea id="pzNoteT_${esc(t.id)}" rows="2" aria-label="${esc(q)}" placeholder="${esc(q)}"></textarea>
-      <div style="display:flex;gap:8px"><button type="button" class="pz-ghost" data-pz-jsave style="flex:1">Save</button>${SOC.me&&!pzS.demo&&!(SOC.cfg&&SOC.cfg.posts&&!SOC.cfg.posts.on)?`<button type="button" class="pz-ghost" data-soc-share="${esc(t.id)}">Share</button>`:''}${mrCanShare()?`<button type="button" class="pz-ghost" data-mr-share="${esc(t.id)}">Ask mentor</button>`:''}</div></section>`; };
+      <div style="display:flex;gap:8px"><button type="button" class="pz-cta pz-sm" data-pz-jsave style="flex:1">Save</button>${SOC.me&&!pzS.demo&&!(SOC.cfg&&SOC.cfg.posts&&!SOC.cfg.posts.on)?`<button type="button" class="pz-ghost pz-sm" data-soc-share="${esc(t.id)}">Share</button>`:''}${mrCanShare()?`<button type="button" class="pz-ghost pz-sm" data-mr-share="${esc(t.id)}">Ask mentor</button>`:''}</div></section>`; };
   return `${back}${pzHead(D.inbox.length+' to journal','Journal')}<p class="pz-sub" style="margin-top:-6px">Rate how well you executed each trade, not how it paid. One line is enough.</p>
     <div class="pz-jgrid">${list.map(card).join('')}</div>${jpg.html}`;
 }
