@@ -1533,6 +1533,9 @@ function createSocial(opts) {
       if (req.headers['authorization'] && authOk(req)) who = { owner: true, by: 'owner', name: 'Owner' };
       else { const am = byKey(req); if (am && am.admin && !am.banned) { who = { owner: false, id: am.id, by: '@' + am.handle, name: '@' + am.handle }; am.lastSeen = now(); } }
       if (!who) return json(res, 401, { error: 'unauthorized' });
+      // a second factor (admin2fa.js), when two-factor applies to this person; it answers /admin/2fa/* itself
+      if (opts.twofa && opts.twofa.gate(req, res, who, { parts: parts.slice(1), M, body, siteOf,
+        admins: () => members().filter(m => m.admin && !m.banned), log: what => { S.adminLog.push({ at: now(), by: who.by, what }); save('adminLog'); } })) return;
       const sub = parts[1] || '';
       if (sub === 'me' && M === 'GET') return json(res, 200, { owner: who.owner, id: who.id || null, name: who.name });
       if (sub === 'log' && M === 'GET') return json(res, 200, { log: S.adminLog.slice(-200).reverse() });

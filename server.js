@@ -79,6 +79,7 @@ const Push = require('./push.js');
 const Wear = require('./wear.js');
 const Offsite = require('./offsite.js');
 const CexRelay = require('./cex-relay.js');
+const Admin2fa = require('./admin2fa.js');
 const { readAppSource, appScripts } = require('./app-source.js');
 
 const MAX_BODY = 25 * 1024 * 1024; // journal snapshots are small; this is generous headroom
@@ -2308,8 +2309,12 @@ function createApp(opts) {
   const wearRef = {}; // filled in below, once the wearables store exists
   const cexRelay = CexRelay.createCexRelay({ env: opts.cexEnv || process.env, fetchImpl: opts.cexFetch || opts.fetchImpl, now: opts.now });
   if (cexRelay.relayOnly && !cexRelay.secretSet) console.warn('[ledger] CEX_RELAY_ONLY is on but CEX_RELAY_SECRET is not set — the relay will refuse every request');
+  // the admin panel's optional second factor (admin2fa.js): ADMIN_2FA=required|optional|off; wrong codes
+  // also count toward this address's lockout above
+  const twofa = Admin2fa.create({ dataDir, json, now: opts.now, lockedOut, noteBadToken, lockMs, sessionMs: opts.admin2faSessionMs,
+    mode: opts.admin2fa !== undefined ? opts.admin2fa : process.env.ADMIN_2FA, reset: opts.admin2faReset !== undefined ? opts.admin2faReset : process.env.ADMIN_2FA_RESET });
   const social = createSocial({ dataDir, json, authOk, adminConfigured: !!auth, fetchImpl: opts.fetchImpl, now: opts.now, push: pushCfg, onDrop: id => wearRef.forget && wearRef.forget('m:' + id),
-    behaviorFor, tiltFor: opts.tiltFor || tiltFor, peerSummaryFor: opts.peerSummaryFor || peerSummaryFor, seedDelay: opts.seedDelay, tradeCheck: opts.tradeCheck || tradeCheck, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled });
+    behaviorFor, tiltFor: opts.tiltFor || tiltFor, peerSummaryFor: opts.peerSummaryFor || peerSummaryFor, seedDelay: opts.seedDelay, tradeCheck: opts.tradeCheck || tradeCheck, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled, twofa });
   // readiness from WHOOP, Oura or Apple Health: the owner (AUTH_TOKEN) or a member (Pulse key)
   const wearOrigin = req => { if (publicOrigins[0]) { try { return new URL(publicOrigins[0]).origin; } catch (e) {} }
     return hostVetted && req.headers.host ? 'https://' + req.headers.host : opts.wearOrigin || null; };
@@ -2494,6 +2499,15 @@ function createApp(opts) {
         if (err) return json(res, 404, { error: 'admin.html not deployed alongside server.js' });
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache',
           'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' });
+        res.end(buf);
+      });
+      return;
+    }
+    // the admin panel's two-factor screens (kept out of admin.html, which has a size budget)
+    if (req.method === 'GET' && url === '/admin2fa-ui.js') {
+      fs.readFile(path.join(__dirname, 'admin2fa-ui.js'), (err, buf) => {
+        if (err) return json(res, 404, { error: 'admin2fa-ui.js not deployed alongside server.js' });
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
         res.end(buf);
       });
       return;
@@ -2782,6 +2796,14 @@ function createApp(opts) {
   return server;
 }
 
+if (require.main === module && process.argv.includes('--reset-admin-2fa')) {
+  // the escape hatch for an owner who lost every admin second factor: clears the owner's, ends every
+  // admin session, and exits (admins keep theirs). Same DATA_DIR rules as createApp.
+  const dir = process.env.DATA_DIR || (fs.existsSync('/data') ? '/data' : path.join(__dirname, 'data'));
+  const r = Admin2fa.resetOwner(dir);
+  console.log('[ledger] admin two-factor: the owner’s factors were ' + (r.had ? 'removed' : 'already clear') + ' and every admin session ended (' + path.join(dir, Admin2fa.FILE) + ').');
+  process.exit(0);
+}
 if (require.main === module) {
   // a stray rejection is logged, not fatal: one failed background write shouldn't take every member offline
   process.on('unhandledRejection', e => console.error('[ledger] unhandled rejection: ' + (e && e.stack || e)));

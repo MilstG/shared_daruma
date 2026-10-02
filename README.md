@@ -643,6 +643,43 @@ opens your journal, backups or the server's other routes. Removing or suspending
 closes the panel to them at once. The Admins card lists who did what recently, and
 wallet decisions record who made them.
 
+**Two-factor for the admin panel.** Optional, per person: under **Settings → Security**
+the owner and each admin can add **admin passkeys** (Face ID, a fingerprint, the device
+PIN or a security key) and an **authenticator app** (RFC 6238 codes: scan the QR code, or
+type the key shown under it). The first one switches two-factor on for that person and
+comes with **ten one-time recovery codes**, shown once (stored hashed; **Make new codes**
+replaces them). From then on the panel needs the token or admin sign-in **plus** a second
+step: on the sign-in screen it asks for a passkey, a code from the app or a recovery code,
+and keeps that browser signed in for 12 hours (an `HttpOnly`, `SameSite=Strict` cookie,
+`Secure` over https, sent only to `/api/social/admin/`; it opens nothing without the
+token or key, and **Sign out** ends it). A session that runs out while the panel is open
+asks again in a dialog and carries on. Admin passkeys are separate from Pulse passkeys:
+they never sign anyone in to Pulse. The Security card also shows the owner which admins
+have two-factor, a switch to **require it of every admin** (those without it are asked to
+set it up the next time they open the panel), and **Reset** for an admin who lost their
+factors. Wrong codes are rate-limited: five for one person within 10 minutes lock codes
+for that person for `AUTH_LOCK_MIN` minutes (twice as long on each lock in a row; a
+passkey still works meanwhile), and each wrong code or failed passkey also counts toward
+the address lockout (`AUTH_FAIL_MAX`). Two-factor only ever guards the admin panel's API,
+`/api/social/admin/*`: the access token keeps working alone for `/api/v1`, `/api/data`,
+backups, the full journal and scripts. Set `ADMIN_2FA` on the server:
+
+- `optional` (the default) — each person chooses, as above.
+- `required` — the owner and every admin need it. Someone with nothing set up yet gets
+  the setup screen right after signing in, and the panel opens once they've added a
+  passkey or an app. While it's required, nobody can remove their last factor.
+- `off` — never asked for; anything already set up is kept for when it's back on.
+
+**Lost every factor?** On the server, run `node server.js --reset-admin-2fa` (same
+`DATA_DIR`), or set `ADMIN_2FA_RESET=1` and restart (on Railway: add the variable, let it
+redeploy, then delete the variable). Either clears **the owner's** factors and ends every
+admin session; admins keep theirs (reset an admin's from the Security card). A given
+`ADMIN_2FA_RESET` value resets only once, so leaving it set doesn't keep wiping it; use a
+new value (`2`, …) to reset again. Everything lives in `DATA_DIR/admin-2fa.json` (mode
+`0600`): passkey public keys, authenticator-app secrets, and hashes of the recovery codes
+and sessions. If that file can't be read, the admin panel answers 503 instead of
+dropping everyone's second factor, until it's fixed or reset.
+
 **Admin panel (`/admin`).** Sign in with `AUTH_TOKEN` (the owner) or as an admin. Tabs:
 
 - **Overview** — members, activity, tiers, top XP, coach use and setup warnings.
@@ -710,7 +747,7 @@ wallet decisions record who made them.
 - **Wallets** — wallet approval on/off, and approve or reject each member's wallet
   (single or in bulk, with a note); waiting wallets come first.
 - **Feed** — announcements and moderation. **Settings** — open/closed, invite code,
-  claimed wallets only, encrypted sync.
+  claimed wallets only, encrypted sync, and **Security**: two-factor for the panel (above).
 
 Without `AUTH_TOKEN` the admin API refuses every request instead of opening to everyone.
 
@@ -1557,7 +1594,11 @@ behavior.
   10 minutes lock that address out of every token-gated route for
   `AUTH_LOCK_MIN` (default 15) minutes — a 429 with `Retry-After`, even for the
   right token. A request with no token at all, or a `READ_TOKEN` asking for a
-  full-token route, never counts as a guess.
+  full-token route, never counts as a guess. A wrong admin second-factor code or
+  passkey does count.
+- **Admin two-factor** (`ADMIN_2FA`, see *Two-factor for the admin panel* above) only
+  gates `/api/social/admin/*`. Nothing here, and nothing else the token opens, ever asks
+  for a second factor.
 
 ```bash
 # examples
@@ -1672,7 +1713,10 @@ boot the full journal with a token, load sample data, open every tab, save a jou
 note and check it reaches the server and survives a reload, check that a reload
 takes every `app/` script from cache, open the app offline through the service
 worker, open `ledger.html` straight from disk, open Pulse at phone width (no
-sideways scroll), and open every admin tab, failing on any uncaught page error. Each step also has a time budget (boot 3 s, sample data 4 s, a tab switch
+sideways scroll), open every admin tab, and run admin two-factor at 360 and 1280 px
+(setting up an app from its QR code and a passkey in Chrome's virtual authenticator,
+the second step on the sign-in screen and as a dialog when a session ends, sign-out,
+`ADMIN_2FA=required` first-time setup), failing on any uncaught page error. Each step also has a time budget (boot 3 s, sample data 4 s, a tab switch
 2.5 s; `E2E_SLOW=2` doubles them for slow machines, and CI uses that). Playwright is
 deliberately not a dependency of the repo: install it with
 `npm i --no-save playwright && npx playwright install chromium`. CI runs these in a
