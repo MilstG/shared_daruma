@@ -341,6 +341,143 @@ try {
     eq(errs, []);
     await p.close();
   });
+
+  // Admin two-factor, on a server of its own (the owner turns it on here), as localhost: WebAuthn
+  // refuses IP addresses as a site ID. Codes come from admin2fa.js's own TOTP.
+  console.log('\nAdmin two-factor');
+  const A2F = require(join(here, '..', 'admin2fa.js'));
+  const app2 = createApp({ dataDir: mkdtempSync(join(tmpdir(), 'ledger-e2e-2fa-')), auth: TOKEN, htmlPath: join(here, '..', 'ledger.html'), push: false, offsiteTimer: false,
+    fetchImpl: async () => { throw new Error('offline'); } });
+  const LB2 = await new Promise(r => app2.listen(0, '127.0.0.1', () => r('http://localhost:' + app2.address().port)));
+  const totpNow = (secret, ahead = 0) => A2F.totp(A2F.b32decode(secret), Date.now() + ahead);
+  // a fresh browser (no session cookie) carrying the token, with a virtual passkey device that can be shared
+  const ownerCtx = async (width, auth) => {
+    const ctx = await browser.newContext({ viewport: { width, height: 900 } }), p = await ctx.newPage(), errs = [];
+    p.on('pageerror', e => errs.push(e.message));
+    p.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|frame-ancestors/.test(m.text())) errs.push(m.text()); });
+    await p.route('**/*', r => r.request().url().startsWith(LB2) ? r.continue() : r.abort());
+    await p.addInitScript(tok => { try { localStorage.setItem('srv_token', tok); } catch (e) {} }, TOKEN);
+    const cdp = await ctx.newCDPSession(p); await cdp.send('WebAuthn.enable');
+    const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'usb', hasResidentKey: false, hasUserVerification: true, isUserVerified: true } });
+    if (auth) for (const c of auth.creds) await cdp.send('WebAuthn.addCredential', { authenticatorId, credential: c });
+    const noSideways = async () => ok(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no sideways scroll at ' + width + ' px');
+    return { ctx, p, errs, cdp, authenticatorId, noSideways };
+  };
+  let secret = null, creds = null, recovery = null;
+  try {
+    await t('1280 px: the Security card sets up an authenticator app (QR code) and an admin passkey, with recovery codes', async () => {
+      const { ctx, p, errs, cdp, authenticatorId, noSideways } = await ownerCtx(1280);
+      await p.goto(LB2 + '/admin#settings');
+      await p.waitForSelector('#a2fCard [data-a2f="totpstart"]');
+      ok(/Two-factor off/.test(await p.textContent('#a2fCard')));
+      await p.click('[data-a2f="totpstart"]');
+      await p.waitForSelector('#a2fCard .a2f-qr svg');
+      secret = (await p.textContent('#a2fSecret')).replace(/\s/g, ''); ok(/^[A-Z2-7]{32}$/.test(secret), secret);
+      ok(/^otpauth:\/\/totp\//.test(await p.getAttribute('#a2fCard .a2f-uri a', 'href')));
+      await p.fill('#a2fTotpCode', totpNow(secret)); await p.click('[data-a2f="totpok"]');
+      await p.waitForSelector('#a2fCodes');
+      recovery = await p.$$eval('#a2fCodes span', s => s.map(x => x.textContent)); eq(recovery.length, 10);
+      await p.click('[data-a2f="codesdone"]');
+      await p.fill('#a2fPkName', 'Desk key'); await p.click('[data-a2f="pkadd"]');
+      await p.waitForFunction(() => /Desk key/.test(document.getElementById('a2fCard').textContent) && /Two-factor on/.test(document.getElementById('a2fCard').textContent));
+      ok(/1 passkey and authenticator app/.test(await p.textContent('#a2fCard')));
+      creds = (await cdp.send('WebAuthn.getCredentials', { authenticatorId })).credentials; eq(creds.length, 1);
+      await noSideways();
+      await p.screenshot({ path: join(tmpdir(), 'e2e-admin2fa-security-1280.png'), fullPage: true });
+      // the panel keeps working in this browser: its session came with the first factor
+      await p.goto(LB2 + '/admin#members'); await p.waitForSelector('#mRows');
+      eq(errs, []);
+      await ctx.close();
+    });
+    await t('1280 px: a new browser with the token gets the second step on the sign-in screen; a passkey opens the panel', async () => {
+      const { ctx, p, errs, noSideways } = await ownerCtx(1280, { creds });
+      await p.goto(LB2 + '/admin');
+      await p.waitForSelector('#a2fStep [data-a2f="stepPk"]');
+      ok(await p.isHidden('#login'), 'the step takes the sign-in card’s place'); ok(await p.isHidden('#app'));
+      await noSideways();
+      await p.screenshot({ path: join(tmpdir(), 'e2e-admin2fa-step-1280.png') });
+      await p.click('[data-a2f="stepPk"]');
+      await p.waitForSelector('#view .tile');
+      eq(await p.textContent('#whoami'), 'Owner'); eq(await p.$('#a2fStep'), null);
+      eq(errs, []);
+      await ctx.close();
+    });
+    await t('360 px: the second step with an authenticator code, a wrong one first; the Security card fits', async () => {
+      const { ctx, p, errs, noSideways } = await ownerCtx(360);
+      await p.goto(LB2 + '/admin#settings');
+      await p.waitForSelector('#a2fCode');
+      eq(await p.$('#a2fStep [data-a2f="stepPk"]') !== null, true, 'the passkey button is offered');
+      await noSideways();
+      await p.screenshot({ path: join(tmpdir(), 'e2e-admin2fa-step-360.png') });
+      await p.fill('#a2fCode', '000000' === totpNow(secret, 30000) ? '111111' : '000000'); await p.press('#a2fCode', 'Enter');
+      await p.waitForSelector('#a2fErr:not(.hide)'); ok(/didn’t work/.test(await p.textContent('#a2fErr')));
+      await p.fill('#a2fCode', totpNow(secret, 30000)); await p.click('[data-a2f="stepCode"]'); // the next step: the setup used this one
+      await p.waitForSelector('#a2fCard [data-a2f="rcnew"]');
+      ok(/9 of 10 left|10 of 10 left/.test(await p.textContent('#a2fCard')));
+      await noSideways();
+      await p.screenshot({ path: join(tmpdir(), 'e2e-admin2fa-security-360.png'), fullPage: true });
+      eq(errs, []);
+      await ctx.close();
+    });
+    await t('360 px: a session that ends while the panel is open asks again in a dialog, then the action goes through; sign out ends it', async () => {
+      const { ctx, p, errs, noSideways } = await ownerCtx(360);
+      await p.goto(LB2 + '/admin');
+      await p.waitForSelector('#a2fCode');
+      await p.fill('#a2fCode', recovery[0]); await p.press('#a2fCode', 'Enter');
+      await p.waitForSelector('#view .tile');
+      await ctx.clearCookies();
+      await p.goto(LB2 + '/admin#settings'); // the hash change re-renders from the loaded data, no call yet
+      await p.waitForSelector('#sSave');
+      await p.click('#sSave');
+      await p.waitForSelector('.a2f-ov #a2fCode');
+      eq(await p.$eval('#a2fStep .card', el => el.getAttribute('aria-modal')), 'true');
+      await noSideways();
+      await p.fill('#a2fCode', recovery[1]); await p.click('[data-a2f="stepCode"]');
+      await p.waitForFunction(() => /Settings saved/.test(document.getElementById('note').textContent));
+      eq(await p.$('#a2fStep'), null);
+      const cookie = (await ctx.cookies()).find(c => c.name === 'pz_admin2fa');
+      ok(cookie && cookie.httpOnly && cookie.sameSite === 'Strict' && cookie.path === '/api/social/admin', JSON.stringify(cookie));
+      await Promise.all([p.waitForNavigation(), p.click('#signout')]);
+      await p.waitForSelector('#a2fStep'); // the token comes back with this test's page, the session doesn't
+      let st = 0; for (let i = 0; i < 20 && st !== 401; i++) { st = (await fetch(LB2 + '/api/social/admin/overview', { headers: { Authorization: 'Bearer ' + TOKEN, Cookie: 'pz_admin2fa=' + cookie.value } })).status; if (st !== 401) await new Promise(r => setTimeout(r, 100)); }
+      eq(st, 401, 'signing out ended the session');
+      eq(errs, []);
+      await ctx.close();
+    });
+    await t('cancelling the second step says what’s needed instead of “wrong token”', async () => {
+      const { ctx, p, errs } = await ownerCtx(1280);
+      await p.goto(LB2 + '/admin');
+      await p.waitForSelector('#a2fStep [data-a2f="cancel"]'); await p.click('[data-a2f="cancel"]');
+      await p.waitForSelector('#loginErr:not(.hide)');
+      ok(/second step/.test(await p.textContent('#loginErr')), await p.textContent('#loginErr'));
+      eq(errs, []);
+      await ctx.close();
+    });
+  } finally { await new Promise(r => app2.close(r)); }
+  await t('ADMIN_2FA=required, 360 px: the first sign-in sets up an authenticator app from a QR code, shows the recovery codes, then opens the panel', async () => {
+    const app3 = createApp({ dataDir: mkdtempSync(join(tmpdir(), 'ledger-e2e-2fa-req-')), auth: TOKEN, htmlPath: join(here, '..', 'ledger.html'), push: false, offsiteTimer: false,
+      admin2fa: 'required', fetchImpl: async () => { throw new Error('offline'); } });
+    const LB3 = await new Promise(r => app3.listen(0, '127.0.0.1', () => r('http://localhost:' + app3.address().port)));
+    const ctx = await browser.newContext({ viewport: { width: 360, height: 800 } }), p = await ctx.newPage(), errs = [];
+    p.on('pageerror', e => errs.push(e.message));
+    p.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|frame-ancestors/.test(m.text())) errs.push(m.text()); });
+    await p.route('**/*', r => r.request().url().startsWith(LB3) ? r.continue() : r.abort());
+    await p.addInitScript(tok => { try { localStorage.setItem('srv_token', tok); } catch (e) {} }, TOKEN);
+    try {
+      await p.goto(LB3 + '/admin');
+      await p.waitForSelector('#a2fStep [data-a2f="stepTotp"]');
+      ok(/Set up two-factor/.test(await p.textContent('#a2fStep')));
+      await p.click('[data-a2f="stepTotp"]');
+      await p.waitForSelector('#a2fStep .a2f-qr svg');
+      ok(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no sideways scroll');
+      const sec = (await p.textContent('#a2fSecret')).replace(/\s/g, '');
+      await p.fill('#a2fStepTotp', totpNow(sec)); await p.press('#a2fStepTotp', 'Enter');
+      await p.waitForSelector('#a2fCodes'); eq((await p.$$('#a2fCodes span')).length, 10);
+      await p.click('[data-a2f="stepdone"]');
+      await p.waitForSelector('#view .tile');
+      eq(errs, []);
+    } finally { await ctx.close(); await new Promise(r => app3.close(r)); }
+  });
 } finally {
   await browser.close();
   await new Promise(r => app.close(r));

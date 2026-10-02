@@ -123,6 +123,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   </div>
 </main>
 <div class="note" id="note" role="status" aria-live="polite"></div>
+<script src="/admin2fa-ui.js"></script>
 <script>
 (function(){
   const $=id=>document.getElementById(id);
@@ -699,7 +700,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       ${o.claims&&!o.originPinned?'<p class="warn small">Wallet sign-in isn’t pinned to your address yet. Set <code>PUBLIC_ORIGIN</code> on the server (e.g. <code>https://pulse.example.com</code>) so a look-alike site can’t collect members’ signatures.</p>':''}
       <h3>Sync</h3>
       ${box('sVault','Encrypted journal sync for members',c.vaultOn!==false,'Members’ journals are encrypted in their browser with their own passphrase. This server stores ciphertext only — you can’t read them.')}
-      <div style="margin-top:14px"><button class="primary" id="sSave">Save settings</button></div></section>`;
+      <div style="margin-top:14px"><button class="primary" id="sSave">Save settings</button></div></section>`+(window.A2F?A2F.card():'');
   }
 
   // ---------------- events ----------------
