@@ -188,8 +188,7 @@ function taEstimateNote(A){
   return 'Estimated on this device. <a href="#social">Create a profile</a> to have it verified and to earn the XP multiplier.';
 }
 function taCardHtml(D){
-  const A=taOf(D);
-  if(!A.n)return '';
+  const A=taOf(D); // no trading days yet: it shows as building, so it can be found
   const head=`<div class="pz-kvrow"><span class="pz-lbl" style="color:${PZ_COL.xp}">Trader Age${A.verified?' · ✓ verified':''}</span><a class="pz-link" href="#age" style="min-height:0">What builds it ${pzI('chev',14)}</a></div>`;
   if(A.building)return `<section class="pz-card pz-kv">${head}
     <b style="font-size:17px">Building your Trader Age</b>${pzBar((TA.minDays-A.need)/TA.minDays,PZ_COL.xp)}

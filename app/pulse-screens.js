@@ -23,6 +23,8 @@ function pzXpSources(g, fromKey){
   for(const b of (g.bonuses||[]))if(b.key>=fromKey){ const k=b.src==='badge'?'badges':b.src==='grant'||b.src==='award'?'league':b.why==='challenge'?'challenge':b.why==='focus habit'?'habits':'achievements'; o[k]+=b.xp; }
   return o;
 }
+// features whose screen lives under a tab (pzFeature tab.nav) show their card on that tab too, linking to it
+function pzFeatureCards(nav,D){ return PZ_FEATS.filter(f=>f.tab&&f.tab.nav===nav&&f.today).map(f=>{ try{ return f.today.html(D)||''; }catch(e){ console.warn('feature '+f.id,e); return ''; } }).join(''); }
 function pzProgressHtml(D){
   const {g}=D, L=g.level, cat=g.catalog||{earned:[],families:[],total:0}, nowK=D.todayK, wkFrom=dayKey(lastCompletedWeekRange(Date.now()).to);
   const src=pzXpSources(g,wkFrom), srcRows=[['discipline','Discipline scores',PZ_COL.good],['bonus','Prep, plans, journal, reviews',PZ_COL.xp],['badges','Badges',PZ_TIER_COL[2]],
@@ -89,7 +91,7 @@ function pzProgressHtml(D){
   return `${pzHead('Earned by process','Progress',pzChips(g,D.inbox.length))}
   <div class="pz-wide pz-masonry">${hero}
     ${P('goals',(()=>{ try{ return pzGoalsHtml(g); }catch(e){ console.warn('goals',e); return ''; } })())}
-    <div class="pz-col">${P('xpsources',xpCard)}${P('challenge',chHtml)}${P('habits',habitsHtml)}${P('reports',reportHtml)}</div>
+    <div class="pz-col">${pzFeatureCards('progress',D)}${P('xpsources',xpCard)}${P('challenge',chHtml)}${P('habits',habitsHtml)}${P('reports',reportHtml)}</div>
     <div class="pz-col">${P('leaks',leakHtml)}${P('lessons',(()=>{ try{ return pzLessonsCardHtml(); }catch(e){ console.warn('lessons',e); return ''; } })())}${P('moments',gmHtml)}${P('badges',badgeHtml)}${P('bests',pb)}</div>
     <section class="pz-span" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${share?`<span class="pz-fine">${pzI('lock',14)} Share cards unlock at level ${share}</span>`:'<button type="button" class="pz-ghost pz-sm" data-pz-wk="open" style="width:auto;padding:0 16px">Share my week</button>'}</section>
     ${pzS.wk&&!share?pzWkHtml():''}

@@ -145,6 +145,8 @@ t('a feature plugs into Keel through pzFeature: a Today card people can hide and
   ok(src.includes("pzFeature({id:'age', today:{label:'Trader Age'") && src.includes("tab:{name:'age',nav:'progress',html:taScreenHtml}"));
   ok(src.includes('for(const f of PZ_FEATS)if(f.today)card[f.id]=()=>sec(f.id,()=>f.today.html(D));'), 'Today renders feature cards');
   ok(src.includes('const feat=pzFeatTab(tab);'), 'and routes to feature screens');
+  ok(grabFn('pzProgressHtml').includes("pzFeatureCards('progress',D)"), 'its card shows on Progress too (the tab its screen sits under)');
+  ok(!grabFn('taCardHtml').includes("if(!A.n)return ''"), 'and on Today even before the first trading day (as building)');
 });
 
 // served: the feature file loads on Keel's page only, and app/features/ can't be used to reach other files
