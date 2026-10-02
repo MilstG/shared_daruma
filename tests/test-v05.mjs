@@ -9,11 +9,11 @@ const html = readAppSource(new URL('../ledger.html', import.meta.url).pathname);
 const { grabFn } = makeExtractor(html);
 const grabConst = (name) => { const i = html.indexOf('const ' + name + '='); if (i < 0) throw new Error(name);
   return html.slice(i, html.indexOf(';\n', i) + 1); };
-const ctx = { Math, Object, Array, String, Number, JSON, isFinite, Date, Set, Map };
+const ctx = { Math, Object, Array, String, Number, JSON, isFinite, Date, Set, Map, Proxy };
 vm.createContext(ctx);
 const load = (consts, fns) => vm.runInContext(consts.map(grabConst).join('\n') + '\n' + fns.map(grabFn).join('\n'), ctx);
 load(['PZ_LOSS', 'PZ_TILT_W', 'PZ_TILT_HOT', 'PZ_VOL'], ['pzTilt', 'nfMedian', 'pzRegimes', 'pzRegimeInsight', 'pzLessonTag', 'pzLessonList', 'pzLessonDue', 'pzLessonFor']);
-load([], ['pzCostStats', 'pzSnapSvg', 'pzLessonsNorm', '_syncMerge']);
+load(['PZ_COL_DARK', 'PZ_COL_LIGHT', 'PZ_COL', 'PZ_ITV_NAME'], ['pzCostStats', 'pzPx', 'pzHeld', 'pzTicks', 'pzSnapSvg', 'pzLessonsNorm', '_syncMerge']);
 ctx.usdPlain = v => '$' + Math.abs(v).toFixed(2); ctx.esc = x => String(x); ctx.dispMarket = x => x; ctx.dcoin = t => t.coin; ctx.dayLabel = k => k; ctx.dayKey = ms => new Date(ms).toISOString().slice(0, 10);
 load(['PZ_LESSON_STEPS', 'PZ_LESSON_TAGS', 'PZ_TILT_SLIP', 'PZ_SLIP_TOPIC', 'pzMonthEnd', 'pzDaysBetween'], ['pzGoalEval']);
 ctx.signedPlain = v => (v < 0 ? '−$' : '+$') + Math.abs(Math.round(v));
@@ -132,9 +132,11 @@ t('mostly taker volume, fees eating the price result, funding paid: one line of 
 t('the trade chart draws candles, entry and exit, and the written stop and target', () => {
   const T1 = Date.UTC(2026, 9, 1, 10), c = Array.from({ length: 30 }, (_, i) => [T1 + i * 3e5, 101 + i * 0.1, 99 + i * 0.1, 100 + i * 0.1, 100 + i * 0.1 - 0.05]);
   const svg = ctx.pzSnapSvg({ coin: 'SOL', avgEntry: 100.5, avgExit: 102, openTime: T1 + 3e6, closeTime: T1 + 6e6, net: 30 }, c, 3e5, { stop: 99, target: 103 });
-  ok(svg.startsWith('<svg') && (svg.match(/<rect(?![^>]*fill="transparent")/g) || []).length === 30, 'a body per candle');
+  ok(svg.startsWith('<svg') && (svg.match(/<rect[^>]*rx="\.6"/g) || []).length === 30, 'a body per candle');
   eq((svg.match(/data-pz-tip="/g) || []).length, 30, 'each candle explains itself on hover');
-  for (const lab of ['in 100.5', 'out 102', 'stop', 'target']) ok(svg.includes('>' + lab + '<'), lab);
+  for (const lab of ['in 100.50', 'out 102.00', 'stop 99.00', 'target 103.00']) ok(svg.includes('>' + lab + '<'), lab + ' as a pill on the axis');
+  ok(/class="pz-snap-ax">10[01]\.[05]0</.test(svg), 'round-number gridlines on the axis');
+  ok(svg.includes('held 50m · 5m candles'), 'the time axis says how long it was held and the candle size');
   eq(ctx.pzSnapSvg({}, [c[0]], 3e5, null), '', 'no chart from one candle');
 });
 

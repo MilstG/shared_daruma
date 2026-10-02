@@ -772,13 +772,52 @@ function demoFills(seed, now){
   out.sort((a,b)=>a.time-b.time);
   return out;
 }
+let _demoData=false; // sample data was loaded (and no real wallet's trades have replaced it: sample trades carry no address)
+function isDemoData(){ return _demoData&&!((typeof allTrades!=='undefined'&&allTrades)||[]).some(t=>t&&t.wallet&&t.wallet.address&&t.wallet.address!=='paste'); } // pasted (and sample) trades say 'paste'
 async function loadDemo(){
   setStatus('Generating sample data…',true);
-  try{ await loadFromPaste(demoFills(1),{offline:true}); }
+  try{ await loadFromPaste(demoFills(1),{offline:true}); _demoData=true; }
   catch(e){ setErr('Demo generation failed: '+e.message); return; }
   setStatus('Sample data loaded — '+allTrades.length+' synthetic trades across perps and spot. Nothing was fetched or saved to a wallet; add a real address whenever you like.');
 }
 (function(){ for(const id of ['demoBtn','demoBtn2']){ const b=$(id); if(b)b.onclick=loadDemo; } })();
+// Sample candles. The sample fills are made up, so real exchange candles can never line up with them:
+// in sample mode every chart and excursion reads a price path drawn here instead. One deterministic
+// path per coin that passes through every one of its fills (log-linear between fills, with layered
+// value noise that fades out near each fill), so any interval and any range agree with each other.
+const _demoAnchors=new Map();
+function demoAnchorsFor(coin){
+  const tr=(typeof allTrades!=='undefined'?allTrades:[]).filter(t=>t.coin===coin), sig=tr.length+'|'+tr.reduce((a,t)=>a+(t.events||[]).length,0);
+  const c=_demoAnchors.get(coin); if(c&&c.sig===sig)return c.pts;
+  const pts=[]; for(const t of tr)for(const e of (t.events||[]))if(e[1]>0)pts.push([e[0],e[1]]);
+  pts.sort((a,b)=>a[0]-b[0]); _demoAnchors.set(coin,{sig,pts}); return pts;
+}
+const _demoHash=(coin,oct,i)=>_hashSeed('dc|'+coin+'|'+oct+'|'+i)/4294967296;
+function demoNoise(coin,ms){ // -1..1, smooth, with the slow swings of a real tape
+  const OCT=[[86400e3,1],[14400e3,.6],[3600e3,.45],[900e3,.3],[300e3,.18],[90e3,.1]]; let v=0, w=0;
+  for(let o=0;o<OCT.length;o++){ const [P,A]=OCT[o], x=ms/P, i=Math.floor(x), u=x-i, s=u*u*(3-2*u);
+    v+=A*((1-s)*_demoHash(coin,o,i)+s*_demoHash(coin,o,i+1)); w+=A; }
+  return (v/w)*2-1;
+}
+function demoPrice(coin,ms){
+  const P=demoAnchorsFor(coin), FADE=20*60e3; if(!P.length)return null; // the noise fades out only in the last 20 minutes to a fill
+  let lo=0, hi=P.length; while(lo<hi){ const m=(lo+hi)>>1; if(P[m][0]<=ms)lo=m+1; else hi=m; }
+  const A=P[lo-1]||null, B=P[lo]||null; let base, dist;
+  if(A&&B){ const u=(ms-A[0])/Math.max(1,B[0]-A[0]); base=A[1]*Math.pow(B[1]/A[1],u); dist=Math.min(ms-A[0],B[0]-ms); }
+  else { const N=A||B; base=N[1]; dist=Math.abs(ms-N[0]); }
+  return base*(1+Math.min(1,dist/FADE)*0.03*demoNoise(coin,ms));
+}
+// the same shape venueFetchCandles returns: rows [t, high, low, close, open], and coverage to b
+function demoCandles(coin,itvName,a,b){
+  const ms=(({'1m':60e3,'5m':300e3,'15m':900e3,'1h':3600e3,'4h':14400e3,'1d':86400e3})[itvName])||300e3, rows=[], P=demoAnchorsFor(coin);
+  if(!P.length)return {rows,coveredTo:b};
+  for(let t=Math.floor(a/ms)*ms;t<b;t+=ms){
+    const xs=[]; for(let k=0;k<=6;k++)xs.push(demoPrice(coin,t+ms*k/6));
+    for(const p of P)if(p[0]>=t&&p[0]<t+ms)xs.push(p[1]); // a fill inside the candle is inside its range
+    rows.push([t,Math.max(...xs),Math.min(...xs),xs[6],xs[0]]);
+  }
+  return {rows,coveredTo:b};
+}
 (function(){ const b=$('helpBtn'); if(b)b.onclick=()=>window.open('help','_blank','noopener'); })();
 // Docs entry points show whenever the page is SERVED (http/https) — the /help and /docs
 // routes come from server.js, so from file:// they'd 404 and stay hidden. Protocol-gated
