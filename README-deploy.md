@@ -1,5 +1,9 @@
 # Deploying Ledger on Railway
 
+> **New here?** [docs/deploy-railway.md](docs/deploy-railway.md) walks through the same
+> setup step by step, with verification, optional features and troubleshooting.
+> Every variable is described in [docs/configuration.md](docs/configuration.md).
+
 Ledger stays a client-side app: all fill reconstruction, statistics, mining, and
 excursion analysis run in your browser, talking directly to Hyperliquid. The
 companion server (`server.js`, zero npm dependencies) only serves the HTML and
