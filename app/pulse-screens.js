@@ -87,7 +87,7 @@ function pzProgressHtml(D){
   const share=pzLocked('share',L.level);
   const P=(id,h)=>pzShow('progress',id)?h:'';
   return `${pzHead('Earned by process','Progress',pzChips(g,D.inbox.length))}
-  <div class="pz-wide">${hero}
+  <div class="pz-wide pz-masonry">${hero}
     ${P('goals',(()=>{ try{ return pzGoalsHtml(g); }catch(e){ console.warn('goals',e); return ''; } })())}
     <div class="pz-col">${P('xpsources',xpCard)}${P('challenge',chHtml)}${P('habits',habitsHtml)}${P('reports',reportHtml)}</div>
     <div class="pz-col">${P('leaks',leakHtml)}${P('lessons',(()=>{ try{ return pzLessonsCardHtml(); }catch(e){ console.warn('lessons',e); return ''; } })())}${P('moments',gmHtml)}${P('badges',badgeHtml)}${P('bests',pb)}</div>
@@ -494,7 +494,11 @@ function pzCoachHtml(D){
   pzCoachStatus();
   const lock=pzLocked('coach',D.g.level.level); if(lock)return `${back}${pzLockedHtml('Your AI coach',lock,D.g)}`;
   const owner=!!(SRV.token&&!SRV.badAuth);
-  if(!socAvailable()||(!SOC.me&&!owner))return `${back}${pzHead('Coach','Your AI coach')}<section class="pz-card"><p class="pz-sub">The coach runs on the league server this page comes from. ${socAvailable()?'Join the league under <a href="#social">Social</a> to use it.':'Open Pulse from your server’s /pulse link.'}</p></section>`;
+  if(!socAvailable()||(!SOC.me&&!owner))return `${back}${pzHead('Coach','Your AI coach')}<section class="pz-card pz-empty">
+    <span class="pz-ico" style="width:52px;height:52px;background:var(--pz-tint-good);color:var(--pz-good)">${pzI('coach',26)}</span>
+    <b style="font-size:18px">A coach that knows your trades</b>
+    <p class="pz-sub" style="max-width:460px">Ask why a day went wrong, what to change this week, or whether a setup is worth keeping. It reads your summaries, never your keys, and runs on the league server this page comes from.</p>
+    ${socAvailable()?'<a class="pz-cta" href="#social" style="max-width:280px">Join the league to start</a>':'<p class="pz-fine">Open Pulse from your server’s /pulse link to use it.</p>'}</section>`;
   const st=COACH.status;
   if(!st)return `${back}${pzHead('Coach','Your AI coach')}<p class="pz-sub"><span class="pz-spin"></span>Loading…</p>`;
   if(!st.enabled)return `${back}${pzHead('Coach','Your AI coach')}<section class="pz-card pz-kv"><p class="pz-sub">The AI coach isn’t switched on for this server yet.${owner?' Set <code>COACH_AI=1</code> and an <code>ANTHROPIC_API_KEY</code> (or <code>OPENAI_API_KEY</code>) on the server, then restart it.':' Ask the league owner.'}</p></section>`;
