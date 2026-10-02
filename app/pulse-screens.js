@@ -394,7 +394,7 @@ async function pzWkMake(){
   const w=pzS.wk; if(!w)return null; const n=w.n=(w.n||0)+1;
   const m=pzWeekCardModel(pzWeekCardSrc(gameContext()),w.show), blob=await pzWeekCardBlob(m,w.fmt,w.theme);
   if(pzS.wk!==w||w.n!==n)return blob; // a newer choice is being drawn
-  if(w.url)URL.revokeObjectURL(w.url); w.blob=blob; w.m=m; w.url=blob?URL.createObjectURL(blob):null;
+  if(w.url)URL.revokeObjectURL(w.url); w.blob=blob; w.m=m; w.drawn=w.fmt+'/'+w.theme; w.url=blob?URL.createObjectURL(blob):null; // drawn: what the image on hand shows
   const img=$('pzWkImg'); if(img&&w.url)img.src=w.url; return blob;
 }
 async function pzWkAction(a){

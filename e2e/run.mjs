@@ -291,8 +291,8 @@ try {
     await p.waitForFunction(() => pzS.wk && pzS.wk.blob);
     eq(await dims(), ['image/png', 1080, 1350, 'blob:']);
     const n0 = await p.evaluate(() => pzS.wk.n);
-    await p.click('[data-pz-wk="fmt:square"]'); await p.waitForFunction(n => pzS.wk.n > n && pzS.wk.m && pzS.wk.blob && pzS.wk.fmt === 'square', n0);
-    await p.waitForFunction(async () => (await createImageBitmap(pzS.wk.blob)).height === 1080);
+    // wait for the square image itself (the portrait one is still on hand until it's drawn)
+    await p.click('[data-pz-wk="fmt:square"]'); await p.waitForFunction(n => pzS.wk.n > n && pzS.wk.blob && pzS.wk.drawn && pzS.wk.drawn.startsWith('square/'), n0);
     eq(await dims(), ['image/png', 1080, 1080, 'blob:']);
     await p.click('[data-pz-wk="theme:light"]'); await p.click('[data-pz-wk="show:badges"]');
     await p.waitForFunction(() => pzS.wk.theme === 'light' && pzS.wk.show.badges === false && pzS.wk.m && pzS.wk.m.badges.length === 0);
