@@ -45,6 +45,13 @@ const PZ_UNLOCK_DEFAULTS={unlocksOn:true,unlocks:{trends:2,share:3,compete:4}};
 var SOC={cfg:null,cfgTried:false,key:null,me:null,share:null,sub:'league',board:'rank',cfilter:'mine',feed:'following',
   cache:{},busy:{},lastSent:'',lastSentAt:0,timer:null,draft:null,avs:{},more:{},upd:{},compose:null,confirm:null};
 try{ SOC.key=localStorage.getItem(SOC_KEY_STORE)||null; }catch(e){}
+// An invite link (/pulse?invite=CODE, from the owner's Settings) fills the code in for them: kept on this
+// device until they join, and taken off the address bar so it isn't shared on by accident.
+const SOC_INVITE_STORE='pz_invite';
+function socInviteCode(){ try{ return localStorage.getItem(SOC_INVITE_STORE)||''; }catch(e){ return ''; } }
+(function(){ try{ const u=new URL(location.href), c=(u.searchParams.get('invite')||'').trim().slice(0,40);
+  if(!c)return; try{ localStorage.setItem(SOC_INVITE_STORE,c); }catch(e){}
+  u.searchParams.delete('invite'); history.replaceState(history.state,'',u.pathname+u.search+u.hash); }catch(e){} })();
 
 // The numbers a member shares, from the shared game context. Pure given its inputs.
 function pzSocialStats(g, habits, J, withLessons){
@@ -83,6 +90,14 @@ function pzNeeds(feature, level, cfg, demo, unlocked){
 // Pulse's own check: the league's levels, unless the owner fully unlocked this member (or it's the
 // owner, signed in without a member profile). Acting as a member, it's the member's own unlock that
 // counts — the server holds a member's key to it, owner token or not.
+// Someone using Pulse without a profile, on a server where they could create one, stops at the owner's
+// level cap (0 = none). The owner, members and the demo never do.
+function pzGuestCap(){ try{
+  const c=SOC.cfg; if(!c||!(c.guestCap>0)||!c.open||SOC.key||pzS.demo||(SRV.token&&!SRV.badAuth))return 0;
+  return c.guestCap; }catch(e){ return 0; } }
+// a feature that opens past the cap needs a profile, not more XP
+function pzNeedsProfile(need){ const cap=pzGuestCap(); return !!(cap&&need>cap); }
+function pzLockWord(need){ return pzNeedsProfile(need)?'needs a profile':'level '+need; }
 function pzLocked(feature, level){ return pzNeeds(feature,level,pzUnlockCfg(),pzS.demo,SOC.me?!!SOC.me.unlocked:!!(SRV.token&&!SRV.badAuth)); }
 function socValue(board,v){ if(v==null)return '—';
   if(board==='ret')return (v>=0?'+':'−')+Math.abs(v*100).toFixed(1)+'%';
@@ -103,6 +118,17 @@ async function socFetch(p,o){ o=o||{};
   let d; try{ d=await r.json(); }catch(e){ if(r.ok)throw new Error('The server’s answer didn’t arrive in full. Try again.'); d={}; } // a cut-off body is never an empty success
   if(!r.ok){ const e=new Error(d.error||('HTTP '+r.status)); e.status=r.status; e.data=d; throw e; }
   socLearnAv(d,0); return d; }
+// Visitors without a profile are counted, anonymously: on a day this device uses Pulse with a wallet
+// and no profile, it says so once. Nothing identifies it: no wallet, no device id, just "+1 today".
+const SOC_VISIT_STORE='pz_visit';
+function socVisitPing(){
+  if(SOC.key||!SOC.cfg||!socAvailable()||pzS.demo||(SRV.token&&!SRV.badAuth))return; // members and the owner aren't visitors
+  if(typeof settings==='undefined'||!(settings.wallets||[]).length)return; // only once they're actually using it
+  const day=new Date().toISOString().slice(0,10);
+  try{ if(localStorage.getItem(SOC_VISIT_STORE)===day)return; localStorage.setItem(SOC_VISIT_STORE,day); }catch(e){ return; }
+  socFetch('/visit',{method:'POST',body:'{}'}).catch(()=>{});
+}
+function socWasVisitor(){ try{ return !!localStorage.getItem(SOC_VISIT_STORE); }catch(e){ return false; } }
 function socBoot(){
   if(SOC.cfgTried||!socAvailable())return; SOC.cfgTried=true;
   socFetch('/config').then(c=>{ SOC.cfg=c; pzApplyCfg(c); if(!SOC.key)return;
@@ -291,7 +317,7 @@ function socJoinHtml(){
       <div class="pz-big">Trade alongside other people</div>
       <p class="pz-sub">Your profile is how you take part: challenge someone to a duel, find an accountability partner, ask a mentor to look at your trading, and climb rankings that count process, never profit.${cfg&&cfg.members?' <b>'+cfg.members+' trader'+(cfg.members===1?'':'s')+'</b> in this league so far.':''}</p>
       <div class="pz-field"><label for="socHandle">Your public name</label><input type="text" id="socHandle" maxlength="20" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="e.g. slowhands"></div>
-      ${cfg&&cfg.inviteRequired?'<div class="pz-field"><label for="socInvite">Invite code</label><input type="text" id="socInvite" maxlength="40" autocomplete="off"></div>':''}
+      ${cfg&&cfg.inviteRequired?`<div class="pz-field"><label for="socInvite">Invite code</label><input type="text" id="socInvite" maxlength="40" autocomplete="off" value="${esc(socInviteCode())}">${socInviteCode()?'<span class="pz-fine">Filled in from your invite link.</span>':''}</div>`:''}
       ${rankings}
       <button type="button" class="pz-cta" id="socJoin">Create my profile</button>
       <p class="pz-fine">Your journal, notes and trades stay in this browser. Only the numbers switched on below are sent, and returns are read from the chain, never from this device.</p>
@@ -307,7 +333,7 @@ function socCompCard(c, level){
   const meLine=c.me?`#${c.me.rank} of ${c.entrants} · ${c.me.note}`:c.entrants+' joined';
   const act=c.status==='finished'?`<a class="pz-ghost pz-sm" href="#c/${esc(c.id)}">Results</a>`
     :c.joined?`<a class="pz-ghost pz-sm" href="#c/${esc(c.id)}">Standings</a>`
-    :need?`<span class="pz-fine">${pzI('lock',14)} Unlocks at level ${need}</span>`
+    :need?`<span class="pz-fine">${pzI('lock',14)} ${pzNeedsProfile(need)?'Needs a profile':'Unlocks at level '+need}</span>`
     :`<button type="button" class="pz-cta pz-sm" style="width:auto;min-height:40px;padding:0 18px" data-soc-join="${esc(c.id)}">Join</button>`;
   return `<section class="pz-card" style="display:flex;flex-direction:column;gap:8px"><div style="display:flex;justify-content:space-between;gap:10px"><span class="pz-lbl" style="color:${c.type==='survivor'?'#FFB25A':c.type==='return'?PZ_COL.xp:c.type==='journal'?PZ_COL.risk:PZ_COL.good}">${esc(SOC_COMP_KIND[c.type]||c.type)}</span><span class="pz-sub" style="font-size:12px">${esc(when)}</span></div>
     <a href="#c/${esc(c.id)}" style="color:var(--pz-text);text-decoration:none"><b style="font-size:17px">${esc(c.title)}</b></a>${c.rule?`<p class="pz-sub" style="font-size:13px">${esc(c.rule)}</p>`:''}
@@ -398,7 +424,8 @@ function socSharingHtml(D){
     ${socToggles(SOC.draft,'data-soc-draft')}</div>
   <div class="pz-col">
     ${SOC.me.walletStatus==='pending'?'<p class="pz-warn">Your wallet is waiting for the league owner’s approval. Until then it doesn’t count for returns, verified Discipline or return competitions.</p>'
-      :SOC.me.walletStatus==='rejected'?'<p class="pz-warn">The league owner hasn’t accepted this wallet. It doesn’t count for returns, verified Discipline or return competitions here.</p>':''}
+      :SOC.me.walletStatus==='rejected'?'<p class="pz-warn">The league owner hasn’t accepted this wallet. It doesn’t count for returns, verified Discipline or return competitions here.</p>'
+      :SOC.me.needsClaim&&SOC.cfg&&SOC.cfg.claims?'<p class="pz-warn">This league only counts wallets you’ve proved are yours. <a href="#account">Claim yours</a> (a signature, nothing moves) so your verified Discipline and returns count.</p>':''}
     <p class="pz-fine">${SOC.me.claimed?`Returns and verified Discipline are read on chain from your claimed wallet (${esc(walletShort(SOC.me.claimedAddress||''))}).`:w?`Returns are read on chain from your first wallet (${esc(walletShort(w.address))}) when “Show % return” or “Show dollar P&L” is on. The server owner can see that address.`:'Add a wallet to take part in return boards and competitions.'}</p>
     <button type="button" class="pz-cta" id="socSaveShare">Save</button>
     <a class="pz-card pz-cardlink" href="#account"><span class="pz-ico" style="background:var(--pz-tint-n);color:var(--pz-soft)">${pzI('shield',20)}</span>
@@ -419,6 +446,9 @@ function socAccountHtml(D){
 function pzXpToGo(need,g){ const s=pzLevelStart(need); return isFinite(s)?Math.max(0,s-g.level.xp).toLocaleString()+' XP to go.':'Past the top level the league set — ask the owner.'; }
 function pzLockedHtml(title, need, g){
   const L=g.level;
+  if(pzNeedsProfile(need))return `${pzHead('Needs a profile',title)}<section class="pz-card pz-lock">${pzRing(L.level,1,PZ_COL.xp,{size:96,cap:'Level'})}
+    <div class="pz-big">${esc(title)} needs a profile</div><p class="pz-sub">Without a profile, levels stop at ${pzGuestCap()}${L.capped?`. You’ve earned level ${L.earned}: create a profile and it all unlocks at once`:''}. A profile is free and takes a name. You choose what’s shared, and you can leave every ranking off.</p>
+    <a class="pz-cta" href="#social" style="max-width:320px">Create your profile</a></section>`;
   return `${pzHead('Unlocks at level '+need,title)}<section class="pz-card pz-lock">${pzRing(L.level,L.into/L.need,PZ_COL.xp,{size:96,cap:'Level'})}
     <div class="pz-big">${esc(title)} unlocks at level ${need}</div><p class="pz-sub">${pzXpToGo(need,g)} XP comes from process: prep, plan before your first trade, keep your stops and journal every trade.</p>
     <a class="pz-cta" href="#checkin" style="max-width:320px">Earn XP: do today’s prep</a></section>`;
@@ -1012,10 +1042,11 @@ async function socAction(t){
     switch(t.id){
       case 'socJoin': { const h=($('socHandle')||{value:''}).value.trim(), inv=($('socInvite')||{value:''}).value.trim();
         const share=SOC.draft||SOC_DEFAULT_SHARE;
-        const r=await socFetch('/join',{method:'POST',body:JSON.stringify({handle:h,invite:inv,share,address:socAddressFor(share),skip:SOC.joinSkip||[]})});
+        const r=await socFetch('/join',{method:'POST',body:JSON.stringify({handle:h,invite:inv,share,address:socAddressFor(share),skip:SOC.joinSkip||[],visitor:socWasVisitor()})});
         vaultForget(); COACH.tried=false; COACH.msgs=null; SOC.key=r.key; try{ localStorage.setItem(SOC_KEY_STORE,r.key); }catch(e){}
         SOC.me=r.me; PZ_CFG.rev++; SOC.share=r.share; SOC.draft=null; SOC.cache={}; SOC.lastSent='';
-        SOC.joinSkip=null; done('Welcome, @'+r.me.handle+'.'+(r.walletTaken?' Your wallet is claimed by another profile, so it wasn’t added.':'')); return true; }
+        SOC.joinSkip=null; try{ localStorage.removeItem(SOC_INVITE_STORE); }catch(e){}
+        done('Welcome, @'+r.me.handle+'.'+(r.walletTaken?' Your wallet is claimed by another profile, so it wasn’t added.':'')); return true; }
       case 'socSaveShare': { const h=($('socHandle2')||{value:''}).value.trim(), share=SOC.draft||SOC.share;
         let r, taken=false;
         const bio=$('socBio')?$('socBio').value:undefined;

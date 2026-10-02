@@ -77,7 +77,8 @@ const signFlow = async (purpose, priv, address, key) => {
 };
 let A, Bk, Aid;
 try {
-  await call('/admin/config', { method: 'PUT', admin: true, body: { unlocksOn: false } }); // competitions open at level 1 here
+  // competitions open at level 1 here; and wallets count unproven, as on a server from before the claim default
+  await call('/admin/config', { method: 'PUT', admin: true, body: { unlocksOn: false, requireClaim: false } });
   await t('joining with a wallet: nothing is proven yet', async () => {
     A = (await call('/join', { method: 'POST', body: { handle: 'alpha', address: W1, share: { ret: true } } })).d.key;
     Bk = (await call('/join', { method: 'POST', body: { handle: 'bravo', address: W1 } })).d.key;
@@ -187,6 +188,10 @@ try {
     await call('/admin/config', { method: 'PUT', admin: true, body: { requireClaim: true } });
     portfolioFor = []; await tick();
     eq(await ret(), ['alpha'], 'charlie’s unproven wallet is off the board');
+    const inbox = (await call('/inbox', { key: c })).d.items;
+    ok(inbox.some(x => x.kind === 'claim' && /Claim yours in Account/.test(x.text) && x.url === '/pulse#account'), 'charlie hears why, and where to claim');
+    eq((await call('/me', { key: c })).d.me.needsClaim, true);
+    ok(!(await call('/inbox', { key: A })).d.items.some(x => x.kind === 'claim'), 'alpha (claimed) gets no note');
     await tick();
     ok(!portfolioFor.includes('0x' + 'c'.repeat(40)), 'and isn’t read from the chain any more');
     eq((await call('/leaderboard?board=discipline', { key: c })).d.verifyState, 'claim');

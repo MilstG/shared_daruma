@@ -173,7 +173,7 @@ function pzNav(tab, level){
   const items=[['today','Today'],['trends','Stats'],['checkin','Prep'],['coach','Coach'],['social','Social'],['progress','Progress']];
   const lockT=0; // Stats is always open; only its deeper insights are level-gated
   return `<nav class="pz-nav" aria-label="Pulse"><div class="pz-brand">${pzRing('',0.72,'var(--pz-acc)',{size:30})}Pulse</div>
-    ${items.map(([k,l])=>`<a href="#${k}"${k===cur?' aria-current="page"':''}${k==='trends'&&lockT?` aria-label="Trends, unlocks at level ${lockT}"`:''}>${pzI(k==='trends'&&lockT?'lock':k,22)}<span>${l}</span></a>`).join('')}
+    ${items.map(([k,l])=>`<a href="#${k}"${k===cur?' aria-current="page"':''}${k==='trends'&&lockT?` aria-label="Trends, ${pzNeedsProfile(lockT)?'needs a profile':'unlocks at level '+lockT}"`:''}>${pzI(k==='trends'&&lockT?'lock':k,22)}<span>${l}</span></a>`).join('')}
     <div class="pz-navfoot"><a href="${esc(pzFullHref())}">Open the full journal →</a></div></nav>`;
 }
 function pzHead(kick,title,extra){
@@ -536,7 +536,7 @@ function pzProgressRowHtml(D){
   if(typeof SOC!=='undefined'&&SOC.me&&typeof socGet==='function'){ const c=socGet('league:'+(SOC.lg||''),'/league'+(SOC.lg?'?id='+encodeURIComponent(SOC.lg):''),60000), d=c&&c.d;
     if(d&&d.league&&d.me)lg=`<a class="pz-prog" href="#social"><span class="pz-lbl" style="font-size:11px">${esc(d.league.name)}${d.tierName&&d.league.tiers?' · '+esc(d.tierName):''}</span><b>#${d.me.rank}<small> of ${d.size||d.rows.length}</small></b><span class="pz-t">${d.promote&&d.me.rank<=d.promote?'in the promotion zone':d.demote&&d.me.rank>(d.size||0)-d.demote?'in the relegation zone':d.promote?'top '+d.promote+' move up':'this '+(d.league.period==='month'?'month':'week')}</span></a>`; }
   return `<div class="pz-progrow pz-span">
-    <a class="pz-prog" href="#progress"><span class="pz-lbl" style="font-size:11px;color:${PZ_COL.xp}">Level ${L.level} · ${esc(L.title)}</span>${pzBar(L.max?1:L.into/L.need,PZ_COL.xp)}<span class="pz-t">${L.max?'top level':(L.need-L.into).toLocaleString()+' XP to level '+(L.level+1)}</span></a>
+    <a class="pz-prog" href="#progress"><span class="pz-lbl" style="font-size:11px;color:${PZ_COL.xp}">Level ${L.level} · ${esc(L.title)}</span>${pzBar(L.max?1:L.into/L.need,PZ_COL.xp)}<span class="pz-t">${L.capped?'level '+L.earned+' earned · create a profile':L.max?'top level':(L.need-L.into).toLocaleString()+' XP to level '+(L.level+1)}</span></a>
     <a class="pz-prog" href="#progress"><span class="pz-lbl" style="font-size:11px">XP today</span><b style="color:${PZ_COL.xp}">+${xpToday.toLocaleString()}</b><span class="pz-t">${g.streak.current}-day streak${g.streak.shields?' · '+g.streak.shields+' shield'+(g.streak.shields===1?'':'s'):''}</span></a>
     ${lg}</div>`;
 }
@@ -819,7 +819,7 @@ function pzTrendsHtml(D){
     const hrs=st.hours.length>=2?[['Best hour',st.hours[0]],['Worst hour',st.hours[st.hours.length-1]]]:[];
     stats=`<div class="pz-grid3 pz-span" data-sec="stats:tiles">${tile('Net P&L',money(s.net),s.n+' trade'+(s.n===1?'':'s'),col(s.net),exact(s.net))}${tile('Win rate',pzPct(s.winRate),s.wins+' W · '+s.losses+' L')}${tile('Average trade',money(s.expectancy),'',col(s.expectancy),exact(s.expectancy))}
       ${tile('Profit factor',isFinite(s.profitFactor)?s.profitFactor.toFixed(2):'∞','')}${tile('Average win',pzShort(s.avgWin),'avg loss '+pzShort(s.avgLoss)+' · payoff '+(isFinite(s.payoff)?s.payoff.toFixed(2):'∞'),null,usdPlain(s.avgWin)+' win / '+usdPlain(s.avgLoss)+' loss')}${tile('Fees + funding',money(-(s.fees)+(s.fund||0)),'fees '+pzShort(s.fees),null,exact(-(s.fees)+(s.fund||0)))}</div>
-      <a class="pz-ghost pz-span pz-deepbtn" href="#deep">${pzLocked('deep',g.level.level)?pzI('lock',16)+'In-depth stats · level '+pzLocked('deep',g.level.level):'See in-depth stats'}${pzI('chev',18)}</a>
+      <a class="pz-ghost pz-span pz-deepbtn" href="#deep">${pzLocked('deep',g.level.level)?pzI('lock',16)+'In-depth stats · '+pzLockWord(pzLocked('deep',g.level.level)):'See in-depth stats'}${pzI('chev',18)}</a>
       <section class="pz-card pz-span" data-sec="stats:daily" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-size:15px">Daily P&L</b><span class="pz-sub" style="font-size:12px">${days.length} trading day${days.length===1?'':'s'}${st.days.length>60?' (last 60)':''}</span></div>
         <div class="pz-chart" style="--h:100px;--gap:${days.length>30?'2px':'5px'}">${bars}</div></section>
       <section class="pz-card" data-sec="stats:markets" style="display:flex;flex-direction:column;gap:6px"><b style="font-size:15px">Markets</b>
@@ -831,7 +831,7 @@ function pzTrendsHtml(D){
   // deeper insights: discipline vs results — unlocked by level
   const lock=pzLocked('trends',g.level.level);
   let deep;
-  if(lock) deep=`<section class="pz-card pz-span" style="display:flex;align-items:center;gap:14px">${pzI('lock',22)}<span style="flex:1"><b style="font-size:15px">Deeper insights unlock at level ${lock}</b><br><span class="pz-sub" style="font-size:13px">Does discipline pay for you, how your morning prep relates to your trading, and what moves your score. ${pzXpToGo(lock,g)}</span></span></section>`;
+  if(lock) deep=`<section class="pz-card pz-span" style="display:flex;align-items:center;gap:14px">${pzI('lock',22)}<span style="flex:1"><b style="font-size:15px">${pzNeedsProfile(lock)?'Deeper insights need a profile':'Deeper insights unlock at level '+lock}</b><br><span class="pz-sub" style="font-size:13px">Does discipline pay for you, how your morning prep relates to your trading, and what moves your score. ${pzNeedsProfile(lock)?'<a href="#social">Create your profile</a> to unlock them.':pzXpToGo(lock,g)}</span></span></section>`;
   else { const ts=pzTrendStats(g.days,ctx.byDay,fromKey), bc=pzBars(ts.days);
     const chart=ts.days.length?`<div class="pz-chart" style="--h:110px;--gap:${bc.bars.length>20?'3px':'8px'}"><span class="pz-thr" style="bottom:${Math.round(70*1.1)}px"></span>${bc.bars.map(b=>`<i style="height:${Math.max(4,Math.round(b.v*1.1))}px;background:${PZ_COL[pzBand(b.v)]}" data-pz-tip="${esc(b.tip)}"></i>`).join('')}</div>`:'<p class="pz-sub">No trading days in this range.</p>';
     const tile=(cls,lbl,x)=>`<div class="pz-tile ${cls}"><span class="pz-lbl" style="font-size:11px">${lbl} · ${x.n} day${x.n===1?'':'s'}</span><span class="pz-n">${esc(money(x.avgNet))}</span><span class="pz-t">avg day · ${pzPct(x.winRate)} win rate</span></div>`;
@@ -1290,6 +1290,7 @@ function pzNote(m, kind){
 let _pzLastD=null;
 function pzRender(){
   if(!PZ)return; const view=$('pzView'); if(!view)return;
+  try{ socVisitPing(); }catch(e){}
   // keep what's typed across re-renders (a background sync or auto-refresh can land mid-edit)
   const root=$('pz'), keep={}; root.querySelectorAll('input[id],textarea[id]').forEach(el=>{ keep[el.id]=el.value; });
   const act=document.activeElement, actId=act&&root.contains(act)?act.id:null;

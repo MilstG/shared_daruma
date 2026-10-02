@@ -32,7 +32,7 @@ function pzProgressHtml(D){
     <div class="pz-hero-ring">${pzRing(L.level,L.max?1:L.into/L.need,PZ_COL.xp,{size:132,cap:'Level'})}</div>
     <div class="pz-hero-main"><span class="pz-lbl" style="color:${PZ_COL.xp}">Level ${L.level}</span><h2 class="pz-hero-t">${esc(L.title)}</h2>
       <div class="pz-xpbar" role="progressbar" aria-label="XP to next level" aria-valuemin="0" aria-valuemax="${L.need}" aria-valuenow="${L.into}" data-pz-tip="${esc(L.max?'Top level reached':L.into.toLocaleString()+' of '+L.need.toLocaleString()+' XP into level '+L.level+'\n'+(L.need-L.into).toLocaleString()+' XP to '+pzLevelTitle(L.level+1)+'. XP comes from process, never profit.')}"><i style="width:${L.max?100:Math.round(100*L.into/L.need)}%"></i></div>
-      <p class="pz-sub" style="font-size:13px">${L.xp.toLocaleString()} XP · ${L.max?'top level reached':(L.need-L.into).toLocaleString()+' XP to '+esc(pzLevelTitle(L.level+1))}</p>
+      <p class="pz-sub" style="font-size:13px">${L.xp.toLocaleString()} XP · ${L.capped?`level ${L.earned} earned. Without a profile, levels stop at ${L.level}: <a href="#social">create your profile</a> to unlock it.`:L.max?'top level reached':(L.need-L.into).toLocaleString()+' XP to '+esc(pzLevelTitle(L.level+1))}</p>
     </div></section>`;
   const xpCard=`<section class="pz-card pz-kv"><div class="pz-kvrow"><b class="pz-kvh">Where this week’s XP came from</b><span class="pz-sub" style="font-size:12px">${wkTot.toLocaleString()} XP</span></div>
     ${wkTot?srcRows.map(([k,l,c])=>`<div class="pz-row"><div class="pz-row-t"><span>${esc(l)}</span><b>+${src[k].toLocaleString()}</b></div>${pzBar(src[k]/wkTot,c)}</div>`).join('')
@@ -652,9 +652,9 @@ function socPartnerStripHtml(){
 function socInboxHtml(){
   if(!SOC.me)return '';
   const c=socGet('inbox','/inbox',60000), L=c&&c.d?c.d.items.filter(x=>x.unread):[]; if(!L.length)return '';
-  const ico={partner:'social',mentor:'coach',season:'medal',duel:'medal'};
+  const ico={partner:'social',mentor:'coach',season:'medal',duel:'medal',claim:'shield'};
   return `<section class="pz-card pz-kv" aria-label="New for you"><div class="pz-kvrow"><b class="pz-kvh">New for you</b><button type="button" class="pz-linkbtn" id="socInboxRead">Mark read</button></div>
-    ${L.slice(0,4).map(x=>`<div class="pz-nowrow"><span style="color:${x.kind==='mentor'?PZ_COL.xp:x.kind==='season'?'#F4C04E':PZ_COL.risk}">${pzI(ico[x.kind]||'bolt',16)}</span><span><b style="font-size:13px;font-weight:600">${esc(x.text)}</b><span class="pz-sub" style="display:block;font-size:11px">${x.day?'About '+esc(dayLabel(x.day))+' · ':''}${socAgo(x.at)}</span></span></div>`).join('')}</section>`;
+    ${L.slice(0,4).map(x=>`<div class="pz-nowrow"><span style="color:${x.kind==='mentor'?PZ_COL.xp:x.kind==='season'?'#F4C04E':PZ_COL.risk}">${pzI(ico[x.kind]||'bolt',16)}</span><span><b style="font-size:13px;font-weight:600">${esc(x.text)}</b>${x.kind==='claim'&&SOC.me.needsClaim?' <a class="pz-link" href="#account" style="min-height:0;font-size:13px">Claim my wallet ›</a>':''}<span class="pz-sub" style="display:block;font-size:11px">${x.day?'About '+esc(dayLabel(x.day))+' · ':''}${socAgo(x.at)}</span></span></div>`).join('')}</section>`;
 }
 
 // notes your mentors left, in full, newest first (the evening review is where you read them)

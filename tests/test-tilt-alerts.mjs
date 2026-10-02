@@ -146,6 +146,8 @@ const call = async (p, o = {}) => { const r = await fetch(B + '/api/social' + p,
 const ua = crypto.createECDH('prime256v1'); ua.generateKeys();
 const sub = () => ({ endpoint: 'https://fcm.googleapis.com/push/' + crypto.randomBytes(4).toString('hex'), keys: { p256dh: Push.b64u(ua.getPublicKey()), auth: Push.b64u(crypto.randomBytes(16)) } });
 try {
+  // the member's wallet is read unproven here, as on a server from before claimed-only became the default
+  await fetch(B + '/api/social/admin/config', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer owner-token' }, body: JSON.stringify({ requireClaim: false }) });
   const K = (await call('/join', { method: 'POST', body: { handle: 'tilty', address: W, share: { verify: true } } })).d.key;
   ok(K, 'joined');
   await call('/stats', { method: 'POST', key: K, body: { xp: 10, level: 1, tz: 'UTC', days: [{ k: '2026-10-02', s: 60 }] } });

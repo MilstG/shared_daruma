@@ -17,7 +17,12 @@ const LEVELS=['Rookie','Apprentice','Journeyman','Disciplined','Consistent','Pro
 function levelFor(xp){
   const C=pzLevelCfg(), at=n=>n<=1?0:C.mode==='table'?(n-2<C.thresholds.length?C.thresholds[n-2]:Infinity):C.base*n*(n-1);
   let n=1; while(n<1000&&at(n+1)<=xp)n++;
-  const start=at(n), next=at(n+1), T=C.titles&&C.titles.length?C.titles:LEVELS;
+  const T=C.titles&&C.titles.length?C.titles:LEVELS;
+  // without a profile, levels stop at the league's cap: the XP still counts, and a profile unlocks it
+  const cap=typeof pzGuestCap==='function'?pzGuestCap():0;
+  if(cap&&n>cap){ const s=at(cap), nx=at(cap+1);
+    return {level:cap, title:T[Math.min(cap,T.length)-1], xp, into:nx-s, need:nx-s, next:nx, max:false, capped:true, earned:n}; }
+  const start=at(n), next=at(n+1);
   return {level:n, title:T[Math.min(n,T.length)-1], xp, into:xp-start, need:isFinite(next)?next-start:Math.max(1,xp-start), next, max:!isFinite(next)};
 }
 // league config (set when Pulse loads /api/social/config); defaults otherwise
@@ -187,7 +192,7 @@ function challengeStatus(res, ended){
 let _gameMemo={key:null,g:null};
 function gameContext(){
   const ctx=coachContext();
-  const key=_coachMemo.key+'|'+_jrev+'|'+PZ_CFG.rev+'|'+(Array.isArray(settings.pzGoals)?settings.pzGoals.filter(x=>x&&x.done).length:0);
+  const key=_coachMemo.key+'|'+_jrev+'|'+PZ_CFG.rev+'|'+(Array.isArray(settings.pzGoals)?settings.pzGoals.filter(x=>x&&x.done).length:0)+'|'+(typeof pzGuestCap==='function'?pzGuestCap():0);
   if(_gameMemo.key===key)return _gameMemo.g;
   const X=pzXpCfg();
   const now=Date.now(), nowWeek=isoWeekOfKey(dayKey(now));
@@ -298,7 +303,7 @@ function progressSectionHtml(){
       <div class="diag-card gm"><h3 data-tip="${(X=>esc(`XP per trading day = that day's Discipline score (0–100${X.discipline!==1?', ×'+X.discipline:''}, read from your fills: no revenge entries, sizing up after losses, adding to losers, trading on after two losses, overtrading or holding losers too long), plus bonus XP for what you log: morning prep +${X.checkin}, plan before the first trade +${X.plan}, trades journaled +${X.journal}, stops written +${X.stops}, loss limit respected +${X.limit}. Also +${X.focus} per focus-habit day, +${X.challenge} per completed weekly challenge, +${X.achievement} per achievement.`))(pzXpCfg())}">Level</h3>
         <div class="gm-big">${L.level} · ${esc(L.title)}</div>
         <div class="xpbar" role="progressbar" aria-valuemin="0" aria-valuemax="${L.need}" aria-valuenow="${L.into}" data-tip="${esc(L.into.toLocaleString()+' of '+L.need.toLocaleString()+' XP into level '+L.level+' ('+pct+'%). '+(L.need-L.into).toLocaleString()+' XP to go.')}"><i style="width:${pct}%"></i></div>
-        <div class="gm-sub">${L.into.toLocaleString()} / ${L.need.toLocaleString()} XP to ${esc(pzLevelTitle(L.level+1))} · +${g.weekXp.toLocaleString()} this week</div></div>
+        <div class="gm-sub">${L.capped?`Level ${L.earned} earned: create a profile in Pulse to unlock it`:`${L.into.toLocaleString()} / ${L.need.toLocaleString()} XP to ${esc(pzLevelTitle(L.level+1))}`} · +${g.weekXp.toLocaleString()} this week</div></div>
       <div class="diag-card gm"><h3 data-tip="Consecutive trading days with process 70+. Days you don't trade never break it. A finished perfect week (every trading day 70+, at least three) earns a shield, max two; a shield absorbs one missed day instead of resetting the streak.">Discipline streak</h3>
         <div class="gm-big">${g.streak.current} day${g.streak.current===1?'':'s'} ${shieldsHtml(g.streak.shields)}</div>
         <div class="gm-sub">best ${g.streak.best} · ${g.streak.shields} shield${g.streak.shields===1?'':'s'}${g.streak.shielded.length?` · ${g.streak.shielded.length} miss${g.streak.shielded.length===1?'':'es'} absorbed so far`:''}</div></div>
