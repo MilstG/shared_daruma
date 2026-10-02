@@ -504,11 +504,15 @@ function createSocial(opts) {
   // … and, when the owner approves wallets, only an address the owner approved
   const walletReview = addr => addr && Object.prototype.hasOwnProperty.call(S.wallets, addr) ? S.wallets[addr] : null;
   const walletStatus = addr => !addr ? null : (walletReview(addr) || {}).s || 'pending';
+  // an unverified (rejected) wallet never counts, approval switched on or off; with approval on,
+  // only a verified (approved) one does
   const walletFor = m => !m.address ? null : S.config.requireClaim && m.claimed !== m.address ? null
+    : walletStatus(m.address) === 'rejected' ? null
     : S.config.approveWallets && walletStatus(m.address) !== 'approved' ? null : m.address;
   // why walletFor(m) is null: 'no-wallet' | 'claim' | 'approval' | 'rejected' (null when it isn't)
   const walletBlock = m => !m.address ? 'no-wallet' : S.config.requireClaim && m.claimed !== m.address ? 'claim'
-    : S.config.approveWallets && walletStatus(m.address) !== 'approved' ? (walletStatus(m.address) === 'rejected' ? 'rejected' : 'approval') : null;
+    : walletStatus(m.address) === 'rejected' ? 'rejected'
+    : S.config.approveWallets && walletStatus(m.address) !== 'approved' ? 'approval' : null;
   // numbers read from a wallet that stopped counting go at once, and come back when it counts again
   // a member's main wallet changed: what was read from the old one goes, competitions included
   const walletMoved = m => { m.vdays = null; m.vAt = 0; m.money = null; for (const cc of Object.values(S.comps)) if (cc.money) delete cc.money[m.id]; };
@@ -972,7 +976,7 @@ function createSocial(opts) {
       claimed: !!m.claimed, av: avUrl(m), bio: m.bio || '', duelsOpen: !!(m.share && m.share.duels !== false) };
     if (out.isMe) Object.assign(out, { claimedAddress: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
       vault: m.vault ? { rev: m.vault.rev, size: m.vault.size, at: m.vault.at } : null, requireClaim: !!S.config.requireClaim, vaultOn: !!S.config.vaultOn,
-      walletStatus: S.config.approveWallets && m.address ? walletStatus(m.address) : null, admin: !!m.admin,
+      walletStatus: m.address && (S.config.approveWallets || walletStatus(m.address) === 'rejected') ? walletStatus(m.address) : null, admin: !!m.admin,
       passkeys: (m.passkeys || []).map(k => ({ id: k.id, name: k.name, at: k.at, lastUsed: k.lastUsed || null })),
       unlocked: !!m.unlocked, grants: (m.grants || []).map(g => ({ id: g.id, xp: g.xp, why: g.why, at: g.at })), coach: coachStatusFor(m), coachDetail: !!m.coachDetail,
       leagues: leaguesOf(m).map(L => ({ id: L.id, name: L.name, tier: leagueTier(L, m) })), mentor: !!m.mentor,
@@ -1349,6 +1353,26 @@ function createSocial(opts) {
         for (const lid of ls) if (own(S.leagues, lid)) joinLeague(S.leagues[lid], m);
         save(); refreshAll(m);
         return json(res, 200, { ok: true, id, code, expiresAt: now() + 7 * 86400000 });
+      }
+      // many members at once: {action: remove | ban | unban | verify | unverify, ids: [...]}. The same
+      // rules as one at a time: only the owner acts on another admin, and nobody on themselves
+      if (sub === 'members' && parts[2] === 'bulk' && !parts[3] && M === 'POST') {
+        const a = body.action, ids = [...new Set([].concat(body.ids || []).filter(x => typeof x === 'string'))];
+        if (!['remove', 'ban', 'unban', 'verify', 'unverify'].includes(a)) return json(res, 400, { error: 'action is remove, ban, unban, verify or unverify' });
+        if (!ids.length || ids.length > 1000) return json(res, 400, { error: 'Pick 1 to 1,000 members.' });
+        let n = 0; const skipped = [];
+        for (const id of ids) {
+          const m = own(S.members, id) ? S.members[id] : null; if (!m) { skipped.push({ id, why: 'not found' }); continue; }
+          if (!who.owner && m.id === who.id && a !== 'verify' && a !== 'unverify') { skipped.push({ id, handle: m.handle, why: 'that’s you' }); continue; }
+          if (m.admin && !who.owner && m.id !== who.id) { skipped.push({ id, handle: m.handle, why: 'only the owner can change another admin' }); continue; }
+          if (a === 'remove') dropMember(m.id);
+          else if (a === 'ban' || a === 'unban') m.banned = a === 'ban';
+          else { const ws = walletsOf(m); if (!ws.length) { skipped.push({ id, handle: m.handle, why: 'no wallet' }); continue; }
+            for (const ad of ws) { S.wallets[String(ad).toLowerCase()] = { s: a === 'verify' ? 'approved' : 'rejected', at: now(), by: who.owner ? 'owner' : who.by, note: 'from the members list' }; }
+            for (const o of members()) if (o.address && ws.map(x => String(x).toLowerCase()).includes(o.address)) { recheckWallet(o); if (walletFor(o)) refreshAll(o); } }
+          n++;
+        }
+        save(); return json(res, 200, { ok: true, n, skipped });
       }
       if (sub === 'members' && parts[2] && M === 'POST') {
         const m = own(S.members, parts[2]) ? S.members[parts[2]] : null; if (!m) return json(res, 404, { error: 'no such member' });

@@ -102,12 +102,39 @@ try {
     eq((await wallets()).wallets.find(x => x.address === W('2')).status, 'approved');
     await call('/admin/config', { method: 'PUT', admin: true, body: { inviteCode: '' } }); void k;
   });
-  await t('switching approval off makes every wallet count again (decisions are kept for next time)', async () => {
+  await t('switching approval off: wallets you haven’t reviewed count again; an unverified (rejected) one still doesn’t', async () => {
     await call('/admin/config', { method: 'PUT', admin: true, body: { approveWallets: false } });
     await tick();
-    ok((await onRetBoard(A)).includes('bob'));
-    eq((await call('/me', { key: Bk })).d.me.walletStatus, null);
+    const board = await onRetBoard(A);
+    ok(board.includes('alice') && !board.includes('bob'), JSON.stringify(board));
+    eq((await call('/me', { key: Bk })).d.me.walletStatus, 'rejected', 'told why');
+    eq((await call('/me', { key: A })).d.me.walletStatus, null);
     eq((await wallets()).wallets.find(x => x.address === W('b')).status, 'rejected', 'kept');
+  });
+  await t('from the members list: verify or unverify many at once, suspend, restore and delete; nobody acts on another admin unless the owner', async () => {
+    const ms = (await call('/admin/members', { admin: true })).d.members, id = h => ms.find(m => m.handle === h).id;
+    let r = await call('/admin/members/bulk', { method: 'POST', admin: true, body: { action: 'verify', ids: [id('bob'), id('alice')] } });
+    eq([r.status, r.d.n], [200, 2]); await tick();
+    ok((await onRetBoard(A)).includes('bob'), 'bob counts again once verified');
+    r = await call('/admin/members/bulk', { method: 'POST', admin: true, body: { action: 'unverify', ids: [id('bob')] } }); await tick();
+    ok(!(await onRetBoard(A)).includes('bob'));
+    const noWallet = (await call('/admin/members', { method: 'POST', admin: true, body: { handle: 'nowallet' } })).d.id;
+    r = await call('/admin/members/bulk', { method: 'POST', admin: true, body: { action: 'verify', ids: [noWallet] } });
+    eq([r.d.n, r.d.skipped[0].why], [0, 'no wallet']);
+    r = await call('/admin/members/bulk', { method: 'POST', admin: true, body: { action: 'ban', ids: [id('carol'), 'nope'] } });
+    eq([r.d.n, r.d.skipped.map(x => x.why)], [1, ['not found']]);
+    eq((await call('/admin/members', { admin: true })).d.members.find(m => m.handle === 'carol').banned, true);
+    await call('/admin/members/bulk', { method: 'POST', admin: true, body: { action: 'unban', ids: [id('carol')] } });
+    // an admin (not the owner) can't delete another admin, or themselves
+    await call('/admin/members/' + id('alice'), { method: 'POST', admin: true, body: { action: 'admin' } });
+    await call('/admin/members/' + id('bob'), { method: 'POST', admin: true, body: { action: 'admin' } });
+    r = await call('/admin/members/bulk', { method: 'POST', key: A, body: { action: 'remove', ids: [id('alice'), id('bob'), noWallet] } });
+    eq([r.status, r.d.n, r.d.skipped.map(x => x.why).sort()], [200, 1, ['only the owner can change another admin', 'that’s you']]);
+    r = await call('/admin/members/bulk', { method: 'POST', admin: true, body: { action: 'remove', ids: [id('carol'), id('bob')] } });
+    eq(r.d.n, 2); const left = (await call('/admin/members', { admin: true })).d.members.map(m => m.handle);
+    ok(!left.includes('carol') && !left.includes('bob') && left.includes('alice'), JSON.stringify(left));
+    eq((await call('/admin/members/bulk', { method: 'POST', admin: true, body: { action: 'explode', ids: [id('alice')] } })).status, 400);
+    eq((await call('/admin/members/bulk', { method: 'POST', key: Bk, body: { action: 'remove', ids: [id('alice')] } })).status, 401, 'a deleted member’s key is gone');
   });
 } finally { await new Promise(r => app.close(r)); }
 

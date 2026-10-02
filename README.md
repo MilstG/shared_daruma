@@ -524,6 +524,11 @@ waiting wallets first, shows whether the member joined with your invite code, an
 single or bulk approve/reject decisions with an optional note (e.g. "paid"). It is the
 manual base for automatic rules like "approve wallets that joined with my code" or
 "approve paying subscribers".
+
+In the Members list and on each member's page, approving is **Verify** and rejecting
+is **Unverify**, one click each. An **unverified** wallet never counts, whether
+approval is switched on or off. With approval off, a wallet you haven't reviewed
+still counts as before.
 **Mapping wallets to members.** On a member's page (Wallets card), or under Admin →
 **Wallets** (a row nobody uses, or the *Map a wallet to a member* card), an admin can
 map any address to a member. A wallet belongs to one member: one that is mapped, claimed
@@ -578,6 +583,12 @@ wallet decisions record who made them.
   the one their numbers are read from), **boost XP** (or correct it) with a reason they see, fully unlock,
   their coach allowance, leagues and tiers, award or take back reward badges, a new
   sign-in code, suspend or delete. Members' addresses are visible to you; others see them only if the member chose to show theirs.
+  - **Several at once:** tick members, or everyone on the page, then **Verify
+    wallets**, **Unverify wallets**, **Suspend**, **Restore** or **Delete**.
+    Deleting 5 or more asks you to type DELETE. Admins can't act on other admins
+    (only the owner can) or on themselves, and anyone skipped is listed with the
+    reason.
+  - **More filters:** wallet unverified, wallet waiting for you, and no wallet.
 - **Duels** — on/off, which kinds are allowed, the winner's XP and the limits,
   every duel running or waiting (with cancel) and recent results.
 - **Insights** — the whole league at once, or any segment of it. Filter by style,
