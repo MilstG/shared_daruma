@@ -5,8 +5,9 @@
 
 /* ======================= 11b · PULSE SOCIAL: leagues, competitions, following ======================= */
 // Talks to /api/social on the server that served the page (social.js). A member is a random
-// key in this browser (X-Pulse-Key). Only the numbers in pzSocialStats() are ever sent; the
-// journal, notes and trades never leave the browser. Returns are read on the server from the
+// key in this browser (X-Pulse-Key). Only the numbers in pzSocialStats() are sent on their own; the
+// journal, notes and trades stay in the browser unless the member posts a trade or sends one to
+// their mentors for review (reviews.js). Returns are read on the server from the
 // chain, never sent from here. Sample data is never posted.
 const SOC_KEY_STORE='pz_social_key';
 const SOC_DEFAULT_SHARE={profile:true,boards:true,global:false,page:false,feed:true,habits:true,verify:true,ret:false,usd:false,addr:false,mentor:false,bench:true,duels:true};
@@ -21,7 +22,7 @@ const SOC_SHARE_ROWS=[
   ['ret','Show % return','30-day return and drawdown, read from your first wallet on chain'],
   ['usd','Show dollar P&L','Reveals your account size to everyone',true],
   ['addr','Show wallet address','Anyone could look up every trade and balance',true],
-  ['mentor','Let mentors see my days','Mentors the owner appointed see your scores, slips and the lesson you write each night, and can leave you notes. No trades, P&L or wallet'],
+  ['mentor','Let mentors see my days','Mentors the owner appointed see your scores, slips and the lesson you write each night, and can leave you notes. They see a trade only when you send it for review; never your wallet'],
   ['duels','Accept duel challenges','Other members can challenge you to a week or a month, 1 on 1, on Discipline, clean days, journaling or XP. Nothing starts until you accept; switch off to stop receiving challenges'],
   ['bench','Count me in “Traders like you”','An anonymous summary of your last 90 days (win rate, discipline, how much you journal; trade size only as a range) goes into peer groups of 25 or more. No trades, coins, amounts, name or wallet. Switch off to be left out']];
 const SOC_BOARDS=[['xp','Weekly XP'],['discipline','Discipline'],['streak','Streak'],['level','All-time XP'],['riskadj','Return / drawdown'],['ret','% Return'],['usd','$ P&L']];
@@ -233,7 +234,7 @@ const PEER_WHY={few:'It needs 30 closed trades in the last 90 days.',short:'It n
 
 function socHead(){
   return `<header class="pz-head"><div><span class="pz-kick">${SOC.cfg&&SOC.cfg.week?'Week '+esc(SOC.cfg.week.slice(-2)):'Social'}</span><h1 class="pz-h1">Social</h1></div>
-    <div class="pz-chips">${SOC.me.mentor?`<a class="pz-chip" href="#mentor" style="font-weight:700;font-size:13px;padding:0 14px">Mentees</a>`:''}<a class="pz-chip icon" href="#u/${esc(SOC.me.handle)}" aria-label="My profile">${socAv(SOC.me.handle,30)}</a><a class="pz-chip icon" href="#sharing" aria-label="What you share">${pzI('gear',20)}</a></div></header>`;
+    <div class="pz-chips">${SOC.me.mentor?`<a class="pz-chip" href="#mentor" style="font-weight:700;font-size:13px;padding:0 14px">Mentees</a>`:''}${SOC.me.mentor||SOC.me.admin||(SOC.share&&SOC.share.mentor)?`<a class="pz-chip" href="#reviews" style="font-weight:700;font-size:13px;padding:0 14px">Reviews</a>`:''}<a class="pz-chip icon" href="#u/${esc(SOC.me.handle)}" aria-label="My profile">${socAv(SOC.me.handle,30)}</a><a class="pz-chip icon" href="#sharing" aria-label="What you share">${pzI('gear',20)}</a></div></header>`;
 }
 function socUnavailableHtml(){
   return `${pzHead('Leagues · competitions · friends','Social')}<section class="pz-card"><p class="pz-sub">Social lives on the Ledger server this page comes from. Open Pulse from your server’s <b>/pulse</b> link to join the league${/^https?:$/.test(location.protocol)?' — this server didn’t answer just now; try again in a moment.':'.'}</p></section>`;

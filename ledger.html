@@ -346,6 +346,9 @@ body.bb .chk.on{border-color:var(--lbl)}
 .taxbox textarea{min-height:90px;font-size:11.5px}
 .taxwarn{border-left:2px solid var(--gold);padding:4px 0 4px 10px;margin:6px 0 10px}
 .taxwarn p{margin:2px 0;font-size:12px;color:var(--text)}
+.mr-ok{color:var(--pz-acc);border-color:currentColor}.pz-card>.pz-pill{align-self:flex-start}
+.mrev textarea{min-height:52px}.mr-thread p{margin:0 0 8px;font-size:12.5px;line-height:1.5;white-space:pre-wrap}
+.taxsw-h{font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--line)}
 .taxtbl td,.taxtbl th{font-size:11.5px}
 .att-ann{position:absolute;bottom:2px;right:2px;width:20px;height:20px;line-height:18px;text-align:center;border:none;border-radius:2px;background:rgba(10,14,20,.8);color:var(--gold);font-size:12px;cursor:pointer;padding:0}
 .modal.annbox{max-width:min(1100px,96vw);max-height:94vh;display:flex;flex-direction:column;gap:10px}
@@ -1054,7 +1057,7 @@ img.pz-av{object-fit:cover;background:#23272E;padding:0}
 .pz-trh{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:15px}
 .pz-pill{font-family:Inter,system-ui,sans-serif;display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:12px!important;border:1px solid var(--pz-line2);font-size:11px;font-weight:700;color:var(--pz-soft)}
 .pz-lvs{display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:6px}
-.pz-lv{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:12px!important;background:#1B1F25;min-width:0}
+.pz-lv{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:12px!important;background:var(--pz-card2);min-width:0}
 .pz-lv span{font-size:11px;color:var(--pz-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pz-lv b{font-family:var(--pz-num);font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis}
 .pz-trres{font-family:var(--pz-num);font-size:22px;font-weight:700}
@@ -1356,7 +1359,7 @@ a.pz-chipbtn{display:inline-flex;align-items:center;gap:6px;text-decoration:none
       <button class="linkish" id="exportCsv">Export CSV</button>
       <button class="linkish" id="exportTax" data-tip="Accountant-ready CSV of every realized (closed) trade across all markets and wallets, sorted by close date with a tax-year column and a per-year summary. Ignores the view/period filters — tax needs the full history.">Export tax</button>
       <button class="linkish" id="exportTaxPdf" data-tip="Bank-statement-style PDF for your accountant: per-year and per-month summaries plus every realized trade with a running balance. Generated entirely in the browser — nothing leaves your machine. Ignores view/period filters.">Tax PDF</button>
-      <button class="linkish" id="exportTaxCountry" data-tip="Tax exports set up for your country: the US, the UK (same-day / 30-day / Section 104 matching), Germany, Australia, Canada, or FIFO by calendar year — with your tax year, your currency (paste a daily rate table), and the flags that matter there (long-term, tax-free after a year, CGT discount, superficial losses). Preview per tax year, then download.">Tax export by country…</button>
+      <button class="linkish" id="exportTaxCountry" data-tip="Tax exports set up for your country: the US, the UK (same-day / 30-day / Section 104 matching), Germany, Australia, Canada, or FIFO by calendar year — with your tax year, your currency (paste a daily rate table), and the flags that matter there (long-term, tax-free after a year, CGT discount, superficial losses). Preview per tax year, then download Also files for Koinly and CoinTracker to import, for all history or one tax year.">Tax export by country…</button>
       <button class="linkish" id="exportSpotLots" data-tip="8949-style lot-level CSV for SPOT trades: FIFO cost basis, one row per lot consumed by each sale, with acquired/disposed dates, proceeds, basis, gain, and short/long term. Sales of tokens transferred or airdropped in (no on-exchange purchase) get a zero-cost UNKNOWN-BASIS flag your accountant must resolve. Built from the locally cached fills — hit Load all first.">Spot lots</button>
       <button class="linkish" id="exportJ">Export journal</button>
       <button class="linkish" id="backupAll">Backup all</button>
@@ -1447,6 +1450,7 @@ a.pz-chipbtn{display:inline-flex;align-items:center;gap:6px;text-decoration:none
 <script src="app/pulse.js"></script>
 <script src="app/pulse-social.js"></script>
 <script src="app/pulse-screens.js"></script>
+<script src="app/reviews.js"></script>
 <script src="app/boot.js"></script>
 </body>
 </html>

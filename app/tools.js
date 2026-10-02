@@ -389,9 +389,15 @@ async function openTaxExport(){
       <p class="mini-note">From your central bank or tax authority (e.g. the ECB, Bank of England, RBA, Bank of Canada). Each fill uses the rate on its own date, or the latest within a week before it. Kept on this device only.</p></div>
     <p class="lead" id="taxNote"></p>
     <div id="taxPreview"></div>
-    <div class="modal-actions"><button class="btn ghost" data-tax="close">Close</button><button class="btn ghost" data-tax="perps">Perp P&amp;L CSV</button><button class="btn" data-tax="spot">Spot disposals CSV</button></div></div>`;
+    <div class="modal-actions"><button class="btn ghost" data-tax="close">Close</button><button class="btn ghost" data-tax="perps">Perp P&amp;L CSV</button><button class="btn" data-tax="spot">Spot disposals CSV</button></div>
+    <h3 class="taxsw-h">For tax software: Koinly or CoinTracker</h3>
+    <div class="field"><label for="taxSwYear">Period</label><select id="taxSwYear"></select></div>
+    <div class="field hide" id="taxSwDates"><label for="taxSwFrom">From and to (UTC dates)</label><div style="display:flex;gap:6px;flex-wrap:wrap"><input type="date" id="taxSwFrom" style="flex:1;min-width:130px"><input type="date" id="taxSwTo" aria-label="To (UTC date)" style="flex:1;min-width:130px"></div></div>
+    <p class="mini-note"><b>Koinly:</b> add a wallet for this exchange, choose to import from a file, and upload the Koinly file (Koinly's universal format). <b>CoinTracker:</b> add a wallet, choose to import a CSV in the CoinTracker format, and upload the CoinTracker file. Spot fills are trades; each closed perp's realised P&amp;L is a margin gain or loss (Koinly: “realized gain”) with its fees, and its funding a row of its own; deposits and withdrawals are transfers. Amounts stay in the coins traded (both tools price them in your currency), times are UTC. Import your whole history once so spot buys carry their cost; pick a tax year to add just that year later.</p>
+    <div class="modal-actions"><button class="btn ghost" data-tax="koinly">Koinly CSV</button><button class="btn ghost" data-tax="cointracker">CoinTracker CSV</button></div></div>`;
   document.body.appendChild(bg);
   let rep=null, fx=null;
+  const sw={fills,trades:allTrades,flows:ledFlows,nameByCoin:spotMaps.nameByCoin,quoteByCoin:spotMaps.quoteByCoin}, swT=taxToolRows('koinly',sw).times;
   const q=v=>{ v=v==null?'':String(v); if(/^[=@]/.test(v)||(/^[+-]/.test(v)&&!isFinite(Number(v))))v="'"+v; return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
   const day=ms=>ms==null?'':new Date(ms).toISOString().slice(0,10);
   const money=(v,c)=>(v<0?'-':'')+Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+c;
@@ -399,6 +405,9 @@ async function openTaxExport(){
     const key=$('taxPreset').value, cur=($('taxCur').value||'USD').trim().toUpperCase().replace(/[^A-Z]/g,'').slice(0,3)||'USD';
     TAX_UI.preset=key; TAX_UI.cur=cur; TAX_UI.rates=$('taxRates').value;
     $('taxRatesF').classList.toggle('hide',cur==='USD');
+    const ys=$('taxSwYear'), was=ys.value, yk=(TAX_PRESETS[key]||TAX_PRESETS.other).year, labs=[...new Set(swT.map(t=>taxYearLabel(t,yk)))].sort().reverse();
+    ys.innerHTML=[['all','All history'],...labs.map(l=>[l,'Tax year '+l]),['dates','Dates…']].map(([v,l])=>`<option value="${esc(v)}">${esc(l)}</option>`).join('');
+    ys.value=[...ys.options].some(o=>o.value===was)?was:'all'; $('taxSwDates').classList.toggle('hide',ys.value!=='dates');
     const tbl=cur==='USD'?fxFromTable(''):fxFromTable(TAX_UI.rates);
     fx=tbl.fx; rep=taxReport(fills,spotMaps.nameByCoin,key,fx);
     const pm=perps.filter(t=>!(fx(t.closeTime)>0)).length;
@@ -422,10 +431,17 @@ async function openTaxExport(){
   const close=()=>{ bg.remove(); document.removeEventListener('keydown',onKey); };
   const onKey=e=>{ if(e.key==='Escape')close(); }; document.addEventListener('keydown',onKey);
   $('taxPreset').addEventListener('change',()=>{ $('taxCur').value=TAX_PRESETS[$('taxPreset').value].cur; refresh(); });
+  $('taxSwYear').addEventListener('change',()=>$('taxSwDates').classList.toggle('hide',$('taxSwYear').value!=='dates'));
   $('taxCur').addEventListener('input',refresh); $('taxRates').addEventListener('input',()=>{ clearTimeout(TAX_UI.t); TAX_UI.t=setTimeout(refresh,250); });
   bg.addEventListener('click',e=>{ const b=e.target.closest('[data-tax]'); if(!b){ if(e.target===bg)close(); return; }
     const a=b.dataset.tax, cur=TAX_UI.cur, P=rep.preset, stamp=new Date().toISOString().slice(0,10);
     if(a==='close')return close();
+    if(a==='koinly'||a==='cointracker'){ const y=$('taxSwYear').value, d=id=>{ const v=$(id).value; return v?Date.parse(v+'T00:00:00Z'):null; };
+      const [from,to]=y==='all'?[null,null]:y==='dates'?[d('taxSwFrom'),d('taxSwTo')!=null?d('taxSwTo')+86400000:null]:taxYearBounds(y,P.year);
+      const csv=taxToolCsv(a,Object.assign({},sw,{from,to})), n=csv.split('\r\n').length-1, name=a==='koinly'?'Koinly':'CoinTracker';
+      if(!n){ setStatus('Nothing to export for '+name+' in that period.'); return; }
+      dlBlob(new Blob([csv],{type:'text/csv'}),'ledger-'+a+'-'+(y==='dates'?'range':y.replace(/[^A-Za-z0-9-]/g,'-'))+'-'+stamp+'.csv');
+      setStatus(`Exported ${n} rows for ${name} (${y==='all'?'all history':y==='dates'?'your dates':'tax year '+y}). Not tax advice.`); return; }
     if(a==='spot'){ if(!rep.rows.length){ setStatus('No spot disposals to export.'); return; }
       const head=['tax_year','asset','quantity','date_acquired','date_disposed','proceeds_'+cur,'cost_'+cur,'gain_'+cur,'matching_rule','flag'];
       const lines=[head.join(',')].concat(rep.rows.map(r=>[r.year,r.symbol,r.qty.toFixed(8),day(r.acquired),day(r.disposed),r.proceeds.toFixed(2),r.cost.toFixed(2),r.gain.toFixed(2),r.rule,r.flag].map(q).join(',')));

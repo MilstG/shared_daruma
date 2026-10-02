@@ -274,6 +274,7 @@ function renderTable(){
   }).join('')||`<tr><td colspan="12" style="text-align:center;color:var(--faint);padding:34px">No trades match these filters.</td></tr>`;
   renderPager(total,pages);
   if(expandedId&&document.getElementById('att-'+expandedId))loadAttachments(expandedId);
+  if(expandedId&&typeof mrJournalLoad==='function')mrJournalLoad(expandedId); // a mentor review of this trade (social server only)
 }
 function renderPager(total,pages){
   const el=$('pager'); if(!el)return;
@@ -348,6 +349,7 @@ function journalRow(t,j,R){
       <label class="btn ghost attbtn">+ Add image<input type="file" data-att="${esc(t.id)}" accept="image/*" multiple hidden></label>
       <button class="btn ghost attbtn" data-replay="${esc(t.id)}" data-tip="Candlestick chart of this trade: real OHLC candles with every entry/add fill (▲) and close fill (▼) marked at its actual time and price, plus avg entry/exit lines. Uses the locally cached candles where possible.">📈 Price chart</button></div>
     <div id="replay-${esc(t.id)}"></div>
+    <div class="field mrev" id="mrev-${esc(t.id)}" data-mr-box="${esc(t.id)}"></div>
     <div class="jsave"><span class="saved-tag" id="saved-${esc(t.id)}">Saved ✓</span>
       <button class="btn" data-save="${esc(t.id)}">Save journal</button></div>
   </div></td></tr>`;
