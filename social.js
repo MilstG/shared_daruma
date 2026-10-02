@@ -35,6 +35,7 @@ const SC = require('./social-config.js');
 const Store = require('./db.js');
 const Bench = require('./bench.js');
 const Duels = require('./duels.js');
+const Insights = require('./insights.js');
 const Push = require('./push.js');
 // Ethereum signature recovery for wallet claims (vendored noble libraries, no install needed)
 let ethSig = null; try { ethSig = require('./vendor/eth-sig.js'); } catch (e) { /* claims and wallet sign-in answer 501 */ }
@@ -1285,6 +1286,28 @@ function createSocial(opts) {
       if (sub === 'log' && M === 'GET') return json(res, 200, { log: S.adminLog.slice(-200).reverse() });
       if (M !== 'GET') { S.adminLog.push({ at: now(), by: who.by, what: (M + ' ' + parts.slice(1).join('/') + (body && typeof body.action === 'string' ? ' · ' + body.action.slice(0, 20) : '')).slice(0, 120) });
         if (S.adminLog.length > 500) S.adminLog = S.adminLog.slice(-400); touch('adminLog'); }
+      // ---- insights: each member's numbers, and the whole base / any segment of it ----
+      if (sub === 'insights' && M === 'GET') {
+        const today = todayKey(), all = members();
+        const rows = all.map(m => Insights.memberRow(m, { today, leagues: leaguesOf(m).map(L => L.id) }));
+        const f = {}; for (const k of Insights.FILTERS) if (typeof query[k] === 'string' && query[k].length <= 40) f[k] = query[k];
+        const labels = Object.assign({}, Bench.DIMS, { league: Object.fromEntries(Object.values(S.leagues).map(L => [L.id, L.name])) });
+        const out = Insights.insights(rows, all, f, { now: now(), today, by: typeof query.by === 'string' ? query.by : 'style', sort: query.sort, metric: query.metric, labels });
+        return json(res, 200, Object.assign(out, { filters: f, labels, metrics: Insights.METRICS, slipsLabels: Insights.SLIPS, levelBands: Insights.LEVEL_BANDS.map(b => b[0]),
+          activity: Insights.ACTIVITY, cohortsAll: [...new Set(rows.filter(r => r.joined).map(r => new Date(r.joined).toISOString().slice(0, 7)))].sort().reverse() }));
+      }
+      if (sub === 'members' && parts[2] && parts[3] === 'perf' && M === 'GET') {
+        const m = own(S.members, parts[2]) ? S.members[parts[2]] : null; if (!m) return json(res, 404, { error: 'no such member' });
+        const today = todayKey(), rows = members().filter(x => !x.banned).map(x => Insights.memberRow(x, { today, leagues: leaguesOf(x).map(L => L.id) }));
+        const r = Insights.memberRow(m, { today, leagues: leaguesOf(m).map(L => L.id) });
+        // where they sit: among all members, and in their peer group of "traders like you" (members and seed wallets)
+        const pct = {}, peer = {}; let group = null;
+        if (r.seg) { const gs = Bench.groupsFor(benchNow(), r.seg); const styled = gs.filter(g => g.dims.style); group = (styled.length ? styled : gs).slice(-1)[0] || null; }
+        for (const k of Object.keys(Insights.METRICS)) { const v = Insights.valueOf(r, k); pct[k] = Insights.percentileIn(rows, k, v);
+          const bk = k === 'disc30' ? 'disc' : own(Bench.METRICS, k) ? k : null; // the group's deciles are in the benchmark's own measures
+          if (group && bk && group.q[bk]) peer[k] = Insights.percentileFromDeciles(group.q[bk], v, Insights.METRICS[k].hi); }
+        return json(res, 200, { row: r, pct, peer, group: group ? { key: group.key, dims: group.dims, n: group.n } : null, labels: Bench.DIMS, metrics: Insights.METRICS, slipsLabels: Insights.SLIPS });
+      }
       if (sub === 'overview' && M === 'GET') {
         const wk = S.league.week, act = members().filter(m => now() - (m.lastSeen || 0) < 7 * 86400000);
         return json(res, 200, { adminConfigured, members: members().length, banned: members().filter(m => m.banned).length, active7: act.length,

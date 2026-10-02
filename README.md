@@ -580,6 +580,35 @@ wallet decisions record who made them.
   sign-in code, suspend or delete. Members' addresses are visible to you; others see them only if the member chose to show theirs.
 - **Duels** — on/off, which kinds are allowed, the winner's XP and the limits,
   every duel running or waiting (with cancel) and recent results.
+- **Insights** — the whole league at once, or any segment of it. Filter by style,
+  trade size, experience and activity (the "Traders like you" ranges), league,
+  level, month joined, verified, and when last seen. For whatever is in view:
+  - **Headline medians:** Discipline over 30 days, days journaled, win rate,
+    profit factor and 30-day return.
+  - **From joining to active:** joined → wallet → synced → traded → journaled →
+    seen in 30 / 7 days → verified.
+  - **Week by week:** Discipline, members trading and days journaled for the last
+    8 weeks, plus the slips that happen most.
+  - **How members spread** on any measure (a histogram with deciles).
+  - **Segments:** a table split by any dimension (click one to look at it), and
+    retention by month joined.
+  - **Members:** a sortable list, including **"Slipping"** (Discipline down 10 or
+    more on the 30 days before).
+
+  A segment with fewer than 5 members shows its size only.
+- **Each member's page** has a **Performance** card:
+  - Their segment, a bar per trading day of Discipline, and the trend against the
+    30 days before.
+  - Days journaled and reviewed, win rate, profit factor, average win ÷ loss,
+    fees, revenge entries, trades a week, typical hold, 30-day return and
+    drawdown, streak and XP.
+  - For each measure: where they stand in the league, and among traders like them
+    (estimated from their peer group's deciles).
+  - Their most common slips, and the habits they're working on.
+
+  Members are told in Profile & privacy that the owner and admins can see their
+  stats. Members who switch off "Traders like you" keep their win rate, profit
+  factor and fees hidden from you too.
 - **Benchmarks** — "Traders like you": contributors, peer groups and settings
   (smallest group, when to split groups, whether seed wallets count), a rebuild
   button, and **seed wallets**: paste any text and every 0x address in it is
@@ -1047,7 +1076,9 @@ dimensions to match and see each group's spread.
 - **What's shared.** Each member's app works out a summary of about a dozen
   numbers (Discipline, revenge trades, % journaled, win rate, profit factor,
   average win ÷ loss, fees, trades a week, typical hold) and the four ranges, and
-  sends it with its usual sync. No trades, coins, amounts, name or wallet. Returns
+  sends it with its usual sync. No trades, coins, amounts or wallet; other members only
+  ever see groups, while the owner and admins can see a member's own summary (they're
+  told so in Profile & privacy). Returns
   and drawdown are added only from wallets read on chain. It's **on by default**;
   members switch it off under Profile & privacy ("Count me in Traders like you"),
   which removes them from the next build. They can still see the comparison.

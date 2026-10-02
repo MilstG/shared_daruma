@@ -88,6 +88,22 @@ nav.tabs a[aria-current=page]{background:#1F2630;color:var(--text)}
 .stat3 span{font-size:12px;color:var(--muted)}
 .bar{height:8px;border-radius:999px;background:#1B1F25;overflow:hidden}
 .bar>i{display:block;height:100%;background:var(--good);border-radius:999px}
+.hist{display:flex;align-items:flex-end;gap:3px;height:96px;margin:6px 0 4px}
+.hist i{flex:1;background:var(--risk);border-radius:4px 4px 0 0;min-height:2px}
+.hist i:hover,.wk i:hover{filter:brightness(1.3)}
+.wk{display:flex;align-items:flex-end;gap:6px;height:90px;margin:6px 0 2px}
+.wk>div{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;min-width:0}
+.wk i{display:block;width:100%;border-radius:4px 4px 0 0;background:var(--good);min-height:2px}
+.fun{display:grid;grid-template-columns:minmax(120px,190px) 1fr auto;gap:8px 10px;align-items:center;font-size:13px}
+.fun .bar{height:10px}
+.pct{position:relative;height:6px;background:#1B1F25;border-radius:999px;margin-top:4px}
+.pct>i{position:absolute;top:-3px;width:12px;height:12px;border-radius:50%;margin-left:-6px;background:var(--good);border:2px solid var(--card)}
+.perf{display:grid;gap:10px 18px;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr))}
+.perf>div{padding:10px 0;border-bottom:1px solid var(--line);min-width:0}
+.perf b{font-size:18px}
+.spark{display:flex;align-items:flex-end;gap:2px;height:46px;margin:8px 0}
+.spark i{flex:1;border-radius:3px 3px 0 0;min-height:2px}
+tr.click{cursor:pointer} tr.click:hover td{background:#171B21}
 .lvtbl td,.lvtbl th{padding:6px 8px}
 .code{font:700 20px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em}
 summary{cursor:pointer;color:var(--soft);font-weight:600}
@@ -143,7 +159,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   const XP_LABELS={discipline:['Per Discipline point','× each day’s 0–100 score'],checkin:['Morning check-in',''],plan:['Plan set before trading',''],
     journal:['Every trade journaled',''],stops:['A stop on every trade',''],limit:['Stayed inside the loss limit',''],review:['End-of-day review',''],
     achievement:['Achievement','The base: badge tiers pay ×0.1 to ×3.2 of it'],challenge:['Weekly challenge kept',''],focus:['Focus habit kept','Per kept day']};
-  const TABS=[['overview','Overview'],['members','Members'],['wallets','Wallets'],['bench','Benchmarks'],['duels','Duels'],['leagues','Leagues'],['competitions','Competitions'],['badges','Badges'],['levels','Levels & XP'],
+  const TABS=[['overview','Overview'],['insights','Insights'],['members','Members'],['wallets','Wallets'],['bench','Benchmarks'],['duels','Duels'],['leagues','Leagues'],['competitions','Competitions'],['badges','Badges'],['levels','Levels & XP'],
     ['features','Features'],['coach','Coach'],['routines','Routines'],['feed','Feed & reports'],['settings','Settings']];
   // the owner's AUTH_TOKEN, or (for an admin the owner added) this browser's Pulse member key
   let tok=''; try{ tok=localStorage.getItem('srv_token')||''; }catch(e){}
@@ -169,8 +185,8 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   const pager=(key,list,size)=>{ size=size||10; const n=list.length, pages=Math.max(1,Math.ceil(n/size)), p=Math.max(0,Math.min(UI.pages[key]||0,pages-1)); UI.pages[key]=p;
     return {items:list.slice(p*size,(p+1)*size), html:n>size?`<div class="pager"><button class="sm" data-pg="${esc(key)}" data-d="-1"${p?'':' disabled'} aria-label="Previous page">‹ Prev</button><span class="muted small">${p*size+1}–${Math.min(n,(p+1)*size)} of ${n}</span><button class="sm" data-pg="${esc(key)}" data-d="1"${p<pages-1?'':' disabled'} aria-label="Next page">Next ›</button></div>`:''}; };
   const mlink=m=>`#members/${esc(encodeURIComponent(m.id))}`;
-  const D={ov:null,members:[],leagues:[],badges:[],comps:[],events:[],reports:[],wallets:{approveWallets:false,wallets:[],counts:{pending:0,approved:0,rejected:0}}};
-  const UI={tab:'overview',member:null,q:'',filter:'all',wq:'',wfilter:'pending',wsel:new Set(),leagueEdit:null,badgeEdit:null,addOpen:false,code:null,levelDraft:null,custom:null,overrides:null,pages:{}};
+  const D={perf:{},ins:null,ov:null,members:[],leagues:[],badges:[],comps:[],events:[],reports:[],wallets:{approveWallets:false,wallets:[],counts:{pending:0,approved:0,rejected:0}}};
+  const UI={ins:{f:{},by:'style',sort:'disc30',metric:'disc30'},tab:'overview',member:null,q:'',filter:'all',wq:'',wfilter:'pending',wsel:new Set(),leagueEdit:null,badgeEdit:null,addOpen:false,code:null,levelDraft:null,custom:null,overrides:null,pages:{}};
   const linkFor=code=>location.origin+'/pulse#link='+encodeURIComponent(code);
   const adminLinkFor=code=>location.origin+'/admin#code='+encodeURIComponent(code);
   const leagueName=id=>{ const L=D.leagues.find(x=>x.id===id); return L?L.name:id; };
@@ -179,6 +195,8 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
 
   async function load(){
     const [me,ov,ms,ls,bs,cs,ev,ws,lg,rp,bn,du]=await Promise.all([api('/me'),api('/overview'),api('/members'),api('/leagues'),api('/badges'),api('/competitions'),api('/events'),api('/wallets'),api('/log'),api('/reports'),api('/bench').catch(()=>null),api('/duels').catch(()=>null)]);
+    D.perf={}; // a member's numbers are read again when their page opens
+    if(UI.tab==='insights')await loadIns();
     ME=me; $('whoami').textContent=me.owner?'Owner':'Admin · '+me.name;
     Object.assign(D,{ov,members:ms.members,leagues:ls.leagues,badges:bs.badges,comps:cs.competitions,events:ev.events,wallets:ws,log:lg.log,reports:rp.reports,bench:bn,duels:du});
     for(const a of [...UI.wsel])if(!ws.wallets.some(w=>w.address===a))UI.wsel.delete(a);
@@ -193,7 +211,8 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     finally{ BUSY=false; $('view').removeAttribute('aria-busy'); } }
   const ADDR=/^0x[0-9a-fA-F]{40}$/;
 
-  function route(){ const h=location.hash.slice(1).split('/'); UI.tab=TABS.some(t=>t[0]===h[0])?h[0]:'overview';
+  function route(){ const h=location.hash.slice(1).split('/'), was=UI.tab; UI.tab=TABS.some(t=>t[0]===h[0])?h[0]:'overview';
+    if(UI.tab==='insights'&&was!=='insights')D.ins=null; // fresh numbers each time the tab is opened
     let id=null; if(UI.tab==='members'&&h[1]){ try{ id=decodeURIComponent(h[1]); }catch(e){} } UI.member=id; }
   // Re-rendering after an action keeps what was typed elsewhere on the same screen; only the
   // card the action came from shows the server's fresh values.
@@ -207,7 +226,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     lastView=view; UI.submitted=null; UI.fresh=false;
     $('tabs').innerHTML=TABS.map(([k,l])=>`<a href="#${k}"${k===UI.tab?' aria-current="page"':''}>${l}${k==='feed'&&D.reports.length?` <span class="pill warnp">${D.reports.length}</span>`:''}</a>`).join('');
     const tabs=$('tabs'), cur=tabs.querySelector('[aria-current]'); if(cur)tabs.scrollLeft=Math.max(0,cur.offsetLeft-(tabs.clientWidth-cur.offsetWidth)/2);
-    const f={overview:vOverview,members:vMembers,wallets:vWallets,bench:vBench,duels:vDuels,leagues:vLeagues,competitions:vComps,badges:vBadges,levels:vLevels,features:vFeatures,coach:vCoach,routines:vRoutines,feed:vFeed,settings:vSettings}[UI.tab];
+    const f={overview:vOverview,insights:vInsights,members:vMembers,wallets:vWallets,bench:vBench,duels:vDuels,leagues:vLeagues,competitions:vComps,badges:vBadges,levels:vLevels,features:vFeatures,coach:vCoach,routines:vRoutines,feed:vFeed,settings:vSettings}[UI.tab];
     $('view').innerHTML=f();
     for(const [id,v] of keep){ const el=$(id); if(!el)continue; if(el.type==='checkbox')el.checked=v; else el.value=v; }
     const back=foc&&$(foc); if(back&&$('view').contains(back))back.focus({preventScroll:true});
@@ -237,6 +256,98 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       <a class="fit btnlink" href="#members" data-open="member">Add a member</a><a class="fit btnlink" href="#leagues" data-open="league">New league</a><a class="fit btnlink" href="#badges" data-open="badge">New badge</a><a class="fit btnlink" href="#competitions">New competition</a><a class="fit btnlink" href="#feed">Announce</a></div></section>`;
   }
 
+  // ---------------- insights: every member's numbers, the whole base and any segment ----------------
+  const insQs=()=>{ const q=new URLSearchParams(); for(const [k,v] of Object.entries(UI.ins.f))if(v)q.set(k,v);
+    q.set('by',UI.ins.by); q.set('sort',UI.ins.sort); q.set('metric',UI.ins.metric); return q.toString(); };
+  async function loadIns(){ try{ D.ins=await api('/insights?'+insQs()); }catch(e){ D.ins={err:e.message}; } }
+  // a measure as it reads: percentages, ratios, returns with a sign
+  const insVal=(k,v,M)=>{ if(v==null||!isFinite(v))return '—'; const d=M&&M[k];
+    if(k==='ret')return (v>=0?'+':'')+(+v).toFixed(1)+'%'; if(k==='dd')return (+v).toFixed(1)+'%';
+    if(d&&d.unit==='%')return Math.round(v)+'%'; if(k==='pf'||k==='pay')return (+v).toFixed(2); if(k==='tw')return (+v).toFixed(1);
+    if(k==='hold')return v>=1440?(v/1440).toFixed(1)+' d':v>=60?(v/60).toFixed(1)+' h':Math.round(v)+' m'; return fmt(Math.round(v)); };
+  const insSeg=(seg,L)=>seg?['style','size','exp','act'].map(k=>L[k]&&L[k][seg[k]]).filter(Boolean).join(' · '):'';
+  function vInsights(){
+    const X=D.ins; if(!X){ loadIns().then(render); return '<section class="card"><p class="muted">Loading…</p></section>'; }
+    if(X.err)return `<section class="card"><p class="warn">Couldn’t load insights: ${esc(X.err)}</p></section>`;
+    const M=X.metrics, L=X.labels, F=UI.ins.f, pctOf=(a,b)=>b?Math.round(a/b*100)+'%':'—';
+    const pick=(k,label,list)=>field('insf_'+k,label,sel('insf_'+k,[['','All'],...list],F[k]||'',' data-insf="'+k+'"'));
+    const filters=`<div class="row">${pick('style','Style',Object.entries(L.style))}${pick('size','Trade size',Object.entries(L.size))}${pick('exp','Experience',Object.entries(L.exp))}${pick('act','Activity',Object.entries(L.act))}</div>
+      <div class="row">${pick('league','League',Object.entries(L.league))}${pick('level','Level',X.levelBands.map(b=>[b,'Level '+b]))}${pick('cohort','Joined',X.cohortsAll.map(c=>[c,c]))}
+        ${pick('verified','Verified',[['yes','Verified from fills'],['no','Not verified']])}${pick('activity','Seen',Object.entries(X.activity))}</div>
+      ${Object.values(F).some(Boolean)?'<div style="margin-top:10px"><button class="sm fit" id="insClear">Clear filters</button></div>':''}`;
+    const S=X.summary||{};
+    const head=tiles([['Members in view',fmt(X.n),X.n!==X.total?'of '+fmt(X.total):'everyone'],['Discipline · median',insVal('disc30',S.disc30,M),'last 30 days'],
+      ['Days journaled · median',insVal('journal30',S.journal30,M)],['Win rate · median',insVal('wr',S.wr,M),S.trading!=null?S.trading+' with a summary':''],['Profit factor · median',insVal('pf',S.pf,M)],['30-day return · median',insVal('ret',S.ret,M),'members who share it']]);
+    const Fn=X.funnel, fun=[['Joined',Fn.joined],['Added a wallet',Fn.wallet],['Synced their stats',Fn.synced],['Traded in the last 30 days',Fn.traded30],['Journaled in the last 30 days',Fn.journaling],
+      ['Seen in the last 30 days',Fn.active30],['Seen in the last 7 days',Fn.active7],['Verified from fills',Fn.verified]];
+    const funnel=`<section class="card"><h2>From joining to active</h2><div class="fun">${fun.map(([l,n])=>`<span>${esc(l)}</span><div class="bar" title="${esc(l+': '+n+' of '+Fn.joined+' ('+pctOf(n,Fn.joined)+')')}"><i style="width:${Fn.joined?Math.round(n/Fn.joined*100):0}%"></i></div><span class="muted small">${fmt(n)} · ${pctOf(n,Fn.joined)}</span>`).join('')}</div></section>`;
+    const W=X.weekly||[], wmax=100;
+    const weekly=X.weekly?`<section class="card"><h2>Week by week</h2><p class="muted small" style="margin:0">Bars: average Discipline of members who traded that week. Hover for details.</p>
+      <div class="wk">${W.map(w=>`<div title="${esc('Week of '+w.from+': '+w.traders+' traded · Discipline '+(w.disc==null?'—':w.disc)+' · '+(w.journaled==null?'—':w.journaled+'% of days journaled')+' · '+(w.slipsPerDay==null?'—':w.slipsPerDay+' slips a trading day'))}"><i style="height:${w.disc==null?2:Math.max(2,w.disc/wmax*100)}%;background:${w.disc==null?'var(--line2)':w.disc>=70?'var(--good)':w.disc>=50?'var(--mid)':'var(--low)'}"></i><span class="muted small">${esc(w.from.slice(5))}</span></div>`).join('')}</div>
+      <div class="scroll"><table><tbody><tr><td class="muted">Traded</td>${W.map(w=>`<td>${w.traders}</td>`).join('')}</tr><tr><td class="muted">Journaled</td>${W.map(w=>`<td>${w.journaled==null?'—':w.journaled+'%'}</td>`).join('')}</tr></tbody></table></div></section>`:'';
+    const DI=X.dist, dmax=DI&&DI.hist?Math.max(1,...DI.hist.counts):1;
+    const dist=DI?`<section class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 class="fit" style="margin:0">How members spread</h2>
+        <div class="fit" style="min-width:200px">${sel('insMetric',Object.entries(M).map(([k,d])=>[k,d.label]),UI.ins.metric,' aria-label="Measure"')}</div></div>
+      ${DI.n?`<div class="hist">${DI.hist.counts.map((c,i)=>{ const w=(DI.hist.hi-DI.hist.lo)/DI.hist.counts.length, a=DI.hist.lo+w*i; return `<i style="height:${Math.round(c/dmax*100)}%" title="${esc(insVal(DI.key,a,M)+' to '+insVal(DI.key,a+w,M)+': '+c+' member'+(c===1?'':'s'))}"></i>`; }).join('')}</div>
+        <div class="row small muted" style="justify-content:space-between"><span class="fit">${esc(insVal(DI.key,DI.hist.lo,M))}</span><span class="fit">${esc(insVal(DI.key,DI.hist.hi,M))}</span></div>
+        <p class="small" style="margin:8px 0 0">${DI.n} member${DI.n===1?'':'s'} · 10th ${esc(insVal(DI.key,DI.q[0],M))} · quarter ${esc(insVal(DI.key,DI.q[1],M))} · <b>median ${esc(insVal(DI.key,DI.q[2],M))}</b> · three-quarters ${esc(insVal(DI.key,DI.q[3],M))} · 90th ${esc(insVal(DI.key,DI.q[4],M))}</p>`
+        :'<p class="muted">No member has this measure yet.</p>'}</section>`:'';
+    const SL=X.slips||[], smax=Math.max(1,...SL.map(x=>x.n));
+    const slips=X.slips?`<section class="card"><h2>Slips, last 30 days</h2>${SL.some(x=>x.n)?`<div class="fun">${SL.map(x=>`<span>${esc(x.label)}</span><div class="bar" title="${esc(x.n+' times · on '+(x.share==null?'—':x.share+'%')+' of trading days')}"><i style="width:${Math.round(x.n/smax*100)}%;background:var(--low)"></i></div><span class="muted small">${fmt(x.n)}</span>`).join('')}</div>`:'<p class="muted">No slips recorded in this group.</p>'}</section>`:'';
+    const BY=[['style','Style'],['size','Trade size'],['exp','Experience'],['act','Activity'],['league','League'],['level','Level'],['cohort','Month joined'],['verified','Verified'],['activity','Last seen']];
+    const filterable=['style','size','exp','act','league','level','cohort','verified','activity'];
+    const bd=`<section class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 class="fit" style="margin:0">Segments</h2>
+        <div class="fit" style="min-width:200px">${sel('insBy',BY,UI.ins.by,' aria-label="Split by"')}</div></div>
+      <p class="muted small">Medians per segment. Click one to look at it. Segments under ${X.minSeg} members show their size only.</p>
+      <div class="scroll"><table><thead><tr><th>Segment</th><th>Members</th><th>Discipline</th><th>Journaled</th><th>Win rate</th><th>Profit factor</th><th>Return 30d</th><th>Seen 7d</th></tr></thead><tbody>
+      ${X.breakdown.map(g=>`<tr${g.key!=null&&filterable.includes(UI.ins.by)?` class="click" data-insset="${esc(UI.ins.by)}" data-insval="${esc(g.key)}" tabindex="0"`:''}><td><b>${esc(g.label)}</b></td><td>${fmt(g.n)}</td>
+        ${g.small?'<td colspan="6" class="muted small">too few to show</td>':`<td>${insVal('disc30',g.med.disc30,M)}</td><td>${insVal('journal30',g.med.journal30,M)}</td><td>${insVal('wr',g.med.wr,M)}</td><td>${insVal('pf',g.med.pf,M)}</td><td>${insVal('ret',g.med.ret,M)}</td><td>${g.active7}%</td>`}</tr>`).join('')}
+      </tbody></table></div></section>`;
+    const coh=`<section class="card"><h2>By month joined</h2><div class="scroll"><table><thead><tr><th>Joined</th><th>Members</th><th>Synced</th><th>Seen in 30 days</th><th>Seen in 7 days</th></tr></thead><tbody>
+      ${X.cohorts.map(c=>`<tr><td>${esc(c.month)}</td><td>${fmt(c.joined)}</td><td>${pctOf(c.synced,c.joined)}</td><td>${pctOf(c.active30,c.joined)}</td><td>${pctOf(c.active7,c.joined)}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">No members yet.</td></tr>'}</tbody></table></div></section>`;
+    const SORTS=[['disc30','Discipline, best first'],['slipping','Slipping (Discipline down 10+)'],['wr','Win rate'],['pf','Profit factor'],['ret','30-day return'],['journal30','Days journaled'],['xp','XP'],['lastSeen','Last seen']];
+    const mem=`<section class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 class="fit" style="margin:0">Members</h2>
+        <div class="fit" style="min-width:220px">${sel('insSort',SORTS,UI.ins.sort,' aria-label="Sort members"')}</div></div>
+      <div class="scroll"><table><thead><tr><th>Member</th><th>Segment</th><th>Discipline</th><th>Days</th><th>Journaled</th><th>Win rate</th><th>PF</th><th>Return</th><th>Seen</th></tr></thead><tbody>
+      ${X.members.map(r=>{ const dlt=r.disc30!=null&&r.discPrev30!=null?r.disc30-r.discPrev30:null;
+        return `<tr><td><a href="#members/${esc(encodeURIComponent(r.id))}">@${esc(r.handle)}</a> <span class="muted small">Lv ${r.level}</span></td><td class="small">${esc(insSeg(r.seg,L))||'<span class="muted">—</span>'}</td>
+        <td>${insVal('disc30',r.disc30,M)}${dlt?` <span class="small" style="color:${dlt>0?'var(--good)':'var(--low)'}" title="${esc('vs the 30 days before: '+r.discPrev30)}">${dlt>0?'▲':'▼'}${Math.abs(dlt)}</span>`:''}${r.verified?' <span class="pill ok" title="Verified from fills">✓</span>':''}</td>
+        <td>${r.days30}</td><td>${insVal('journal30',r.journal30,M)}</td><td>${insVal('wr',r.wr,M)}</td><td>${insVal('pf',r.pf,M)}</td><td>${insVal('ret',r.ret,M)}</td><td class="muted small">${esc(ago(r.lastSeen))}</td></tr>`; }).join('')||'<tr><td colspan="9" class="muted">No one matches.</td></tr>'}
+      </tbody></table></div>${X.more?`<p class="hint">${fmt(X.more)} more not shown: narrow the filters.</p>`:''}</section>`;
+    return `<section class="card"><h2>Insights</h2><p class="muted" style="margin-top:0">Every member’s process and results, the whole league at once, or any segment of it. Segments use the “Traders like you” groups (style, trade size, experience, activity), so a member without a summary yet shows as “not known yet”. Members are told in Profile &amp; privacy that you can see their stats.</p>${filters}</section>
+      ${X.small?`<p class="warn">Fewer than ${X.minSeg} members match these filters, so their numbers aren’t shown. Their names are below.</p>`:''}
+      ${head}<div class="two">${funnel}${weekly||slips}</div><div class="two">${dist}${weekly?slips:''}</div>${bd}<div class="two">${coh}</div>${mem}`;
+  }
+  // a member's own numbers, beside the league's and their peer group's
+  function perfCard(m){
+    const P=D.perf[m.id];
+    if(!P){ D.perf[m.id]={loading:true}; api('/members/'+encodeURIComponent(m.id)+'/perf').then(d=>{ D.perf[m.id]=d; },e=>{ D.perf[m.id]={err:e.message}; }).then(()=>{ if(UI.member===m.id)render(); });
+      return '<section class="card"><h2>Performance</h2><p class="muted">Loading…</p></section>'; }
+    if(P.loading)return '<section class="card"><h2>Performance</h2><p class="muted">Loading…</p></section>';
+    if(P.err)return `<section class="card"><h2>Performance</h2><p class="warn">${esc(P.err)}</p></section>`;
+    const r=P.row, M=P.metrics, L=P.labels;
+    const seg=r.seg?insSeg(r.seg,L):'';
+    const col=s=>s>=70?'var(--good)':s>=50?'var(--mid)':'var(--low)';
+    const spark=r.spark.length?`<div class="spark" role="img" aria-label="Discipline by trading day, last 30 days">${r.spark.map(d=>`<i style="height:${Math.max(4,d.s)}%;background:${col(d.s)}" title="${esc(d.k+': Discipline '+d.s)}"></i>`).join('')}</div>`:'<p class="muted small">No trading days in the last 30 days.</p>';
+    const row=(k,extra)=>{ const v=k in M&&M[k].trading?(r.trading?r.trading[k]:null):r[k], p=P.pct[k], q=P.peer[k];
+      if(v==null)return '';
+      return `<div><span class="muted small">${esc(M[k].label)}</span><br><b>${esc(insVal(k,v,M))}</b>${extra||''}
+        ${p!=null?`<div class="small muted" style="margin-top:4px" title="Better than ${p}% of the league’s members">League: better than ${p}%</div><div class="pct"><i style="left:${p}%"></i></div>`:''}
+        ${q!=null?`<div class="small muted" style="margin-top:6px" title="Estimated from the peer group’s deciles">Traders like them: better than ~${q}%</div><div class="pct"><i style="left:${q}%;background:var(--xp)"></i></div>`:''}</div>`; };
+    const dlt=r.disc30!=null&&r.discPrev30!=null?r.disc30-r.discPrev30:null;
+    const slips=Object.entries(r.slips30).sort((a,b)=>b[1]-a[1]);
+    const order=['disc30','journal30','review30','wr','pf','pay','fees','rev','tw','hold','ret','dd','streak','xp'];
+    return `<section class="card"><h2>Performance <span class="muted small" style="font-weight:400">last 30 days${r.verified?' · Discipline verified from fills':''}</span></h2>
+      <div class="row" style="align-items:center;gap:6px">${seg?seg.split(' · ').map(x=>`<span class="pill fit">${esc(x)}</span>`).join(''):`<span class="muted small fit">${r.benchOn?'Segment not known yet: it needs 30 closed trades over 3 weeks.':'Switched off “Traders like you”: win rate, profit factor and fees stay hidden.'}</span>`}
+        ${P.group?`<span class="muted small fit">· compared with ${fmt(P.group.n)} traders like them</span>`:''}</div>
+      ${spark}
+      <div class="perf">${row('disc30',dlt?` <span class="small" style="color:${dlt>0?'var(--good)':'var(--low)'}">${dlt>0?'▲':'▼'} ${Math.abs(dlt)} vs the 30 days before</span>`:'')}
+        <div><span class="muted small">Trading days</span><br><b>${r.days30}</b> <span class="small muted">${r.clean30} clean (70+)</span></div>
+        ${order.slice(1).map(k=>row(k)).join('')}
+        <div><span class="muted small">Duels</span><br><b>${r.duels.w}–${r.duels.l}${r.duels.d?'–'+r.duels.d:''}</b></div></div>
+      ${slips.length?`<h3>Their slips</h3><div class="fun">${slips.map(([k,n])=>`<span>${esc(P.slipsLabels[k]||k)}</span><div class="bar"><i style="width:${Math.round(n/slips[0][1]*100)}%;background:var(--low)"></i></div><span class="muted small">${n}×</span>`).join('')}</div>`:''}
+      ${r.habits.length?`<h3>Habits they’re working on</h3><ul style="margin:0;padding-left:18px">${r.habits.map(h=>`<li>${esc(h)}</li>`).join('')}</ul>`:''}</section>`;
+  }
   // ---------------- members ----------------
   const wpill=s=>s==='pending'?'<span class="pill wait">wallet waiting</span>':s==='rejected'?'<span class="pill ban">wallet rejected</span>':'';
   const pills=m=>[m.admin?'<span class="pill ok">admin</span>':'',m.claimed?'<span class="pill ok">claimed ✓</span>':'',m.passkeys?`<span class="pill">${m.passkeys} passkey${m.passkeys===1?'':'s'}</span>`:'',D.wallets.approveWallets?wpill(m.walletStatus):'',m.verified?'<span class="pill ok">verified</span>':'',m.unlocked?'<span class="pill xp">unlocked</span>':'',
@@ -321,6 +432,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
         <div><b>${m.coachUsed}${m.coachLimit!=null?' / '+m.coachLimit:''}</b><span>Coach today</span></div><div><b>${m.awards.length}</b><span>Reward badges</span></div></div>
       ${UI.code&&UI.code.id===m.id?codeBox(UI.code):''}
     </section>
+    ${perfCard(m)}
     <div class="two">
       <section class="card"><h2>Profile</h2>
         ${field('mHandle','Name',`<input id="mHandle" maxlength="20" value="${esc(m.handle)}">`)}
@@ -710,6 +822,8 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     if(t.id==='q'){ UI.q=t.value; UI.pages.members=0; $('mRows').innerHTML=memberRows(); $('mPager').innerHTML=memberPg().html; }
     if(t.id==='wq'){ UI.wq=t.value; UI.pages.wallets=0; $('wRows').innerHTML=walletRows(); $('wPager').innerHTML=walletPg().html; } });
   document.addEventListener('change',ev=>{ const t=ev.target;
+    if(t.dataset&&t.dataset.insf){ UI.ins.f[t.dataset.insf]=t.value; loadIns().then(render); return; }
+    if(t.id==='insBy'||t.id==='insSort'||t.id==='insMetric'){ UI.ins[{insBy:'by',insSort:'sort',insMetric:'metric'}[t.id]]=t.value; loadIns().then(render); return; }
     if(t.id==='wFilter'){ UI.wfilter=t.value; UI.pages.wallets=0; UI.wsel.clear(); UI.fresh=false; return render(); }
     if(t.dataset&&t.dataset.wsel){ if(t.checked)UI.wsel.add(t.dataset.wsel); else UI.wsel.delete(t.dataset.wsel);
       $('wBulkApprove').disabled=$('wBulkReject').disabled=!UI.wsel.size; $('wBulkApprove').textContent='Approve selected ('+UI.wsel.size+')'; return; }
@@ -718,6 +832,8 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     else if(t.id&&/^rc_\d+_b$/.test(t.id)){ keepRoutines(); UI.fresh=true; render(); } });
   document.addEventListener('click',async ev=>{
     const qa=ev.target.closest('a[data-open]'); if(qa){ UI.open=qa.dataset.open; return; }
+    const sg=ev.target.closest('tr[data-insset]'); if(sg){ UI.ins.f[sg.dataset.insset]=sg.dataset.insval; loadIns().then(render); return; } // a segment row: look at it
+    if(ev.target.closest('#insClear')){ UI.ins.f={}; loadIns().then(render); return; }
     const b=ev.target.closest('button'); if(!b||!$('app').contains(b)||BUSY)return;
     const d=b.dataset, id=b.id; UI.submitted=b.closest('.sub,.card');
     const m=UI.member&&D.members.find(x=>x.id===UI.member);
@@ -857,6 +973,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   }
   $('go').onclick=()=>{ tok=$('tok').value.trim(); try{ localStorage.setItem('srv_token',tok); }catch(e){} start(); };
   $('tok').addEventListener('keydown',e=>{ if(e.key==='Enter')$('go').click(); });
+  document.addEventListener('keydown',e=>{ const sg=e.target.closest&&e.target.closest('tr[data-insset]'); if(sg&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); sg.click(); } });
   $('ago').onclick=async()=>{ if(await redeem($('acode').value)){ tok=''; try{ localStorage.removeItem('srv_token'); }catch(e){} start(); } };
   $('acode').addEventListener('keydown',e=>{ if(e.key==='Enter')$('ago').click(); });
   $('signout').onclick=()=>{ try{ localStorage.removeItem('srv_token'); }catch(e){}

@@ -23,7 +23,7 @@ const SOC_SHARE_ROWS=[
   ['addr','Show wallet address','Anyone could look up every trade and balance',true],
   ['mentor','Let mentors see my days','Mentors the owner appointed see your scores, slips and the lesson you write each night, and can leave you notes. No trades, P&L or wallet'],
   ['duels','Accept duel challenges','Other members can challenge you to a week or a month, 1 on 1, on Discipline, clean days, journaling or XP. Nothing starts until you accept; switch off to stop receiving challenges'],
-  ['bench','Count me in “Traders like you”','An anonymous summary of your last 90 days (win rate, discipline, how much you journal; trade size only as a range) goes into peer groups of 25 or more. No trades, coins, amounts, name or wallet. Switch off to be left out']];
+  ['bench','Count me in “Traders like you”','An anonymous summary of your last 90 days (win rate, discipline, how much you journal; trade size only as a range) goes into peer groups of 25 or more. Other members only ever see the groups, never you; the league’s owner and admins can see your own summary. No trades, coins, amounts or wallet. Switch off to be left out (and to keep it from the owner too)']];
 const SOC_BOARDS=[['xp','Weekly XP'],['discipline','Discipline'],['streak','Streak'],['level','All-time XP'],['riskadj','Return / drawdown'],['ret','% Return'],['usd','$ P&L']];
 const SOC_BOARD_NOTE={
   xp:'XP earned this week in your league — process, never profit. The top of the league moves up on Monday, the bottom moves down.',
@@ -352,7 +352,7 @@ function socSharingHtml(D){
   SOC.draft=SOC.draft||{...SOC.share};
   const w=socWallet();
   return `${back}${pzHead('Profile & privacy','What you share')}
-  <p class="pz-sub" style="margin-top:-6px">Your journal, notes and trades stay on this device, apart from what you send the coach and your journal sync (encrypted, if you switch it on). For the league, only the numbers switched on below are sent.</p>
+  <p class="pz-sub" style="margin-top:-6px">Your journal, notes and trades stay on this device, apart from what you send the coach and your journal sync (encrypted, if you switch it on). For the league, only the numbers switched on below are sent. The league’s owner and its admins can see the stats you send, by name, to help run the league.</p>
   <div class="pz-wide"><div class="pz-col">
     <div class="pz-field"><span style="font-size:15px;font-weight:700">Profile picture</span><div style="display:flex;align-items:center;gap:14px">${socAv(SOC.me.handle,64)}
       <label class="pz-ghost pz-sm" for="socAvFile" style="cursor:pointer">${SOC.me.av?'Change picture':'Add a picture'}</label><input type="file" id="socAvFile" accept="image/*" class="pz-vh">${SOC.me.av?'<button type="button" class="pz-linkbtn" data-soc-avdel>Remove</button>':''}</div></div>
