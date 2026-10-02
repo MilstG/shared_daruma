@@ -144,6 +144,19 @@ try {
     eq([sum.style, sum.size, sum.exp, sum.act], ['day', 's2', 'e2', 'a1'], '10 ETH at 100: a $1k–10k trade; first funded 300 days ago');
     near(sum.ret, 10, 0.01); near(sum.wr, 100 * 26 / 40, 0.1);
   });
+  await t('re-analyze: one wallet or all of them; a counted one keeps counting until its new read lands', async () => {
+    const one = (await call('/admin/bench', { method: 'POST', owner: true, body: { action: 'reread', address: W('1') } })).d;
+    eq([one.requeued, one.counts.re, one.counts.ok], [1, 1, 1]);
+    const mid = (await call('/admin/bench', { owner: true })).d, x1 = mid.seedList.find(x => x.address === W('1'));
+    eq([x1.st, mid.seeds], ['ok', 1], 'still counted while it waits (or already read again: the test server reads at once)');
+    ok(await waitFor(async () => (await call('/admin/bench', { owner: true })).d.seedCounts.re === 0), 're-read');
+    const all = (await call('/admin/bench', { method: 'POST', owner: true, body: { action: 'reread' } })).d;
+    eq([all.requeued, all.counts.queued, all.counts.re], [3, 2, 1], 'the counted one is flagged, the left-out and failed ones go back in the queue');
+    ok(await waitFor(async () => { const c = (await call('/admin/bench', { owner: true })).d.seedCounts; return c.queued === 0 && c.re === 0; }));
+    const a = (await call('/admin/bench', { owner: true })).d, st = Object.fromEntries(a.seedList.map(x => [x.address, x]));
+    eq([st[W('1')].st, st[W('2')].st, st[W('9')].st, st[W('1')].re], ['ok', 'skip', 'err', false]);
+    eq((await call('/admin/bench', { method: 'POST', key: keys[1], body: { action: 'reread' } })).status, 401, 'members can’t');
+  });
   await t('failed ones can be retried or removed; settings and seeds survive a restart', async () => {
     eq((await call('/admin/bench', { method: 'POST', owner: true, body: { action: 'retry' } })).d.requeued, 1);
     ok(await waitFor(async () => (await call('/admin/bench', { owner: true })).d.seedCounts.queued === 0));
