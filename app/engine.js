@@ -633,7 +633,7 @@ function spotFifoLots(fills, nameByCoin){
   for(const f of spot){
     const s=sym(f.coin), q=Math.abs(parseFloat(f.sz||0)), px=parseFloat(f.px||0), fee=parseFloat(f.fee||0)||0;
     if(!(q>0)||!isFinite(px))continue;
-    const baseFee=(f.feeToken&&f.feeToken!=='USDC');
+    const baseFee=!!(f.feeToken&&(f.side==='B'?f.feeToken!=='USDC':!{USDC:1,USDT0:1,USDT:1,USDH:1,USDE:1}[f.feeToken])); // a sell's fee in a stable quote (USDH, USDT0) is dollars, as in reconstructTrades
     const L=lots[s]=lots[s]||[];
     if(f.side==='B'){
       const recv=baseFee?q-fee:q;
@@ -678,10 +678,19 @@ function spotFifoLots(fills, nameByCoin){
 // position each coin held before the first fill (from today's position minus the window's net,
 // when a venue's history is shorter than the account's) — the first trade then reads as partial
 // instead of a phantom position the other way. Fills must be sorted by time. Mutates and returns.
+// Spot: a buy whose fee is taken in the coin bought (Bybit) adds only what's left after the fee,
+// and its cost is spread over that — the same basis Hyperliquid's own closedPnl uses. And a coin
+// never goes below zero: selling coins held before the history began (a deposit) reads as closing
+// a holding of unknown cost, not as opening a short.
 function deriveFillPositions(fills, initial){
   const pos=Object.assign({},initial||{}), avg={}; let derived=false;
+  const spotBaseFee=f=>f.side==='B'&&f.coin.includes('/')&&f.feeToken&&f.feeToken!=='USDC'&&f.feeToken===f.coin.split('/')[0]?Math.abs(parseFloat(f.fee)||0):0;
+  const run={}, low={};
+  for(const f of fills){ if(!f.coin.includes('/')||f.startPosition!=null)continue; const q=parseFloat(f.sz); if(!(q>0))continue;
+    const c=f.coin; run[c]=(run[c]||0)+(f.side==='B'?q-spotBaseFee(f):-q); if(run[c]<(low[c]||0))low[c]=run[c]; }
+  for(const c in low) if(low[c]<-1e-12)pos[c]=(pos[c]||0)-low[c];
   for(const f of fills){
-    const c=f.coin, q=parseFloat(f.sz), px=parseFloat(f.px);
+    const c=f.coin, px=parseFloat(f.px), bf=spotBaseFee(f), q=parseFloat(f.sz)-bf;
     const p=pos[c]||0, signed=f.side==='B'?q:-q;
     if(f.startPosition==null){ f.startPosition=String(+p.toFixed(10)); derived=true; }
     const sameDir=p===0||(p>0)===(signed>0);
@@ -690,7 +699,7 @@ function deriveFillPositions(fills, initial){
       else{ const closeQty=Math.min(Math.abs(p),q);
         f.closedPnl=String(+(((px-(avg[c]||px))*closeQty*(p>0?1:-1))).toFixed(8)); derived=true; }
     }
-    if(sameDir){ const tot=Math.abs(p)+q; avg[c]=tot>0?((Math.abs(p)*(avg[c]||px)+q*px)/tot):px; }
+    if(sameDir){ const tot=Math.abs(p)+q, paid=(q+bf)*px; avg[c]=tot>0?((Math.abs(p)*(avg[c]||px)+paid)/tot):px; }
     else if(q>Math.abs(p)){ avg[c]=px; } // flip: the remainder opens at this price
     pos[c]=p+signed;
     if(Math.abs(pos[c])<1e-9){ pos[c]=0; avg[c]=0; }
@@ -832,7 +841,7 @@ function taxDisposals(fills, nameByCoin, method, fx){
     const q=Math.abs(parseFloat(f.sz||0)), px=parseFloat(f.px||0), fee=parseFloat(f.fee||0)||0;
     if(!(q>0)||!isFinite(px))continue;
     const rate=fx(f.time); if(!(rate>0)){ missingFx++; continue; }
-    const baseFee=!!(f.feeToken&&f.feeToken!=='USDC'), feeVal=(baseFee?fee*px:fee)*rate;
+    const baseFee=!!(f.feeToken&&(f.side==='B'?f.feeToken!=='USDC':!{USDC:1,USDT0:1,USDT:1,USDH:1,USDE:1}[f.feeToken])), feeVal=(baseFee?fee*px:fee)*rate;
     if(f.side==='B'){ const recv=baseFee?q-fee:q; if(!(recv>EPS))continue; ev.push({s:sym(f.coin),t:f.time,buy:true,qty:recv,amt:q*px*rate+(baseFee?0:feeVal)}); }
     else ev.push({s:sym(f.coin),t:f.time,buy:false,qty:q,amt:q*px*rate,fee:feeVal});
   }

@@ -121,6 +121,14 @@ await t('one address: trades rebuilt with exact P&L, fees in millionths, funding
   eq(spot.length, 1); eq(spot[0].coin, 'ETH/USDC'); near(spot[0].pnl, 10); eq(spot[0].symbol, 'ETH/USDC');
   near(r.accountValue, 1000); eq(r.nFills, 5);
 });
+await t('a very long history stops at 40k trades and the next load carries on further back', async () => {
+  const many = Array.from({ length: 40050 }, (_, i) => ltTrade(i + 1, T0 + i * 1000, i % 2 ? 'A' : 'B', 1, 100, { market_id: 2048, market_kind: 'spot' }));
+  const S = sandbox(lighterMock({ trades: many }));
+  const r1 = await S.run(`loadLighterWallet({address:'lighter:${L1}'},false)`);
+  eq(r1.nFills, 40000); ok(r1.truncNote, 'the gap is noted');
+  const r2 = await S.run(`loadLighterWallet({address:'lighter:${L1}'},false)`);
+  eq(r2.nFills, 40050, 'the older 50 arrive on the next load'); eq(r2.truncNote, null, 'and the note goes');
+});
 await t('the next load fetches one page and adds only what is new', async () => {
   ltCalls = [];
   const S = sandbox(lighterMock());

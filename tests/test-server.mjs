@@ -204,7 +204,7 @@ await new Promise(res => s3.app.close(res));
 console.log('\nClient wiring guards');
 await t('boot probes the server before local reads; FSA skipped in server mode', () => {
   ok(html.includes('try{ await initServerSync(); }catch(e){}'));
-  ok(html.includes('if(SRV.enabled){ renderDatafile(); }'));
+  ok(html.includes('if(SRV.enabled){ renderDatafile();'));
 });
 await t('all persistence paths route through schedulePersist (linked file + server + a member’s encrypted sync)', () => {
   ok(html.includes('function schedulePersist(){ scheduleLinkedWrite(); scheduleServerWrite(); vaultSchedule(); }'));

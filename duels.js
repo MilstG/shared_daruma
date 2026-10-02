@@ -105,6 +105,12 @@ function standing(d, ma, mb, upto) {
   const a = sideScore(d, ma, upto), b = sideScore(d, mb, upto);
   let lead = null, why = '';
   const cmp = (x, y) => x > y ? 'a' : y > x ? 'b' : null;
+  // d.moved (set by the server): a side whose wallet isn't the one it accepted with — that side loses
+  if (d.moved && (d.moved.a || d.moved.b)) {
+    for (const [k, x] of [['a', a], ['b', b]]) if (d.moved[k]) { x.out = true; x.note = 'changed wallet mid-duel'; if (d.type === 'survive') x.fell = d.start; }
+    if (d.moved.a && d.moved.b) return { a, b, lead: null, why: 'both changed wallets mid-duel' };
+    return { a, b, lead: d.moved.a ? 'b' : 'a', why: 'the other side changed wallet mid-duel' };
+  }
   if (d.type === 'disc') {
     const qa = a.n >= (d.minDays || 3) && a.avg != null, qb = b.n >= (d.minDays || 3) && b.avg != null;
     if (qa && qb) { lead = cmp(a.avg, b.avg); why = lead ? 'higher average Discipline' : 'same average'; }

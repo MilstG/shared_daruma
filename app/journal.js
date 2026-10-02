@@ -634,7 +634,7 @@ function renderReviewInner(){
   if(!focus.length) focus.push(sumNet(wk)>=0?`Steady week — net ${fmtUsd(sumNet(wk))} with no red flags in the guardrails. Keep executing your process.`:`A red week (${fmtUsd(sumNet(wk))}) but within normal variance. Review the losing trades below for process breaks vs. bad luck.`);
   // costs & variance: fee-tier economics + what normal-bad looks like at your own edge
   const bp=x=>{const s=(x*1e4).toFixed(1);return (s.endsWith('.0')?s.slice(0,-2):s)+' bp';};
-  const fee=feeTierModel(allTrades);
+  const fee=feeTierModel(allTrades.filter(t=>!candleVenue(t)&&!t.orphan)); // the Hyperliquid fee tier counts Hyperliquid volume only
   let feeCard='';
   if(fee){
     const fmtVol=v=>v>=1e9?'$'+(v/1e9).toFixed(2)+'B':v>=1e6?'$'+(v/1e6).toFixed(2)+'M':fmtUsd(v).replace('.00','');
@@ -1298,8 +1298,9 @@ function renderReconcile(){
   const el=$('reconcile');
   const all=hlPnl.all, perp=hlPnl.perp, spot=(all!=null&&perp!=null)?all-perp:null;
   // all-time reconstructed sums (incl. open positions' realized) for apples-to-apples deltas
-  const recPerp=allTrades.filter(t=>t.market==='perp').reduce((s,t)=>s+t.net,0);
-  const recSpot=allTrades.filter(t=>t.market==='spot').reduce((s,t)=>s+t.net,0);
+  const hlOnly=allTrades.filter(t=>!candleVenue(t)&&!t.orphan); // Hyperliquid's figure covers Hyperliquid wallets only
+  const recPerp=hlOnly.filter(t=>t.market==='perp').reduce((s,t)=>s+t.net,0);
+  const recSpot=hlOnly.filter(t=>t.market==='spot').reduce((s,t)=>s+t.net,0);
   const recAll=recPerp+recSpot;
   // integrity banner: perp reconstruction vs Hyperliquid's verified figure, on EVERY tab.
   // Perp-only on purpose: spot gaps are expected (unknown cost basis on transfers/airdrops).

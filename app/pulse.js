@@ -169,7 +169,7 @@ function pzFullHref(){ return /^https?:$/.test(location.protocol)?'/':location.p
 
 
 function pzNav(tab, level){
-  const cur=tab==='discipline'||tab==='journal'||tab==='review'?'today':tab==='profile'||tab==='comp'||tab==='sharing'||tab==='account'||tab==='leagues'||tab==='mentor'||tab==='mentee'||tab==='lginfo'?'social':tab==='deep'||tab==='how'?'trends':tab==='badges'||tab==='report'||tab==='lessons'?'progress':tab;
+  const cur=tab==='discipline'||tab==='journal'||tab==='review'?'today':tab==='profile'||tab==='comp'||tab==='sharing'||tab==='account'||tab==='leagues'||tab==='mentor'||tab==='mentee'||tab==='lginfo'||tab==='duels'||tab==='duelnew'||tab==='post'||tab==='compose'?'social':tab==='deep'||tab==='how'?'trends':tab==='badges'||tab==='report'||tab==='lessons'?'progress':tab;
   const items=[['today','Today'],['trends','Stats'],['checkin','Check-in'],['coach','Coach'],['social','Social'],['progress','Progress']];
   const lockT=0; // Stats is always open; only its deeper insights are level-gated
   return `<nav class="pz-nav" aria-label="Pulse"><div class="pz-brand">${pzRing('',0.72,'var(--pz-acc)',{size:30})}Pulse</div>
@@ -884,7 +884,8 @@ var _pzTapAt=0;
 document.addEventListener('pointerover',ev=>{ if(ev.pointerType!=='mouse')return; const el=ev.target.closest&&ev.target.closest('[data-pz-tip]'); if(el)pzTipShow(el); },{passive:true});
 document.addEventListener('pointerout',ev=>{ if(ev.pointerType&&ev.pointerType!=='mouse')return; /* a lifted finger "leaves" too; a tap elsewhere closes it */ const el=ev.target.closest&&ev.target.closest('[data-pz-tip]'); if(el&&!el.contains(ev.relatedTarget))pzTipHide(); },{passive:true});
 document.addEventListener('focusin',ev=>{ const el=ev.target.closest&&ev.target.closest('[data-pz-tip]'); if(el&&el.matches(':focus-visible'))pzTipShow(el); else if(el!==_pzTipEl)pzTipHide(); });
-document.addEventListener('focusout',ev=>{ const to=ev.relatedTarget; if(Date.now()-_pzTapAt<500||(_pzTipEl&&to&&_pzTipEl.contains(to)))return; pzTipHide(); }); // the blur a tap causes doesn't close the tip it just opened addEventListener('scroll',pzTipHide,{passive:true,capture:true}); addEventListener('hashchange',pzTipHide);
+document.addEventListener('focusout',ev=>{ const to=ev.relatedTarget; if(Date.now()-_pzTapAt<500||(_pzTipEl&&to&&_pzTipEl.contains(to)))return; pzTipHide(); }); // the blur a tap causes doesn't close the tip it just opened
+addEventListener('scroll',pzTipHide,{passive:true,capture:true}); addEventListener('hashchange',pzTipHide); // a fixed tip would float off its mark
 // Midnight (on the app's clock) of the first day of an n-day range ending today — calendar
 // days, not 24-hour steps, so a daylight-saving change doesn't shift the window by an hour.
 function pzRangeStart(n, now){ const p=tzParts(now); return settings.tz==='utc'?Date.UTC(p.y,p.mo,p.day-(n-1)):new Date(p.y,p.mo,p.day-(n-1)).getTime(); }
@@ -980,7 +981,7 @@ function pzDeepHtml(D){
     ${(()=>{ const ins=bk[0]==='vol'?pzRegimeInsight(X.vol,PZ_VOL):bk[0]==='trend'?pzRegimeInsight(X.trend,PZ_TREND):null; return ins?`<section class="pz-card pz-coach"><span class="pz-ico">${pzI('bolt',18)}</span><p>${esc(ins.text)}</p></section>`:''; })()}
     ${pzTbl('By '+bk[1].toLowerCase(),bk[2],bk[3],bk[4]||undefined)}${tagHint}</div>`:'';
   return `${head}<div class="pz-wide">${eq}<div class="pz-col">${results}${cons}${slipHtml}</div><div class="pz-col">${risk}${planHtml}${distHtml}${pzCostHtml(tr)}</div>${hourHtml}${excHtml?`<div class="pz-col">${dowHtml}</div><div class="pz-col">${excHtml}</div>`:dowHtml.replace('pz-card pz-kv','pz-card pz-span pz-kv')}${breakdown}
-    <section class="pz-span" style="display:flex;flex-wrap:wrap;gap:16px;justify-content:center"><a class="pz-link" href="#how">How the scores are worked out ›</a><a class="pz-link" href="${esc(pzFullHref())}">Pattern miner, excursions and Diagnostic in the full journal ›</a></section></div>`;
+    <section class="pz-span" style="display:flex;flex-wrap:wrap;gap:16px;justify-content:center"><a class="pz-link" href="#how">How the scores are worked out ›</a><a class="pz-link" style="white-space:normal;text-align:center" href="${esc(pzFullHref())}">Pattern miner, excursions and Diagnostic in the full journal ›</a></section></div>`;
 }
 function pzHowHtml(){
   const back=`<a class="pz-back" href="#trends">${pzI('back',20)}Stats</a>`;

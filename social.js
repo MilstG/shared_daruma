@@ -73,13 +73,13 @@ const SHARE_KEYS = ['profile', 'boards', 'global', 'page', 'feed', 'habits', 've
 const DEFAULT_SHARE = { profile: true, boards: true, global: false, page: false, feed: true, habits: true, verify: true, ret: false, usd: false, addr: false, mentor: false, bench: true, duels: true };
 
 const sha = s => crypto.createHash('sha256').update(String(s)).digest('hex');
-const clampNum = (v, lo, hi) => { const n = +v; return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : null; };
+const clampNum = (v, lo, hi) => { if (v !== null && typeof v === 'object') return null; const n = +v; return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : null; };
 // invite codes are compared in constant time
 const sameText = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 // a post's text keeps its line breaks (at most one blank line in a row); other control characters go
 const cleanPost = (s, max) => String(s == null ? '' : s).replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ')
   .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, max);
-const cleanText = (s, max) => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max);
+const cleanText = (s, max) => String(s == null || typeof s === 'object' ? '' : s).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max);
 const utcDayKey = ms => new Date(ms).toISOString().slice(0, 10);
 const addDaysKey = (k, n) => utcDayKey(Date.parse(k + 'T00:00:00Z') + n * 86400000);
 // ISO week ('GGGG-Www') of a 'YYYY-MM-DD' key — same math as the client's isoWeekOfKey.
@@ -509,6 +509,8 @@ function createSocial(opts) {
   const walletBlock = m => !m.address ? 'no-wallet' : S.config.requireClaim && m.claimed !== m.address ? 'claim'
     : S.config.approveWallets && walletStatus(m.address) !== 'approved' ? (walletStatus(m.address) === 'rejected' ? 'rejected' : 'approval') : null;
   // numbers read from a wallet that stopped counting go at once, and come back when it counts again
+  // a member's main wallet changed: what was read from the old one goes, competitions included
+  const walletMoved = m => { m.vdays = null; m.vAt = 0; m.money = null; for (const cc of Object.values(S.comps)) if (cc.money) delete cc.money[m.id]; };
   const dropWalletNumbers = m => { m.vdays = null; m.money = null; for (const cc of Object.values(S.comps)) if (cc.money) delete cc.money[m.id]; };
   const recheckWallet = m => { m.vAt = 0; m.vFailAt = 0; m.moneyFailAt = 0; if (!walletFor(m)) dropWalletNumbers(m); };
   const claimedBy = (addr, notId) => addr ? members().find(o => o.id !== notId && o.claimed === addr) || null : null;
@@ -682,6 +684,8 @@ function createSocial(opts) {
     const hadVault = own(S.members, id) && !!S.members[id].vault, goneHandle = own(S.members, id) ? '@' + S.members[id].handle : null;
     // a deleted profile leaves nothing behind: the admin log keeps what was done, not who to
     S.adminLog = S.adminLog.map(x => (x.what.includes(id) || x.by === goneHandle) ? Object.assign({}, x, { what: x.what.split(id).join('(deleted member)'), by: x.by === goneHandle ? '(deleted admin)' : x.by }) : x); touch('adminLog');
+    // nor in a league's hall of fame: the place stays, the name goes
+    for (const L of Object.values(S.leagues)) for (const h of L.hall || []) for (const r of h.podium || []) if (r.id === id) { r.id = null; r.handle = null; touch('leagues'); }
     if (goneHandle) for (const w of Object.values(S.wallets)) if (w && w.by === goneHandle) { w.by = '(deleted admin)'; touch('wallets'); }
     delete S.members[id]; delete S.follows[id]; dropPairsOf(id); delete S.comments[id]; reindex();
     if (opts.onDrop) try { opts.onDrop(id); } catch (e) {}
@@ -867,6 +871,12 @@ function createSocial(opts) {
     }
     return null;
   };
+  // verified and % return duels are read from the wallets the two sides had when they accepted:
+  // switching or clearing yours mid-duel (to shed a bad day or a blown drawdown) loses it
+  const duelStanding = (d, ma, mb, upto) => {
+    let moved = null;
+    if (d.w && (d.verified || d.type === 'ret') && d.start <= upto) moved = { a: !!ma && (ma.address || null) !== d.w.a, b: !!mb && (mb.address || null) !== d.w.b };
+    return Duels.standing(moved && (moved.a || moved.b) ? Object.assign({}, d, { moved }) : d, ma, mb, upto); };
   const duelView = (d, me) => {
     const mine = d.a === me.id ? 'a' : 'b', o = S.members[mine === 'a' ? d.b : d.a];
     const v = { id: d.id, type: d.type, label: duelName(d), rule: Duels.TYPES[d.type].rule, period: d.period, start: d.start || null, end: d.end || null,
@@ -875,7 +885,7 @@ function createSocial(opts) {
       other: o ? { handle: o.handle, av: avUrl(o), level: (o.stats && o.stats.level) || 1 } : { handle: '(left the league)', av: null, level: 1 },
       preview: d.status === 'pending' ? Duels.windowFor(d.period, now()) : null };
     if ((d.status === 'active' && d.start <= todayKey()) || d.status === 'done') {
-      const st = d.status === 'done' && d.final ? d.final : (() => { const x = Duels.standing(d, S.members[d.a], S.members[d.b], todayKey()); return { a: x.a, b: x.b, lead: x.lead, why: x.why }; })();
+      const st = d.status === 'done' && d.final ? d.final : (() => { const x = duelStanding(d, S.members[d.a], S.members[d.b], todayKey()); return { a: x.a, b: x.b, lead: x.lead, why: x.why }; })();
       const pick = x => x ? { score: x.score, note: x.note, n: x.n, marks: x.marks || [], out: !!x.out || !!x.fell, missing: !!x.verifiedMissing } : null;
       v.me = pick(st[mine]); v.them = pick(st[mine === 'a' ? 'b' : 'a']);
       v.lead = st.lead == null ? null : st.lead === mine ? 'me' : 'them'; v.why = st.why || '';
@@ -889,11 +899,13 @@ function createSocial(opts) {
     const ma = S.members[d.a], mb = S.members[d.b];
     let winner = null, why = '';
     if (forfeiter) { winner = forfeiter === d.a ? d.b : d.a; why = 'forfeit'; }
-    else { const st = Duels.standing(d, ma, mb, d.end); winner = st.lead === 'a' ? d.a : st.lead === 'b' ? d.b : null; why = st.why; d.final = { a: st.a, b: st.b, lead: st.lead, why: st.why }; }
+    else { const st = duelStanding(d, ma, mb, d.end); winner = st.lead === 'a' ? d.a : st.lead === 'b' ? d.b : null; why = st.why; d.final = { a: st.a, b: st.b, lead: st.lead, why: st.why }; }
     // the league's bonus is for a duel played to the end: a forfeit can't be farmed between friends
     const xp = winner && S.members[winner] && !forfeiter ? S.config.duels.xp : 0;
     // the stake changes hands only when both sides are still on the books to give and take it
-    const loserId = winner ? (winner === d.a ? d.b : d.a) : null, stake = winner && d.stake && S.members[winner] && S.members[loserId] ? d.stake : 0;
+    // (a suspended loser keeps no grants, so a suspended side moves no stake either way)
+    const loserId = winner ? (winner === d.a ? d.b : d.a) : null, ok = id => S.members[id] && !S.members[id].banned;
+    const stake = winner && d.stake && ok(winner) && ok(loserId) ? d.stake : 0;
     d.status = 'done'; d.result = { winner, why, forfeit: forfeiter || null, at: now(), xp, stake };
     const grant = (m, n, why) => { m.grants = [...(m.grants || []), { id: crypto.randomBytes(4).toString('hex'), xp: n, why, at: now(), duel: d.id }].slice(-200); };
     for (const [m, o] of [[ma, mb], [mb, ma]]) { if (!m || m.banned) continue;
@@ -929,7 +941,7 @@ function createSocial(opts) {
         if (!mb || mb.banned) { duelSettle(d, d.b); changed = true; continue; }
         if (today > addDaysKey(d.end, 1)) { duelSettle(d); changed = true; continue; } // the day after the last day, once late syncs are in
         if (d.start <= today && d.leadDay !== today) {
-          const st = Duels.standing(d, ma, mb, today), lead = st.lead === 'a' ? d.a : st.lead === 'b' ? d.b : null;
+          const st = duelStanding(d, ma, mb, today), lead = st.lead === 'a' ? d.a : st.lead === 'b' ? d.b : null;
           if (lead && d.lead && lead !== d.lead) { const L = S.members[lead], T = S.members[lead === d.a ? d.b : d.a];
             notify(L, 'duel', 'You took the lead in your ' + duelName(d) + ' duel against @' + T.handle + '.', { title: 'Duel', url: duelUrl });
             notify(T, 'duel', '@' + L.handle + ' took the lead in your ' + duelName(d) + ' duel.', { title: 'Duel', url: duelUrl }); d.leadDay = today; }
@@ -987,7 +999,7 @@ function createSocial(opts) {
     if (e.type === 'post') { let d = {}; try { d = JSON.parse(e.data || '{}') || {}; } catch (x) {}
       const t = d.trade ? Object.assign({}, d.trade) : null;
       if (t && !(m && m.share.usd)) delete t.usd; // dollar results only for members who share them
-      o.post = { kind: d.kind || 'note', trade: t, media: (d.media || []).map(id => '/api/social/media/' + id), verified: isVerified(d),
+      o.post = { kind: d.kind || 'note', trade: t, media: (d.media || []).map(id => '/api/social/media/' + id), verified: isVerified(d, m),
         comments: e.comments || 0, edited: e.edited || null, outcome: d.outcome || '', outcomeAt: d.outcomeAt || null }; }
     return o; };
   const eventsOut = (rows, viewer) => { const liked = likedBy(viewer, rows); return rows.map(e => eventOut(e, viewer, liked)); };
@@ -1013,12 +1025,16 @@ function createSocial(opts) {
   // the trade (its times and exit): when those change it's checked again. Checks run in the
   // background, two at a time, and a check that couldn't get an answer waits ten minutes to retry.
   const checkedKey = t => [t.openedAt || 0, t.closedAt || 0, t.exit || 0].join(':');
-  const isVerified = d => d.verified === true && !!d.trade && d.checked === checkedKey(d.trade);
+  // the mark holds while the author still holds the wallet it was read from (and, with approval on,
+  // while the owner still accepts it); posts checked before the address was stored keep theirs
+  const isVerified = (d, m) => d.verified === true && !!d.trade && d.checked === checkedKey(d.trade)
+    && (!d.addr || (!!m && m.claimed === d.addr && !(S.config.approveWallets && walletStatus(d.addr) !== 'approved')));
   const vq = [], vlast = new Map(); let vbusy = 0;
   const verifyPost = (id, m) => { if (!opts.tradeCheck || !m || vq.some(j => j.id === id)) return; vq.push({ id, mid: m.id }); runVerify(); };
   const runVerify = () => { while (vbusy < 2 && vq.length) { const job = vq.shift(); vbusy++; verifyOne(job).catch(() => {}).finally(() => { vbusy--; runVerify(); }); } };
   const verifyOne = async ({ id, mid }) => {
     const m = own(S.members, mid) ? S.members[mid] : null; if (!m || !m.claimed || m.banned) return;
+    if (S.config.approveWallets && walletStatus(m.claimed) !== 'approved') return; // a wallet the owner hasn't accepted isn't read on chain at all
     const addr = m.claimed, e = eventById(id); let d; try { d = JSON.parse(e && e.data || 'null'); } catch (x) { return; }
     const t = d && d.trade; if (!t || !(t.status === 'open' || t.status === 'closed') || !t.openedAt) return;
     const key = checkedKey(t); if (d.checked === key) return;
@@ -1028,7 +1044,7 @@ function createSocial(opts) {
     const cur = eventById(id); if (!cur) return; const d2 = JSON.parse(cur.data || '{}');
     if (!d2.trade || checkedKey(d2.trade) !== key) { verifyPost(id, m); return; } // it changed meanwhile: check what it is now
     if (!own(S.members, mid) || S.members[mid].claimed !== addr) return;
-    d2.verified = ok; d2.checked = key; q('UPDATE events SET data = ? WHERE id = ?').run(JSON.stringify(d2), id); };
+    d2.verified = ok; d2.checked = key; d2.addr = addr; q('UPDATE events SET data = ? WHERE id = ?').run(JSON.stringify(d2), id); };
   // newest first, `limit` the viewer may see, older than the cursor ("<at>.<id>" of the last one shown)
   const feedPage = (viewer, where, args, cursor, limit) => {
     let at = Number.MAX_SAFE_INTEGER, id = '~';
@@ -1200,7 +1216,9 @@ function createSocial(opts) {
     const raw = await new Promise((resolve, reject) => { let size = 0; const ch = [];
       req.on('data', c => { size += c.length; if (size > limit) { reject(new Error('too large')); req.destroy(); return; } ch.push(c); });
       req.on('end', () => resolve(Buffer.concat(ch).toString('utf8'))); req.on('error', reject); });
-    return raw ? JSON.parse(raw) : {};
+    // keys that would make a plain object throw when a route coerces it to text or a number
+    // ({"toString":1}) never reach the routes; prototype keys never become own properties
+    return raw ? JSON.parse(raw, (k, v) => k === 'toString' || k === 'valueOf' || k === '__proto__' || k === Symbol.toPrimitive ? undefined : v) : {};
   };
 
   async function handle(req, res, url, query) {
@@ -1265,7 +1283,7 @@ function createSocial(opts) {
       const sub = parts[1] || '';
       if (sub === 'me' && M === 'GET') return json(res, 200, { owner: who.owner, id: who.id || null, name: who.name });
       if (sub === 'log' && M === 'GET') return json(res, 200, { log: S.adminLog.slice(-200).reverse() });
-      if (M !== 'GET') { S.adminLog.push({ at: now(), by: who.by, what: (M + ' ' + parts.slice(1).join('/') + (body && body.action ? ' · ' + String(body.action).slice(0, 20) : '')).slice(0, 120) });
+      if (M !== 'GET') { S.adminLog.push({ at: now(), by: who.by, what: (M + ' ' + parts.slice(1).join('/') + (body && typeof body.action === 'string' ? ' · ' + body.action.slice(0, 20) : '')).slice(0, 120) });
         if (S.adminLog.length > 500) S.adminLog = S.adminLog.slice(-400); touch('adminLog'); }
       if (sub === 'overview' && M === 'GET') {
         const wk = S.league.week, act = members().filter(m => now() - (m.lastSeen || 0) < 7 * 86400000);
@@ -1330,7 +1348,7 @@ function createSocial(opts) {
             { const mp = ad && mappedTo(ad, m.id); if (mp) return json(res, 409, { error: 'That wallet is mapped to @' + mp.handle + '. Unmap it there first.' }); }
             if (ad) m.wallets = linkedOf(m).filter(x => x !== ad); // it becomes the main one
             if (ad && S.config.approveWallets && !walletReview(ad)) S.wallets[ad] = { s: 'approved', at: now(), by: who.owner ? 'owner' : who.by, note: '' };
-            if (ad !== m.address) { m.address = ad; m.vdays = null; m.vAt = 0; m.money = null; refreshAll(m); } }
+            if (ad !== m.address) { m.address = ad; walletMoved(m); refreshAll(m); } }
           if (body.share && typeof body.share === 'object') m.share = sanitizeShare(body.share, m.share);
         }
         else if (a === 'clearAvatar') { dropMedia(q('SELECT id FROM media WHERE member = ? AND kind = ?').all(m.id, 'avatar')); m.avatar = null; }
@@ -1354,7 +1372,7 @@ function createSocial(opts) {
             if (S.config.approveWallets && !walletReview(ad)) S.wallets[ad] = { s: 'approved', at: now(), by: who.owner ? 'owner' : who.by, note: 'mapped to @' + m.handle }; // mapping it is approving it
             if (a === 'primary' || !m.address) { // the main wallet: the old main one stays mapped
               const old = m.address; m.wallets = [...linkedOf(m).filter(x => x !== ad), ...(old && old !== ad ? [old] : [])];
-              if (ad !== old) { m.address = ad; m.vdays = null; m.vAt = 0; m.money = null; refreshAll(m); } }
+              if (ad !== old) { m.address = ad; walletMoved(m); refreshAll(m); } }
             else m.wallets = [...linkedOf(m), ad];
             extra = { wallets: walletsOf(m), address: m.address }; } }
         else if (a === 'coach') { if (body.daily === null || body.daily === '') m.coachDaily = null;
@@ -1478,7 +1496,7 @@ function createSocial(opts) {
         const a = body.action;
         if (a === 'rebuild') { benchBuild(); return json(res, 200, { ok: true, at: S.bench.at, contributors: S.bench.contributors }); }
         if (a === 'seed') { // paste anything: every 0x address in it is queued once
-          const found = [...new Set((String(body.text || '').slice(0, 400000).match(/0x[0-9a-fA-F]{40}/g) || []).map(x => x.toLowerCase()))];
+          const found = [...new Set(((typeof body.text === 'string' ? body.text : '').slice(0, 400000).match(/0x[0-9a-fA-F]{40}/g) || []).map(x => x.toLowerCase()))];
           let added = 0, dupes = 0, full = 0;
           for (const ad of found) { if (own(S.benchSeeds, ad)) { dupes++; continue; } if (Object.keys(S.benchSeeds).length >= SEED_MAX) { full++; continue; }
             S.benchSeeds[ad] = { st: 'queued', added: now(), by: who.owner ? 'owner' : who.by }; added++; }
@@ -1509,6 +1527,9 @@ function createSocial(opts) {
           delete S.leagues[L.id]; for (const c of Object.values(S.comps)) if (c.league === L.id) c.league = null; save(); return json(res, 200, { ok: true }); }
         if (M === 'PUT') { const n = SC.sanitizeLeague(body, L); if (!n) return json(res, 400, { error: 'A league needs a name.' }); Object.assign(L, n); save(); return json(res, 200, { ok: true }); }
         // POST /admin/leagues/:id/members {add, remove}
+        // as on a member's page: only the owner moves another admin in or out
+        const otherAdmin = id => !who.owner && own(S.members, id) && S.members[id].admin && id !== who.id;
+        if ([].concat(body.add || [], body.remove || []).some(otherAdmin)) return json(res, 403, { error: 'Only the owner can change another admin.' });
         for (const id of [].concat(body.add || [])) if (own(S.members, id)) { if (L.id === 'main' && !own(L.members, id)) S.members[id].tier = 0; joinLeague(L, S.members[id]); }
         for (const id of [].concat(body.remove || [])) { delete L.members[id]; if (L.id === 'main' && own(S.members, id)) S.members[id].tier = 0; }
         save(); return json(res, 200, { ok: true });
@@ -1628,6 +1649,7 @@ function createSocial(opts) {
       S.members[id] = m; S.follows[id] = []; reindex();
       for (const L of Object.values(S.leagues)) if (L.autoJoin) joinLeague(L, m);
       recent.push(now()); joinTimes.set(ip, recent);
+      if (joinTimes.size > 1000) for (const [k, v] of joinTimes) if (!v.length || now() - v[v.length - 1] > 3600000) joinTimes.delete(k); // addresses an hour quiet
       if (m.share.feed) pushEvent(m, { type: 'join', text: 'joined the league' });
       save(m, 'follows', 'leagues'); refreshMoney(m, true); refreshBehavior(m, true);
       return json(res, 200, { key, me: publicMember(m, m), share: m.share, walletTaken: !address && !!body.address });
@@ -1877,7 +1899,8 @@ function createSocial(opts) {
           const others = openDuels(me).filter(x => x !== d).length, theirs = o ? openDuels(o).filter(x => x !== d).length : 0;
           if (others >= S.config.duels.maxOpen) return json(res, 409, { error: 'You have ' + S.config.duels.maxOpen + ' duels going already. Finish one first.' });
           if (theirs >= S.config.duels.maxOpen) return json(res, 409, { error: '@' + o.handle + ' has ' + S.config.duels.maxOpen + ' duels going already.' });
-          Object.assign(d, Duels.windowFor(d.period, now()), { status: 'active', awaiting: null, answeredAt: now(), lead: null });
+          Object.assign(d, Duels.windowFor(d.period, now()), { status: 'active', awaiting: null, answeredAt: now(), lead: null,
+            w: { a: (S.members[d.a] && S.members[d.a].address) || null, b: (S.members[d.b] && S.members[d.b].address) || null } });
           if (o) notify(o, 'duel', '@' + me.handle + ' accepted your ' + duelName(d) + ' duel. It runs ' + duelDates(d) + '.', { title: 'Challenge accepted', url: duelUrl });
         } else { // suggest different terms: it goes back to them
           const t = Duels.sanitizeTerms(body, S.config.duels); if (t.error) return json(res, 400, { error: t.error });
@@ -1912,7 +1935,7 @@ function createSocial(opts) {
       if (ex) return json(res, 409, { error: 'You’ve asked already — waiting for @' + o.handle + '.' });
       if (pairsOf(me).filter(p => p.status === 'active').length >= PARTNER_MAX) return json(res, 409, { error: 'You already have ' + PARTNER_MAX + ' partners.' });
       if (pairsOf(me).filter(p => p.status !== 'active' && p.from === me.id).length >= 5) return json(res, 409, { error: 'Five open requests is the limit.' });
-      if (limited(req, 'partner', 20, 86400000)) return json(res, 429, { error: 'Too many requests today.' });
+      if (limited(req, 'partner:' + me.id, 20, 86400000, true)) return json(res, 429, { error: 'Too many requests today.' });
       const id = crypto.randomBytes(6).toString('hex');
       S.partners[id] = { id, a: me.id, b: o.id, from: me.id, status: 'pending', at: now(), nudged: {} };
       notify(o, 'partner', '@' + me.handle + ' wants to be accountability partners: you’d see each other’s streak, scores and slips.', { title: 'Partner request', url: '/pulse#social' });
@@ -1989,6 +2012,7 @@ function createSocial(opts) {
       if (!(me.share.ret || me.share.usd)) me.money = null;
       if (!me.share.verify || me.address !== prevAddr) { me.vdays = null; me.vAt = 0; }
       let compsCh = false;
+      if (me.address !== prevAddr) for (const c of Object.values(S.comps)) if (c.money && own(c.money, me.id)) { delete c.money[me.id]; compsCh = true; } // the old wallet's return isn't this one's
       if (!me.share.ret) for (const c of Object.values(S.comps)) if (c.money && own(c.money, me.id)) { delete c.money[me.id]; compsCh = true; } // opting out hides past results too
       if (compsCh) save(me, 'comps'); else save(me);
       refreshMoney(me, me.address !== prevAddr || (!prevMoney && !!(me.share.ret || me.share.usd)));
@@ -2083,7 +2107,7 @@ function createSocial(opts) {
           // as the members stand today: a suspended one isn't named, and returns or dollars only show while still shared
           podium: h.podium.map(r => { const pm = own(S.members, r.id) ? S.members[r.id] : null;
             const shown = !['ret', 'usd', 'riskadj'].includes(L.metric) || (pm && !pm.banned && (L.metric === 'usd' ? pm.share.usd : pm.share.ret));
-            return { handle: pm && pm.banned ? null : pm ? pm.handle : r.handle, value: shown ? r.value : null, me: r.id === me.id }; }) })),
+            return { handle: pm && !pm.banned ? pm.handle : null, value: shown ? r.value : null, me: r.id === me.id }; }) })),
         top: top.slice(0, 5).map(r => ({ rank: r.rank, handle: r.handle, av: avUrl(S.members[r.id]), value: r.value, sub: r.sub, me: r.id === me.id })),
         tiersCount: L.tiers ? TIERS.map((t, i) => ({ tier: t, n: members().filter(m => own(L.members, m.id) && !m.banned && leagueTier(L, m) === i).length })) : null,
         comps: Object.values(S.comps).filter(c => c.league === L.id && compStatus(c, todayKey()) !== 'finished').map(c => ({ id: c.id, title: c.title, start: c.start, end: c.end, type: c.type })) }) });

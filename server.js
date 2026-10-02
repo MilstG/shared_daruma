@@ -676,7 +676,9 @@ function createApp(opts) {
     failCounted.add(req);
     const ip = ipOf(req), now = Date.now();
     let f = authFails.get(ip);
-    if (!f || now - f.since > failWindowMs) { f = { n: 0, since: now, until: 0 }; authFails.set(ip, f); }
+    // a fresh count once the window has passed, or once a lock has run out (else a lock shorter
+    // than the window would leave guessing unlimited until the window ends)
+    if (!f || now - f.since > failWindowMs || (f.until && f.until <= now)) { f = { n: 0, since: now, until: 0 }; authFails.set(ip, f); }
     if (++f.n >= failMax && !f.until) {
       f.until = now + lockMs;
       console.warn('[ledger] auth: ' + f.n + ' wrong tokens from ' + (ip || 'unknown address') + ' — locked out for ' + Math.round(lockMs / 60000) + ' min');
@@ -753,20 +755,20 @@ function createApp(opts) {
   async function fetchPositionsSrv(addr, hip3Dexs) {
     // Client fetchPositions carries browser-only HIP-3 diagnostics (IndexedDB, status bar);
     // this is the same call pattern minus those, built on the extracted hlPost/mapClearinghouse.
-    let positions = [], accountValue = null, withdrawable = null;
+    let positions = [], accountValue = null, withdrawable = null, ok = true;
     try {
       const s = await E.hlPost({ type: 'clearinghouseState', user: addr });
       positions = E.mapClearinghouse(s, '');
       accountValue = s.marginSummary ? parseFloat(s.marginSummary.accountValue) : null;
       if (s.withdrawable != null) withdrawable = parseFloat(s.withdrawable);
-    } catch (e) {}
+    } catch (e) { ok = false; } // the caller keeps the last good snapshot: "couldn't read" is not "no positions"
     for (const dex of (hip3Dexs || [])) {
       try {
         const s = await E.hlPost({ type: 'clearinghouseState', user: addr, dex });
         positions = positions.concat(E.mapClearinghouse(s, dex));
       } catch (e) {}                    // a dead/renamed dex shouldn't sink the whole load
     }
-    return { positions, accountValue, withdrawable };
+    return { positions, accountValue, withdrawable, ok };
   }
 
   async function doRefresh(body) {
@@ -785,18 +787,32 @@ function createApp(opts) {
 
     const spotMaps = await E.fetchSpotMaps();
     const out = { wallets: [], startedAt: Date.now() };
-    let positions = [], accVals = [], freeVals = [], spotHold = [], spotAccVals = [];
-    let portAll = 0, portPerp = 0, portAllHas = false, portPerpHas = false;
+    // the market snapshot is kept per wallet, so a refresh of some wallets, or a wallet whose
+    // positions couldn't be read this time, keeps the last good numbers for the others
+    const partial = Array.isArray(body.wallets) && body.wallets.length > 0;
+    const prev = readMarket(), prevBy = prev && prev.byWallet && typeof prev.byWallet === 'object' ? prev.byWallet : null;
+    const byW = {}, key = a => String(a).toLowerCase();
 
     for (const w of wallets) {
       if (gen !== _refreshGen) break; // superseded: stop fetching, the final fresh() below reports it
       const res = { address: w.address, label: w.label || '', newFills: 0, fills: 0, truncated: false, error: null };
       try {
-        const cache = body.full ? null : readFillCache(w.address);
+        // full: refetch everything Hyperliquid still serves, but merge it into the cache rather than
+        // replace it — the exchange keeps only the newest 10,000 fills, so older cached history
+        // would be gone for good
+        const old = readFillCache(w.address), cache = body.full ? null : old;
         const since = (cache && cache.last) ? cache.last : 0; // resume AT the watermark — dedupe below handles the overlap, boundary-ms fills are never skipped
         const fr = await E.fetchAllFills(w.address, since);
         let fills;
-        if (cache) {
+        if (body.full && old && old.fills && old.fills.length) {
+          const got = new Map(fr.fills.map(f => [fillId(f), f])), oldest = fr.fills.reduce((m, f) => f.time < m ? f.time : m, Infinity);
+          fills = fr.fills.slice(); const had = new Set(old.fills.map(fillId));
+          for (const f of old.fills) if (!got.has(fillId(f))) fills.push(f);
+          fills.sort((a, b) => a.time - b.time);
+          res.newFills = fr.fills.filter(f => !had.has(fillId(f))).length;
+          // still a gap only if the refetch was cut off AND the cache doesn't reach back to where it stopped
+          res.truncated = !!old.truncated || (!!fr.truncated && !(old.last >= oldest));
+        } else if (cache) {
           const seen = new Set(cache.fills.map(fillId));
           fills = cache.fills.slice();
           for (const f of fr.fills) if (!seen.has(fillId(f))) { seen.add(fillId(f)); fills.push(f); res.newFills++; }
@@ -804,7 +820,7 @@ function createApp(opts) {
         } else { fills = fr.fills; res.newFills = fills.length; res.truncated = !!fr.truncated; }
         const last = fills.reduce((m, f) => f.time > m ? f.time : m, 0);
         // nothing new: leave the file alone (re-gzipping a big history on every refresh blocks the server)
-        if (!cache || res.newFills || res.truncated !== !!cache.truncated) { fresh(); gzWrite(fillsFile(w.address), { v: 1, last, count: fills.length, savedAt: Date.now(), truncated: res.truncated, fills }); }
+        if (!cache || body.full || res.newFills || res.truncated !== !!cache.truncated) { fresh(); gzWrite(fillsFile(w.address), { v: 1, last, count: fills.length, savedAt: Date.now(), truncated: res.truncated, fills }); }
         res.fills = fills.length;
 
         // funding and capital flows: only what's new since the cached watermark (unless a full
@@ -824,34 +840,43 @@ function createApp(opts) {
           E.fetchSpotState(w.address),
           E.fetchPortfolio(w.address),
         ]);
+        if (!ch.ok) { res.error = 'couldn’t read open positions from Hyperliquid; showing the last ones read'; continue; } // byW stays empty: carried over below
         ch.positions.forEach(p => p.wallet = { address: w.address, label: w.label || '' });
-        positions = positions.concat(ch.positions);
-        if (ch.accountValue != null) accVals.push(ch.accountValue);
-        if (ch.withdrawable != null) freeVals.push(ch.withdrawable);
-        if (port.all != null) { portAll += port.all; portAllHas = true; }
-        if (port.perp != null) { portPerp += port.perp; portPerpHas = true; }
+        const e = byW[key(w.address)] = { positions: ch.positions, accountValue: ch.accountValue, accountFree: ch.withdrawable,
+          hlAll: port.all, hlPerp: port.perp, spotHoldings: [], spotValue: null };
         let spotVal = 0;
         sbal.forEach(b => {
           const mark = spotMaps.markBySym[b.coin] || (b.coin === 'USDC' ? 1 : 0);
           const value = b.total * mark; spotVal += value;
           if (b.coin !== 'USDC' && b.total > 1e-9 && (value >= 1 || b.entry >= 1))
-            spotHold.push({ coin: b.coin, total: b.total, entry: b.entry, mark, value,
+            e.spotHoldings.push({ coin: b.coin, total: b.total, entry: b.entry, mark, value,
               uPnl: value - b.entry, wallet: { address: w.address, label: w.label || '' } });
         });
-        if (sbal.length) spotAccVals.push(spotVal);
+        if (sbal.length) e.spotValue = spotVal;
       } catch (e) { res.error = (e && (e.message || e.msg)) || String(e); } // internal throws carry .msg — '[object Object]' helps nobody
-      out.wallets.push(res);
+      finally { out.wallets.push(res); }
     }
 
+    // wallets with nothing fresh this time keep their last good numbers: the ones this refresh
+    // couldn't read, and on a partial refresh every wallet it didn't ask for
+    const keepPrev = partial ? snapWallets(snap).map(w => w.address).concat(wallets.map(w => w.address)) : wallets.map(w => w.address);
+    let carried = true;
+    for (const a of new Set(keepPrev.map(key))) if (!byW[a]) {
+      if (prevBy && prevBy[a]) byW[a] = prevBy[a];
+      else if (prev && !prevBy) carried = false; // a snapshot from before per-wallet numbers: nothing to carry over safely
+    }
+    if (partial && !carried) { fresh(); _tradesMemo = null; out.finishedAt = Date.now(); return out; } // keep the old snapshot whole rather than shrink it to one wallet
+    const E_ = Object.values(byW), sum = f => { const v = E_.map(f).filter(x => x != null && isFinite(x)); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
     const market = {
       fetchedAt: Date.now(),
-      positions,
-      accountValue: accVals.length ? accVals.reduce((a, b) => a + b, 0) : null,
-      accountFree: freeVals.length ? freeVals.reduce((a, b) => a + b, 0) : null,
-      spotHoldings: spotHold,
-      spotAccountValue: spotAccVals.length ? spotAccVals.reduce((a, b) => a + b, 0) : null,
-      hlPnl: { all: portAllHas ? portAll : null, perp: portPerpHas ? portPerp : null },
+      positions: [].concat(...E_.map(e => e.positions || [])),
+      accountValue: sum(e => e.accountValue),
+      accountFree: sum(e => e.accountFree),
+      spotHoldings: [].concat(...E_.map(e => e.spotHoldings || [])),
+      spotAccountValue: sum(e => e.spotValue),
+      hlPnl: { all: sum(e => e.hlAll), perp: sum(e => e.hlPerp) },
       spotMaps,
+      byWallet: byW,
     };
     fresh(); // last checkpoint before the market snapshot lands
     const tmp = marketFile + '.tmp';
@@ -1030,7 +1055,7 @@ function createApp(opts) {
     const field = String(q.field || '').toLowerCase();
     const op = String(q.op || 'eq').toLowerCase();
     const raw = q.value;
-    if (!(field in WHATIF_FIELDS)) throw { code: 400, msg: 'field must be one of ' + Object.keys(WHATIF_FIELDS).join('|') };
+    if (!Object.prototype.hasOwnProperty.call(WHATIF_FIELDS, field)) throw { code: 400, msg: 'field must be one of ' + Object.keys(WHATIF_FIELDS).join('|') };
     if (raw == null || raw === '') throw { code: 400, msg: 'value is required' };
     if (field === 'tag') {
       if (op !== 'eq' && op !== 'ne') throw { code: 400, msg: 'tag supports op=eq|ne' };
@@ -1525,6 +1550,9 @@ function createApp(opts) {
       + (d.worst ? ' · worst ' + d.worst.coin + ' ' + money(d.worst.net) : '');
   }
   function maybeDigest() {
+    // a digest built while the latest refresh failed would miss the week's last days and, once
+    // written, never be redone: wait for a good refresh
+    if (_health.failStreak > 0) return;
     try {
       const d = weeklyDigest();
       if (d) {
@@ -1600,7 +1628,7 @@ function createApp(opts) {
   /* ---------------- v1 router ---------------- */
   async function handleV1(req, res, url, query) {
     const send = (code, obj) => json(res, code, obj);
-    const fail = (e) => e && e.code ? send(e.code, { error: e.msg }) : (console.error('[ledger] v1 error:', e), send(500, { error: 'internal error: ' + (e && e.message || e) }));
+    const fail = (e) => e && e.code ? send(e.code, { error: e.msg }) : (console.error('[ledger] v1 error:', e), send(500, { error: 'internal error' }));
 
     if (url === '/api/v1' || url === '/api/v1/') {
       return send(200, {
@@ -1847,13 +1875,13 @@ function createApp(opts) {
         const by = String(query.by || 'coin').toLowerCase();
         const basis = String(query.basis || 'usd').toLowerCase() === 'pct' ? 'pct' : 'usd';
         const top = Math.max(1, Math.min(50, Math.floor(qnum(query.top, 5))));
-        const keyFn = {
+        const KEYS = {
           coin: t => t.symbol || t.coin, dir: t => t.dir, market: t => t.market,
           wallet: t => (t.wallet && (t.wallet.label || t.wallet.address)) || '?',
           dow: t => String(E.tzParts(t.closeTime).dow),
           hour: t => String(E.tzParts(t.closeTime).h),
           tag: null,
-        }[by];
+        }, keyFn = Object.prototype.hasOwnProperty.call(KEYS, by) ? KEYS[by] : undefined; // not '__proto__' or 'constructor'
         if (keyFn === undefined) throw { code: 400, msg: 'by must be coin|dir|market|wallet|tag|dow|hour' };
         const groups = {};
         const push = (k, t) => (groups[k] = groups[k] || []).push(t);
@@ -2276,7 +2304,7 @@ function createApp(opts) {
   // evening reminders on each member's own clock
   if (opts.pushTick !== false) { const pt = setInterval(() => { social.tick().catch(() => {}); }, 60000); if (pt.unref) pt.unref(); }
 
-  const server = http.createServer((req, res) => {
+  const handleRequest = (req, res) => {
     const [url, qs] = (req.url || '/').split('?');
     const query = Object.fromEntries(new URLSearchParams(qs || ''));
 
@@ -2430,13 +2458,13 @@ function createApp(opts) {
 
     // --- wearables (/api/wear/*): connect, sync, and the Apple Health Shortcut's link ---
     if (url === '/api/wear' || url.startsWith('/api/wear/')) {
-      wear.handle(req, res, url, query, wearUid).catch(e => { try { json(res, 500, { error: 'internal error: ' + (e && e.message || e) }); } catch (e2) {} });
+      wear.handle(req, res, url, query, wearUid).catch(e => { try { (console.error('[ledger] request failed:', e), json(res, 500, { error: 'internal error' })); } catch (e2) {} });
       return;
     }
     // --- social (/api/social/*): members authenticate with their own key, admin with AUTH_TOKEN ---
     if (url === '/api/social' || url.startsWith('/api/social/')) {
       social.handle(req, res, url, query).catch(e => {
-        try { json(res, 500, { error: 'internal error: ' + (e && e.message || e) }); } catch (e2) {}
+        try { (console.error('[ledger] request failed:', e), json(res, 500, { error: 'internal error' })); } catch (e2) {}
       });
       return;
     }
@@ -2472,7 +2500,7 @@ function createApp(opts) {
     // --- analytics API v1 (read-only) ---
     if (url === '/api/v1' || url.startsWith('/api/v1/')) {
       handleV1(req, res, url, query).catch(e => {
-        try { json(res, 500, { error: 'internal error: ' + (e && e.message || e) }); } catch (e2) {}
+        try { (console.error('[ledger] request failed:', e), json(res, 500, { error: 'internal error' })); } catch (e2) {}
       });
       return;
     }
@@ -2710,6 +2738,15 @@ function createApp(opts) {
     }
 
     return json(res, 404, { error: 'not found' });
+  };
+  // a throw in a handler answers 500 for that one request instead of taking the server (and
+  // everyone's session) down with it; async handlers already catch their own
+  const server = http.createServer((req, res) => {
+    try { handleRequest(req, res); }
+    catch (e) {
+      console.error('[ledger] request failed: ' + req.method + ' ' + String(req.url || '').split('?')[0] + ' — ' + ((e && (e.stack || e.message)) || e));
+      try { if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'internal error' })); } catch (e2) {}
+    }
   });
   server.appSyncCapable = appSyncCapable;
   server.engineOk = engine.ok;

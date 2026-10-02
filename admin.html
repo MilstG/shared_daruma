@@ -612,7 +612,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
         <div><button class="primary" id="bSave">Save</button></div></section>
       <section class="card"><h2>Seed wallets</h2>
         <p class="muted">Kick-start the benchmarks with public Hyperliquid wallets. Paste anything: every 0x address in it is added once. The server reads each wallet’s last 90 days of public fills, about one every few seconds, works out the same summary a member’s app would (and its 30-day return), and counts it in the groups. Wallets with under 30 trades, or so many fills they’re clearly bots, are left out. ${B.seedReader?'':'<b>This server can’t read wallets right now</b> (the trade engine isn’t loaded).'}</p>
-        <textarea id="bSeedText" rows="4" placeholder="0x… one per line, or paste a CSV or a list from anywhere" spellcheck="false"></textarea>
+        <textarea id="bSeedText" aria-label="Wallet addresses to add" rows="4" placeholder="0x… one per line, or paste a CSV or a list from anywhere" spellcheck="false"></textarea>
         <div class="row" style="align-items:center"><button class="primary fit" id="bSeedAdd">Add wallets</button>
           <span class="muted small">${fmt(sc.queued||0)} waiting · ${fmt(sc.ok||0)} counted · ${fmt(sc.skip||0)} left out · ${fmt(sc.err||0)} couldn’t be read · up to ${fmt(B.seedMax)}</span></div>
         ${sc.err||sc.skip?`<div class="row">${sc.err?'<button class="sm fit" id="bSeedRetry">Retry the ones that failed</button>':''}${sc.err?'<button class="sm fit" id="bSeedDropErr">Remove the failed ones</button>':''}${sc.skip?'<button class="sm fit" id="bSeedDropSkip">Remove the left-out ones</button>':''}</div>`:''}

@@ -635,8 +635,14 @@ function renderDiagnostic(closed, allv){
   const weakHtml = weak.length?weak.map(b=>li('bad','▼',diagRow(b))).join(''):li('warn','·',`No losing pattern clears the ${MIN}-trade bar — good sign.`);
 
   const stabOK=stab.early.n>=10&&stab.recent.n>=10;
+  // "60% of the earlier edge" only means something when there was an edge: with negative numbers the
+  // ratio flips (an improvement from −100 to −70 used to read as decay)
+  const stabState=!stabOK?null:stab.early.exp>0?(stab.recent.exp>=stab.early.exp*0.6?'holding':'decaying'):stab.recent.exp>0?'improving':'none';
+  const STAB={holding:['ok','holding','Edge is holding into your recent trades.'],decaying:['no','decaying','Recent expectancy is well below earlier — possible edge decay; investigate before sizing up.'],
+    improving:['ok','improving','No edge in your earlier trades, a positive one recently — promising; let it build more trades before sizing up.'],
+    none:['mid','no edge yet','Neither half shows a positive edge yet'+(stab.recent.exp>stab.early.exp?', though the recent half is less negative.':'.')]};
   const stabTxt=stabOK
-    ? `Earlier half: ${fmtUsd(stab.early.exp)}/trade, ${pct(stab.early.wr)} win. Recent half: ${fmtUsd(stab.recent.exp)}/trade, ${pct(stab.recent.wr)} win. ${stab.recent.exp>=stab.early.exp*0.6?'Edge is holding into your recent trades.':'Recent expectancy is well below earlier — possible edge decay; investigate before sizing up.'}`
+    ? `Earlier half: ${fmtUsd(stab.early.exp)}/trade, ${pct(stab.early.wr)} win. Recent half: ${fmtUsd(stab.recent.exp)}/trade, ${pct(stab.recent.wr)} win. ${STAB[stabState][2]}`
     : 'Too few trades to split earlier-vs-recent reliably.';
 
   const mrow=(l,v,tip)=>`<div class="metric-row"${tip?` data-tip="${esc(tip)}"`:''}><span class="ml">${l}</span><span class="mv">${v}</span></div>`;
@@ -706,7 +712,7 @@ function renderDiagnostic(closed, allv){
          ${mrow('Edge significance',esig&&esig.t!=null?`<span class="badge ${esig.p<0.05?'ok':esig.p<0.1?'mid':'no'}">t=${esig.t.toFixed(2)}, p=${esig.p<0.001?'<0.001':esig.p.toFixed(3)}</span>`:'—','One-sample t-test that your mean trade PnL is greater than zero. p below 0.05 means the edge is statistically significant (less than a 5% chance a no-edge trader produces this). Assumes roughly independent trades; the bootstrap CI above is more robust to fat tails.')}
          ${mrow('Trades to confirm edge',esig&&esig.needN!=null?`~${esig.needN} ${esig.needN<=N?'(reached ✓)':`(you have ${N})`}`:(esig?'no positive edge to confirm':'—'),'Roughly how many trades you would need, at your current effect size (mean ÷ std of trade PnL), for the edge to be significant at 95%. If it is far above your trade count, keep trading before drawing conclusions. Assumes the effect size persists.')}
          ${mrow('Cost drag',costDragPct!=null?`${(costDragPct*100).toFixed(1)}% of gross`:'—','Fees as a share of your gross realized profit (before fees and funding). How much of your raw edge is eaten by trading costs — high drag means fee efficiency (maker vs taker, fewer round-trips) is worth attention.')}
-         ${mrow('Recent vs earlier',stabOK?(stab.recent.exp>=stab.early.exp*0.6?'<span class="badge ok">holding</span>':'<span class="badge no">decaying</span>'):'<span class="badge mid">n/a</span>','Splits your history in half and compares expectancy and win rate. The closest thing to an out-of-sample check on a journal of real trades: is your recent edge as good as your earlier edge?')}
+         ${mrow('Recent vs earlier',stabOK?`<span class="badge ${STAB[stabState][0]}">${STAB[stabState][1]}</span>`:'<span class="badge mid">n/a</span>','Splits your history in half and compares expectancy and win rate. The closest thing to an out-of-sample check on a journal of real trades: is your recent edge as good as your earlier edge?')}
          <p class="lead" style="margin:10px 0 0">${stabTxt}</p>
          <p class="lead" style="margin:8px 0 0">These are descriptive stats on trades you actually took — in-sample, not a walk-forward backtest. The earlier-vs-recent split above is the closest proxy for out-of-sample persistence.</p>
        </div>
@@ -1047,7 +1053,8 @@ function sizeDependence(closed){
   const rhoOf=(a,b)=>{const ma=_avg(a),mb=_avg(b);let num=0,da=0,db=0;
     for(let i=0;i<n;i++){num+=(a[i]-ma)*(b[i]-mb);da+=(a[i]-ma)**2;db+=(b[i]-mb)**2;}
     return num/Math.sqrt(da*db);};
-  const rho=rhoOf(rx,ry); const PERMS=400; let ge=0; const sy=ry.slice();
+  const rho=rhoOf(rx,ry); if(!isFinite(rho))return null; // every trade the same size (or the same result): nothing to correlate
+  const PERMS=400; let ge=0; const sy=ry.slice();
   for(let p=0;p<PERMS;p++){ for(let i=sy.length-1;i>0;i--){const j=(_rng()*(i+1))|0;const t2=sy[i];sy[i]=sy[j];sy[j]=t2;}
     if(Math.abs(rhoOf(rx,sy))>=Math.abs(rho))ge++; }
   return {rho,n,p:(ge+1)/(PERMS+1),sig:(ge+1)/(PERMS+1)<0.05};

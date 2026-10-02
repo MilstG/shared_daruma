@@ -140,8 +140,11 @@ function createCexRelay(opts) {
   // the far copy: only callers presenting the shared secret
   function relayCaller(req) {
     const s = req.headers['x-relay-secret'];
-    if (!secret || typeof s !== 'string' || s.length !== secret.length) return null;
-    return require('crypto').timingSafeEqual(Buffer.from(s), Buffer.from(secret)) ? 'relay' : null;
+    if (!secret || typeof s !== 'string') return null;
+    // compare bytes, not characters: a header byte over 0x7F is two bytes in UTF-8, and unequal
+    // lengths would make timingSafeEqual throw (and take the server down with it)
+    const A = Buffer.from(s), B = Buffer.from(secret);
+    return A.length === B.length && require('crypto').timingSafeEqual(A, B) ? 'relay' : null;
   }
   return { handle, relayCaller, relayOnly, chained: v => !!upstream(v), secretSet: !!secret };
 }

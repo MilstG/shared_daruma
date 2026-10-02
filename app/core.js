@@ -96,7 +96,7 @@ async function gunzipStr(bytes){
 }
 // exchange-key wallets keep two small extras beside the fills: the symbols traded (Binance asks
 // per symbol) and the positions held before the history begins (venues.js)
-const cacheExtras=(to,from)=>{ if(from&&from.syms)to.syms=from.syms; if(from&&from.seed)to.seed=from.seed; return to; };
+const cacheExtras=(to,from)=>{ if(from&&from.syms)to.syms=from.syms; if(from&&from.seed)to.seed=from.seed; if(from&&from.more)to.more=from.more; return to; };
 async function packFillCache(fills,last){
   const gz=await gzipBytes(JSON.stringify(fills));
   return gz ? {v:3,gz,last,count:fills.length,savedAt:Date.now()}
@@ -107,7 +107,7 @@ async function unpackFillCache(c){
   if(c.v===2&&Array.isArray(c.fills))return c;
   if(c.v===3&&c.gz){ try{ const fills=JSON.parse(await gunzipStr(c.gz));
     if(!Array.isArray(fills))return null;
-    const out={v:2,fills,last:c.last,savedAt:c.savedAt}; if(c.syms)out.syms=c.syms; if(c.seed)out.seed=c.seed; return out;
+    const out={v:2,fills,last:c.last,savedAt:c.savedAt}; if(c.syms)out.syms=c.syms; if(c.seed)out.seed=c.seed; if(c.more)out.more=c.more; return out;
   }catch(e){ return null; } }
   return null;
 }
@@ -169,7 +169,10 @@ let _srvWriting=false,_srvAgain=false;
 // Journal edit counter — part of the miner cache key, since tags/setups/mistakes/ratings
 // change miner inputs without changing the trade count.
 let _jrev=0;
-function markJEdit(id){ _dirtyJ.set(id,(_dirtyJ.get(id)||0)+1); _jrev++; vaultMark(id); jPendingSave(); }
+// every edit passes here, so this is where an entry gets its time: restoring a backup keeps
+// whichever copy of a note is newer, and it can only tell when both carry one
+function markJEdit(id){ const e=typeof journal!=='undefined'&&journal&&journal[id]; if(e&&typeof e==='object'&&!Array.isArray(e))e.updatedAt=Date.now();
+  _dirtyJ.set(id,(_dirtyJ.get(id)||0)+1); _jrev++; vaultMark(id); jPendingSave(); }
 // The ids edited here and not yet confirmed saved (to the server, or the linked file) are kept in
 // localStorage too: a reload or a closed tab before the save went through used to let the older
 // copy from the server win at the next start. At boot they're laid back over what loaded.
@@ -540,11 +543,15 @@ async function fetchLedgerUpdates(addr, since){
 function capitalFlows(rows, addr){
   const a=(addr||'').toLowerCase(); const flows=[]; let skipped=0;
   for(const r of (rows||[])){ const d=r&&r.delta; if(!d||!r.time)continue;
-    const usdc=Math.abs(parseFloat(d.usdc)); const ty=d.type;
+    const ty=d.type;
+    // the amount's field depends on the type: a vault withdrawal reports what it paid out
+    // (netWithdrawnUsd, after any fee), a send its USD value; everything else carries usdc
+    const usdc=Math.abs(parseFloat(ty==='vaultWithdraw'?(d.netWithdrawnUsd??d.requestedUsd??d.usdc):ty==='send'?(d.usdcValue??d.usdc):d.usdc));
+    if(ty==='send'&&String(d.user||'').toLowerCase()===String(d.destination||'').toLowerCase())continue; // to itself, between dexes: internal
     if(!(usdc>0)){ if(ty!=='accountClassTransfer')skipped++; continue; }
     if(ty==='deposit') flows.push({time:r.time,usdc,type:ty});
     else if(ty==='withdraw') flows.push({time:r.time,usdc:-usdc,type:ty});
-    else if(ty==='internalTransfer'||ty==='subAccountTransfer'){
+    else if(ty==='internalTransfer'||ty==='subAccountTransfer'||ty==='send'){
       const dest=(d.destination||'').toLowerCase();
       flows.push({time:r.time,usdc:dest===a?usdc:-usdc,type:ty});
     }

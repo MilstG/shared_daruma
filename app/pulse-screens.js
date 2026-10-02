@@ -73,7 +73,7 @@ function pzProgressHtml(D){
   const recent=cat.earned.slice(-4).reverse();
   const nextUp=cat.families.filter(f=>f.visible&&f.next).map(f=>({f,p:f.next.need?Math.min(1,f.value/f.next.need):0})).sort((a,b)=>b.p-a.p).slice(0,3);
   const badgeHtml=`<section class="pz-card pz-kv"><div class="pz-kvrow"><b class="pz-kvh">Badges</b><a class="pz-link" href="#badges" style="min-height:0">${cat.earned.length} of ${cat.total}${pzI('chev',14)}</a></div>
-    ${recent.length?`<div class="pz-medals">${recent.map(b=>`<a href="#badges" class="pz-mini" data-pz-tip="${esc(pzBadgeTip(b))}" aria-label="${esc(pzBadgeTip(b).replace(/\n/g,' '))}">${pzMedal(b,48)}<span>${esc(b.t.replace(/ · .*/,''))}</span><small style="color:${PZ_TIER_COL[b.r]}">${PZ_TIERS[b.r]}</small></a>`).join('')}</div>`:''}
+    ${recent.length?`<div class="pz-medals">${recent.map(b=>`<a href="#badges" class="pz-mini" data-pz-tip="${esc(pzBadgeTip(b))}" aria-label="${esc(pzBadgeTip(b).replace(/\n/g,' '))}">${pzMedal(b,48)}<span>${esc(b.t.replace(/ · .*/,''))}</span><small style="color:${pzTierText(b.r)}">${PZ_TIERS[b.r]}</small></a>`).join('')}</div>`:''}
     ${nextUp.length?`<span class="pz-lbl" style="color:var(--pz-muted);font-size:11px">Next up</span>${nextUp.map(({f,p})=>`<div class="pz-row"><div class="pz-row-t"><span>${esc(f.next.t)}</span><b>${pzN(Math.floor(f.value))} / ${pzN(f.next.need)}</b></div>${pzBar(p,PZ_TIER_COL[f.next.r])}</div>`).join('')}`:''}
     <a class="pz-ghost pz-sm" href="#badges">See your badge case</a></section>`;
   // report cards
@@ -114,7 +114,7 @@ function pzBadgesHtml(D){
     const cells=[...extra.map(b=>({b,next:false})),...fams.map(f=>{ const top=f.tiers.filter(b=>b.earned).pop(); return top?{b:top,next:false,f,after:f.next}:{b:f.next,next:true,f}; })];
     return `<section class="pz-span pz-kv"><div class="pz-kvrow"><b class="pz-kvh">${esc(PZ_BADGE_CATS[c])}</b><span class="pz-sub" style="font-size:12px">${counts[c]||0} earned</span></div>
       <div class="pz-bgrid">${cells.map(({b,next,f,after})=>`<button type="button" class="pz-bcell${next?' next':''}" data-pz-bsel="${esc(b.id)}" data-pz-tip="${esc(pzBadgeTip(next?Object.assign({},b,{earned:false}):b,f))}" aria-pressed="${pzS.badgeSel===b.id}" aria-label="${esc(pzBadgeTip(next?Object.assign({},b,{earned:false}):b,f).replace(/\n/g,' '))}">
-        ${pzMedal(next?Object.assign({},b,{earned:false}):b,52)}<b>${esc(b.t.replace(/ · .*/,''))}</b><small style="color:${next?'var(--pz-muted)':PZ_TIER_COL[b.r]}">${PZ_TIERS[b.r]||''}</small>
+        ${pzMedal(next?Object.assign({},b,{earned:false}):b,52)}<b>${esc(b.t.replace(/ · .*/,''))}</b><small style="color:${next?'var(--pz-muted)':pzTierText(b.r)}">${PZ_TIERS[b.r]||''}</small>
         ${next?`${pzPctBar(f.value/b.need,PZ_TIER_COL[b.r])}<small>${pzN(Math.floor(f.value))} / ${pzN(b.need)}</small>`
           :after?`${pzPctBar(f.value/after.need,PZ_TIER_COL[after.r])}<small title="Next: ${PZ_TIERS[after.r]}">${pzN(Math.floor(f.value))} / ${pzN(after.need)}</small>`
           :`<small>${f?'all tiers earned':esc(dayLabel(b.k).replace(/^\w+, /,''))}</small>`}</button>`).join('')}</div></section>`; }).join('');
@@ -214,7 +214,7 @@ function pzReviewHtml(D){
   const slips=day?(day.behavior.slips||[]):[];
   const tByid=new Map(D.todayTrades.map(t=>[t.id,t]));
   const summary=`<section class="pz-card pz-kv"><b class="pz-kvh">Your day in numbers</b>
-    <div class="pz-grid3"><div class="pz-tile"><span class="pz-t">Discipline</span><span class="pz-n" style="color:${PZ_COL[pzBand(day?day.score:null)]}">${day?day.score:'—'}</span></div>
+    <div class="pz-grid3"><div class="pz-tile"><span class="pz-t">Discipline</span><span class="pz-n" style="color:${day?PZ_COL[pzBand(day.score)]:'var(--pz-muted)'}">${day?day.score:'—'}</span></div>
       <div class="pz-tile"><span class="pz-t">P&amp;L</span><span class="pz-n" style="color:${risk.net>0?PZ_COL.good:risk.net<0?PZ_COL.low:'var(--pz-text)'}" title="${esc(signedPlain(risk.net))}">${risk.closed.length?esc(pzSigned(risk.net)):'—'}</span></div>
       <div class="pz-tile"><span class="pz-t">Trades</span><span class="pz-n">${risk.trades}${risk.cap>0?'<small style="font-size:14px;color:var(--pz-muted)"> / '+risk.cap+'</small>':''}</span></div></div>
     ${slips.length?slips.map(s=>{ const t=tByid.get(s.id); return `<div class="pz-row-t"><span>${t?esc(dispMarket(dcoin(t)))+' · '+esc(String(t.dir||'').toLowerCase())+' · ':''}${esc(s.f.map(k=>PZ_BEH[k]).join(', '))}</span><b style="color:${s.net<0?PZ_COL.low:PZ_COL.good}">${esc(pzSigned(s.net))}</b></div>`; }).join('')
@@ -233,8 +233,12 @@ function pzReviewHtml(D){
       <div class="pz-field"><label for="pzRvTomorrow" style="font-size:14px">One focus for tomorrow</label><input type="text" id="pzRvTomorrow" maxlength="160" value="${esc(rv.tomorrow)}" placeholder="It shows on tomorrow’s check-in"></div></section>
       <button type="button" class="pz-cta" id="pzRvSave">${saved?'Update my review':'Save my review'} ${saved||!day?'':`<span class="pz-xpb">+${pzXpCfg().review} XP</span>`}</button>
       ${coachOk&&pzCoachAvailable()?'<button type="button" class="pz-ghost" id="pzRvCoach">Ask the coach to review my day</button>':''}
-      <p class="pz-fine">Questions for a ${esc(prof.name.toLowerCase())} — <a href="#" data-pz-sheet>change your profile</a>.</p></div></div>`;
+      <p class="pz-fine">Questions for a ${esc(prof.name.toLowerCase())} — <button type="button" class="pz-linkbtn" data-pz-sheet style="display:inline;min-height:0;padding:0">change your profile</button>.</p></div></div>`;
 }
+// what's typed in the review is kept as it's typed, so a re-render (opening the profile sheet, a
+// background refresh) doesn't wipe it
+document.addEventListener('input',ev=>{ const el=ev.target, rv=pzS.rv; if(!rv||!el||!el.dataset)return;
+  if(el.dataset.pzRvq!=null)rv.answers[el.dataset.pzRvq]=el.value; else if(el.id==='pzRvLesson')rv.lesson=el.value; else if(el.id==='pzRvTomorrow')rv.tomorrow=el.value; });
 async function pzSaveReview(){
   const rv=pzS.rv; if(!rv)return;
   document.querySelectorAll('[data-pz-rvq]').forEach(el=>{ rv.answers[el.dataset.pzRvq]=el.value.trim(); });
