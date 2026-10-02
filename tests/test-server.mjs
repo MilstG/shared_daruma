@@ -57,6 +57,27 @@ await t('health is unauthenticated and reports auth mode + app sync capability',
   eq(r.status, 200);
   eq(await r.json(), { ok: true, auth: true, appSyncCapable: true });
 });
+await t('the page carries its version, and /api/version (unauthenticated, never cached) answers the same one', async () => {
+  const body = await (await fetch(base + '/pulse')).text();
+  const m = body.match(/<meta name="app-version" content="([0-9a-f]{12})">/);
+  ok(m, 'version meta in the page');
+  const r = await fetch(base + '/api/version');
+  eq(r.status, 200); eq(r.headers.get('cache-control'), 'no-store');
+  eq(await r.json(), { v: m[1] });
+  // a deploy (here: a changed script) moves the version, so a resumed app knows to reload
+  const dir = mkdtempSync(join(tmpdir(), 'ledger-ver-'));
+  const { cpSync } = await import('node:fs');
+  cpSync(join(here, '..', 'ledger.html'), join(dir, 'ledger.html')); cpSync(join(here, '..', 'app'), join(dir, 'app'), { recursive: true });
+  const s = createApp({ dataDir: mkdtempSync(join(tmpdir(), 'ledger-test-')), auth: 'secret', htmlPath: join(dir, 'ledger.html') });
+  const b = await listen(s);
+  try {
+    const v1 = (await (await fetch(b + '/api/version')).json()).v; eq(v1, m[1], 'same files, same version');
+    writeFileSync(join(dir, 'app', 'boot.js'), readFileSync(join(dir, 'app', 'boot.js'), 'utf8') + '\n// changed');
+    const v2 = (await (await fetch(b + '/api/version')).json()).v;
+    ok(v2 && v2 !== v1, 'a changed script is a new version');
+    ok((await (await fetch(b + '/')).text()).includes('content="' + v2 + '"'), 'and the page says so');
+  } finally { await new Promise(res => s.close(res)); }
+});
 await t('stale ledger.html (no sync client) is detected, not silently served', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ledger-stale-'));
   const stale = join(dir, 'old.html');
@@ -174,7 +195,10 @@ const authH3 = { Authorization: 'Bearer tok' };
 await t('sw.js, manifest, icon served with right content types', async () => {
   const sw = await fetch(base3 + '/sw.js');
   eq(sw.status, 200); ok((sw.headers.get('content-type') || '').includes('javascript'));
-  ok((await sw.text()).includes("u.pathname.startsWith('/api/')"), 'sw never intercepts the API');
+  const swText = await sw.text();
+  ok(swText.includes("u.pathname.startsWith('/api/')"), 'sw never intercepts the API');
+  ok(swText.includes('setTimeout(()=>old().then(send),3000)'), 'the shell is network-first, the cached copy only after 3 s or offline');
+  ok(swText.includes("C='ledger-v5'"), 'same cache name: the cached scripts survive this update');
   const mf = await (await fetch(base3 + '/manifest.webmanifest')).json();
   eq([mf.short_name, mf.display, mf.start_url, mf.id], ['Ledger', 'standalone', '/', '/']);
   for (const i of mf.icons) { const r = await fetch(base3 + i.src); eq([r.status, r.headers.get('content-type')], [200, 'image/png'], i.src); }

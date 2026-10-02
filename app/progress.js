@@ -89,7 +89,7 @@ function gameAchievements(g){
   const jKeys=g.closed.filter(t=>isJournaled(g.J[t.id])).sort((a,b)=>a.closeTime-b.closeTime).map(t=>g.dayOf(t.closeTime));
   add('journal-100','A hundred entries','Journal 100 closed trades.','≡',jKeys.length,100,jKeys.length>=100?jKeys[99]:null);
   const ckKeys=g.days.filter(d=>{ const e=g.J['day:'+d.key]; return !!(e&&(e.sleep||e.stress||e.focus)); }).map(d=>d.key);
-  add('checkin-20','Know thyself','Log the session check-in on 20 trading days.','◎',ckKeys.length,20,nthKey(ckKeys,20));
+  add('checkin-20','Know thyself','Do your prep on 20 trading days.','◎',ckKeys.length,20,nthKey(ckKeys,20));
   add('perfect-week','Perfect week','Every trading day of a week at process 70+ (at least three days).','★',g.streak.perfectWeeks.length,1,g.streak.perfectWeeks.length?g.streak.perfectWeeks[0].key:null);
   add('kept-month','Kept it for a month','A rule with no breaks for 30 days, or a habit kept 20 trading days in a row.','✓',g.keptMonth.length?1:0,1,nthKey(g.keptMonth,1));
   const doneCh=g.challenges.filter(c=>c.status==='done').map(c=>c.key);
@@ -690,7 +690,7 @@ const PZ_GOAL_KINDS={
   disc:{title:g=>'Discipline average of '+g.target+'+ in '+pzMonthName(g.month),targets:[70,80,90],month:1},
   noslip:{title:g=>'No '+PZ_SLIP_TOPIC[g.slip]+' for '+g.target+' weeks',targets:[2,4,8]},
   journal:{title:g=>'Journal '+g.target+'% of trades in '+pzMonthName(g.month),targets:[80,90,100],month:1},
-  checkin:{title:g=>'Check in on '+g.target+' days in '+pzMonthName(g.month),targets:[10,15,20],month:1},
+  checkin:{title:g=>'Prep on '+g.target+' days in '+pzMonthName(g.month),targets:[10,15,20],month:1},
   limit:{title:g=>'Inside your loss limit every day for '+g.target+' weeks',targets:[2,4,8]}};
 const pzMonthName=m=>new Date(Date.UTC(+m.slice(0,4),+m.slice(5,7)-1,1)).toLocaleString('en-US',{month:'long',timeZone:'UTC'});
 const pzMonthEnd=m=>new Date(Date.UTC(+m.slice(0,4),+m.slice(5,7),0)).toISOString().slice(0,10);
