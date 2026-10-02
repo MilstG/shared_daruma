@@ -12,9 +12,11 @@ const { readAppSource } = require('../app-source.js');
 const src = readAppSource(htmlPath);
 const { grabFn, evalModule } = makeExtractor(src);
 const consts = ['taRatingFor', 'TA_SLIPS'].map(n => src.match(new RegExp('^const ' + n + '=.*$', 'm'))[0]).join('\n');
-const { traderAge, taYears, taRatingFor, taFmtYears, taWeeks, taMultStep, taMultOf, taMultDefaults, taStanding, taStandingDefaults, taHistory, taWhatIf } = await evalModule(
-  ['taConf', 'taYears', 'traderAge', 'isoWeekOfKey', 'taFmtYears', 'taMultDefaults', 'taWeeks', 'taMultTier', 'taMultStep', 'taMultOf', 'taStandingDefaults', 'taStanding', 'taHistory', 'taWhatIf'],
-  ['traderAge', 'taYears', 'taRatingFor', 'taFmtYears', 'taWeeks', 'taMultStep', 'taMultOf', 'taMultDefaults', 'taStanding', 'taStandingDefaults', 'taHistory', 'taWhatIf'], 'const TA=taConf();\n' + consts);
+const { traderAge, taYears, taRatingFor, taFmtYears, taFmtDelta, taWeeks, taMultStep, taMultOf, taMultDefaults, taStanding, taStandingDefaults, taHistory, taWhatIf, taHabits, taThenNow, pzBehaviorDays } = await evalModule(
+  ['taConf', 'taYears', 'taDayN', 'taPrep', 'taCheckin', 'traderAge', 'isoWeekOfKey', 'taFmtYears', 'taFmtDelta', 'taMultDefaults', 'taWeeks', 'taMultTier', 'taMultStep', 'taMultOf', 'taStandingDefaults', 'taStanding', 'taHistory',
+    'taDayWithoutSlip', 'taDayWithoutKept', 'taWhatIf', 'taHabitList', 'taHabitDay', 'taHabitAlt', 'taHabits', 'taThenNow', 'nfMedian', 'hasAdd', 'addedToLoser', 'pzBehaviorDays'],
+  ['traderAge', 'taYears', 'taRatingFor', 'taFmtYears', 'taFmtDelta', 'taWeeks', 'taMultStep', 'taMultOf', 'taMultDefaults', 'taStanding', 'taStandingDefaults', 'taHistory', 'taWhatIf', 'taHabits', 'taThenNow', 'pzBehaviorDays'],
+  'const TA=taConf();\nconst TA_HABITS=taHabitList();\n' + consts);
 
 const DAY = 864e5, NOW = Date.parse('2026-10-20T12:00:00Z');
 const key = ms => new Date(ms).toISOString().slice(0, 10);
@@ -36,14 +38,17 @@ t('the daily mix: 65% Discipline, 15% steadiness, 10% loss limit, 10% prep and j
   // flat 50s, no limit set (70), nothing logged: 0.65·50 + 0.15·100 + 0.10·70 + 0 = 54.5
   const A = age(run(20, () => ({ score: 50 })));
   near(A.raw, 54.5, 1e-9); eq(A.drag, 'discipline');
-  // perfect days: limit kept, prepped, every trade journaled → 100, Trader Age at its cap
-  const J = {}; const days = run(20, (i, at) => { J['day:' + key(at)] = { sleep: 4 }; return { score: 100, parts: { limit: 1, journal: 1 } }; });
+  // perfect days: limit kept, a plan before the first trade, every trade journaled → 100, Trader Age at its cap
+  const J = {}; const days = run(20, (i, at) => { J['day:' + key(at)] = { sleep: 4 }; return { score: 100, parts: { limit: 1, journal: 1, plan: 1 } }; });
   const B = age(days, J); near(B.raw, 100, 1e-9);
+  // prep: the plan is the thing (half for a late one); a check-in alone counts half, and never adds to a plan
+  const log = (parts, e) => age(run(20, (i, at) => { if (e) J['day:' + key(at)] = e; return { score: 100, parts }; }), e ? J : {}).parts.log;
+  eq([log({ plan: 1 }), log({ plan: 0.5 }), log({}, { sleep: 4 }), log({ plan: 1 }, { sleep: 4 }), log({ plan: 0.5 }, { focus: 2 }), log({ journal: 1 })], [50, 25, 25, 50, 25, 50]);
   // a day traded past the limit scores 0 on that part
   near(age(run(20, () => ({ score: 50, parts: { limit: 0 } }))).raw, 47.5, 1e-9);
 });
 t('confidence: under 60 trading days the rating is held toward 50 (1 year), so 15 perfect days aren’t 20 years', () => {
-  const perfect = n => { const J = {}; return age(run(n, (i, at) => { J['day:' + key(at)] = { sleep: 4 }; return { score: 100, parts: { limit: 1, journal: 1 } }; }), J); };
+  const perfect = n => { const J = {}; return age(run(n, (i, at) => { J['day:' + key(at)] = { sleep: 4 }; return { score: 100, parts: { limit: 1, journal: 1, plan: 1 } }; }), J); };
   const a15 = perfect(15), a30 = perfect(30), a60 = perfect(60);
   near(a15.raw, 100, 1e-9); ok(a15.age < 8 && a15.age > 6, 'about 7 years at 15 days: ' + a15.age);
   ok(a30.age > a15.age && a30.age < 20, '30 days: ' + a30.age); eq([a60.age, a60.sure], [20, 1], 'fully trusted from 60');
@@ -58,6 +63,11 @@ t('steadiness: the same average Discipline scores lower when it swings', () => {
   const even = age(run(30, () => ({ score: 70 }))), swing = age(run(30, i => ({ score: i % 2 ? 100 : 40 })));
   ok(swing.parts.steadiness < 50, JSON.stringify(swing.parts)); near(even.parts.steadiness, 100, 1e-9);
   ok(swing.rating < even.rating);
+  // a day's score is pulled toward the 20-day average by how few trades it has: one-trade days (0 or 100 by
+  // construction) read as fairly steady, the same swing over 20-trade days as unsteady
+  const one = age(run(30, i => ({ score: i % 2 ? 100 : 0, n: 1 }))), twenty = age(run(30, i => ({ score: i % 2 ? 100 : 0, n: 20 })));
+  near(one.parts.steadiness, 75, 1); ok(twenty.parts.steadiness < 20, '' + twenty.parts.steadiness);
+  eq(age(run(30, i => ({ score: i % 2 ? 100 : 0, behavior: { n: 1 } }))).parts.steadiness, one.parts.steadiness, 'the count can ride on the behavior');
 });
 t('recent days count more: a 30-trading-day half-life', () => {
   const days = [...run(60, () => ({ score: 40 }), { endBack: 30 }), ...run(30, () => ({ score: 90 }))];
@@ -171,6 +181,55 @@ t('what each slip costs: Trader Age again with those trades clean, biggest gain 
   const both = Array.from({ length: 20 }, (_, i) => slipDay(NOW - (19 - i) * DAY, [['revenge', 'sizeUp']]));
   eq(taWhatIf(both, {}, { now: NOW }), [], 'nothing gained by removing either alone');
   eq(taWhatIf(run(5, () => ({})), {}, { now: NOW }), [], 'still building: nothing to say');
+});
+// the scorer counts the chances a habit had, not only the slips. The day before: a loss and a 30-minute
+// winner (the usual size and hold). The day: a loss, an entry 30 minutes later (waited), a loss, then an
+// entry 5 minutes later (revenge); both losses were cut as fast as the winner, every entry kept its size
+const T = (id, open, close, net, o = {}) => Object.assign({ id, openTime: open, closeTime: close, net, maxSize: 1, avgEntry: 100 }, o);
+t('the scorer: every habit is a chance kept or slipped; a slip of one kind keeps the others', () => {
+  const d0 = NOW - 6 * DAY, m = 60000, p0 = d0 - DAY;
+  const days = pzBehaviorDays([T('p', p0, p0 + 30 * m, -10), T('q', p0 + 60 * m, p0 + 90 * m, 5),
+    T('a', d0, d0 + 30 * m, -10), T('b', d0 + 60 * m, d0 + 90 * m, 5), T('c', d0 + 120 * m, d0 + 150 * m, -10), T('d', d0 + 155 * m, d0 + 180 * m, 2)], { dayOf: key, isLoss: n => n < -1 });
+  eq(days.length, 2); const d = days[1];
+  eq([d.n, d.clean, d.score, d.flags.revenge], [4, 3, 75, 1]);
+  eq(d.chances, { revenge: 2, afterTwo: 0, sizeUp: 2, addLoser: 0, overtrade: 0, heldLoser: 2 }, 'two entries after a loss, two soon after one, two losers to cut');
+  eq(d.kept, { revenge: 1, afterTwo: 0, sizeUp: 2, addLoser: 0, overtrade: 0, heldLoser: 2 });
+  eq(d.keptClean, { revenge: 1, afterTwo: 0, sizeUp: 1, addLoser: 0, overtrade: 0, heldLoser: 2 }, 'the revenge entry kept its size, but it isn’t a clean trade');
+  eq(days[0].chances, { revenge: 1, afterTwo: 0, sizeUp: 0, addLoser: 0, overtrade: 0, heldLoser: 0 }, 'the first day has no usual size or hold to test against; its winner did wait');
+  // two losses in a row closed in the day: a chance to stop, kept when nothing was opened after them
+  const two = pzBehaviorDays([T('a', d0, d0 + 30 * m, -10), T('b', d0 + 60 * m, d0 + 90 * m, -10)], { dayOf: key, isLoss: n => n < -1 })[0];
+  eq([two.chances.afterTwo, two.kept.afterTwo, two.flags.afterTwo], [1, 1, 0]);
+  const three = pzBehaviorDays([T('a', d0, d0 + 30 * m, -10), T('b', d0 + 60 * m, d0 + 90 * m, -10), T('c', d0 + 120 * m, d0 + 150 * m, 1)], { dayOf: key, isLoss: n => n < -1 })[0];
+  eq([three.chances.afterTwo, three.kept.afterTwo, three.flags.afterTwo], [1, 0, 1]);
+});
+// a day with 4 trades: two entries after a loss, one of them a revenge entry (the other kept, clean)
+const habitDay = (at, o = {}) => Object.assign({ key: key(at), n: 4, score: 75, parts: {}, behavior: { n: 4, clean: 3, flags: { revenge: 1 }, chances: { revenge: 2 }, kept: { revenge: 1 }, keptClean: { revenge: 1 }, slips: [{ id: 1, net: -5, f: ['revenge'] }] } }, o);
+t('each habit: kept over 6 months and the last 30 trading days, what the kept ones earn and the slips cost', () => {
+  const J = {}; const days = Array.from({ length: 40 }, (_, i) => { const at = NOW - (39 - i) * DAY; J['day:' + key(at)] = { sleep: 3 }; return habitDay(at, { parts: { limit: 1, plan: 1, journal: 0.5 } }); });
+  const H = taHabits(days, J, { now: NOW }), by = Object.fromEntries(H.map(h => [h.k, h])), A = traderAge(days, J, { now: NOW });
+  eq(H.map(h => h.k), ['revenge', 'steadiness', 'limit', 'plan', 'checkin', 'journal'], 'only habits the days say something about');
+  eq([by.revenge.chances, by.revenge.kept, by.revenge.share, by.revenge.share30], [80, 40, 0.5, 0.5]);
+  ok(by.revenge.earn > 0 && by.revenge.cost > 0, 'the kept entries earn, the revenge ones cost: ' + JSON.stringify(by.revenge));
+  near(by.revenge.cost, traderAge(days.map(d => Object.assign({}, d, { score: 100, behavior: Object.assign({}, d.behavior, { flags: {} }) })), J, { now: NOW }).age - A.age, 0.01, 'cost = Trader Age with those trades clean');
+  near(by.revenge.earn, A.age - traderAge(days.map(d => Object.assign({}, d, { score: 50 })), J, { now: NOW }).age, 0.01, 'earn = Trader Age with the kept ones slipped too');
+  eq([by.limit.kept, by.limit.chances, by.limit.cost], [40, 40, 0]); ok(by.limit.earn > 0, 'a limit kept every day: earns, costs nothing');
+  eq([by.plan.share, by.plan.cost], [1, 0]); ok(by.plan.earn > 0);
+  eq([by.checkin.share, by.checkin.earn, by.checkin.cost], [1, 0, 0], 'a check-in next to a plan adds nothing, so it earns nothing');
+  eq([by.journal.chances, by.journal.kept, by.journal.share], [160, 80, 0.5]); ok(by.journal.earn > 0 && by.journal.cost > 0);
+  eq([by.steadiness.value, by.steadiness.cost], [100, 0]);
+  eq(taHabits(days.slice(-5), J, { now: NOW }), [], 'still building: nothing to say');
+  // the last 30 trading days can differ from the 6 months: recent days all kept
+  const better = days.map((d, i) => i < 10 ? d : habitDay(Date.parse(d.key + 'T12:00:00Z'), { score: 100, parts: d.parts, behavior: Object.assign({}, d.behavior, { clean: 4, flags: {}, kept: { revenge: 2 }, keptClean: { revenge: 2 }, slips: [] }) }));
+  const r = taHabits(better, J, { now: NOW }).find(h => h.k === 'revenge'); eq(r.share30, 1); ok(r.share < 1 && r.cost > 0, 'the older slips still cost');
+  eq(taFmtDelta(0.4), '5 mo'); eq(taFmtDelta(1.5), '1.5 yrs');
+});
+t('then and now: the last 30 trading days against the 30 before and the 30 before that', () => {
+  const days = Array.from({ length: 70 }, (_, i) => habitDay(NOW - (69 - i) * DAY, i < 40 ? {} : { score: 100, parts: { limit: 1 }, behavior: { n: 4, clean: 4, flags: {}, chances: { revenge: 2 }, kept: { revenge: 2 }, keptClean: { revenge: 2 }, slips: [] } }));
+  const B = taThenNow(days, {}, { now: NOW });
+  eq(B.map(b => b.days), [10, 30, 30], 'oldest first, a short first block');
+  eq([B[0].disc, B[1].disc, B[2].disc], [75, 75, 100]); eq([B[0].slips.revenge, B[2].slips.revenge], [25, 0], 'per 100 trades');
+  eq([B[1].limit, B[2].limit], [null, 100]); ok(B[2].age > B[1].age);
+  eq(taThenNow(days.slice(-35), {}, { now: NOW }).length, 1, 'under 40 trading days: one block only');
 });
 t('milestone badges: a Seasoned family reads the history (1, 2, 4, 6, 8, 12 years), on both screens', () => {
   ok(src.includes("['traderage','milestones','Seasoned',t=>'a Trader Age of '+t+' year'+(t===1?'':'s'),[1,2,4,6,8,12],2]"));

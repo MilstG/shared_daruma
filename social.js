@@ -148,6 +148,7 @@ function sanitizeStats(b) {
       if (d.p) o.p = 1;
       const jn = clampNum(d.jn, 0, 1); if (jn) o.jn = Math.round(jn * 100) / 100;
       if (d.lm === 0 || d.lm === 1) o.lm = d.lm;
+      if (d.pl === 1 || d.pl === 0.5) o.pl = d.pl; // a plan before the first trade (half: written late)
       const f = Array.isArray(d.f) ? [...new Set(d.f.filter(x => SLIP_KEYS.includes(x)))] : []; if (f.length) o.f = f;
       const l = cleanText(d.l, 200); if (l) o.l = l;
       return o; });
@@ -906,7 +907,7 @@ function createSocial(opts) {
     try {
       const L = m.logd || {}, J = {}, tz = (m.stats && m.stats.tz) || 'UTC';
       const days = m.vdays.map(d => { const l = L[d.k] || {}; if (l.p) J['day:' + d.k] = { sleep: 1 };
-        return { key: d.k, score: d.s, parts: { limit: l.lm, journal: l.jn || 0 }, behavior: { flags: Object.fromEntries((d.f || []).map(k => [k, 1])) } }; });
+        return { key: d.k, score: d.s, n: d.n, parts: { limit: l.lm, journal: l.jn || 0, plan: l.pl }, behavior: { flags: Object.fromEntries((d.f || []).map(k => [k, 1])) } }; });
       const A = opts.traderAge(days, J, { now: now(), dayOf: ms => zoneKey(tz, ms), firstAt: (m.stats && m.stats.firstAt) || 0 });
       const r1 = x => x == null ? null : Math.round(x * 10) / 10;
       m.ta = { at: now(), n: A.n, building: !!A.building, need: A.need, rating: r1(A.rating), raw: r1(A.raw), sure: A.sure != null ? Math.round(A.sure * 100) / 100 : null, range: A.range ? A.range.map(r1) : null, age: r1(A.age), recent: r1(A.recent), recentN: A.recentN || 0, pace: r1(A.pace), tradingYears: r1(A.tradingYears), drag: A.drag || null,
@@ -2855,7 +2856,7 @@ function createSocial(opts) {
       me.postedHabits = [...posted].slice(-50);
       me.stats = next; me.statsAt = now();
       const logd = me.logd && typeof me.logd === 'object' ? me.logd : {};
-      for (const d of next.days) { const o = {}; if (d.p) o.p = 1; if (d.jn) o.jn = d.jn; if (d.lm === 0 || d.lm === 1) o.lm = d.lm; logd[d.k] = o; }
+      for (const d of next.days) { const o = {}; if (d.p) o.p = 1; if (d.jn) o.jn = d.jn; if (d.lm === 0 || d.lm === 1) o.lm = d.lm; if (d.pl) o.pl = d.pl; logd[d.k] = o; }
       const lk = Object.keys(logd).sort(); for (const k of lk.slice(0, Math.max(0, lk.length - 200))) delete logd[k];
       me.logd = logd; taCompute(me);
       if (body.bench !== undefined) { const b = me.share.bench !== false ? Bench.sanitizeBench(body.bench) : null;

@@ -465,7 +465,12 @@ function pzBehaviorDays(closed, opts){
     const pastDays=keys.slice(Math.max(0,ki-30),ki), medN=pastDays.length>=5?nfMedian(pastDays.map(x=>perDay[x])):null;
     const cap=medN!=null?Math.max(3,Math.ceil(medN*1.5)):null;
     const winHold=nfMedian(prior.slice(-60).filter(t=>t.net>0&&!loss(t.net)).map(dur).filter(x=>x>0));
-    const flags={revenge:0,afterTwo:0,sizeUp:0,addLoser:0,overtrade:0,heldLoser:0}, slips=[]; let clean=0, entries=0;
+    const zero=()=>({revenge:0,afterTwo:0,sizeUp:0,addLoser:0,overtrade:0,heldLoser:0});
+    // chances: how often the habit was tested (an entry after a loss, a losing trade to cut, a day with two
+    // losses in a row…); kept: the chances not slipped; keptClean: kept by a trade with no slip of any kind
+    // (Trader Age reads these to say what each habit earns, not only what the slips cost)
+    const flags=zero(), chances=zero(), kept=zero(), keptClean=zero(), slips=[]; let clean=0, entries=0;
+    const tested=(c,f,x)=>{ chances[c]++; if(!f.includes(c)){ kept[c]++; if(!f.length)keptClean[c]++; } };
     arr.forEach((t)=>{
       // a spot position carried on after a partial sale is not a new entry: only the holding checks apply
       const entry=!t.carried, i=entry?entries++:-1;
@@ -473,15 +478,21 @@ function pzBehaviorDays(closed, opts){
       // opens the next trade on the same fill, and that re-entry counts
       const prev=[]; for(let q=before(t.openTime+1)-1;q>=0&&prev.length<2;q--)if(closes[q]!==t)prev.push(closes[q]);
       const p1=prev[0]||null, p2=prev[1]||null, f=[];
-      if(entry&&p1&&loss(p1.net)&&t.openTime-p1.closeTime<=M)f.push('revenge');
+      const afterLoss=entry&&p1&&loss(p1.net), sizeTest=afterLoss&&t.openTime-p1.closeTime<=H2&&!!medSize, holdTest=loss(t.net)&&!!winHold, addTest=hasAdd(t);
+      if(afterLoss&&t.openTime-p1.closeTime<=M)f.push('revenge');
       if(entry&&p1&&p2&&loss(p1.net)&&loss(p2.net)&&dayOf(p1.closeTime)===dayOf(t.openTime)&&dayOf(p2.closeTime)===dayOf(t.openTime))f.push('afterTwo');
-      if(entry&&p1&&loss(p1.net)&&t.openTime-p1.closeTime<=H2&&medSize&&size(t)>1.5*medSize)f.push('sizeUp');
-      if(addedToLoser(t))f.push('addLoser');
+      if(sizeTest&&size(t)>1.5*medSize)f.push('sizeUp');
+      if(addTest&&addedToLoser(t))f.push('addLoser');
       if(entry&&cap!=null&&i>=cap)f.push('overtrade');
-      if(loss(t.net)&&winHold&&dur(t)>3*winHold)f.push('heldLoser');
+      if(holdTest&&dur(t)>3*winHold)f.push('heldLoser');
       for(const x of f)flags[x]++; if(!f.length)clean++; else slips.push({id:t.id,net:t.net,f});
+      if(afterLoss)tested('revenge',f); if(sizeTest)tested('sizeUp',f); if(addTest)tested('addLoser',f); if(holdTest)tested('heldLoser',f);
     });
-    out.push({key:k,score:Math.round(100*clean/n),n,clean,flags,slips,net:arr.reduce((s,t)=>s+t.net,0)});
+    // day-level chances: two losses in a row closed today (a chance to stop), a usual count to stay inside
+    const byClose=[...arr].sort((a,b)=>a.closeTime-b.closeTime);
+    if(byClose.some((t,j)=>j>0&&loss(t.net)&&loss(byClose[j-1].net))){ chances.afterTwo=1; if(!flags.afterTwo)kept.afterTwo=keptClean.afterTwo=1; }
+    if(cap!=null){ chances.overtrade=1; if(!flags.overtrade)kept.overtrade=keptClean.overtrade=1; }
+    out.push({key:k,score:Math.round(100*clean/n),n,clean,flags,chances,kept,keptClean,slips,net:arr.reduce((s,t)=>s+t.net,0)});
   });
   return out;
 }

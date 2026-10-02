@@ -10,7 +10,7 @@ const html = readAppSource(new URL('../ledger.html', import.meta.url).pathname);
 const { grabFn } = makeExtractor(html);
 const ctx = { Math, Object, Array, String, JSON, Set, Map };
 vm.createContext(ctx);
-vm.runInContext(['nfMedian', 'addedToLoser', 'pzBehaviorDays', 'pzBonus', 'pzForm', 'pzLoad', 'pzDeepStats', 'pzSlipCost'].map(grabFn).join('\n'), ctx);
+vm.runInContext(['nfMedian', 'hasAdd', 'addedToLoser', 'pzBehaviorDays', 'pzBonus', 'pzForm', 'pzLoad', 'pzDeepStats', 'pzSlipCost'].map(grabFn).join('\n'), ctx);
 
 const MIN = 60000, DAY = 86400000, T0 = Date.UTC(2026, 8, 1);
 const dayOf = ms => new Date(ms).toISOString().slice(0, 10);
