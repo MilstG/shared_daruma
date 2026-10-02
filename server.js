@@ -422,6 +422,8 @@ const COACH_CHAT_SYSTEM = [
   'Form: 50 = their usual recent results. Load: 50 = their usual day\'s activity. Readiness: from their',
   'morning check-in (sleep, calm, focus). tradersLikeYou: where they stand among anonymous traders of',
   'their style, size and experience (betterThanOutOf100); use it to make a habit concrete, never to shame.',
+  'tradersLikeYou.whatImproversChanged: what traders like them who got better over 8-12 weeks changed, against those',
+  'who didn\'t (group medians); offer one of these as a next habit when it fits.',
 ].join('\n');
 // Deep-copies an attached JSON summary within limits, scrubbing wallet addresses.
 function scrubCoachData(v, depth) {

@@ -713,6 +713,20 @@ function pzPeersHtml(g){
     ${say?`<div class="pz-pgap" tabindex="0" data-pz-tip="${esc('The best quarter of your group by profit factor. This is the habit where you’re furthest behind them.')}"><span class="pz-lbl" style="color:${PZ_COL.xp}">What the best of them do</span><b>${esc(say[0])} ${esc(say[1])}</b></div>`:''}
     ${out}<p class="pz-fine" style="margin:0">Last 90 days · anonymous · groups of ${d.min} or more · updated daily</p>`);
 }
+// ---- "What traders like you changed when they improved": two or three changes, each one tap from a habit ----
+function pzImproversHtml(g){
+  if(!peerCanAsk()||(SOC.cfg&&SOC.cfg.bench&&SOC.cfg.bench.on===false)||pzLocked('peers',g.level.level))return '';
+  const mine=peerMine(), P=mine.ok?peerData(mine):null, d=P&&P.d, I=d&&d.on!==false&&d.improvers;
+  if(!I)return '';
+  const head=`<b style="font-size:16px">What traders like you changed when they improved</b>`, sec=body=>`<section class="pz-card pz-span pz-viz pz-peers" data-sec="stats:peers">${head}${body}</section>`;
+  if(!I.changes.length)return sec(`<p class="pz-sub" style="font-size:13px;margin:0">${esc(I.note||'Not enough history yet.')}</p>`);
+  // changes you can turn into a habit first, biggest first within each
+  const list=[...I.changes.filter(c=>peerImpHabit(c)),...I.changes.filter(c=>!peerImpHabit(c))].slice(0,3);
+  const rows=list.map(c=>{ const h=peerImpHabit(c), i=I.changes.indexOf(c);
+    const act=!h?'':peerImpHas(h)?`<span class="pz-chipbtn ok">${pzI('check',14,3)} In your habits</span>`:`<button type="button" class="pz-ghost pz-sm" style="width:auto;padding:0 14px" data-pz-impadopt="${i}">Make it my habit</button>`;
+    return `<div class="pz-imp"><span tabindex="0" data-pz-tip="${esc(peerImpTip(c))}">${esc(c.text)}.</span>${act}</div>`; }).join('');
+  return sec(`<div>${rows}</div><p class="pz-fine" style="margin:0">${I.n} traders like you got better over 8 to 12 weeks (from the bottom half of their group to the top half, on Discipline or profit factor). Compared with ${I.nOthers} who didn’t. Tap a change for the numbers.</p>`);
+}
 function pzTrendsHtml(D){
   const {g}=D, ctx=g.ctx, R=pzS.range, now=Date.now();
   const from=R==='all'?0:pzRangeStart(R,now), fromKey=dayKey(from);
@@ -756,7 +770,7 @@ function pzTrendsHtml(D){
         ${rl?`<div class="pz-tile cool"><span class="pz-t" style="font-size:13px;line-height:1.45">On days you checked in at readiness 70+, your discipline averaged <b>${rl.hi}</b>; on the other check-in days, <b>${rl.lo}</b>.</span></div>`:''}</section></div>
       <div class="pz-col" data-sec="stats:findings"><section class="pz-card" style="padding:6px 16px"><b style="display:block;font-size:15px;margin:10px 0 2px">What moves your results <span class="pz-sub" style="font-weight:400;font-size:12px">· ${R==='all'?'all time':'last '+R+' days'}${RF.n?', '+RF.n+' trades':''}</span></b>${RF.few?`<p class="pz-sub" style="font-size:13px;padding:6px 0 12px">Needs at least 10 closed trades in this range to find patterns — there ${RF.n===1?'is':'are'} ${RF.n}. Try a longer range.</p>`:''}${F.length?F.map(f=>`<div class="pz-ins"><span class="pz-tag ${esc(f.tone)}">${esc(TONE_TAG[f.tone]||'Note')}</span><span><b>${esc(f.title)}</b><span>${esc(pzPlain(f.action||f.body||''))}</span>${f.evidence?`<details class="pz-why"><summary>Why</summary><span>${esc(f.evidence)} · ${esc(confWords(f.conf))}</span></details>`:''}</span></div>`).join(''):(RF.few?'':'<p class="pz-sub" style="padding:12px 0">Patterns show up here after about five closed trades.</p>')}</section></div>`; }
   if(!lock)deep=pzHabitLinkHtml(g,ctx,fromKey)+deep; // the plain answer first, then the detail
-  deep+=pzPeersHtml(g);
+  deep+=pzPeersHtml(g)+pzImproversHtml(g);
   return `${pzHead(R==='all'?'All time':'Last '+R+' days','Stats',seg)}${pzMkSeg()}<div class="pz-wide">${stats}${deep}<p class="pz-fine pz-span"><a href="#how">How are the scores worked out?</a></p>${pzCustomizeLink('stats')}</div>${pzLayoutCss('stats')}`;
 }
 // The Diagnostic's findings for one range (all time reuses the coach's set). Same engine, only the

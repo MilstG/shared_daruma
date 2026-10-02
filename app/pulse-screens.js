@@ -350,6 +350,7 @@ function pzCoachFacts(D){
     tradersLikeYou:(()=>{ try{ const mine=peerMine(), P=mine.ok?peerData(mine):null, grp=P&&P.d?peerGroup(P.d):null; if(!grp)return null;
       const out={group:peerGroupName(grp),traders:grp.n,measures:{}};
       for(const m of PEER_M){ if(m.ctx||!grp.q[m.k]||mine[m.k]==null)continue; out.measures[m.l]={you:m.f(mine[m.k]),typical:m.f(grp.q[m.k][4]),bestQuarter:grp.top[m.k]!=null?m.f(grp.top[m.k]):null,betterThanOutOf100:peerBetter(m,grp.q[m.k],mine[m.k])}; }
+      const I=P.d.improvers; if(I&&I.changes&&I.changes.length)out.whatImproversChanged={improved:I.n,others:I.nOthers,changes:I.changes.slice(0,3).map(c=>c.text)};
       return out; }catch(err){ return null; } })(),
   };
 }
@@ -738,6 +739,8 @@ async function pzGrowthAction(t){
     if(ds.pzMk){ settings.pzMarket=ds.pzMk; await Store.set(S_KEY,settings); pzRender(); return true; }
     if(ds.pzPg!=null){ PZ_PAGES[ds.pzPg]=Math.max(0,(PZ_PAGES[ds.pzPg]||0)+(+ds.d||0)); pzRender(); const n=document.querySelector('[data-pz-pg="'+CSS.escape(ds.pzPg)+'"]'); if(n){ const list=n.closest('nav').previousElementSibling; if(list&&list.scrollIntoView)list.scrollIntoView({block:'nearest'}); } return true; }
     if(ds.pzPlug){ await pzPlugStart(ds.pzPlug); pzNote('Plugging “'+PZ_BEH[ds.pzPlug].toLowerCase()+'”. It’s checked from your fills — three clean trading weeks in a row plug it.'); pzRender(); return true; }
+    if(ds.pzImpadopt!=null){ const c=PEER.d&&PEER.d.improvers&&PEER.d.improvers.changes[+ds.pzImpadopt], h=peerImpHabit(c); if(!h)return true;
+      const x=await peerImpAdopt(h), hb=x&&x.habitId?habitById(x.habitId):x; pzNote('Added to your habits'+(hb&&hb.when?': “'+habitSentence(hb)+'”':'')+' It’s tracked day by day.'); pzRender(); return true; }
     if(ds.pzUnplug){ if(!confirm('Stop plugging this leak? Its habit is retired.'))return true; await pzPlugDrop(ds.pzUnplug); pzRender(); return true; }
     if(ds.pzBcat){ pzS.bcat=ds.pzBcat; pzRender(); return true; }
     if(ds.pzBsel){ pzS.badgeSel=pzS.badgeSel===ds.pzBsel?null:ds.pzBsel; pzRender(); return true; }
