@@ -640,7 +640,7 @@ function pzCostHtml(tr){
 }
 // ---- a chart on every journal card: candles around the trade, with entry, exit, stop and target ----
 const PZ_SNAP={}, _pzSnapQ=[]; let _pzSnapBusy=false;
-function pzSnapSvg(t, candles, ms, plan){
+function pzSnapSvg(t, candles, ms, plan, mk){
   if(!candles||candles.length<2)return '';
   // at most 80 candles: merge neighbours on long trades
   const k=Math.max(1,Math.ceil(candles.length/80)), cs=[];
@@ -660,11 +660,12 @@ function pzSnapSvg(t, candles, ms, plan){
   const labs=[], win=t.net>=0, line=(v,col,dash,lab)=>{ if(!(v>0))return ''; labs.push({y:Y(v),col,lab}); return `<line x1="${L}" x2="${W-R}" y1="${fx(Y(v))}" y2="${fx(Y(v))}" stroke="${col}" stroke-width="1.5"${dash?` stroke-dasharray="${dash}"`:''}/>`; };
   const vx=(ms0,col)=>`<line x1="${fx(X(ms0))}" x2="${fx(X(ms0))}" y1="${T}" y2="${H-B}" stroke="${col}" stroke-width="1" stroke-dasharray="2 3" opacity=".8"/>`;
   return `<svg class="pz-snapsvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(dispMarket(dcoin(t)))} price around the trade: entry ${px(t.avgEntry)}${t.isOpen?'':', exit '+px(t.avgExit)}${plan&&plan.stop>0?', stop '+px(plan.stop):''}${plan&&plan.target>0?', target '+px(plan.target):''}">
-    ${body}${vx(t.openTime,'#F4C04E')}${t.isOpen?'':vx(t.closeTime,win?'#3FE0A0':'#FF7A59')}
+    ${body}${vx(t.openTime,'#F4C04E')}${mk&&mk.px>0?vx(mk.t,'#FFFFFF'):''}${t.isOpen?'':vx(t.closeTime,win?'#3FE0A0':'#FF7A59')}
     ${line(plan&&plan.stop,'#FF7A59','2 3','stop')}${line(plan&&plan.target,'#3FE0A0','2 3','target')}${line(t.avgEntry,'#F4C04E','','in '+px(t.avgEntry))}${t.isOpen?'':line(t.avgExit,win?'#3FE0A0':'#FF7A59','','out '+px(t.avgExit))}
     ${(()=>{ labs.sort((a,b)=>a.y-b.y); for(let i=1;i<labs.length;i++)if(labs[i].y-labs[i-1].y<11)labs[i].y=labs[i-1].y+11;
       const over=labs.length?labs[labs.length-1].y-(H-B):0; if(over>0)labs.forEach(l=>{ l.y-=over; });
       return labs.map(l=>`<text x="${W-R+4}" y="${fx(l.y+4)}" font-size="10" font-weight="700" fill="${l.col}">${esc(l.lab)}</text>`).join(''); })()}
+    ${mk&&mk.px>0?`<circle cx="${fx(X(mk.t))}" cy="${fx(Y(mk.px))}" r="5.5" fill="${mk.k>0?'#F4C04E':'#3FE0A0'}" stroke="#0E1216" stroke-width="2" data-pz-tip="${esc((mk.k>0?'In':'Out')+' at '+px(mk.px)+'\n'+tf(mk.t))}"/>`:''}
     <text x="${L}" y="${H-3}" font-size="10" fill="#8B95A1">${esc(dayLabel(dayKey(cs[0].t)))}</text></svg>`;
 }
 function pzSnapHtml(t){
@@ -672,7 +673,7 @@ function pzSnapHtml(t){
   if(!s){ pzSnapWant(t); return '<div class="pz-snapph"><span class="pz-spin"></span>Loading the chart…</div>'; }
   if(s.st==='busy')return '<div class="pz-snapph"><span class="pz-spin"></span>Loading the chart…</div>';
   if(s.st!=='ok'){ if(Date.now()-(s.at||0)>5*60000){ delete PZ_SNAP[t.id]; return pzSnapHtml(t); } return ''; }
-  return pzSnapSvg(t,s.c,s.ms,typeof nfPlan==='function'?nfPlan(journal[t.id]):null);
+  return pzSnapSvg(t,s.c,s.ms,typeof nfPlan==='function'?nfPlan(journal[t.id]):null,typeof planPzMark==='function'?planPzMark(t):null);
 }
 function pzSnapWant(t){ if(PZ_SNAP[t.id]||typeof ensureTradeCandles!=='function')return; PZ_SNAP[t.id]={st:'busy'}; _pzSnapQ.push(t); pzSnapRun(); }
 async function pzSnapRun(){
@@ -855,6 +856,63 @@ function pzTiltOf(D){
   return pzTilt({now:Date.now(),closed:D.risk.closed,opened,sizeX:D.risk.sizeX,paceX:D.load&&D.load.rN,used:D.risk.used,ready:D.ready});
 }
 const pzTiltCol=b=>b==='hot'?PZ_COL.low:b==='warm'?PZ_COL.mid:PZ_COL.good;
+// ---- live tilt alerts: one specific pattern in today's fills, said once and calmly ----
+// Checked after each refresh that brings new fills. Patterns: a re-entry within 15 minutes of a
+// loss, 3 losses within 45 minutes, sizing up right after a loss, more trades than the day's plan
+// (or well past your usual day), and the loss limit (80% used, or reached). Only what happened in
+// the last hour, on today's date on your clock. Also run by server.js, from a member's public
+// fills, for pushes while Pulse is closed: so everything comes in as arguments.
+// trades: closed and open; o: {now, dayOf, isLoss, maxTrades, lossLimit}. Most urgent first.
+function pzTiltAlerts(trades, o){
+  const now=o.now, dayOf=o.dayOf, loss=o.isLoss||(n=>n<-1), M=60000, today=dayOf(now);
+  const size=t=>Math.abs((+t.maxSize||0)*(+t.avgEntry||0)), mins=ms=>Math.max(1,Math.round(ms/M)), S=n=>n===1?'':'s';
+  const tr=(trades||[]).filter(t=>t&&t.openTime&&t.openTime<=now&&!t.partialHistory);
+  const closes=tr.filter(t=>!t.isOpen&&t.closeTime&&t.closeTime<=now).sort((a,b)=>a.closeTime-b.closeTime);
+  const entries=tr.filter(t=>!t.carried&&dayOf(t.openTime)===today).sort((a,b)=>a.openTime-b.openTime);
+  // the trade that closed last at or before ms (a stop-and-reverse re-enters on the same fill)
+  const prevClose=(ms,self)=>{ let p=null; for(const c of closes){ if(c.closeTime>ms)break; if(c!==self)p=c; } return p; };
+  const out=[], add=(k,at,title,text)=>{ if(at>now-60*M&&at<=now)out.push({k,at,title,text}); };
+  // the loss limit: realized P&L today, the close that crossed 80% and the one that reached it
+  const lim=+o.lossLimit||0;
+  if(lim>0){ let net=0, at80=0, at100=0;
+    for(const c of closes)if(dayOf(c.closeTime)===today){ net+=+c.net||0; const used=-net/lim;
+      if(used>=1){ if(!at100)at100=c.closeTime; } else at100=0;
+      if(used>=0.8){ if(!at80)at80=c.closeTime; } else at80=0; }
+    if(at100)add('limit',at100,'Today’s loss limit is reached','You’ve reached the loss limit you set for today. The best trade now is no trade. Close the app and come back fresh tomorrow?');
+    else if(at80)add('limit80',at80,'Close to today’s loss limit','You’ve used '+Math.round(100*-net/lim)+'% of today’s loss limit. This is a good moment to stop for the day, or at least step away for 15 minutes.'); }
+  // 3 losses within 45 minutes (today's closes only)
+  const L=closes.filter(c=>loss(c.net)&&dayOf(c.closeTime)===today);
+  for(let i=L.length-1;i>=2;i--){ const span=L[i].closeTime-L[i-2].closeTime;
+    if(span<=45*M){ add('streak3',L[i].closeTime,'Three losses close together','3 losses in '+mins(span)+' minute'+S(mins(span))+'. This is when revenge trades happen. Step away for 15 minutes?'); break; } }
+  // re-entry within 15 minutes of a loss, and a bigger size than usual right after one (latest first)
+  for(let i=entries.length-1;i>=0;i--){ const e=entries[i], p=prevClose(e.openTime,e);
+    if(p&&loss(p.net)&&e.openTime-p.closeTime<=15*M){ const m=mins(e.openTime-p.closeTime);
+      add('revenge',e.openTime,'A quick re-entry after a loss','A new trade '+m+' minute'+S(m)+' after a loss. Quick re-entries are how revenge trading starts. Step away for 15 minutes?'); break; } }
+  for(let i=entries.length-1;i>=0;i--){ const e=entries[i], p=prevClose(e.openTime,e);
+    if(!p||!loss(p.net)||e.openTime-p.closeTime>2*3600000)continue;
+    const prior=closes.filter(c=>c.closeTime<e.openTime).slice(-30).map(size).filter(x=>x>0), med=prior.length>=5?nfMedian(prior):null;
+    if(med&&size(e)>1.5*med){
+      add('sizeUp',e.openTime,'A bigger size after a loss','This trade is '+(size(e)/med).toFixed(1)+'× your usual size, right after a loss. Going bigger to win it back is a classic tilt move. Back to your usual size, or step away for 15 minutes?'); break; } }
+  // more trades than planned, or than a usual day (entries by open day, the last 30 trading days)
+  const n=entries.length, cap=+o.maxTrades||0;
+  if(cap>0&&n>cap)add('overtrade',entries[cap].openTime,'More trades than you planned','That’s trade '+n+' today, and your plan was '+cap+'. Good setups rarely come in bunches. Call it a day, or step away for 15 minutes?');
+  else { const per={}; for(const t of tr){ if(t.carried)continue; const k=dayOf(t.openTime); if(k<today)per[k]=(per[k]||0)+1; }
+    const ks=Object.keys(per).sort().slice(-30), med=ks.length>=5?nfMedian(ks.map(k=>per[k])):null, u=med!=null?Math.max(3,Math.ceil(med*1.5)):null;
+    if(u!=null&&n>u)add('overtrade',entries[u].openTime,'A busier day than usual','That’s trade '+n+' today; a usual day for you is about '+Math.round(med)+'. Good setups rarely come in bunches. Call it a day, or step away for 15 minutes?'); }
+  const P=['limit','streak3','revenge','sizeUp','overtrade','limit80'];
+  return out.sort((a,b)=>P.indexOf(a.k)-P.indexOf(b.k));
+}
+// The rules: each pattern at most once a day (the day on your clock), none within 30 minutes of
+// the last alert. st: {day, fired:{pattern:at}, last} as returned before (null to start).
+// Returns the alert to show now (or null) and the state to keep.
+function pzTiltAlertPick(cands, st, now, today){
+  const last=st&&+st.last||0, fired=st&&st.day===today&&st.fired?st.fired:{};
+  const keep={day:today,fired:Object.assign({},fired),last};
+  if(now-last<30*60000)return {pick:null,st:keep};
+  const pick=(cands||[]).find(c=>!keep.fired[c.k])||null;
+  if(pick){ keep.fired[pick.k]=now; if(pick.k==='limit')keep.fired.limit80=now; keep.last=now; }
+  return {pick,st:keep};
+}
 // Plain stats for a window: the full app's computeStats, plus markets, hours and daily P&L.
 function pzStatsFor(trades, fromMs){
   const all=(trades||[]).filter(t=>t.closeTime&&t.closeTime>=fromMs&&!t.isOpen);

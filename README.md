@@ -264,7 +264,32 @@ time, month, market volatility and trend;
 **How the scores work** spells out every formula), **Check-in** (readiness, today's trade cap,
 loss limit and plan) and **Progress** (level, XP, streak and shields, the
 weekly challenge, badges, share cards). A quick journal screen rates and notes
-unjournaled trades from the last 30 days — the ✎ count at the top of Today and Progress opens it. On a wide screen the tabs become a sidebar.
+unjournaled trades from the last 30 days — the ✎ count at the top of Today and Progress opens it. Each card there has a step-through
+under its chart: one fill at a time, in plain words ("You added 0.5 at 64,210.
+Holding 1.5, average 64,100. Open P&L +$30, banked +$0."), with the fill marked on
+the chart; ← → work too. On a wide screen the tabs become a sidebar.
+
+**Plan a trade.** The *Plan your next trade* card on Today opens a short form:
+market, long or short, stop (required), target and entry (optional), and one line
+on why. The plan waits in your journal (synced like any note) and attaches itself
+to your next trade on that market and side that opens within 24 hours — the
+trade's stop and target come from it, it counts as a plan written live, and the
+line becomes the trade's setup if it has none. No trade in 24 hours and it
+expires; old plans are cleared after 30 days. A trade that already has a plan
+keeps it. Stats → **Your plans** shows the share of trades with a plan, how
+often you followed it, and one sentence on what not following it cost
+("Exiting early cost you about $120 over the last 30 days").
+
+**Share my week.** On Progress (from the level share cards unlock at), **Share my
+week** draws an image of the week on your clock (last week until this one has a
+trading day): its Discipline average as a ring, clean days (70+) out of trading
+days, the streak, level and XP gained, the duel record and the top badges (this
+week's first, by tier). It has no dollar amounts and no P&L, on purpose; badges for
+results are left off too. Choose 4:5 (1080×1350) or square (1080×1080), dark or
+light, and whether level, duel record and badges show; then **Share…** (the phone's
+share sheet, where the browser can share files), **Download**, or **Copy image**.
+It's drawn on a canvas in the browser: nothing is sent anywhere. The model the card
+draws from is `pzWeekCardModel` in `app/pulse-screens.js`.
 
 **Your layout.** Every Pulse screen (Today, Stats, Progress) has **Customize
 this screen** at the bottom: show or hide each section, or reset to the default.
@@ -345,6 +370,30 @@ loss or entry turns on **quiet mode**: a full-screen card that lists what pushed
 the reading up, brings back the lesson you wrote about that slip, and offers a
 15-minute break with a countdown (or "I'm calm"). One answer covers one episode.
 Optionally the browser notifies you when it happens.
+
+**Tilt alerts.** After each refresh that brings new fills for today, Pulse checks
+today's fills for five specific patterns and, when one shows up, puts a calm banner
+at the top of Today that names it ("3 losses in 40 minutes. This is when revenge
+trades happen. Step away for 15 minutes?"): a re-entry within 15 minutes of a loss,
+3 losses within 45 minutes, a trade over 1.5× your usual size right after a loss,
+more trades than your check-in's max trades (or well past your usual day: over
+1.5× its median, at least 3), and your loss limit 80% used or reached (the same
+limit as the tripwire, which keeps its own notification: one, not two). Only what
+happened in the last hour counts, and "today" is today on your clock. **Taking a
+break** starts the same 15-minute break as quiet mode, with its countdown, and logs
+it on the day (`breaks`, marked as from an alert); breaks never change Discipline.
+**Dismiss** puts it away. Each pattern is said at most once a day, and never within
+30 minutes of the last alert (`pzTiltAlerts` and `pzTiltAlertPick` in
+`app/progress.js`). With notification permission, the alert also comes as a system
+notification through the service worker, and while a session is live (a trade in
+the last two hours) the refresh keeps running in a background tab so it can.
+Settings → **Tilt alerts** turns them off. With Pulse closed, members who share
+verified Discipline get the same alerts as a push (pref kind `tilt`, on by default,
+**Tilt alerts while Pulse is closed** under Reminders): the server reads their public
+fills every 5 minutes (four members a minute at most) and runs the same two
+functions on their clock; the plan and loss-limit checks need the journal, so those
+two are app-only. When Pulse was open on one of their devices in the last 10
+minutes, the app says it instead.
 
 **Market conditions.** Each day is tagged from BTC's daily candles: *volatile*,
 *normal* or *quiet* (the day's high–low range against the median of the 30 days
@@ -475,10 +524,30 @@ link to join *your* league. A server upgraded from an older version imports its
   mentor's **Mentees** screen with each day's score, slips and the lesson they wrote
   that night, and the mentor can leave a note on any day. Notes arrive in the
   member's inbox (Today → New for you) and as a push notification.
+- **Trade reviews.** A member who lets mentors in can send one trade to the league's
+  mentors: **Ask mentor** on a Pulse journal card, or **Ask my mentor to review this
+  trade** under an expanded trade in the full journal. What goes is the shape of a trade
+  post (market, side, open and close times, entry, exit, planned stop and target, %
+  and R, a size range instead of the size) plus their note and the day's plan; the
+  dollar result only with **Show dollar P&L** on (and it's hidden again if they switch
+  that off). The server knows the trade by a hash of its id, never the id itself (it
+  holds the wallet address). Mentors see it under **Trades to review** (Social →
+  Reviews, `#reviews`), comment as often as they like and mark it **Reviewed ✓**; the
+  member gets each comment in their inbox, replies in the thread (Pulse `#tr/<id>`, or
+  under the trade in the journal) and sees **Reviewed by @mentor**. Only the member
+  and the server's mentors see a thread, and only while the member lets mentors in:
+  switching that off, a suspension, or the owner standing a mentor down closes it at
+  once. Admins read every thread for moderation, read-only (`GET
+  /api/social/admin/reviews[/<id>]`, and in Pulse under Reviews). Limits: 10 new trades a
+  day, 60 comments an hour, 1,000 characters a comment, 200 comments a thread, the newest
+  100 trades per member. The member can take a trade back (its thread goes with it);
+  deleting a profile removes its trades and threads, and its comments on anyone else's.
+  Stored in `pulse.db` (`reviews`, `review_comments`). Routes: `GET/POST /reviews`,
+  `GET/DELETE /reviews/<id>`, `POST /reviews/<id>/comments`, `POST /reviews/<id>/reviewed`.
 - **Reminders (web push).** In Pulse's settings, **Remind me on this device** sends a
   morning check-in reminder and, on days you traded and haven't reviewed, an evening
-  review reminder, at times you pick on your own clock; partner nudges, mentor notes
-  and season results come the same way. It's standard web push, encrypted end to end
+  review reminder, at times you pick on your own clock; partner nudges, mentor notes,
+  season results and tilt alerts (see Tilt alerts above) come the same way. It's standard web push, encrypted end to end
   (RFC 8291) with the server's own keys — no third-party service. On iPhone it needs
   Pulse added to the Home Screen.
 
@@ -574,6 +643,43 @@ opens your journal, backups or the server's other routes. Removing or suspending
 closes the panel to them at once. The Admins card lists who did what recently, and
 wallet decisions record who made them.
 
+**Two-factor for the admin panel.** Optional, per person: under **Settings → Security**
+the owner and each admin can add **admin passkeys** (Face ID, a fingerprint, the device
+PIN or a security key) and an **authenticator app** (RFC 6238 codes: scan the QR code, or
+type the key shown under it). The first one switches two-factor on for that person and
+comes with **ten one-time recovery codes**, shown once (stored hashed; **Make new codes**
+replaces them). From then on the panel needs the token or admin sign-in **plus** a second
+step: on the sign-in screen it asks for a passkey, a code from the app or a recovery code,
+and keeps that browser signed in for 12 hours (an `HttpOnly`, `SameSite=Strict` cookie,
+`Secure` over https, sent only to `/api/social/admin/`; it opens nothing without the
+token or key, and **Sign out** ends it). A session that runs out while the panel is open
+asks again in a dialog and carries on. Admin passkeys are separate from Pulse passkeys:
+they never sign anyone in to Pulse. The Security card also shows the owner which admins
+have two-factor, a switch to **require it of every admin** (those without it are asked to
+set it up the next time they open the panel), and **Reset** for an admin who lost their
+factors. Wrong codes are rate-limited: five for one person within 10 minutes lock codes
+for that person for `AUTH_LOCK_MIN` minutes (twice as long on each lock in a row; a
+passkey still works meanwhile), and each wrong code or failed passkey also counts toward
+the address lockout (`AUTH_FAIL_MAX`). Two-factor only ever guards the admin panel's API,
+`/api/social/admin/*`: the access token keeps working alone for `/api/v1`, `/api/data`,
+backups, the full journal and scripts. Set `ADMIN_2FA` on the server:
+
+- `optional` (the default) — each person chooses, as above.
+- `required` — the owner and every admin need it. Someone with nothing set up yet gets
+  the setup screen right after signing in, and the panel opens once they've added a
+  passkey or an app. While it's required, nobody can remove their last factor.
+- `off` — never asked for; anything already set up is kept for when it's back on.
+
+**Lost every factor?** On the server, run `node server.js --reset-admin-2fa` (same
+`DATA_DIR`), or set `ADMIN_2FA_RESET=1` and restart (on Railway: add the variable, let it
+redeploy, then delete the variable). Either clears **the owner's** factors and ends every
+admin session; admins keep theirs (reset an admin's from the Security card). A given
+`ADMIN_2FA_RESET` value resets only once, so leaving it set doesn't keep wiping it; use a
+new value (`2`, …) to reset again. Everything lives in `DATA_DIR/admin-2fa.json` (mode
+`0600`): passkey public keys, authenticator-app secrets, and hashes of the recovery codes
+and sessions. If that file can't be read, the admin panel answers 503 instead of
+dropping everyone's second factor, until it's fixed or reset.
+
 **Admin panel (`/admin`).** Sign in with `AUTH_TOKEN` (the owner) or as an admin. Tabs:
 
 - **Overview** — members, activity, tiers, top XP, coach use and setup warnings.
@@ -590,7 +696,9 @@ wallet decisions record who made them.
     reason.
   - **More filters:** wallet unverified, wallet waiting for you, and no wallet.
 - **Duels** — on/off, which kinds are allowed, the winner's XP and the limits,
-  every duel running or waiting (with cancel) and recent results.
+  the ladder (on/off, K, duels to be listed) and group duels (on/off, most
+  people), the ladder season's top 10, every duel and group duel running or
+  waiting (with cancel) and recent results.
 - **Insights** — the whole league at once, or any segment of it. Filter by style,
   trade size, experience and activity (the "Traders like you" ranges), league,
   level, month joined, verified, and when last seen. For whatever is in view:
@@ -639,7 +747,7 @@ wallet decisions record who made them.
 - **Wallets** — wallet approval on/off, and approve or reject each member's wallet
   (single or in bulk, with a note); waiting wallets come first.
 - **Feed** — announcements and moderation. **Settings** — open/closed, invite code,
-  claimed wallets only, encrypted sync.
+  claimed wallets only, encrypted sync, and **Security**: two-factor for the panel (above).
 
 Without `AUTH_TOKEN` the admin API refuses every request instead of opening to everyone.
 
@@ -678,7 +786,8 @@ Every trade row expands into a journal entry:
   last changed after the close **written after close**, and the two are scored
   separately under Plan adherence (hindsight plans flatter stop discipline).
   Perp positions opened in the last 7 days with no written stop get a
-  dashboard nudge.
+  dashboard nudge. Once the trade closes, a line under the plan shows the
+  planned R:R, the achieved R and a verdict (see **Plan vs outcome** below).
 - **Notes** — free text.
 - **Attachments** — paste or drop screenshots; stored in this browser (and on
   the server when synced). The ✎ on a thumbnail opens a mark-up editor: arrows,
@@ -710,8 +819,29 @@ they happened. The exit line and the worst/best marks appear only at the end. A
 readout shows the position, average entry and P&L so far at each bar (gross,
 before fees, and in R when the risk is known), and your journal note sits
 underneath. You can play, pause, step a bar back or forward, scrub, and switch
-between 1×, 3× and 8×. **📎 Attach chart** saves the chart as it looks right now
-to the trade's screenshots, ready to mark up with ✎.
+between 1×, 3× and 8×. **⇤ / ⇥** jump from fill to fill, and the readout names
+the fill ("Fill 2 of 4: add 0.5 @ 64,210") with the position size, average entry,
+unrealised and realised P&L after it; the latest fill marker is drawn larger. With
+coach mode on, your plan (stop, target, verdict) sits under the chart with your note. The controls work
+from the keyboard: ← → one bar, Shift+← → one fill, Space play/pause, Home/End.
+**📎 Attach chart** saves the chart as it looks right now to the trade's
+screenshots, ready to mark up with ✎.
+
+**Plan vs outcome.** Every closed trade with a written stop gets one verdict,
+decided from prices: **followed the plan** (out at the stop, give or take 10% of
+1R for slippage, at or past the target, or no target set), **exited early**
+(out before the target, stop not hit), **stop moved or widened** (out beyond the
+stop: a bigger loss than planned) or **held past the stop** (price traded through
+the stop while you were in — a fill beyond it, or the candles' worst price once
+Price excursions has run — and you stayed). 1R is the distance from your actual
+entry to the stop, so a clean stop-out is −1R; planned R:R uses the planned
+entry. Both are gross, before fees. The cost of a deviation is measured against
+what the plan would have paid: the −1R stop-out for a moved stop or a hold past
+it, the target for an early exit — but only when the target printed while you
+held (otherwise nobody knows, and it's listed as not costed). Diagnostic → **Plan
+vs outcome** has the full table: share of trades planned, adherence, average R
+followed vs not, each deviation's count, average R and cost, and planned vs
+achieved R by setup.
 
 Everything you journal becomes analytical fuel: tags, setups, ratings, and
 mistake flags are all mined as pattern-miner families, and the Review view
@@ -817,6 +947,10 @@ The statistician's view of your trading. Sections top to bottom:
   went *through* the stop and you held on counts as a broken stop even if the
   exit recovered (approximate ≈ measurements never convict). Plans written
   live and after the close are reported separately.
+- **Plan vs outcome** — every planned trade's verdict (followed, exited early,
+  stop moved or widened, held past the stop), adherence, average R followed vs
+  not, what each kind of deviation cost against the plan, and planned vs
+  achieved R by setup. Definitions under *The journal* above.
 - **What if I stopped doing X** — pick any condition the miner knows about and
   deterministically replay your actual trade sequence *without* those trades:
   side-by-side net, expectancy, win rate, drawdown, and an
@@ -1070,10 +1204,61 @@ follow and your leagues' members). Money is never staked; XP can be.
   - Switch duels on or off, choose the allowed types, and set the XP bonus,
     the limits and XP stakes (on or off, the most per duel, the most of a
     member's XP at stake).
-  - See every duel running or waiting, and cancel one without a result.
+  - Switch the ladder on or off and set K and the duels to be listed; switch
+    group duels on or off and set their most people (3 to 6).
+  - See the ladder's current season and its top 10, and the last podium.
+  - See every duel and group duel running or waiting, and cancel one without a
+    result.
   - "Duels" is a Pulse feature that unlocks at level 3 (1,200 XP on the default
     curve), so members have a record to compete on and XP to stake. Change the
     level under Features (1 makes it free); the server enforces it too.
+
+#### Duel ladder
+
+Every member has a duel rating, shown on their profile next to their record
+and on the Duels screen.
+
+- **Rating.** Elo-style: everyone starts at 1000, and each 1v1 result (win, loss
+  or draw, forfeits included) moves both sides by up to K points (32 by
+  default). What one side gains the other loses, and beating a higher rating
+  counts more. Duels backed out of before the start, and duels the admins
+  cancel, don't count. Group duels don't change ratings.
+- **Ladder.** The Duels screen ranks members with at least 3 rated duels (the
+  owner sets the number). Only members who share their profile and take
+  challenges are listed; everyone sees their own rating.
+- **Seasons.** One per calendar quarter. The season standing is rating points
+  gained during it. A season closes on the 2nd day of the next quarter, once its
+  last duels have settled. The top 3 with points gained are notified, get a
+  season badge (Duel season champion, runner-up or podium; system badges like
+  league seasons) and a feed line if they share milestones. Then every rating
+  moves 25% of the way back to 1000. Past podiums stay on the Duels screen.
+
+#### Group duels
+
+A member sets up a group duel ("pod") for 3 to 6 people (the owner sets the
+most) from **Social → Duels → Group duel**: Discipline, clean days, last one
+standing, journaling or process XP (no % return, no XP stakes), for a week or a
+month, verified from fills if everyone has verification on. They pick people
+with the same quick picks as a 1v1, or by name; anyone who takes challenges can
+be invited.
+
+- **Invites.** Each invitee has 48 hours to accept or decline. Once 3 people
+  (the creator included) are in, the dates are fixed: the next Monday, or the
+  1st. Invitations still open can be accepted until the start. With fewer than
+  3 in after 48 hours, the group duel lapses. Before the start, the creator can
+  call it off and others can back out; if that leaves fewer than 3, it waits
+  for more answers again or, once the 48 hours are up, it's off.
+- **Scoring.** Each member is scored like one side of a 1v1, then ranked:
+  the higher score wins; in last one standing, whoever falls last (equal
+  results share a place; several still standing share first). A member whose
+  wallet changes mid-duel is out, and so is one who leaves after the start.
+  Anyone out places last.
+- **Results.** Settled the day after it ends. Everyone gets a placing; a sole
+  winner gets the league's duel XP bonus (only if at least one other member
+  played to the end). Profiles show "Group duels won". A group duel counts once
+  toward each member's open-duel limit, invitations included.
+- **Notifications.** Invites, the start, lead changes (once a day at most) and
+  the result.
 
 ### Traders like you
 
@@ -1116,9 +1301,32 @@ dimensions to match and see each group's spread.
   trades, account value or drawdown. The dollar figures are for you only; they
   never go into the groups. Left-out wallets show how many trades they had.
   "How traders are grouped" in the same tab spells out the rules.
+- **Traders like you who improved.** The server keeps each contributor's
+  summary weekly (members and seed wallets; at most one snapshot a week, about
+  26 weeks, never sent out). At each build it looks, per peer group, at everyone
+  followed for 8–12 weeks and finds who moved from the group's bottom half to
+  its top half on Discipline or profit factor. It then compares the median
+  change for those improvers with the median change for everyone else: trades a
+  week, revenge share, hold time, journaling, fees, win rate, average win ÷ loss,
+  and, for members, how often each slip showed up in their synced days. Changes
+  are ranked by effect size (the gap between the two medians over the spread of
+  everyone's changes). A change is shown only when both sides have at least 5
+  traders and the group has at least the smallest group size followed that long.
+  If a group can't say anything yet, a broader one is used, as with the spreads.
+  `GET /api/social/bench` returns it as `improvers: {key, n, nOthers, panel,
+  changes: [{metric, label, unit, improversDelta, othersDelta, from, to, n,
+  nOthers, effect, text}], note}`, where `note` says plainly why nothing is shown.
+  Pulse → Stats has a simple card, "What traders like you changed when they
+  improved", with two or three changes. Each has **Make it my habit**, which adds
+  the matching habit or plugs the matching leak, and a tooltip with the numbers.
+  The journal's Review has the full table. Admin → Benchmarks shows improvers per
+  group and the top changes overall. Members who switch off "Count me in" lose
+  their history at once; members who leave or are removed, and seed wallets taken
+  out, lose theirs at the next build.
 - It's a Pulse feature like the others, **free at level 1**. Set a level under
   Admin → Features to make it an unlock. The AI coach sees the member's standing
-  (group spreads only) and can use it to make a habit concrete.
+  (group spreads only) and can use it to make a habit concrete. It also sees up
+  to three things improvers changed.
 
 ## The Project view
 
@@ -1186,6 +1394,7 @@ switches moved into **Settings**).
 | **Tax PDF** | Bank-statement-style PDF for your accountant: cover summary per tax year, monthly subtotals, and every realized trade with a running balance and page footers. Generated entirely client-side by a built-in dependency-free PDF writer (base-14 Courier fonts) — nothing leaves your machine, and the strict CSP stays intact. |
 | **Spot lots** | 8949-style lot-level CSV for spot: FIFO cost basis, one row per lot consumed by each sale — quantity, acquired/disposed dates, proceeds, basis, gain, short/long term. Sales of tokens that were transferred or airdropped in (no on-exchange purchase) are emitted at zero cost with an explicit `UNKNOWN BASIS` note for your accountant to resolve. Built from the locally cached fills. |
 | **Tax export by country…** | Tax exports set up for your country, with a preview per tax year before you download. **US**: FIFO lots, short vs long term. **UK**: HMRC's matching for cryptoassets (same day, then the next 30 days, then the Section 104 pool), on the 6 April tax year. **Germany**: FIFO, with coins held more than a year marked tax-free and the year's tax-free total shown. **Australia**: FIFO, flagging gains that may get the 50% CGT discount, on the 1 July income year. **Canada**: adjusted cost base (average cost), flagging possible superficial losses. **Other**: FIFO by calendar year. Set a report currency and paste a daily rate table (`YYYY-MM-DD,rate`, units per 1 USD, e.g. from your central bank). Each fill converts at its own date, and the download stays disabled until every fill has a rate. Two CSVs: spot disposals (asset, quantity, dates, proceeds, costs including fees, gain, matching rule, flag) and closed perp trades (realized P&L, fees, funding and net, each converted at the close date). Every wallet is pooled, since tax is per person. It computes gains, not tax. **Not tax advice.** |
+| **Koinly CSV / CoinTracker CSV** (in Tax export by country…) | Files in the import formats of the two most used crypto tax tools. **Koinly** (universal format): `Date, Sent Amount, Sent Currency, Received Amount, Received Currency, Fee Amount, Fee Currency, Net Worth Amount, Net Worth Currency, Label, Description, TxHash`, dates `YYYY-MM-DD HH:mm:ss` UTC. **CoinTracker**: `Date, Received Quantity, Received Currency, Sent Quantity, Sent Currency, Fee Amount, Fee Currency, Tag`, dates `MM/DD/YYYY HH:mm:ss` UTC. Spot fills are trades (the fee in its own coin). Perps keep the other exports' treatment, one closed trade at its close time: realised profit is received, a loss sent (Koinly `realized gain`, CoinTracker `margin_gain` / `margin_loss`), with the trade's fees in the fee column; its funding is its own row (paid: Koinly `margin fee`, CoinTracker `margin_fee`; received: `realized gain` / `margin_gain`); a fee rebate is `realized gain` / `margin_rebate`. Deposits and withdrawals (capital flows) are untagged transfers in USDC. Amounts stay in the coins traded (both tools price them in your currency); Net Worth is the USD value where the quote is a stablecoin. Pick all history, one tax year (the country's tax year) or a date range. |
 | **Export journal** | Journal entries as JSON. |
 | **Backup all** | Everything portable in one JSON: journal, wallets, settings, saved MAE/MFE measurements, and per-wallet fill caches (which preserve history beyond the API's pagination cap — keep these). Restore via **Open existing** or by importing on another device. |
 | **Backup to server** | (shown when server sync is connected) The same full backup, stored gzipped on the companion server under `DATA_DIR/backups/` — newest 10 kept. List and fetch them back via `GET /api/backups`. |
@@ -1385,7 +1594,11 @@ behavior.
   10 minutes lock that address out of every token-gated route for
   `AUTH_LOCK_MIN` (default 15) minutes — a 429 with `Retry-After`, even for the
   right token. A request with no token at all, or a `READ_TOKEN` asking for a
-  full-token route, never counts as a guess.
+  full-token route, never counts as a guess. A wrong admin second-factor code or
+  passkey does count.
+- **Admin two-factor** (`ADMIN_2FA`, see *Two-factor for the admin panel* above) only
+  gates `/api/social/admin/*`. Nothing here, and nothing else the token opens, ever asks
+  for a second factor.
 
 ```bash
 # examples
@@ -1500,7 +1713,10 @@ boot the full journal with a token, load sample data, open every tab, save a jou
 note and check it reaches the server and survives a reload, check that a reload
 takes every `app/` script from cache, open the app offline through the service
 worker, open `ledger.html` straight from disk, open Pulse at phone width (no
-sideways scroll), and open every admin tab, failing on any uncaught page error. Each step also has a time budget (boot 3 s, sample data 4 s, a tab switch
+sideways scroll), open every admin tab, and run admin two-factor at 360 and 1280 px
+(setting up an app from its QR code and a passkey in Chrome's virtual authenticator,
+the second step on the sign-in screen and as a dialog when a session ends, sign-out,
+`ADMIN_2FA=required` first-time setup), failing on any uncaught page error. Each step also has a time budget (boot 3 s, sample data 4 s, a tab switch
 2.5 s; `E2E_SLOW=2` doubles them for slow machines, and CI uses that). Playwright is
 deliberately not a dependency of the repo: install it with
 `npm i --no-save playwright && npx playwright install chromium`. CI runs these in a
@@ -1508,9 +1724,9 @@ separate job on every push.
 
 Architecture in one paragraph: `ledger.html` holds the markup, styles and fonts,
 and loads its code from `app/` as ordinary scripts, in order: vendored Chart.js,
-then fifteen parts from `core.js` (storage, sync, the exchange API) and
-`engine.js` (reconstruction and analytics) through the views and Pulse to
-`boot.js`, which runs last. The parts share one global scope, the way the single
+then seventeen parts from `core.js` (storage, sync, the exchange API) and
+`engine.js` (reconstruction and analytics) through the views, Pulse and `plans.js`
+(plan vs outcome) to `boot.js`, which runs last. The parts share one global scope, the way the single
 inline script did. **The one rule:** code that runs *while a part loads* (as
 opposed to inside a function called later) may only use names from that part or
 an earlier one. The browser smoke tests catch a break, since every part loads on

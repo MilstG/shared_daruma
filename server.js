@@ -79,6 +79,7 @@ const Push = require('./push.js');
 const Wear = require('./wear.js');
 const Offsite = require('./offsite.js');
 const CexRelay = require('./cex-relay.js');
+const Admin2fa = require('./admin2fa.js');
 const { readAppSource, appScripts } = require('./app-source.js');
 
 const MAX_BODY = 25 * 1024 * 1024; // journal snapshots are small; this is generous headroom
@@ -113,6 +114,8 @@ const ENGINE_FNS = [
   'isJournaled',
   // Pulse's Discipline score, recomputed from a member's public fills to verify the social boards
   'nfMedian', 'addedToLoser', 'pzBehaviorDays',
+  // live tilt alerts, pushed to those members while Pulse is closed (same patterns and rules as the app)
+  'pzTiltAlerts', 'pzTiltAlertPick',
   // the anonymous summary a seed wallet contributes to the "traders like you" benchmarks
   'peerSummary',
   // Hyperliquid client (retry/backoff/pagination identical to the browser's)
@@ -422,6 +425,8 @@ const COACH_CHAT_SYSTEM = [
   'Form: 50 = their usual recent results. Load: 50 = their usual day\'s activity. Readiness: from their',
   'morning check-in (sleep, calm, focus). tradersLikeYou: where they stand among anonymous traders of',
   'their style, size and experience (betterThanOutOf100); use it to make a habit concrete, never to shame.',
+  'tradersLikeYou.whatImproversChanged: what traders like them who got better over 8-12 weeks changed, against those',
+  'who didn\'t (group medians); offer one of these as a next habit when it fits.',
 ].join('\n');
 // Deep-copies an attached JSON summary within limits, scrubbing wallet addresses.
 function scrubCoachData(v, depth) {
@@ -2232,6 +2237,17 @@ function createApp(opts) {
     return E.pzBehaviorDays(closed, { dayOf: zoneDay(tz || 'UTC'), isLoss: n => n < -1 /* same fixed rule as the app's PZ_LOSS */ })
       .map(d => ({ k: d.key, s: d.score, n: d.n }));
   };
+  // Live tilt alerts for a member with Pulse closed: the same cached fills, today's patterns by the
+  // app's pzTiltAlerts on the member's clock, and its once-a-day / 30-minute rules (state: theirs, kept
+  // by the social layer). The plan and loss limit live in their journal, so those two aren't checked here.
+  const tiltFor = async (addr, tz, state) => {
+    if (!engine.ok || !E.pzTiltAlerts || !E.pzTiltAlertPick) return null;
+    const a = String(addr).toLowerCase(); if (!/^0x[0-9a-f]{40}$/.test(a)) return null;
+    const fills = await recentFills(a); if (!fills) return null;
+    const trades = [...E.attributeFunding(E.reconstructTrades(fills, a, 'perp'), []), ...E.attributeFunding(E.reconstructTrades(fills, a, 'spot'), [])];
+    const now = (opts.now || Date.now)(), dayOf = zoneDay(tz || 'UTC');
+    return E.pzTiltAlertPick(E.pzTiltAlerts(trades, { now, dayOf, isLoss: n => n < -1 }), state, now, dayOf(now));
+  };
   // "Traders like you" seed wallets: the same anonymous summary a member's app sends, worked out here
   // from the wallet's public fills over the last 90 days (and its on-chain return for the last 30).
   // Wallets with more than 20,000 fills in that time are bots or market makers and are left out.
@@ -2293,8 +2309,12 @@ function createApp(opts) {
   const wearRef = {}; // filled in below, once the wearables store exists
   const cexRelay = CexRelay.createCexRelay({ env: opts.cexEnv || process.env, fetchImpl: opts.cexFetch || opts.fetchImpl, now: opts.now });
   if (cexRelay.relayOnly && !cexRelay.secretSet) console.warn('[ledger] CEX_RELAY_ONLY is on but CEX_RELAY_SECRET is not set — the relay will refuse every request');
+  // the admin panel's optional second factor (admin2fa.js): ADMIN_2FA=required|optional|off; wrong codes
+  // also count toward this address's lockout above
+  const twofa = Admin2fa.create({ dataDir, json, now: opts.now, lockedOut, noteBadToken, lockMs, sessionMs: opts.admin2faSessionMs,
+    mode: opts.admin2fa !== undefined ? opts.admin2fa : process.env.ADMIN_2FA, reset: opts.admin2faReset !== undefined ? opts.admin2faReset : process.env.ADMIN_2FA_RESET });
   const social = createSocial({ dataDir, json, authOk, adminConfigured: !!auth, fetchImpl: opts.fetchImpl, now: opts.now, push: pushCfg, onDrop: id => wearRef.forget && wearRef.forget('m:' + id),
-    behaviorFor, peerSummaryFor: opts.peerSummaryFor || peerSummaryFor, seedDelay: opts.seedDelay, tradeCheck: opts.tradeCheck || tradeCheck, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled });
+    behaviorFor, tiltFor: opts.tiltFor || tiltFor, peerSummaryFor: opts.peerSummaryFor || peerSummaryFor, seedDelay: opts.seedDelay, tradeCheck: opts.tradeCheck || tradeCheck, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled, twofa });
   // readiness from WHOOP, Oura or Apple Health: the owner (AUTH_TOKEN) or a member (Pulse key)
   const wearOrigin = req => { if (publicOrigins[0]) { try { return new URL(publicOrigins[0]).origin; } catch (e) {} }
     return hostVetted && req.headers.host ? 'https://' + req.headers.host : opts.wearOrigin || null; };
@@ -2479,6 +2499,15 @@ function createApp(opts) {
         if (err) return json(res, 404, { error: 'admin.html not deployed alongside server.js' });
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache',
           'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' });
+        res.end(buf);
+      });
+      return;
+    }
+    // the admin panel's two-factor screens (kept out of admin.html, which has a size budget)
+    if (req.method === 'GET' && url === '/admin2fa-ui.js') {
+      fs.readFile(path.join(__dirname, 'admin2fa-ui.js'), (err, buf) => {
+        if (err) return json(res, 404, { error: 'admin2fa-ui.js not deployed alongside server.js' });
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
         res.end(buf);
       });
       return;
@@ -2767,6 +2796,14 @@ function createApp(opts) {
   return server;
 }
 
+if (require.main === module && process.argv.includes('--reset-admin-2fa')) {
+  // the escape hatch for an owner who lost every admin second factor: clears the owner's, ends every
+  // admin session, and exits (admins keep theirs). Same DATA_DIR rules as createApp.
+  const dir = process.env.DATA_DIR || (fs.existsSync('/data') ? '/data' : path.join(__dirname, 'data'));
+  const r = Admin2fa.resetOwner(dir);
+  console.log('[ledger] admin two-factor: the owner’s factors were ' + (r.had ? 'removed' : 'already clear') + ' and every admin session ended (' + path.join(dir, Admin2fa.FILE) + ').');
+  process.exit(0);
+}
 if (require.main === module) {
   // a stray rejection is logged, not fatal: one failed background write shouldn't take every member offline
   process.on('unhandledRejection', e => console.error('[ledger] unhandled rejection: ' + (e && e.stack || e)));

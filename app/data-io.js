@@ -221,7 +221,8 @@ async function loadAll(opts){ opts=opts||{}; const fresh=!!opts.fresh, auto=!!op
     // Pulse has no data-health strip: say once when an open trade turned out to be closed off the record
     if(PZ){ const o=allTrades.filter(t=>t.orphan), k=o.map(t=>t.id).join('|'); if(o.length&&k!==_orphSeen){ _orphSeen=k;
       pzNote(o.length+' position'+(o.length===1?'':'s')+' ('+o.slice(0,3).map(t=>dispMarket(dcoin(t))+' '+(t.dir||'').toLowerCase()).join(', ')+') closed without a closing fill in your history — likely a liquidation. Left out of your stats.'); } }
-    if(PZ)pzRender(); }
+    // new fills for today: check them for a tilt pattern before drawing (the banner shows on this render)
+    if(PZ){ try{ pzTiltAlertCheck(); }catch(e){ console.warn('tilt alerts',e); } pzRender(); } }
   // measuring excursions fetches candles: wait until the browser is idle so it never competes with the first paint
   if(typeof requestIdleCallback==='function')requestIdleCallback(()=>autoRatchet(),{timeout:8000}); else setTimeout(autoRatchet,3000);
 }

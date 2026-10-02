@@ -91,7 +91,8 @@ function pzProgressHtml(D){
     ${P('goals',(()=>{ try{ return pzGoalsHtml(g); }catch(e){ console.warn('goals',e); return ''; } })())}
     <div class="pz-col">${P('xpsources',xpCard)}${P('challenge',chHtml)}${P('habits',habitsHtml)}${P('reports',reportHtml)}</div>
     <div class="pz-col">${P('leaks',leakHtml)}${P('lessons',(()=>{ try{ return pzLessonsCardHtml(); }catch(e){ console.warn('lessons',e); return ''; } })())}${P('moments',gmHtml)}${P('badges',badgeHtml)}${P('bests',pb)}</div>
-    <section class="pz-span" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${share?`<span class="pz-fine">${pzI('lock',14)} Share cards unlock at level ${share}</span>`:'<button type="button" class="pz-ghost pz-sm" id="pzShare" style="width:auto;padding:0 16px">Share this week</button>'}</section>
+    <section class="pz-span" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${share?`<span class="pz-fine">${pzI('lock',14)} Share cards unlock at level ${share}</span>`:'<button type="button" class="pz-ghost pz-sm" data-pz-wk="open" style="width:auto;padding:0 16px">Share my week</button>'}</section>
+    ${pzS.wk&&!share?pzWkHtml():''}
     <div class="pz-span" id="gmOut"></div>
     ${pzCustomizeLink('progress')}
   </div>`;
@@ -306,6 +307,112 @@ async function pzShareReport(){
     big:[['Grade',r.grade],['Process',Math.round(r.avg)],['XP',r.xp]],rows,foot:'Pulse · graded on process, not profit'});
   showCardOut(blob,'pulse-report-'+key,'Pulse '+label+' report card: '+r.grade+' · process '+Math.round(r.avg)+'/100 · '+r.good+'/'+r.days+' good days',await shareAvailable());
 }
+// ---- "Share my week": an image of your process, with no dollar amounts or P&L, on purpose ----
+// src: {from, to, days:[{key,score}], streak:{current,best}, level:{level,title}, xpByDay, badges, duel:{w,l,d}}
+// show: {level, duel, badges}, each on unless false. Pure: the card draws only what this returns.
+function pzWeekCardModel(src, show){
+  show=show||{}; const inW=k=>k>=src.from&&k<=src.to, days=(src.days||[]).filter(d=>d&&inW(d.key));
+  const xp=Object.keys(src.xpByDay||{}).filter(inW).reduce((a,k)=>a+(+src.xpByDay[k]||0),0);
+  // badges for results are about money: never on this card
+  const earned=(src.badges||[]).filter(b=>b&&b.k&&b.t&&b.c!=='results'), rank=(a,b)=>(b.r||0)-(a.r||0)||(a.k<b.k?1:a.k>b.k?-1:0);
+  const wk=earned.filter(b=>inW(b.k)).sort(rank), top=wk.concat(earned.filter(b=>!inW(b.k)).sort(rank)).slice(0,3);
+  const d=src.duel, st=src.streak||{};
+  return {from:src.from,to:src.to,discipline:days.length?Math.round(days.reduce((a,x)=>a+(+x.score||0),0)/days.length):null,
+    cleanDays:days.filter(x=>x.score>=70).length,tradingDays:days.length,streak:{current:+st.current||0,best:+st.best||0},
+    level:show.level===false||!src.level?null:{level:+src.level.level||1,title:String(src.level.title||''),xp:Math.round(xp)},
+    duel:show.duel===false||!d||!((+d.w||0)+(+d.l||0)+(+d.d||0))?null:{w:+d.w||0,l:+d.l||0,d:+d.d||0},
+    badges:show.badges===false?[]:top.map(b=>({name:String(b.t).replace(/ · .*/,''),tier:Math.max(0,Math.min(5,+b.r||0)),isNew:inW(b.k)}))};
+}
+// this week on your clock, or last week when this one has no trading yet
+function pzWeekCardSrc(g){
+  const mon=isoWeekMondayKey(isoWeekOfKey(dayKey(Date.now()))); let from=mon, to=pzAddDays(mon,6);
+  if(!g.days.some(d=>d.key>=from&&d.key<=to)){ from=pzAddDays(mon,-7); to=pzAddDays(mon,-1); }
+  const c=SOC.me&&socDuelsOn()?socDuels():null;
+  return {from,to,days:g.days,streak:g.streak,level:g.level,xpByDay:g.xp.byDay,badges:g.catalog?g.catalog.earned:[],duel:c&&c.d?c.d.record:null};
+}
+// fmt: 'portrait' (1080×1350) or 'square' (1080×1080); theme: 'dark' or 'light'
+function pzWeekCardDraw(m, fmt, theme){
+  const sq=fmt==='square', W=1080, H=sq?1080:1350, P=72, L=theme==='light';
+  const C=Object.assign({},L?PZ_COL_LIGHT:PZ_COL_DARK,L?{bg:'#F3F5F8',card:'#FFFFFF',line:'#E1E5EB',text:'#111821',muted:'#56606E',track:'#E4E8EE'}:{bg:'#0A0C0F',card:'#14171C',line:'#1F242B',text:'#F3F5F7',muted:'#A1AAB5',track:'#262B33'});
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H; const x=cv.getContext('2d');
+  const F=(w,s,fam)=>w+' '+s+'px '+(fam==='n'?'"Barlow Condensed", "Arial Narrow", sans-serif':'Inter, system-ui, sans-serif');
+  const text=(s,tx,ty,font,col,align,maxW)=>{ x.font=font; x.fillStyle=col; x.textAlign=align||'left';
+    if(maxW){ let sz=+/(\d+)px/.exec(font)[1]; while(sz>12&&x.measureText(s).width>maxW){ sz-=2; x.font=font.replace(/\d+px/,sz+'px'); } }
+    x.fillText(s,tx,ty); };
+  const box=(bx,by,bw,bh,r)=>{ x.beginPath(); x.moveTo(bx+r,by); x.arcTo(bx+bw,by,bx+bw,by+bh,r); x.arcTo(bx+bw,by+bh,bx,by+bh,r); x.arcTo(bx,by+bh,bx,by,r); x.arcTo(bx,by,bx+bw,by,r); x.closePath(); };
+  const ring=(cx,cy,r,lw,p,col)=>{ x.lineCap='round'; x.lineWidth=lw; x.strokeStyle=C.track; x.beginPath(); x.arc(cx,cy,r,0,2*Math.PI); x.stroke();
+    if(p>0){ x.strokeStyle=col; x.beginPath(); x.arc(cx,cy,r,-Math.PI/2,-Math.PI/2+2*Math.PI*Math.min(1,p)); x.stroke(); } };
+  x.fillStyle=C.bg; x.fillRect(0,0,W,H);
+  const glow=x.createRadialGradient(W*0.85,H*0.08,0,W*0.85,H*0.08,W*0.7); glow.addColorStop(0,C.good+(L?'22':'2A')); glow.addColorStop(1,C.good+'00'); x.fillStyle=glow; x.fillRect(0,0,W,H);
+  // the brand mark and the week
+  ring(P+22,P+24,19,7,0.72,C.good); text('Pulse',P+58,P+38,F(600,40),C.text);
+  const md=k=>MONTHS[+k.slice(5,7)-1]+' '+(+k.slice(8));
+  text('Week of '+md(m.from)+' – '+md(m.to),W-P,P+36,F(500,28),C.muted,'right',W-2*P-240);
+  // Discipline, the week's average, as the big ring
+  const band=m.discipline==null?'none':m.discipline>=70?'good':m.discipline>=40?'mid':'low', col=C[band]||C.track;
+  const cx=sq?P+200:W/2, cy=sq?470:420, r=sq?170:200;
+  ring(cx,cy,r,sq?30:34,(m.discipline||0)/100,col);
+  text(m.discipline==null?'—':String(m.discipline),cx,cy+(sq?48:56),F(600,sq?150:176,'n'),C.text,'center');
+  text('DISCIPLINE',cx,cy+r+(sq?64:72),F(600,26),C.muted,'center'); text('week average',cx,cy+r+(sq?100:108),F(400,26),C.muted,'center');
+  // the tiles: clean days, streak, then level and duels if shown
+  const tiles=[['Clean days',m.cleanDays+' of '+m.tradingDays,'trading days at 70+'],['Streak',m.streak.current+' day'+(m.streak.current===1?'':'s'),'best '+m.streak.best]];
+  if(m.level)tiles.push(['Level',String(m.level.level),m.level.title+' · +'+m.level.xp.toLocaleString('en-US')+' XP']);
+  if(m.duel)tiles.push(['Duels',m.duel.w+'–'+m.duel.l+(m.duel.d?'–'+m.duel.d:''),'won–lost'+(m.duel.d?'–drawn':'')]);
+  const tile=(t,tx,ty,tw,th)=>{ box(tx,ty,tw,th,22); x.fillStyle=C.card; x.fill(); x.lineWidth=2; x.strokeStyle=C.line; x.stroke();
+    text(t[0].toUpperCase(),tx+28,ty+44,F(600,22),C.muted,'left',tw-56); text(t[1],tx+28,ty+(sq?100:110),F(600,sq?56:64,'n'),C.text,'left',tw-56);
+    text(t[2],tx+28,ty+th-24,F(400,22),C.muted,'left',tw-56); };
+  let by;
+  if(sq){ const tx=P+440, tw=W-P-tx, th=(820-170-16*3)/4; tiles.forEach((t,i)=>tile(t,tx,170+i*(th+16),tw,th)); by=870; }
+  else { const tw=(W-2*P-24)/2, th=168, ty=cy+r+136; tiles.forEach((t,i)=>tile(t,P+(i%2)*(tw+24),ty+Math.floor(i/2)*(th+24),tw,th)); by=ty+Math.ceil(tiles.length/2)*(th+24)+8; }
+  // top badges, as medals in their tier's colour
+  if(m.badges.length){ const bw=(W-2*P)/3;
+    m.badges.forEach((b,i)=>{ const mx=P+i*bw+44, my=by+44, tc=PZ_TIER_COL[b.tier];
+      x.beginPath(); x.arc(mx,my,40,0,2*Math.PI); x.fillStyle=tc+(L?'33':'2E'); x.fill(); x.lineWidth=5; x.strokeStyle=tc; x.stroke();
+      text(PZ_TIERS[b.tier].charAt(0),mx,my+13,F(600,36,'n'),L?C.text:tc,'center');
+      text(b.name,mx+56,my-4,F(600,24),C.text,'left',bw-110); text(PZ_TIERS[b.tier]+(b.isNew?' · new':''),mx+56,my+28,F(400,22),C.muted,'left',bw-110); }); }
+  text('Graded on process, not profit.',P,H-48,F(400,24),C.muted);
+  return cv;
+}
+async function pzWeekCardBlob(m, fmt, theme){
+  try{ if(document.fonts&&document.fonts.ready)await document.fonts.ready; }catch(e){}
+  const cv=pzWeekCardDraw(m,fmt,theme); return await new Promise(res=>cv.toBlob(res,'image/png'));
+}
+// the panel on Progress: a preview, what to show, and three ways out
+function pzWkHtml(){
+  const w=pzS.wk, m=w.m, canShare=typeof navigator.canShare==='function'&&typeof File!=='undefined'&&(()=>{ try{ return navigator.canShare({files:[new File([''],'w.png',{type:'image/png'})]}); }catch(e){ return false; } })();
+  const canCopy=typeof ClipboardItem!=='undefined'&&!!(navigator.clipboard&&navigator.clipboard.write);
+  const seg=(lbl,k,opts)=>`<div class="pz-seg" role="group" aria-label="${lbl}" style="flex:1">${opts.map(([v,l])=>`<button type="button" data-pz-wk="${k}:${v}" aria-pressed="${w[k]===v}" style="flex:1">${l}</button>`).join('')}</div>`;
+  const sw=(k,lbl,hint)=>`<div class="pz-toggle"><span style="flex:1"><b id="pzWk_${k}">${lbl}</b>${hint?`<span>${hint}</span>`:''}</span><button type="button" role="switch" class="pz-switch" data-pz-wk="show:${k}" aria-checked="${w.show[k]!==false}" aria-labelledby="pzWk_${k}"><i></i></button></div>`;
+  return `<section class="pz-card pz-kv pz-span" id="pzWk" aria-labelledby="pzWkT"><div class="pz-kvrow"><b id="pzWkT" class="pz-kvh" style="font-size:16px">Share my week</b><button type="button" class="pz-chip icon" data-pz-wk="close" aria-label="Close share my week">${pzI('x',18)}</button></div>
+    <div style="display:flex;justify-content:center;background:var(--pz-bg);border-radius:14px;padding:10px"><img id="pzWkImg" src="${w.url||''}" alt="Your week: discipline, clean days, streak${w.show.level!==false?', level':''}${w.show.duel!==false?', duels':''}${w.show.badges!==false?', badges':''}" style="display:block;max-width:100%;max-height:440px;aspect-ratio:${w.fmt==='square'?'1/1':'4/5'};border-radius:10px;background:var(--pz-card)"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${seg('Shape','fmt',[['portrait','4:5'],['square','Square']])}${seg('Colours','theme',[['dark','Dark'],['light','Light']])}</div>
+    ${sw('level','Level and XP','')}${sw('duel','Duel record',m&&!m.duel&&w.show.duel!==false?'No duels to show yet':'')}${sw('badges','Top badges','')}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${canShare?`<button type="button" class="pz-cta pz-sm" style="flex:1;min-height:44px" data-pz-wk="share">Share…</button>`:''}<button type="button" class="${canShare?'pz-ghost':'pz-cta'} pz-sm" style="flex:1;min-height:44px" data-pz-wk="dl">Download</button>${canCopy?`<button type="button" class="pz-ghost pz-sm" style="flex:1" data-pz-wk="copy">Copy image</button>`:''}</div>
+    <p class="pz-fine">No dollar amounts and no P&amp;L on this card, on purpose: only your process.</p></section>`;
+}
+async function pzWkMake(){
+  const w=pzS.wk; if(!w)return null; const n=w.n=(w.n||0)+1;
+  const m=pzWeekCardModel(pzWeekCardSrc(gameContext()),w.show), blob=await pzWeekCardBlob(m,w.fmt,w.theme);
+  if(pzS.wk!==w||w.n!==n)return blob; // a newer choice is being drawn
+  if(w.url)URL.revokeObjectURL(w.url); w.blob=blob; w.m=m; w.drawn=w.fmt+'/'+w.theme; w.url=blob?URL.createObjectURL(blob):null; // drawn: what the image on hand shows
+  const img=$('pzWkImg'); if(img&&w.url)img.src=w.url; return blob;
+}
+async function pzWkAction(a){
+  const w=pzS.wk, [k,v]=a.split(':');
+  if(a==='open'){ pzS.wk={fmt:'portrait',theme:document.body.classList.contains('light')?'light':'dark',show:{level:true,duel:true,badges:true}};
+    pzRender(); const el=$('pzWk'); if(el){ el.scrollIntoView({block:'nearest'}); const c=el.querySelector('[data-pz-wk="close"]'); if(c)c.focus(); } await pzWkMake(); pzRender(); return; }
+  if(!w)return;
+  if(a==='close'){ if(w.url)URL.revokeObjectURL(w.url); pzS.wk=null; pzRender(); const b=document.querySelector('[data-pz-wk="open"]'); if(b)b.focus(); return; }
+  if(k==='fmt'||k==='theme'){ w[k]=v; pzRender(); await pzWkMake(); return; }
+  if(k==='show'){ w.show[v]=w.show[v]===false; pzRender(); await pzWkMake(); pzRender(); return; }
+  const blob=w.blob||await pzWkMake(); if(!blob){ pzNote('The image couldn’t be made in this browser.','err'); return; }
+  const name='pulse-week-'+(w.m?w.m.from:dayKey(Date.now()))+(w.fmt==='square'?'-square':'')+'.png';
+  if(a==='dl'){ const u=URL.createObjectURL(blob), el=document.createElement('a'); el.href=u; el.download=name; document.body.appendChild(el); el.click(); el.remove(); setTimeout(()=>URL.revokeObjectURL(u),4000); return; }
+  if(a==='share'){ try{ await navigator.share({files:[new File([blob],name,{type:'image/png'})],title:'My trading week'}); }
+    catch(e){ if(e&&e.name!=='AbortError')pzNote('Sharing didn’t work here. Download the image instead.','err'); } return; }
+  if(a==='copy'){ try{ await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]); pzNote('Image copied. Paste it wherever you like.'); }
+    catch(e){ pzNote('This browser won’t copy images. Download it instead.','err'); } }
+}
 // ---- the AI coach (#coach): a chat about your own trading, within a daily allowance ----
 // The app builds the summary below from your journal and sends it with each message; your trades
 // and notes go along only if you switch that on. The server adds nothing and stores nothing.
@@ -350,6 +457,7 @@ function pzCoachFacts(D){
     tradersLikeYou:(()=>{ try{ const mine=peerMine(), P=mine.ok?peerData(mine):null, grp=P&&P.d?peerGroup(P.d):null; if(!grp)return null;
       const out={group:peerGroupName(grp),traders:grp.n,measures:{}};
       for(const m of PEER_M){ if(m.ctx||!grp.q[m.k]||mine[m.k]==null)continue; out.measures[m.l]={you:m.f(mine[m.k]),typical:m.f(grp.q[m.k][4]),bestQuarter:grp.top[m.k]!=null?m.f(grp.top[m.k]):null,betterThanOutOf100:peerBetter(m,grp.q[m.k],mine[m.k])}; }
+      const I=P.d.improvers; if(I&&I.changes&&I.changes.length)out.whatImproversChanged={improved:I.n,others:I.nOthers,changes:I.changes.slice(0,3).map(c=>c.text)};
       return out; }catch(err){ return null; } })(),
   };
 }
@@ -559,7 +667,7 @@ function socMentorHtml(D){
   const c=socGet('mentees','/mentor',30000), L=c&&c.d?c.d.mentees:null;
   if(!L)return `${back}${pzHead('Mentor','Mentees')}<p class="pz-sub">${c&&c.err?esc(c.err):'<span class="pz-spin"></span>Loading…'}</p>`;
   const pg=pzPage('mentees',L);
-  return `${back}${pzHead(L.length+' member'+(L.length===1?'':'s')+' let you in','Mentees')}
+  return `${back}${pzHead(L.length+' member'+(L.length===1?'':'s')+' let you in','Mentees')}<a class="pz-card pz-cardlink" href="#reviews" style="margin-bottom:12px"><b style="flex:1">Trades to review</b>${pzI('chev',18)}</a>
     ${L.length?`<div class="pz-jgrid">${pg.items.map(m=>`<a class="pz-card pz-cardlink" href="#mentee/${esc(m.handle)}">${socAv(m.handle,36)}<span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><b style="font-size:15px">@${esc(m.handle)}</b>
       <span class="pz-sub" style="font-size:12px">7-day discipline ${m.avg7==null?'—':m.avg7} · ${m.slips7} slip${m.slips7===1?'':'s'} · ${m.streak}-day streak${m.lastDay?' · last traded '+esc(dayLabel(m.lastDay)):''}</span>
       <span class="pz-sub" style="font-size:12px">${m.notes} note${m.notes===1?'':'s'} so far</span></span>${pzI('chev',18)}</a>`).join('')}</div>${pg.html}`
@@ -584,7 +692,7 @@ function socMenteeHtml(D, handle){
     <div class="pz-col"><section class="pz-card pz-kv"><b class="pz-kvh">At a glance</b><div class="pz-row-t"><span>7-day discipline</span><b>${m.avg7==null?'—':m.avg7}</b></div><div class="pz-row-t"><span>Slips, 7 days</span><b>${m.slips7}</b></div><div class="pz-row-t"><span>Best streak</span><b>${m.best}</b></div>
       ${m.challenge?`<div class="pz-row-t"><span>Last challenge</span><b>${esc(m.challenge)}</b></div>`:''}${m.habits.length?`<p class="pz-sub" style="font-size:13px">Habits: ${m.habits.map(esc).join(' · ')}</p>`:''}</section>
       ${(notesBy['']||[]).length?`<section class="pz-card pz-kv"><b class="pz-kvh">General notes</b>${notesBy[''].map(n=>`<div class="pz-quote">${esc(n.text)}</div>`).join('')}</section>`:''}
-      <p class="pz-fine">You see what @${esc(m.handle)} chose to share with mentors: scores, slips and their nightly lesson. Never trades, P&amp;L or wallets.</p></div></div>`;
+      <p class="pz-fine">You see what @${esc(m.handle)} chose to share with mentors: scores, slips and their nightly lesson. Trades only when they send one for review (under Trades to review); never wallets.</p></div></div>`;
 }
 
 // ---- reminders: web push to this device, on the member's clock ----
@@ -596,6 +704,7 @@ function pzPushHtml(){
     ${!ok?'<p class="pz-sub" style="margin-top:6px;font-size:13px">This browser can’t receive push reminders. On iPhone, add Pulse to your Home Screen first, then open it from there.</p>'
     :`<div class="pz-toggle"><span style="flex:1"><b id="pzPushL">Remind me on this device</b><span>Morning check-in, evening review, and nudges or notes from partners and mentors</span></span><button type="button" role="switch" class="pz-switch" id="pzPushOn" aria-checked="${!!on}" aria-labelledby="pzPushL"><i></i></button></div>
       ${on?`<div style="display:flex;gap:10px"><div class="pz-field" style="flex:1"><label for="pzPushAm" style="font-size:13px">Morning</label><input type="time" id="pzPushAm" value="${esc(pr.morning||'08:30')}"></div><div class="pz-field" style="flex:1"><label for="pzPushPm" style="font-size:13px">Evening</label><input type="time" id="pzPushPm" value="${esc(pr.eod||'20:30')}"></div></div>
+        <div class="pz-toggle"><span style="flex:1"><b id="pzPushTiltL">Tilt alerts while Pulse is closed</b><span>${SOC.share&&SOC.share.verify?'Read from your public fills every few minutes':'Needs verified Discipline (Sharing), so the server can read your fills'}</span></span><button type="button" role="switch" class="pz-switch" data-pz-ta="push" aria-checked="${pr.tilt!==false}" aria-labelledby="pzPushTiltL"><i></i></button></div>
         <button type="button" class="pz-linkbtn" id="pzPushTest" style="margin-top:6px">Send a test</button>`:''}`}</section>`;
 }
 const PZ_PUSH={sub:null,checked:false};
@@ -709,6 +818,8 @@ async function pzGrowthAction(t){
   try{
     if(ds.pzBk){ pzS.bk=ds.pzBk; pzRender(); return true; }
     if(ds.pzQuiet){ await pzQuietAction(ds.pzQuiet); return true; }
+    if(ds.pzTa){ await pzTaAction(ds.pzTa); return true; }
+    if(ds.pzWk){ await pzWkAction(ds.pzWk); return true; }
     if(ds.pzWsync!==undefined){ pzNote('Syncing…','busy'); await pzWearSync(true); pzNote('Synced.'); return true; }
     if(ds.pzWcon){ const r=await wearFetch('/'+ds.pzWcon+'/start',{method:'POST'}); location.href=r.url; return true; }
     if(ds.pzWdis){ if(!confirm('Disconnect '+PZ_WEAR_NAME[ds.pzWdis]+'? Its days stay in your journal.'))return true; WEAR.st=await wearFetch('/'+ds.pzWdis,{method:'DELETE'}); WEAR.apple=null; pzRender(); return true; }
@@ -738,6 +849,8 @@ async function pzGrowthAction(t){
     if(ds.pzMk){ settings.pzMarket=ds.pzMk; await Store.set(S_KEY,settings); pzRender(); return true; }
     if(ds.pzPg!=null){ PZ_PAGES[ds.pzPg]=Math.max(0,(PZ_PAGES[ds.pzPg]||0)+(+ds.d||0)); pzRender(); const n=document.querySelector('[data-pz-pg="'+CSS.escape(ds.pzPg)+'"]'); if(n){ const list=n.closest('nav').previousElementSibling; if(list&&list.scrollIntoView)list.scrollIntoView({block:'nearest'}); } return true; }
     if(ds.pzPlug){ await pzPlugStart(ds.pzPlug); pzNote('Plugging “'+PZ_BEH[ds.pzPlug].toLowerCase()+'”. It’s checked from your fills — three clean trading weeks in a row plug it.'); pzRender(); return true; }
+    if(ds.pzImpadopt!=null){ const c=PEER.d&&PEER.d.improvers&&PEER.d.improvers.changes[+ds.pzImpadopt], h=peerImpHabit(c); if(!h)return true;
+      const x=await peerImpAdopt(h), hb=x&&x.habitId?habitById(x.habitId):x; pzNote('Added to your habits'+(hb&&hb.when?': “'+habitSentence(hb)+'”':'')+' It’s tracked day by day.'); pzRender(); return true; }
     if(ds.pzUnplug){ if(!confirm('Stop plugging this leak? Its habit is retired.'))return true; await pzPlugDrop(ds.pzUnplug); pzRender(); return true; }
     if(ds.pzBcat){ pzS.bcat=ds.pzBcat; pzRender(); return true; }
     if(ds.pzBsel){ pzS.badgeSel=pzS.badgeSel===ds.pzBsel?null:ds.pzBsel; pzRender(); return true; }

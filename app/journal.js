@@ -188,7 +188,7 @@ function extraDiagHtml(closed,allv,s){
        <div class="diag-card"><h3 data-tip="How your equity curve recovers from drawdowns, and the depth of your worst losing run.">Drawdown recovery &amp; streak depth</h3>${ddHtml}</div>
        <div class="diag-card"><h3 data-tip="Net directional exposure right now, netting offsetting longs/shorts by coin across wallets.">Open-book net exposure</h3>${(function(){const ne=netExposureByCoin();return ne.length?ne.slice(0,6).map(x=>mrow(esc(x.coin)+(x.wallets>1?' · '+x.wallets+' wallets':''),(x.net>=0?'<span class="pos-t">net long ':'<span class="neg-t">net short ')+fmtUsd(Math.abs(x.net))+'</span>','Signed sum of position notional for this coin across all wallets.')).join(''):'<p class="lead">No open perp positions.</p>';})()}</div>
      </div></div>
-   ${feeHtml}${sizingHtml}${nfDiagExtra(closed)}`;
+   ${feeHtml}${sizingHtml}${nfDiagExtra(closed)}${planDiagHtml(closed)}`;
 }
 function wireExtraDiag(closed,allv,s){
   // cost drag by month
@@ -274,6 +274,7 @@ function renderTable(){
   }).join('')||`<tr><td colspan="12" style="text-align:center;color:var(--faint);padding:34px">No trades match these filters.</td></tr>`;
   renderPager(total,pages);
   if(expandedId&&document.getElementById('att-'+expandedId))loadAttachments(expandedId);
+  if(expandedId&&typeof mrJournalLoad==='function')mrJournalLoad(expandedId); // a mentor review of this trade (social server only)
 }
 function renderPager(total,pages){
   const el=$('pager'); if(!el)return;
@@ -329,7 +330,7 @@ function journalRow(t,j,R){
         <div style="display:flex;gap:6px">
           <input type="number" data-j="plan_entry" data-id="${esc(t.id)}" value="${(j.plan&&j.plan.entry)?esc(j.plan.entry):''}" placeholder="entry px" step="any" style="flex:1">
           <input type="number" data-j="plan_stop" data-id="${esc(t.id)}" value="${(j.plan&&j.plan.stop)?esc(j.plan.stop):''}" placeholder="stop px" step="any" style="flex:1">
-          <input type="number" data-j="plan_target" data-id="${esc(t.id)}" value="${(j.plan&&j.plan.target)?esc(j.plan.target):''}" placeholder="target px" step="any" style="flex:1"></div></div>
+          <input type="number" data-j="plan_target" data-id="${esc(t.id)}" value="${(j.plan&&j.plan.target)?esc(j.plan.target):''}" placeholder="target px" step="any" style="flex:1"></div>${planOutcomeLine(t,j)}</div>
     </div>
     <div>
       <div class="field"><label>Execution rating</label>
@@ -348,6 +349,7 @@ function journalRow(t,j,R){
       <label class="btn ghost attbtn">+ Add image<input type="file" data-att="${esc(t.id)}" accept="image/*" multiple hidden></label>
       <button class="btn ghost attbtn" data-replay="${esc(t.id)}" data-tip="Candlestick chart of this trade: real OHLC candles with every entry/add fill (▲) and close fill (▼) marked at its actual time and price, plus avg entry/exit lines. Uses the locally cached candles where possible.">📈 Price chart</button></div>
     <div id="replay-${esc(t.id)}"></div>
+    <div class="field mrev" id="mrev-${esc(t.id)}" data-mr-box="${esc(t.id)}"></div>
     <div class="jsave"><span class="saved-tag" id="saved-${esc(t.id)}">Saved ✓</span>
       <button class="btn" data-save="${esc(t.id)}">Save journal</button></div>
   </div></td></tr>`;
@@ -473,6 +475,7 @@ function nextPlan(prev,e,s,tg,now){
   const p={entry:e>0?e:'',stop:s>0?s:'',target:tg>0?tg:''};
   const same=prev&&String(prev.entry)===String(p.entry)&&String(prev.stop)===String(p.stop)&&String(prev.target)===String(p.target);
   if(!same)p.at=now; else if(prev.at)p.at=prev.at; // unchanged legacy plans stay unstamped (unknown), never "hindsight"
+  if(prev&&prev.why)p.why=prev.why; // the one-line reason from Pulse's Plan a trade stays with the plan
   return p;
 }
 function ensureJ(id){ if(!journal[id])journal[id]={notes:'',tags:[],setup:'',rating:0,mistakes:[],risk:null,plan:null}; return journal[id]; }
@@ -525,6 +528,7 @@ function restoreDrafts(list){
   });
 }
 function render(){
+  try{ planAttachPending(); }catch(e){ console.warn('pending plans',e); } // a plan written in Pulse finds its trade once the trade has loaded
   if(PZ){ // Pulse draws only its own view; the hidden full dashboard isn't rebuilt
     // spot-only history under the default perps view would show empty dials: widen it (not saved)
     view='combined'; // Pulse reads every market: XP, streaks and Today never depend on the full app's view switch
@@ -976,7 +980,20 @@ function peersSectionHtml(){
   return head+`<div class="peerctl"><span class="mini-note" style="margin:0">Compare me with</span>${chips}<span class="mini-note" style="margin:0 0 0 auto"><b>${g.n}</b> traders · ${esc(peerGroupName(g))}</span></div>
     ${say?`<p class="lead" style="margin:10px 0 0"><b>What the best quarter does differently:</b> ${esc(say[0])} ${esc(say[1])}</p>`:''}
     <div class="tbl-wrap"><table class="peertbl"><thead><tr><th class="l">Measure</th><th>You</th><th>Typical</th><th data-tip="The median of the group's best quarter by profit factor">Best quarter</th><th class="l">Where you sit</th><th data-tip="Out of 100 traders in this group, how many you do better than">Better than</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="mini-note">Line: the group's 10th to 90th percentile · box: its middle half · tick: typical · diamond: best quarter · dot: you. Groups of ${d.min} or more, built daily from ${d.contributors} anonymous summaries${d.seeds?' ('+d.seeds+' from seed wallets read on chain)':''}. Only the groups' spreads reach this page, never another trader's numbers.${SOC.share&&SOC.share.bench===false?' You aren’t counted yourself (switched off in Pulse under Profile & privacy).':''}</p></div>`;
+    <p class="mini-note">Line: the group's 10th to 90th percentile · box: its middle half · tick: typical · diamond: best quarter · dot: you. Groups of ${d.min} or more, built daily from ${d.contributors} anonymous summaries${d.seeds?' ('+d.seeds+' from seed wallets read on chain)':''}. Only the groups' spreads reach this page, never another trader's numbers.${SOC.share&&SOC.share.bench===false?' You aren’t counted yourself (switched off in Pulse under Profile & privacy).':''}</p>${peersImpHtml(d)}</div>`;
+}
+// What traders like you changed when they improved: each change's median for the improvers against
+// the others over 8–12 weeks, and how many each median covers (group figures only, from the server)
+function peersImpHtml(d){
+  const I=d&&d.improvers; if(!I)return '';
+  const head=`<h3 style="margin:18px 0 4px;font-size:14px">What traders like you changed when they improved</h3>`;
+  if(!I.changes.length)return head+`<p class="lead">${esc(I.note||'Not enough history yet.')}</p>`;
+  const val=(c,v)=>{ if(v==null)return '—'; const m=PEER_M.find(x=>x.k===c.metric); return m?m.f(v):Math.round(v)+'% of days'; };
+  const rows=I.changes.map(c=>`<tr><td class="l"><b>${esc(c.label)}</b><div class="mini-note" style="margin:2px 0 0">${esc(c.text)}.</div></td>
+    <td>${esc(val(c,c.from))} → ${esc(val(c,c.to))}</td><td><b>${esc(peerImpFmt(c,c.improversDelta))}</b></td><td>${esc(peerImpFmt(c,c.othersDelta))}</td>
+    <td>${c.n} / ${c.nOthers}</td><td>${Math.abs(c.effect).toFixed(1)}</td></tr>`).join('');
+  return head+`<div class="tbl-wrap"><table class="peertbl"><thead><tr><th class="l">Change</th><th data-tip="Medians for the traders who improved, 8 to 12 weeks apart">Improvers, then → now</th><th data-tip="Median change for the traders who improved">Improvers’ change</th><th data-tip="Median change for everyone else in the group over the same weeks">Others’ change</th><th data-tip="How many traders each median covers: improvers / others">n</th><th data-tip="The gap between the two medians, in units of the spread of everyone’s changes. Biggest first.">Effect</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="mini-note">${I.n} traders in ${esc(peerGroupName(I))} moved from the bottom half of the group to the top half on Discipline or profit factor over 8 to 12 weeks; ${I.nOthers} others didn’t. % changes are relative; pts are percentage points. Only changes where both sides have 5 or more traders are shown.</p>`;
 }
 function peerStripSvg(m,g,v){
   const q=g.q[m.k], top=g.top[m.k], W=220, lo=Math.min(q[0],v==null?q[0]:v,top==null?q[0]:top), hi=Math.max(q[8],v==null?q[8]:v,top==null?q[8]:top);

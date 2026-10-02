@@ -85,7 +85,9 @@ tests/          test suites (`npm test`; CI runs them on every push)
   imports `DATA_DIR/social.json` once on its first start and renames it
   `social.json.migrated`. Also on the volume: 50 days of each verifying
   member's public fills in `DATA_DIR/social-fills/`. The owner's panel is at `/admin`
-  and needs `AUTH_TOKEN` (without it the admin API refuses every request). It manages
+  and needs `AUTH_TOKEN` (without it the admin API refuses every request), plus a second
+  factor where `ADMIN_2FA` asks for one (kept in `DATA_DIR/admin-2fa.json`; the panel's
+  two-factor screens are `admin2fa-ui.js`, deployed next to `admin.html`). It manages
   members (add, edit, XP boosts, full unlocks, sign-in codes), leagues, reward badges,
   levels and XP, feature levels, the AI coach's allowances and routines. Public badge
   pages (`/b/<name>`, opt-in per member) need `badges.html` deployed next to `server.js`.
@@ -105,6 +107,8 @@ tests/          test suites (`npm test`; CI runs them on every push)
 | `READ_TOKEN`           | *(unset)*                        | Optional second token: `GET /api/v1/*` only — for scripts and dashboards. It reads trades, P&L, journal notes, wallet addresses and open positions, so share it only with people you'd show the journal to |
 | `AUTH_FAIL_MAX`        | `20`                             | Wrong tokens from one address within 10 minutes before that address is locked out (429) of every token-gated route |
 | `AUTH_LOCK_MIN`        | `15`                             | How long that lockout lasts, in minutes |
+| `ADMIN_2FA`            | `optional`                       | Second factor for the admin panel (`/api/social/admin/*` only; the token keeps working alone everywhere else): `optional` — each person turns it on by adding an admin passkey or an authenticator app under Settings → Security; `required` — the owner and every admin need it; `off` — never asked for. An unrecognised value counts as `required` |
+| `ADMIN_2FA_RESET`      | *(unset)*                        | Escape hatch if the owner lost every second factor: set it (e.g. `1`), restart, then remove it. Clears the owner's admin passkeys, app and recovery codes and ends every admin session; each value resets once. Or run `node server.js --reset-admin-2fa` |
 | `CORS_ORIGIN`          | *(unset)*                        | Exact origin allowed to call `/api/*` from a browser app |
 | `PUBLIC_ORIGIN`        | *(unset)*                        | The address people open Pulse at (e.g. `https://pulse.example.com`; comma-separate several). Wallet sign-in messages name only this site, so a look-alike site can't collect a valid signature. Not needed on Railway, whose edge only passes the service's own domains (custom ones included); set it when self-hosting |
 | `TRUST_PROXY`          | on when on Railway               | Read the visitor's address from `X-Forwarded-For` (the last entry) for rate limits. Only turn on behind a proxy that sets it |

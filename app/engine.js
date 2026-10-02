@@ -898,6 +898,49 @@ function taxReport(fills, nameByCoin, presetKey, fx){
     if(r.flag&&!/^(short|long)-term$/.test(r.flag))y.flagged++; if(presetKey==='de'&&/tax-free/.test(r.flag))y.exempt+=r.gain; }
   return {preset:P,rows,years:Object.values(years).sort((a,b)=>a.year<b.year?-1:1),missingFx,unknown:rows.filter(r=>r.unknownBasis).length};
 }
+// [from, to) in ms of a taxYearLabel label ('2025', '2024/25', 'FY2024-25'), UTC like the labels
+function taxYearBounds(label, kind){ const y=+String(label).replace(/^FY/,'').slice(0,4); if(!(y>1970))return [null,null];
+  const m=kind==='uk'?3:kind==='au'?6:0, d=kind==='uk'?6:1; return [Date.UTC(y,m,d),Date.UTC(y+1,m,d)]; }
+/* ---- tax software: Koinly's universal CSV and CoinTracker's CSV ---- */
+// Amounts stay in the coins traded (the tools price them in your currency themselves). Spot fills
+// are trades: received / sent, the fee in its own coin. Perps keep the other exports' treatment:
+// each closed trade at its close time, its realised P&L a margin gain or loss with the trading fees
+// in the fee column, and the funding attributed to it as its own row (paid: a margin fee). Capital
+// flows are plain transfers. src: {fills, trades, flows, nameByCoin, quoteByCoin, from, to}.
+function taxNum(v){ const s=(+v).toFixed(8).replace(/\.?0+$/,''); return s==='-0'?'0':s; }
+function taxToolRows(fmt, src){
+  const nm=src.nameByCoin||{}, qm=src.quoteByCoin||{}, ev=[], STB=/^(USDC|USDT0?|USDH|USDE|USD)$/;
+  const inR=t=>t>=(src.from||0)&&(src.to==null||t<src.to);
+  const add=(t,o)=>{ if(inR(t))ev.push(Object.assign({t},o)); };
+  for(const f of (src.fills||[])){ const c=f&&String(f.coin||''); if(!c.includes('/')&&!c.startsWith('@'))continue;
+    const q=Math.abs(+f.sz||0), px=+f.px||0, fee=Math.abs(+f.fee||0); if(!(q>0)||!(px>0))continue;
+    const base=nm[c]||nm[c.split('/')[0]]||c.split('/')[0], quote=c.includes('/')?c.split('/')[1]:qm[c]||'USDC', amt=q*px, buy=f.side==='B';
+    add(f.time,{sent:buy?[amt,quote]:[q,base],recv:buy?[q,base]:[amt,quote],fee:fee?[fee,f.feeToken||quote]:null,worth:STB.test(quote)?amt:null,
+      k:buy?'buy':'sell',desc:'Spot '+(buy?'buy ':'sell ')+base+'/'+quote}); }
+  for(const t of (src.trades||[])){ if(t.market!=='perp'||t.isOpen||!t.closeTime)continue;
+    const cur=t.venue==='bybit'||t.venue==='binance'?'USDT':'USDC', what=(t.symbol||t.coin)+' '+String(t.dir||'').toLowerCase()+' perp';
+    const pnl=+t.pnl||0, fees=+t.fees||0, fund=+t.funding||0, fee=fees>0?[fees,cur]:null;
+    if(pnl||fee)add(t.closeTime,pnl>0?{recv:[pnl,cur],fee,worth:pnl,k:'gain',desc:what+' realised profit'}:pnl<0?{sent:[-pnl,cur],fee,worth:-pnl,k:'loss',desc:what+' realised loss'}
+      :{sent:fee,worth:fees,k:'cost',desc:what+' trading fees'});
+    if(fees<0)add(t.closeTime,{recv:[-fees,cur],worth:-fees,k:'rebate',desc:what+' fee rebate'});
+    if(fund)add(t.closeTime,fund>0?{recv:[fund,cur],worth:fund,k:'fundin',desc:what+' funding received'}:{sent:[-fund,cur],worth:-fund,k:'fundout',desc:what+' funding paid'}); }
+  const FL={deposit:'Deposit',withdraw:'Withdrawal',vaultDeposit:'Into a vault',vaultCreate:'Into a vault',vaultWithdraw:'Out of a vault',subAccountTransfer:'Sub-account transfer'};
+  for(const f of (src.flows||[])){ const u=+f.usdc||0; if(!u)continue;
+    add(f.time,u>0?{recv:[u,'USDC'],worth:u,k:'in',desc:FL[f.type]||'Transfer in'}:{sent:[-u,'USDC'],worth:-u,k:'out',desc:FL[f.type]||'Transfer out'}); }
+  ev.sort((a,b)=>a.t-b.t);
+  const K=fmt==='koinly', LB=K?{gain:'realized gain',loss:'realized gain',cost:'cost',rebate:'realized gain',fundin:'realized gain',fundout:'margin fee'}
+    :{gain:'margin_gain',loss:'margin_loss',cost:'margin_fee',rebate:'margin_rebate',fundin:'margin_gain',fundout:'margin_fee'};
+  const iso=ms=>new Date(ms).toISOString(), date=ms=>K?iso(ms).replace('T',' ').slice(0,19):iso(ms).replace(/^(\d+)-(\d+)-(\d+)T(\d\d:\d\d:\d\d).*$/,'$2/$3/$1 $4');
+  const p=x=>x?[taxNum(x[0]),x[1]]:['',''];
+  const head=K?['Date','Sent Amount','Sent Currency','Received Amount','Received Currency','Fee Amount','Fee Currency','Net Worth Amount','Net Worth Currency','Label','Description','TxHash']
+    :['Date','Received Quantity','Received Currency','Sent Quantity','Sent Currency','Fee Amount','Fee Currency','Tag'];
+  const rows=ev.map(e=>K?[date(e.t),...p(e.sent),...p(e.recv),...p(e.fee),e.worth!=null?taxNum(e.worth):'',e.worth!=null?'USD':'',LB[e.k]||'',e.desc,'']
+    :[date(e.t),...p(e.recv),...p(e.sent),...p(e.fee),LB[e.k]||'']);
+  const n={}; for(const e of ev)n[e.k]=(n[e.k]||0)+1;
+  return {head,rows,n,times:ev.map(e=>e.t)};
+}
+function taxToolCsv(fmt, src){ const r=taxToolRows(fmt,src), q=v=>{ v=String(v); if(/^[=@+]/.test(v))v="'"+v; return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  return [r.head,...r.rows].map(x=>x.map(q).join(',')).join('\r\n'); }
 function edgeSignificance(nets){ const m=_avg(nets),sd=_std(nets),N=nets.length;
   const t=(sd>0&&N>1)?m/(sd/Math.sqrt(N)):null; const p=t!=null?1-_tCdf(t,N-1):null;
   const d=sd>0?m/sd:null; const needN=(d&&d>0)?Math.ceil((1.645/d)**2):null;

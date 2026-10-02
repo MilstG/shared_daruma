@@ -7,6 +7,9 @@
 // journaled, reviewed), XP by day (m.stats.xpDays), and for % return the duel's own on-chain
 // snapshot (d.money). Nobody marks their own homework. Money is never staked; XP can be: each side
 // puts up the same amount and the winner takes the loser's.
+//
+// Also here: the ladder's rating maths (elo, softReset) and group duels ("pods"): their terms and
+// how 3 to 6 members, each scored like one side of a duel, are ranked (podRank).
 
 const TYPES = {
   disc: { label: 'Discipline', rule: 'Higher average daily Discipline wins.', verifiedDefault: true },
@@ -17,7 +20,9 @@ const TYPES = {
   ret: { label: '% return, capped', rule: 'Higher % return wins; going past the drawdown cap loses outright.' },
 };
 const DEFAULTS = { on: true, types: { disc: true, clean: true, survive: true, journal: true, xp: true, ret: false }, xp: 100, maxOpen: 3, perDay: 5,
-  stakes: true, maxStake: 500, stakePct: 25 }; // stakePct: the most of your XP that can be riding on open duels at once
+  stakes: true, maxStake: 500, stakePct: 25, // stakePct: the most of your XP that can be riding on open duels at once
+  ladder: true, k: 32, ladderMin: 3, // the ladder: an Elo-style rating from 1v1 results; k: how far one duel moves it; ladderMin: rated duels to be listed
+  pods: true, podMax: 6 }; // group duels ("pods"): 3 to podMax members
 const DAY = 86400000;
 const keyOf = ms => new Date(ms).toISOString().slice(0, 10);
 const clamp = (v, lo, hi) => { const n = +v; return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : null; };
@@ -33,6 +38,11 @@ function sanitizeDuelCfg(b, prev) {
   if (b.xp !== undefined) { const x = clamp(b.xp, 0, 10000); if (x != null) out.xp = Math.round(x); }
   if (b.maxOpen !== undefined) { const x = clamp(b.maxOpen, 1, 20); if (x != null) out.maxOpen = Math.round(x); }
   if (b.perDay !== undefined) { const x = clamp(b.perDay, 1, 50); if (x != null) out.perDay = Math.round(x); }
+  if (typeof b.ladder === 'boolean') out.ladder = b.ladder;
+  if (b.k !== undefined) { const x = clamp(b.k, 4, 100); if (x != null) out.k = Math.round(x); }
+  if (b.ladderMin !== undefined) { const x = clamp(b.ladderMin, 1, 50); if (x != null) out.ladderMin = Math.round(x); }
+  if (typeof b.pods === 'boolean') out.pods = b.pods;
+  if (b.podMax !== undefined) { const x = clamp(b.podMax, 3, 6); if (x != null) out.podMax = Math.round(x); }
   return out;
 }
 // The terms someone proposes -> the stored shape, or {error}.
@@ -131,4 +141,49 @@ function standing(d, ma, mb, upto) {
   return { a, b, lead, why };
 }
 
-module.exports = { TYPES, DEFAULTS, sanitizeDuelCfg, sanitizeTerms, stakeRoom, windowFor, sideScore, standing, keyOf };
+
+// ---- the ladder: an Elo-style rating, moved by 1v1 results ----
+const RATING0 = 1000, RESET = 0.25; // where everyone starts; how far a new season pulls a rating back towards it
+// ra, rb: the two ratings; sa: a's result (1 won, 0.5 drew, 0 lost) -> the new ratings. Whole points, and
+// what one side gains the other loses.
+function elo(ra, rb, sa, k) {
+  const ea = 1 / (1 + Math.pow(10, (rb - ra) / 400)), delta = Math.round((k || DEFAULTS.k) * (sa - ea));
+  return { a: ra + delta, b: rb - delta, delta };
+}
+const softReset = r => Math.round(RATING0 + (r - RATING0) * (1 - RESET));
+
+// ---- group duels ("pods"): 3 to 6 members, each scored like one side of a duel, then ranked ----
+const POD_TYPES = ['disc', 'clean', 'survive', 'journal', 'xp'];
+const POD_RULES = { disc: 'Highest average daily Discipline wins.', clean: 'Most trading days at 70+ Discipline wins.',
+  survive: 'A trading day under 70 Discipline puts you out. The last one standing wins.', journal: 'Most days with every trade journaled and the day reviewed wins.',
+  xp: 'Most XP earned from process wins. Profit earns none.' };
+// The pod's terms -> the stored shape, or {error}. No stakes, no % return.
+function sanitizePodTerms(b, cfg) {
+  b = b || {};
+  if (!POD_TYPES.includes(b.type)) return { error: 'Pick what to compete on.' };
+  const t = sanitizeTerms(Object.assign({}, b, { stake: 0 }), cfg); if (t.error) return t;
+  return { type: t.type, period: t.period, verified: t.verified, minDays: t.minDays, msg: t.msg };
+}
+// sides: [{id, s: sideScore(...), out}] (out: forfeited, or the wallet moved) -> the same, ranked, each with
+// a place (equal results share it), plus the sole leader's id (null when the top is shared) and why
+function podRank(p, sides) {
+  const min = p.minDays || 3;
+  const key = x => { const s = x.s || {};
+    if (x.out) return [0];
+    if (p.type === 'disc') return s.n >= min && s.avg != null ? [2, s.avg] : [1];
+    if (p.type === 'survive') return s.fell ? [1, Date.parse(s.fell)] : [2];
+    if (p.type === 'clean') return [1, s.score || 0, s.avg || 0];
+    return [1, s.score || 0]; };
+  const cmp = (a, b) => { for (let i = 0; i < Math.max(a.length, b.length); i++) { const d = (b[i] || 0) - (a[i] || 0); if (d) return d; } return 0; };
+  const rows = sides.map(x => Object.assign({}, x, { key: key(x) })).sort((a, b) => cmp(a.key, b.key));
+  rows.forEach((r, i) => { r.place = i && !cmp(rows[i - 1].key, r.key) ? rows[i - 1].place : i + 1; });
+  const top = rows.filter(r => r.place === 1), lead = top.length === 1 && top[0].key[0] > 0 ? top[0].id : null;
+  const why = !lead ? (rows.length && rows[0].key[0] === 0 ? 'everyone is out' : 'level at the top')
+    : p.type === 'disc' ? 'highest average Discipline' : p.type === 'survive' ? 'last one standing' : p.type === 'clean' ? 'most clean days'
+    : p.type === 'xp' ? 'most process XP' : 'most journaled days';
+  rows.forEach(r => { delete r.key; });
+  return { rows, lead, why };
+}
+
+module.exports = { TYPES, DEFAULTS, sanitizeDuelCfg, sanitizeTerms, stakeRoom, windowFor, sideScore, standing, keyOf,
+  RATING0, RESET, elo, softReset, POD_TYPES, POD_RULES, sanitizePodTerms, podRank };

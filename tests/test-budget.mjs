@@ -12,8 +12,10 @@ const read = f => readFileSync(new URL('../' + f, import.meta.url));
 const size = files => files.reduce((a, f) => { const b = read(f); return { raw: a.raw + b.length / KB, gz: a.gz + gzipSync(b).length / KB }; }, { raw: 0, gz: 0 });
 const appFiles = ['ledger.html', ...appScripts(read('ledger.html').toString())];
 const BUDGETS = [ // name, files, raw KB, gzipped KB (as served, file by file)
-  // raw went to 1850 with peer benchmarks and duels (Oct 2026); what's downloaded (gzipped) keeps its 700 KB line
-  ['the app (ledger.html + ' + (appFiles.length - 1) + ' app/ scripts)', appFiles, 1850, 700],
+  // raw went to 1850 with peer benchmarks and duels; then 1950 / 740 gzipped with plans and replay, tilt alerts, the
+  // weekly card, mentor trade reviews, tax-tool exports, improvers and duel pods (Oct 2026). Gzipped is what's downloaded
+  // (cached after the first visit); the e2e timings guard the actual load
+  ['the app (ledger.html + ' + (appFiles.length - 1) + ' app/ scripts)', appFiles, 1950, 740],
   // the owner's panel only (never sent to members): 100 → 200 KB raw with Insights, bulk actions and the seed table (Oct 2026)
   ['admin.html', ['admin.html'], 200, 60],
 ];
