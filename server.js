@@ -2371,7 +2371,7 @@ function createApp(opts) {
   const twofa = Admin2fa.create({ dataDir, json, now: opts.now, lockedOut, noteBadToken, lockMs, sessionMs: opts.admin2faSessionMs,
     mode: opts.admin2fa !== undefined ? opts.admin2fa : process.env.ADMIN_2FA, reset: opts.admin2faReset !== undefined ? opts.admin2faReset : process.env.ADMIN_2FA_RESET });
   const social = createSocial({ dataDir, json, authOk, adminConfigured: !!auth, fetchImpl: opts.fetchImpl, now: opts.now, push: pushCfg, onDrop: id => wearRef.forget && wearRef.forget('m:' + id),
-    behaviorFor, traderAge: engine.ok ? E.traderAge : null,
+    behaviorFor: opts.behaviorFor || behaviorFor, traderAge: engine.ok ? E.traderAge : null,
     taMult: engine.ok ? { weeks: E.taWeeks, step: E.taMultStep, of: E.taMultOf, tier: E.taMultTier, weekOf: E.isoWeekOfKey } : null,
     taStanding: engine.ok ? { of: E.taStanding, years: E.taYears } : null, tiltFor: opts.tiltFor || tiltFor, peerSummaryFor: opts.peerSummaryFor || peerSummaryFor, seedDelay: opts.seedDelay, tradeCheck: opts.tradeCheck || tradeCheck, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled, twofa });
   // readiness from WHOOP, Oura or Apple Health: the owner (AUTH_TOKEN) or a member (Pulse key)

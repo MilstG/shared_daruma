@@ -615,6 +615,19 @@ link to join *your* league. A server upgraded from an older version imports its
   particular mentor from Find people or the mentor's profile (**Ask to mentor me**, once a
   day per mentor): it switches on Let mentors see my days after a yes, tells that mentor,
   and puts the member first on their Mentees screen with an "asked for you" tag.
+- **XP for mentoring.** Mentoring is work, so mentors earn by teaching (the server pays it,
+  per day of the mentor's clock): a trade they mark reviewed with a comment of theirs in it
+  (15, once per trade), a note on a mentee's day (5, one per mentee a day, 3 paid a day), and
+  25 when a mentee they worked with in the last 30 days reaches something verified from
+  their wallet: a new Trader Age milestone (1, 2, 4, 6, 8, 12 years), a perfect week (3+
+  trading days, all 70+) or a leak plugged (a slip seen in 2+ of the 6 trading weeks before,
+  then none for 3). Only mentees who traded in the last 14 days count; reviews and notes are
+  capped at 60 a day (results aren't); each thing pays once; a profile sharing a wallet with
+  the mentor never pays; the first look at a mentee only notes where they are. It raises the
+  mentor's level (its own row in "where this week's XP came from"), but league tables and
+  duels never count it. Two badge families for mentors: **Teacher** (trades reviewed) and
+  **Made a difference** (mentee results). The owner sets the amounts and the cap, or switches
+  it off, in Levels & XP.
 - **Trade reviews.** A member who lets mentors in can send one trade to the league's
   mentors: **Ask mentor** on a Daruma journal card, or **Ask my mentor to review this
   trade** under an expanded trade in the full journal. What goes is the shape of a trade

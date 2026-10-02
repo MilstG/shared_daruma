@@ -93,6 +93,18 @@ function sanitizeStanding(b, prev) {
   }
   return { on: !!o.on, bar: o.bar, grace: o.grace };
 }
+// mentorXp: XP for mentoring (levels only: league tables and duels never count it). A trade reviewed with
+// a comment, a note on a mentee's day (a few a day), and a bonus when a mentee you've worked with in the
+// last 30 days reaches something verified; effort is capped per day.
+const DEFAULT_MENTOR_XP = { on: true, review: 15, note: 5, notesPerDay: 3, outcome: 25, cap: 60 };
+function sanitizeMentorXp(b, prev) {
+  const o = Object.assign({}, DEFAULT_MENTOR_XP, prev || {});
+  if (b && typeof b === 'object') {
+    if (typeof b.on === 'boolean') o.on = b.on;
+    for (const [k, lo, hi] of [['review', 0, 200], ['note', 0, 100], ['notesPerDay', 0, 20], ['outcome', 0, 500], ['cap', 0, 1000]]) { const v = clampNum(b[k], lo, hi); if (v != null) o[k] = Math.round(v); }
+  }
+  return { on: !!o.on, review: o.review, note: o.note, notesPerDay: o.notesPerDay, outcome: o.outcome, cap: o.cap };
+}
 const DEFAULT_CONFIG = { open: true, inviteCode: '', unlocksOn: true, requireClaim: false, approveWallets: false, vaultOn: true, guestCap: 3,
   unlocks: { trends: 2, share: 3, compete: 4 } };
 const SHARE_KEYS = ['profile', 'boards', 'global', 'page', 'feed', 'habits', 'verify', 'ret', 'usd', 'addr', 'mentor', 'bench', 'duels', 'seek'];
@@ -483,6 +495,7 @@ function createSocial(opts) {
   S.config.guestCap = Math.max(0, Math.min(100, Math.round(+S.config.guestCap))) || 0;
   S.config.mult = sanitizeMult(S.config.mult, null);
   S.config.standing = sanitizeStanding(S.config.standing, null);
+  S.config.mentorXp = sanitizeMentorXp(S.config.mentorXp, null);
   // v0.4 sections; v0.3's three unlock levels carry over into the feature map
   S.config.modules = SC.sanitizeModules(S.config.modules || S.config.unlocks, null);
   S.config.levels = SC.sanitizeLevels(S.config.levels, null);
@@ -897,6 +910,7 @@ function createSocial(opts) {
         week: A.week ? { n: A.week.n, age: r1(A.week.age), rating: r1(A.week.rating), slip: A.week.slip || null } : null,
         weeks: (A.weeks || []).map(w => ({ week: w.week, age: r1(w.age), rating: r1(w.rating), n: w.n })) };
       try { multCompute(m, days, J, tz); } catch (e) { /* the multiplier waits for the next try; Trader Age stands */ }
+      try { mentorOutcomes(m); } catch (e) { console.warn('[ledger] mentor outcomes: ' + (e && e.message)); }
     } catch (e) { m.ta = null; }
   };
   // The XP multiplier: each finished trading week moves it (the app's own taMultStep), and the week
@@ -962,6 +976,57 @@ function createSocial(opts) {
     const st = standingOf(m), ta = m.share && m.share.verify ? m.ta : null;
     return Object.assign({}, c, { state: st.state, why: st.why || null, since: st.since || null, deadline: st.deadline || null, exempt: standingExempt(m),
       locked: st.state === 'lapsed' && !standingExempt(m), recent: ta && ta.recent != null ? ta.recent : null, recentN: ta ? ta.recentN || 0 : 0 }); };
+  // ---- XP for mentoring (levels only) ----
+  // Kept on the mentor as XP per day of their own clock (never trimmed: it's part of their total), with
+  // the keys of what already paid (each review, each day's note per mentee, each outcome pays once).
+  const MX_SLIP = { revenge: 'revenge-entry', afterTwo: 'trading-after-two-losses', sizeUp: 'sizing-up', addLoser: 'adding-to-losers', overtrade: 'overtrading', heldLoser: 'holding-losers' };
+  const MX_AGES = [1, 2, 4, 6, 8, 12];
+  const mxDay = m => zoneKey((m.stats && m.stats.tz) || 'UTC', now());
+  // two profiles sharing a wallet are one person: mentoring your own second profile earns nothing
+  const sameOwner = (a, b) => { const A = new Set([...walletsOf(a), a.claimed].filter(Boolean).map(x => String(x).toLowerCase()));
+    return [...walletsOf(b), b.claimed].filter(Boolean).some(x => A.has(String(x).toLowerCase())); };
+  // a mentee who traded in the last 14 days (verified days, or the days their app reports)
+  const menteeActive = o => { const ks = [...(Array.isArray(o.vdays) ? o.vdays : []).map(d => d.k), ...((o.stats && o.stats.days) || []).map(d => d.k)].filter(Boolean).sort();
+    return ks.length > 0 && ks[ks.length - 1] >= zoneKey('UTC', now() - 14 * 86400000); };
+  const mentorWorked = (mentor, mentee) => { const W = mentor.mentoring = mentor.mentoring && typeof mentor.mentoring === 'object' ? mentor.mentoring : {};
+    W[mentee.id] = now(); for (const k of Object.keys(W)) if (now() - W[k] > 60 * 86400000) delete W[k]; };
+  // pays the mentor (kind 'review' | 'note' | 'outcome'); key makes each thing pay once. Returns the XP paid.
+  const mentorPay = (mentor, mentee, kind, key) => {
+    const c = S.config.mentorXp; if (!c.on || !mentor || !mentor.mentor || mentor.banned || !mentee || mentor.id === mentee.id || sameOwner(mentor, mentee)) return 0;
+    if (kind !== 'outcome' && !menteeActive(mentee)) return 0;
+    const L = mentor.mentorXp = mentor.mentorXp && typeof mentor.mentorXp === 'object' ? mentor.mentorXp : {};
+    if (!L.days || typeof L.days !== 'object') L.days = {}; if (!Array.isArray(L.paid)) L.paid = [];
+    if (L.paid.includes(key)) return 0;
+    const D = L.days[mxDay(mentor)] = L.days[mxDay(mentor)] || { xp: 0, effort: 0, r: 0, n: 0, o: 0 };
+    if (kind === 'note' && D.n >= c.notesPerDay) return 0;
+    let xp = kind === 'review' ? c.review : kind === 'note' ? c.note : c.outcome;
+    if (kind !== 'outcome') { xp = Math.min(xp, Math.max(0, c.cap - D.effort)); D.effort += xp; }
+    if (!xp) return 0;
+    D.xp += xp; D[kind === 'review' ? 'r' : kind === 'note' ? 'n' : 'o']++;
+    L.paid = [...L.paid, key].slice(-3000); touch(mentor); return xp; };
+  // what the mentor's app needs: XP and counts per day (for the ledger and the mentoring badges)
+  const mentorXpOut = m => { const L = m.mentorXp; if (!L || !L.days) return null; const days = {}; let total = 0;
+    for (const [k, d] of Object.entries(L.days)) { days[k] = { xp: d.xp, r: d.r, n: d.n, o: d.o }; total += d.xp; }
+    return { days, total, today: (L.days[mxDay(m)] || { xp: 0 }).xp, cap: S.config.mentorXp.cap }; };
+  // a mentee's verified results pay the mentors who worked with them in the last 30 days: a new Trader Age
+  // milestone, a perfect week (3+ trading days, every one 70+), a leak plugged (a slip seen in 2+ of the 6
+  // trading weeks before, then none for 3). The first look at a member only notes where they are.
+  const mentorOutcomes = o => {
+    const out = [], vd = Array.isArray(o.vdays) ? o.vdays : [], curWk = isoWeekOfKey(zoneKey((o.stats && o.stats.tz) || 'UTC', now()));
+    if (o.ta) { const hit = o.ta.building ? 0 : MX_AGES.filter(y => o.ta.age >= y).pop() || 0; // still building counts as none reached
+      if (o.mxAge == null) o.mxAge = hit; else if (hit > o.mxAge) { o.mxAge = hit; out.push(['age:' + o.id + ':' + hit, 'reached a verified Trader Age of ' + hit + ' year' + (hit === 1 ? '' : 's')]); } }
+    const W = new Map(); for (const d of vd) { const w = isoWeekOfKey(d.k); if (w >= curWk) continue; if (!W.has(w)) W.set(w, []); W.get(w).push(d); }
+    const weeks = [...W.keys()].sort(), lastW = weeks[weeks.length - 1] || null;
+    if (lastW) { if (o.mxWeek == null) o.mxWeek = lastW;
+      else { for (const w of weeks) if (w > o.mxWeek && W.get(w).length >= 3 && W.get(w).every(d => d.s >= 70)) out.push(['pw:' + o.id + ':' + w, 'had a perfect verified week']); o.mxWeek = lastW; } }
+    const first = o.mxPlug == null; o.mxPlug = o.mxPlug && typeof o.mxPlug === 'object' ? o.mxPlug : {};
+    if (weeks.length >= 5) { const recent = weeks.slice(-3), before = weeks.slice(-9, -3), has = (w, k) => W.get(w).some(d => (d.f || []).includes(k));
+      for (const k of SLIP_KEYS) if (recent.every(w => !has(w, k)) && before.filter(w => has(w, k)).length >= 2 && !(o.mxPlug[k] && now() - o.mxPlug[k] < 90 * 86400000)) {
+        o.mxPlug[k] = now(); if (!first) out.push(['plug:' + o.id + ':' + k + ':' + lastW, 'plugged their ' + MX_SLIP[k] + ' leak (none in 3 trading weeks)']); } }
+    if (!out.length || !S.config.mentorXp.on) return;
+    const ms = members().filter(x => x.mentor && !x.banned && x.id !== o.id && x.mentoring && now() - (x.mentoring[o.id] || 0) < 30 * 86400000);
+    for (const [key, text] of out) for (const x of ms) { const xp = mentorPay(x, o, 'outcome', key);
+      if (xp) { notify(x, 'mentor', '@' + o.handle + ' ' + text + '. +' + xp + ' XP for your mentoring.', { title: 'Your mentee did it', url: '/daruma#mentee/' + o.handle }); save(x); } } };
   // ---- "traders like you": peer groups from members' summaries and the owner's seed wallets ----
   const BENCH_FRESH = 21 * 86400000, SEED_REFRESH = 7 * 86400000, SEED_MAX = 5000;
   const benchRows = () => {
@@ -1321,7 +1386,7 @@ function createSocial(opts) {
     if (out.isMe) Object.assign(out, { claimedAddress: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
       vault: m.vault ? { rev: m.vault.rev, size: m.vault.size, at: m.vault.at } : null, requireClaim: !!S.config.requireClaim, vaultOn: !!S.config.vaultOn,
       ta: m.share && m.share.verify ? m.ta || null : null, // verified Trader Age (null: the app shows its own estimate)
-      mult: multOut(m), standing: standingOut(m),
+      mult: multOut(m), standing: standingOut(m), mentorXp: mentorXpOut(m),
       needsClaim: !!(S.config.requireClaim && m.address && m.claimed !== m.address),
       walletStatus: m.address && (S.config.approveWallets || walletStatus(m.address) === 'rejected') ? walletStatus(m.address) : null, admin: !!m.admin,
       passkeys: (m.passkeys || []).map(k => ({ id: k.id, name: k.name, at: k.at, lastUsed: k.lastUsed || null })),
@@ -1685,7 +1750,7 @@ function createSocial(opts) {
       return json(res, 200, { enabled: adminConfigured, open: S.config.open, inviteRequired: !!S.config.inviteCode, unlocksOn: S.config.unlocksOn,
         unlocks: S.config.unlocks, tiers: TIERS, week: S.league.week, members: members().filter(m => !m.banned).length,
         claims: !!sig, passkeys: true, requireClaim: !!S.config.requireClaim, approveWallets: !!S.config.approveWallets, vaultOn: !!S.config.vaultOn,
-        modules: S.config.modules, levels: S.config.levels, xp: S.config.xp, profiles: S.config.profiles, guestCap: S.config.guestCap, mult: S.config.mult, standing: standingCfgOut(),
+        modules: S.config.modules, levels: S.config.levels, xp: S.config.xp, profiles: S.config.profiles, guestCap: S.config.guestCap, mult: S.config.mult, standing: standingCfgOut(), mentorXp: S.config.mentorXp,
         bench: { on: !!S.config.bench.on, minTrades: S.config.bench.minTrades, days: S.config.bench.days }, duels: { on: !!S.config.duels.on },
         coach: { members: S.config.coach.members, daily: S.config.coach.daily, detail: S.config.coach.detail }, posts: postCfgOut(),
         badges: Object.values(S.badges).map(b => ({ id: b.id, name: b.name, icon: b.icon, desc: b.desc, metric: b.metric, metricLabel: b.metric ? SC.BADGE_METRICS[b.metric] : null, op: b.op, value: b.value, xp: b.xp })),
@@ -1753,7 +1818,7 @@ function createSocial(opts) {
           vault: m.vault ? m.vault.size : 0, share: m.share, banned: !!m.banned, unlocked: !!m.unlocked, coachDaily: m.coachDaily != null ? m.coachDaily : null,
           coachUsed: coachUsed(m), coachLimit: coachLimitFor(m), grants: m.grants || [], awards: Object.keys(m.awards || {}).filter(id => own(S.badges, id)),
           wallets: linkedOf(m).filter(a => a !== m.address),
-          leagues: leaguesOf(m).map(L => ({ id: L.id, tier: leagueTier(L, m) })), adminMade: !!m.adminMade, mentor: !!m.mentor, admin: !!m.admin, keys: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0), verified: !!(m.share.verify && Array.isArray(m.vdays)), standing: standingOn() ? standingOf(m).state : null, createdAt: m.createdAt, lastSeen: m.lastSeen || null,
+          leagues: leaguesOf(m).map(L => ({ id: L.id, tier: leagueTier(L, m) })), adminMade: !!m.adminMade, mentor: !!m.mentor, admin: !!m.admin, keys: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0), verified: !!(m.share.verify && Array.isArray(m.vdays)), standing: standingOn() ? standingOf(m).state : null, mentorXp: m.mentorXp ? (mentorXpOut(m) || {}).total || 0 : 0, createdAt: m.createdAt, lastSeen: m.lastSeen || null,
           av: avUrl(m), bio: m.bio || '',
           money: m.money && m.money.ret != null ? { ret: m.money.ret, dd: m.money.dd } : null })) });
       if (sub === 'members' && !parts[2] && M === 'POST') { // the owner adds someone; they sign in with the code it returns
@@ -1906,6 +1971,7 @@ function createSocial(opts) {
         if (typeof body.vaultOn === 'boolean') c.vaultOn = body.vaultOn;
         if (body.mult) c.mult = sanitizeMult(body.mult, c.mult);
         if (body.standing) c.standing = sanitizeStanding(body.standing, c.standing);
+        if (body.mentorXp) c.mentorXp = sanitizeMentorXp(body.mentorXp, c.mentorXp);
         if (body.guestCap !== undefined && isFinite(+body.guestCap)) c.guestCap = Math.max(0, Math.min(100, Math.round(+body.guestCap)));
         if (body.modules) c.modules = SC.sanitizeModules(body.modules, c.modules);
         if (body.unlocks) c.modules = SC.sanitizeModules(body.unlocks, c.modules); // v0.3 panels send this name
@@ -2603,7 +2669,8 @@ function createSocial(opts) {
         const c = { id: crypto.randomBytes(5).toString('hex'), by: me.id, day, text, at: now(), read: false };
         S.comments[o.id] = [...commentsFor(o.id), c].slice(-COMMENTS_MAX);
         notify(o, 'mentor', '@' + me.handle + ': ' + text, { title: 'A note from your mentor', url: '/daruma#today', day });
-        save('comments'); return json(res, 200, { note: commentOut(c) }); }
+        mentorWorked(me, o); const xp = mentorPay(me, o, 'note', 'n:' + o.id + ':' + mxDay(me));
+        save('comments', me); return json(res, 200, { note: commentOut(c), xp }); }
       if (parts[2] === 'notes' && parts[3] && M === 'DELETE') {
         S.comments[o.id] = commentsFor(o.id).filter(c => !(c.id === parts[3] && c.by === me.id)); save('comments'); return json(res, 200, { ok: true }); }
       return json(res, 404, { error: 'not found' });
@@ -2649,8 +2716,12 @@ function createSocial(opts) {
       if (parts[2] === 'reviewed' && M === 'POST') {
         if (role !== 'mentor') return json(res, 403, { error: 'Only a mentor marks a trade reviewed.' });
         const on = body.done !== false; q('UPDATE reviews SET reviewed = ?, reviewer = ? WHERE id = ?').run(on ? now() : null, on ? me.id : null, r.id);
-        if (on && !r.reviewed) { notify(o, 'mentor', '@' + me.handle + ' reviewed your ' + what + ' ✓', { title: 'Trade reviewed', url: '/daruma#tr/' + r.id }); save(o); }
-        return json(res, 200, threadOut(reviewById(r.id), me, role)); }
+        let xp = 0;
+        if (on && !r.reviewed) { notify(o, 'mentor', '@' + me.handle + ' reviewed your ' + what + ' ✓', { title: 'Trade reviewed', url: '/daruma#tr/' + r.id });
+          // a review pays once, and only with something said in it
+          mentorWorked(me, o); if (q('SELECT 1 FROM review_comments WHERE review = ? AND member = ? LIMIT 1').get(r.id, me.id)) xp = mentorPay(me, o, 'review', 'r:' + r.id);
+          save(o, me); }
+        return json(res, 200, Object.assign(threadOut(reviewById(r.id), me, role), { xp })); }
       return json(res, 404, { error: 'not found' });
     }
     if (head === 'me' && M === 'PUT') {

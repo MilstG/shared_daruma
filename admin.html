@@ -603,7 +603,7 @@ details>summary{list-style-position:inside}
       </section>
       <section class="card"><h2>Access</h2>
         ${box('mUnlocked','Fully unlocked',m.unlocked,'Every feature regardless of level, and the unlocked coach allowance.')}
-        ${box('mMentor','Mentor',m.mentor,'Sees the days of members who let mentors in (scores, slips, nightly lesson) and can leave them notes.')}
+        ${box('mMentor','Mentor',m.mentor,'Sees the days of members who let mentors in (scores, slips, nightly lesson) and can leave them notes.'+(m.mentorXp?' Earned '+m.mentorXp.toLocaleString()+' XP mentoring so far.':''))}
         ${ME.owner?box('mAdmin','Admin',m.admin,'Can use this admin panel with their own profile (everything except adding or removing admins). Send them the link from “New sign-in code”, or they open /admin on a device where they use Daruma.'):m.admin?'<p class="muted small">Admin — only the owner changes that.</p>':''}
         ${m.admin?'<p class="muted small">Admins ask the coach without a limit.</p>':field('mCoach','Coach messages a day',`<input id="mCoach" type="number" min="0" max="1000" placeholder="default (${m.unlocked?cc.dailyUnlocked:cc.daily})" value="${m.coachDaily!=null?m.coachDaily:''}">`,'Empty uses the default from the Coach tab. 0 switches the coach off for them.')}
         <div class="row" style="align-items:center;margin-top:6px"><span class="small">Coach today: <b>${m.coachUsed}</b>${m.coachLimit!=null?' of '+m.coachLimit:' (no limit)'}${m.address?' · shared with every profile on this wallet':''}</span>${m.coachUsed?`<button class="sm fit" data-m="coachreset">Reset today’s count</button>`:''}</div>
@@ -743,7 +743,8 @@ details>summary{list-style-position:inside}
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">${Object.keys(XP_LABELS).map(k=>field('xp_'+k,XP_LABELS[k][0],`<input id="xp_${k}" type="number" min="0" max="${k==='discipline'?5:1000}" step="${k==='discipline'?0.1:5}" value="${x[k]}">`,XP_LABELS[k][1]?esc(XP_LABELS[k][1]):'')).join('')}</div>
         <div class="actions"><button class="primary" id="xpSave">Save XP rules</button></div></section>
       ${multCard(D.ov.config.mult)}
-      ${standingCard(D.ov.config.standing)}`;
+      ${standingCard(D.ov.config.standing)}
+      ${mentorXpCard(D.ov.config.mentorXp)}`;
   }
   // the XP multiplier for holding Trader Age: a good trading week (that week and the 6-month Trader Age
   // both at the bar) moves a member up a tier; a week below drops one
@@ -771,6 +772,21 @@ details>summary{list-style-position:inside}
         ${field('stGrace','Days of grace',`<input id="stGrace" type="number" min="3" max="60" value="${st.grace}">`,'Before perks lock, from the first day under the bar or unverified')}
       </div>
       <div class="actions"><button class="primary" id="stSave">Save standing</button></div></section>`;
+  }
+  // XP for mentoring: levels only (league tables and duels never count it)
+  function mentorXpCard(x){
+    x=x||{on:true,review:15,note:5,notesPerDay:3,outcome:25,cap:60};
+    return `<section class="card"><h2>XP for mentoring</h2>
+      <p class="hint" style="margin-top:0">Mentors you appoint earn XP for the work: a trade they review (with a comment), a note on a mentee’s day, and a bonus when a mentee they worked with in the last 30 days plugs a leak, has a perfect week or reaches a Trader Age milestone (all read from the mentee’s verified fills). Only mentees who traded in the last 14 days count, a profile sharing a wallet with the mentor never does, and each thing pays once. It raises the mentor’s level; league tables and duels never count it.</p>
+      ${box('mxOn','XP for mentoring on',x.on)}
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+        ${field('mxReview','A trade reviewed',`<input id="mxReview" type="number" min="0" max="200" value="${x.review}">`,'XP, once per trade')}
+        ${field('mxNote','A note on a day',`<input id="mxNote" type="number" min="0" max="100" value="${x.note}">`,'XP, one per mentee a day')}
+        ${field('mxNotes','Paid notes a day',`<input id="mxNotes" type="number" min="0" max="20" value="${x.notesPerDay}">`,'')}
+        ${field('mxOutcome','A mentee’s result',`<input id="mxOutcome" type="number" min="0" max="500" value="${x.outcome}">`,'XP to each mentor who worked with them')}
+        ${field('mxCap','Daily cap (reviews + notes)',`<input id="mxCap" type="number" min="0" max="1000" value="${x.cap}">`,'Results aren’t capped')}
+      </div>
+      <div class="actions"><button class="primary" id="mxSave">Save mentoring XP</button></div></section>`;
   }
   const levelBody=()=>({mode:val('lvMode'),base:val('lvBase'),thresholds:val('lvTable'),titles:lines(val('lvTitles'))});
   // what the server's sanitizer will make of the form, for the preview
@@ -1194,6 +1210,7 @@ details>summary{list-style-position:inside}
       if(!tiers.length)return note('Write the tiers as weeks:multiplier, separated by commas.',true);
       if(!tiers.every((t,i)=>t[0]>=1&&t[1]>1&&(!i||(t[0]>tiers[i-1][0]&&t[1]>tiers[i-1][1]))))return note('Weeks and multipliers must both go up, tier by tier, and each multiplier be above 1.',true);
       return act(()=>put({mult:{on:chk('mOn'),bar:+val('mBar'),tiers}}),'Multiplier saved.'); }
+    if(id==='mxSave')return act(()=>put({mentorXp:{on:chk('mxOn'),review:+val('mxReview'),note:+val('mxNote'),notesPerDay:+val('mxNotes'),outcome:+val('mxOutcome'),cap:+val('mxCap')}}),'Mentoring XP saved.');
     if(id==='stSave')return act(()=>put({standing:{on:chk('stOn'),bar:+val('stBar'),grace:+val('stGrace')}}),'Standing saved.');
     if(id==='lvPreview'){ UI.levelDraft=levelDraft(); return render(); }
     if(id==='lvSave'){ const body=levelBody(); UI.levelDraft=null; return act(()=>put({levels:body}),'Levels saved.'); }

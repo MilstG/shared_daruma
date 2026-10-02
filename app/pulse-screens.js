@@ -4,7 +4,7 @@
 // this part or an earlier one; the boot part runs last. See "Development and testing" in README.md.
 
 /* ======================= 13b · PULSE GROWTH SCREENS: progress, badges, reports, review, coach, leagues ======================= */
-const PZ_CAT_ICON={discipline:'saved',habits:'bolt',consistency:'flame',journal:'pen',routine:'today',risk:'shield',results:'trends',milestones:'progress'};
+const PZ_CAT_ICON={discipline:'saved',habits:'bolt',consistency:'flame',journal:'pen',routine:'today',risk:'shield',results:'trends',milestones:'progress',mentoring:'chat'};
 // what a badge means, for its hover tip: name, tier, what earns it, when, and the XP it paid
 function pzBadgeTip(b, f){
   const tier=PZ_TIERS[b.r]||'', name=b.t.replace(/ · .*/,''), what=b.desc?b.desc.charAt(0).toUpperCase()+b.desc.slice(1):'';
@@ -18,9 +18,9 @@ function pzMedal(b, size){
 const pzPctBar=(p,col)=>`<span class="pz-pbar"><i style="width:${Math.round(Math.max(0,Math.min(1,p||0))*100)}%;background:${col||'var(--pz-acc)'}"></i></span>`;
 // XP earned in a window, by where it came from
 function pzXpSources(g, fromKey){
-  const X=pzXpCfg(), o={discipline:0,bonus:0,badges:0,challenge:0,habits:0,league:0,achievements:0};
+  const X=pzXpCfg(), o={discipline:0,bonus:0,badges:0,challenge:0,habits:0,league:0,mentor:0,achievements:0};
   for(const d of g.days)if(d.key>=fromKey){ o.discipline+=Math.round(d.score*X.discipline); o.bonus+=d.bonus.total; }
-  for(const b of (g.bonuses||[]))if(b.key>=fromKey){ const k=b.src==='badge'?'badges':b.src==='grant'||b.src==='award'?'league':b.why==='challenge'?'challenge':b.why==='focus habit'?'habits':'achievements'; o[k]+=b.xp; }
+  for(const b of (g.bonuses||[]))if(b.key>=fromKey){ const k=b.src==='badge'?'badges':b.src==='mentor'?'mentor':b.src==='grant'||b.src==='award'?'league':b.why==='challenge'?'challenge':b.why==='focus habit'?'habits':'achievements'; o[k]+=b.xp; }
   return o;
 }
 // features whose screen lives under a tab (pzFeature tab.nav) show their card on that tab too, linking to it
@@ -28,7 +28,7 @@ function pzFeatureCards(nav,D){ return PZ_FEATS.filter(f=>f.tab&&f.tab.nav===nav
 function pzProgressHtml(D){
   const {g}=D, L=g.level, cat=g.catalog||{earned:[],families:[],total:0}, nowK=D.todayK, wkFrom=dayKey(lastCompletedWeekRange(Date.now()).to);
   const src=pzXpSources(g,wkFrom), srcRows=[['discipline','Discipline scores',PZ_COL.good],['bonus','Prep, plans, journal, reviews',PZ_COL.xp],['badges','Badges',PZ_TIER_COL[2]],
-    ['achievements','Achievements','#F4C04E'],['challenge','Weekly challenge','#FFB25A'],['habits','Focus habit','#5AA9FF'],['league','From your league','#FF8AD8']].filter(([k])=>src[k]);
+    ['achievements','Achievements','#F4C04E'],['challenge','Weekly challenge','#FFB25A'],['habits','Focus habit','#5AA9FF'],['league','From your league','#FF8AD8'],['mentor','Mentoring','#7FE0D2']].filter(([k])=>src[k]);
   const wkTot=Object.values(src).reduce((a,v)=>a+v,0);
   const hero=`<section class="pz-card pz-hero pz-span">
     <div class="pz-hero-ring">${pzRing(L.level,L.max?1:L.into/L.need,PZ_COL.xp,{size:132,cap:'Level'})}</div>
