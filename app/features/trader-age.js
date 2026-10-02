@@ -16,7 +16,7 @@
    ============================================================================ */
 // the settings and the years formula are functions so the server can borrow them, with traderAge,
 // to work out members' verified Trader Age from their wallets (server.js ENGINE_FNS)
-function taConf(){ return {halfLife:30, minDays:15, windowDays:183, cap:20, steadyN:20, weekMin:3, paceMax:3, standN:20}; }
+function taConf(){ return {halfLife:30, minDays:15, windowDays:183, cap:20, steadyN:20, weekMin:3, paceMax:3, standN:20, priorDays:15, fullDays:60}; }
 const TA=taConf();
 function taYears(r){ return Math.min(TA.cap, Math.pow(2,(r-50)/10)); }
 // a rating back from years (for "get back to 2 years" style messages)
@@ -46,10 +46,15 @@ function traderAge(days, J, opts){
   const firstAt=opts.firstAt>0?opts.firstAt:null, tradingYears=firstAt?Math.max(0,(now-firstAt)/(365.25*864e5)):null;
   const out={n, need:Math.max(0,TA.minDays-n), tradingYears, building:n<TA.minDays};
   if(!n)return out;
-  let W=0, R=0; const parts={discipline:0,steadiness:0,limit:0,log:0};
-  inWin.forEach((x,i)=>{ const w=Math.pow(0.5,(n-1-i)/TA.halfLife); W+=w; R+=w*x.r; for(const k in parts)parts[k]+=w*x.parts[k]; });
-  out.rating=R/W; for(const k in parts)parts[k]=parts[k]/W; out.parts=parts;
-  out.age=taYears(out.rating);
+  let W=0, W2=0, R=0; const parts={discipline:0,steadiness:0,limit:0,log:0}, ws=inWin.map((x,i)=>Math.pow(0.5,(n-1-i)/TA.halfLife));
+  inWin.forEach((x,i)=>{ const w=ws[i]; W+=w; W2+=w*w; R+=w*x.r; for(const k in parts)parts[k]+=w*x.parts[k]; });
+  out.raw=R/W; for(const k in parts)parts[k]=parts[k]/W; out.parts=parts;
+  // confidence: with few trading days the rating is pulled toward 50 (1 year), fully trusted from 60 days on,
+  // so 15 perfect days don't read as 20 years; the range is about 80% likely (the spread of daily ratings)
+  const prior=TA.priorDays*Math.max(0,1-n/TA.fullDays), shrink=n/(n+prior);
+  out.rating=50+(out.raw-50)*shrink; out.age=taYears(out.rating); out.sure=shrink;
+  const sd=Math.sqrt(inWin.reduce((a,x,i)=>a+ws[i]*(x.r-out.raw)*(x.r-out.raw),0)/W), se=sd/Math.sqrt(W*W/W2)*shrink;
+  out.range=[taYears(out.rating-1.28*se), taYears(out.rating+1.28*se)];
   // the last 20 trading days, plain average: what standing reads
   const rec=inWin.slice(-TA.standN); out.recent=rec.reduce((a,x)=>a+x.r,0)/rec.length; out.recentN=rec.length;
   // what's holding it back most: the part furthest below 100, by its weight
@@ -59,13 +64,34 @@ function traderAge(days, J, opts){
   const wk=rated.filter(x=>x.key>=weekFrom);
   out.week={n:wk.length};
   if(wk.length>=TA.weekMin){ const wr=wk.reduce((a,x)=>a+x.r,0)/wk.length; out.week.rating=wr; out.week.age=taYears(wr);
-    out.pace=Math.max(0,Math.min(TA.paceMax,out.week.age/out.age));
+    out.pace=Math.max(0,Math.min(TA.paceMax,Math.pow(2,(wr-out.raw)/10))); // against the 6-month rating itself (no cap, no pull)
     const slips={}; for(const x of wk){ const f=(x.d.behavior&&x.d.behavior.flags)||{}; for(const k in f)if(f[k]>0)slips[k]=(slips[k]||0)+f[k]; }
     const top=Object.entries(slips).sort((a,b)=>b[1]-a[1])[0]; out.week.slip=top?top[0]:null; }
   // the last 12 weeks with trading, each as its own Trader Age (oldest first)
   const byWeek=new Map(); for(const x of inWin){ const w=isoWeekOfKey(x.key); if(!byWeek.has(w))byWeek.set(w,[]); byWeek.get(w).push(x.r); }
   out.weeks=[...byWeek.entries()].slice(-12).map(([w,rs])=>{ const r=rs.reduce((a,v)=>a+v,0)/rs.length; return {week:w, rating:r, age:taYears(r), n:rs.length}; });
   return out;
+}
+// Trader Age at the end of each trading day, oldest first: the history line and the milestone badges.
+// Each day reads only the trading days before it (at most the 200 before: the window is 6 months).
+function taHistory(days, J, opts){
+  opts=opts||{}; const all=(days||[]).filter(d=>d&&d.key&&isFinite(d.score)).slice().sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0);
+  return all.map((d,i)=>{ const A=traderAge(all.slice(Math.max(0,i-199),i+1), J, {now:Date.parse(d.key+'T23:59:59Z'), dayOf:opts.dayOf, firstAt:opts.firstAt});
+    return {key:d.key, n:A.n, rating:A.rating, age:A.building?null:A.age, tradingYears:A.tradingYears}; });
+}
+// what each kind of slip costs: Trader Age worked out again as if the trades with only that slip had
+// been clean (their day's Discipline goes up, the flag goes), best gain first
+const TA_SLIPS=['revenge','afterTwo','sizeUp','addLoser','overtrade','heldLoser'];
+function taWhatIf(days, J, opts){
+  opts=opts||{}; const base=traderAge(days,J,opts); if(!base.n||base.building)return [];
+  const now=opts.now||Date.now(), from=(opts.dayOf||(ms=>new Date(ms).toISOString().slice(0,10)))(now-TA.windowDays*864e5);
+  return TA_SLIPS.map(k=>{ let hit=0;
+    const alt=(days||[]).map(d=>{ const b=d&&d.behavior; if(!b||!b.flags||!b.flags[k])return d; const n=b.n||d.n||0; if(!n)return d;
+      if(d.key>=from)hit+=b.flags[k];
+      const freed=(b.slips||[]).filter(x=>x.f&&x.f.length===1&&x.f[0]===k).length, fl=Object.assign({},b.flags); delete fl[k];
+      return Object.assign({},d,{score:Math.round(100*Math.min(n,(b.clean||0)+freed)/n), behavior:Object.assign({},b,{flags:fl})}); });
+    if(!hit)return null; const A=traderAge(alt,J,opts); return {k, n:hit, age:A.age, gain:A.age-base.age}; })
+    .filter(x=>x&&x.gain>=0.05).sort((a,b)=>b.gain-a.gain);
 }
 // '2026-W39' as 'Week of Sep 21' (its Monday)
 function taWeekLabel(w){ try{ const k=isoWeekMondayKey(w); return 'Week of '+MONTHS[+k.slice(5,7)-1]+' '+(+k.slice(8)); }catch(e){ return w; } }
@@ -173,10 +199,15 @@ function taOf(D){
   if(v&&v.n&&!v.building)return Object.assign({},v,{verified:true,week:v.week||{n:0},weeks:v.weeks||[],pace:v.pace==null?undefined:v.pace});
   return taLocal(D);
 }
-function taLocal(D){
-  const g=D.g; let firstAt=0; for(const t of (typeof allTrades!=='undefined'?allTrades:[])){ const a=+t.openTime||+t.closeTime||0; if(a>0&&(!firstAt||a<firstAt))firstAt=a; }
-  return traderAge(g.days, typeof journal!=='undefined'?journal:{}, {firstAt, dayOf:typeof dayKey==='function'?dayKey:undefined});
+// this device's inputs: the game's trading days, the journal (for prep), the first fill on record
+function taInputs(days){
+  let firstAt=0; for(const t of (typeof allTrades!=='undefined'?allTrades:[])){ const a=+t.openTime||+t.closeTime||0; if(a>0&&(!firstAt||a<firstAt))firstAt=a; }
+  return {days:days||[], J:typeof journal!=='undefined'?journal:{}, opts:{firstAt, dayOf:typeof dayKey==='function'?dayKey:undefined}};
 }
+function taLocal(D){ const I=taInputs(D.g.days); return traderAge(I.days, I.J, I.opts); }
+// the history is worked out once per set of days (the game's days array is rebuilt when anything changes)
+const _taHist=new WeakMap();
+function taHistoryOf(days){ if(!days||!days.length)return []; let h=_taHist.get(days); if(!h){ const I=taInputs(days); h=taHistory(I.days,I.J,I.opts); _taHist.set(days,h); } return h; }
 function taPaceWord(p){ return p>=1.1?'maturing':p<=0.9?'slipping':'steady'; }
 function taPaceCol(p){ return p>=1.1?PZ_COL.good:p<=0.9?PZ_COL.low:PZ_COL.mid; }
 // verified by the server from the wallet's fills, or an estimate made here (with what it takes to verify it)
@@ -186,6 +217,12 @@ function taEstimateNote(A){
   if(owner&&!member)return 'Estimated on this device from your fills and journal.';
   if(member)return 'Estimated on this device. It’s verified once the server reads your wallet: turn on <a href="#sharing">Verify my discipline</a> with a wallet added'+(SOC.me&&SOC.me.needsClaim?' and <a href="#account">claimed</a>':'')+'.';
   return 'Estimated on this device. <a href="#social">Create a profile</a> to have it verified and to earn the XP multiplier.';
+}
+// a Trader Age milestone badge earned in the last 7 days, said once on the card
+function taMilestoneNote(D){
+  const c=D.g&&D.g.catalog, since=typeof dayKey==='function'?dayKey(Date.now()-7*864e5):'';
+  const b=c&&c.earned.filter(x=>x.fam==='traderage'&&x.k>=since).pop();
+  return b?`<a class="pz-fine" href="#badges" style="color:${PZ_COL.good};text-decoration:none">New milestone: ${esc(b.desc)} ›</a>`:'';
 }
 function taCardHtml(D){
   const A=taOf(D); // no trading days yet: it shows as building, so it can be found
@@ -197,7 +234,43 @@ function taCardHtml(D){
   return `<section class="pz-card pz-kv">${head}
     <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span style="font-family:var(--pz-num);font-size:40px;font-weight:600;line-height:1">${esc(taFmtYears(A.age))}</span>
       ${A.tradingYears!=null?`<span class="pz-sub" style="font-size:13px">trading for ${esc(taFmtYears(A.tradingYears))}</span>`:''}</div>
-    <p style="font-size:13px;margin:0">${pace}</p></section>`;
+    <p style="font-size:13px;margin:0">${pace}</p>${taMilestoneNote(D)}</section>`;
+}
+const TA_SLIP={revenge:'Revenge entries',afterTwo:'Trading on after two losses',sizeUp:'Sizing up after a loss',addLoser:'Adding to losers',overtrade:'Overtrading',heldLoser:'Holding losers too long'};
+// what each slip costs, in years (worked out on this device's trades)
+function taWhatIfHtml(D){
+  const I=taInputs(D.g.days); let W=[]; try{ W=taWhatIf(I.days,I.J,I.opts); }catch(e){ console.warn('what-if',e); }
+  if(!W.length)return `<section class="pz-card pz-kv"><b class="pz-kvh">What your slips cost</b><p class="pz-sub" style="font-size:13px">No slips in the last 6 months are holding your Trader Age back.</p></section>`;
+  const top=W[0].gain;
+  return `<section class="pz-card pz-kv"><b class="pz-kvh">What your slips cost</b>
+    <p class="pz-sub" style="font-size:13px">Your Trader Age without each kind of slip, everything else the same.</p>
+    ${W.slice(0,4).map(x=>`<div class="pz-row" data-pz-tip="${esc(TA_SLIP[x.k]+': '+x.n+' trade'+(x.n===1?'':'s')+' in 6 months. Without them: '+taFmtYears(x.age)+'.')}"><div class="pz-row-t"><span>${esc(TA_SLIP[x.k])}<span class="pz-sub" style="display:block;font-size:12px">${x.n} trade${x.n===1?'':'s'} · without them ${esc(taFmtYears(x.age))}</span></span><b style="color:${PZ_COL.good}">+${esc(taFmtYears(x.gain))}</b></div>${pzBar(x.gain/top,PZ_COL.low)}</div>`).join('')}
+    <p class="pz-fine">Worked out from this device’s trades. <a href="#progress">Plug a leak</a> to work on one.</p></section>`;
+}
+// Trader Age over time (the end of each week with trading, last 26) against how long you've traded,
+// on one scale in years where every gridline doubles (the same scale the rating uses)
+function taHistoryChartHtml(D){
+  let H=[]; try{ H=taHistoryOf(D.g.days); }catch(e){ console.warn('history',e); }
+  const firstAt=taInputs([]).opts.firstAt, byW=new Map(); for(const h of H)if(h.age!=null)byW.set(isoWeekOfKey(h.key),h);
+  const P=[...byW.entries()].slice(-26).map(([w,h])=>({w,key:h.key,age:h.age,ty:firstAt?Math.max(1/12,(Date.parse(h.key+'T23:59:59Z')-firstAt)/(365.25*864e5)):null}));
+  if(P.length<2)return '';
+  const r=y=>50+10*Math.log2(Math.max(1/12,Math.min(TA.cap,y))), vals=P.flatMap(p=>[r(p.age)].concat(p.ty?[r(p.ty)]:[]));
+  const lo=Math.min(...vals)-4, hi=Math.max(...vals)+4, Wd=320, Ht=150, L=36, R=10, T=10, B=24;
+  const x=i=>L+(Wd-L-R)*i/(P.length-1), y=v=>T+(Ht-T-B)*(1-(v-lo)/(hi-lo));
+  const grid=[[1/12,'1 mo'],[1/4,'3 mo'],[1/2,'6 mo'],[1,'1 yr'],[2,'2 yrs'],[4,'4 yrs'],[8,'8 yrs'],[16,'16 yrs']].filter(([g])=>r(g)>=lo&&r(g)<=hi);
+  const line=f=>P.map((p,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(f(p)).toFixed(1)).join(' ');
+  const last=P[P.length-1], tip=p=>esc(taWeekLabel(p.w)+'\nTrader Age '+taFmtYears(p.age)+(p.ty?'\nTrading for '+taFmtYears(p.ty):''));
+  return `<section class="pz-card pz-kv"><b class="pz-kvh">Over time</b>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px" class="pz-sub"><span><svg width="18" height="8" aria-hidden="true"><path d="M1 4H17" stroke="${PZ_COL.xp}" stroke-width="2" stroke-linecap="round"/></svg> Trader Age</span>${last.ty?`<span><svg width="18" height="8" aria-hidden="true"><path d="M1 4H17" stroke="var(--pz-muted)" stroke-width="2" stroke-dasharray="3 3"/></svg> Time trading</span>`:''}</div>
+    <svg viewBox="0 0 ${Wd} ${Ht}" width="100%" role="img" aria-label="${esc('Trader Age by week, from '+taFmtYears(P[0].age)+' to '+taFmtYears(last.age)+(last.ty?', trading for '+taFmtYears(last.ty):''))}" style="display:block;overflow:visible">
+      ${grid.map(([g,l])=>`<line x1="${L}" x2="${Wd-R}" y1="${y(r(g)).toFixed(1)}" y2="${y(r(g)).toFixed(1)}" stroke="var(--pz-line)" stroke-width="1"/><text x="${L-6}" y="${(y(r(g))+4).toFixed(1)}" text-anchor="end" font-size="10" fill="var(--pz-muted)">${l}</text>`).join('')}
+      ${last.ty?`<path d="${line(p=>r(p.ty))}" fill="none" stroke="var(--pz-muted)" stroke-width="2" stroke-dasharray="4 4" stroke-linejoin="round"/>`:''}
+      <path d="${line(p=>r(p.age))}" fill="none" stroke="${PZ_COL.xp}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${x(P.length-1).toFixed(1)}" cy="${y(r(last.age)).toFixed(1)}" r="4" fill="${PZ_COL.xp}" stroke="var(--pz-card)" stroke-width="2"/>
+      <text x="${L}" y="${Ht-6}" font-size="10" fill="var(--pz-muted)">${esc(taWeekLabel(P[0].w).replace('Week of ',''))}</text><text x="${Wd-R}" y="${Ht-6}" font-size="10" fill="var(--pz-muted)" text-anchor="end">${esc(taWeekLabel(last.w).replace('Week of ',''))}</text>
+      ${P.map((p,i)=>`<rect x="${(x(i)-(Wd-L-R)/(P.length-1)/2).toFixed(1)}" y="${T}" width="${((Wd-L-R)/(P.length-1)).toFixed(1)}" height="${Ht-T-B}" fill="transparent" data-pz-tip="${tip(p)}"/>`).join('')}
+    </svg>
+    <p class="pz-fine">Your Trader Age at the end of each week you traded${last.ty?', next to how long you’ve been trading':''}. Every gridline doubles. From this device’s trades.</p></section>`;
 }
 function taScreenHtml(D){
   const A=taOf(D), back=`<a class="pz-back" href="#today">${pzI('back',20)}Today</a>`;
@@ -211,21 +284,19 @@ function taScreenHtml(D){
   const hero=`<section class="pz-card pz-hero pz-span">
     <div class="pz-hero-ring">${pzRing(taFmtYears(A.age).split(' ')[0],Math.min(1,A.rating/100),PZ_COL.xp,{size:132,cap:taFmtYears(A.age).split(' ')[1]||''})}</div>
     <div class="pz-hero-main"><span class="pz-lbl" style="color:${PZ_COL.xp}">Trader Age</span><h2 class="pz-hero-t">${esc(ahead)}</h2>
-      <p class="pz-sub" style="font-size:13px">${A.tradingYears!=null?`Your process looks ${esc(taFmtYears(A.age))} seasoned, and you’ve been trading for ${esc(taFmtYears(A.tradingYears))}. `:''}Rating ${Math.round(A.rating)} from ${A.n} trading days.</p></div></section>`;
+      <p class="pz-sub" style="font-size:13px">${A.tradingYears!=null?`Your process looks ${esc(taFmtYears(A.age))} seasoned, and you’ve been trading for ${esc(taFmtYears(A.tradingYears))}. `:''}Rating ${Math.round(A.rating)} from ${A.n} trading days.</p>
+      ${A.range?`<p class="pz-fine">Likely between ${esc(taFmtYears(A.range[0]))} and ${esc(taFmtYears(A.range[1]))}.${A.sure<1?` With fewer than ${TA.fullDays} trading days it’s held closer to 1 year, and firms up as you trade.`:''}</p>`:''}</div></section>`;
   const wk=A.week, slip=wk.slip&&typeof PZ_BEH!=='undefined'?PZ_BEH[wk.slip]:null;
   const pace=`<section class="pz-card pz-kv"><b class="pz-kvh">This week</b>${A.pace!=null?`
     <div style="display:flex;align-items:baseline;gap:10px"><span style="font-family:var(--pz-num);font-size:32px;font-weight:600;color:${taPaceCol(A.pace)}">${A.pace.toFixed(1)}×</span><span class="pz-sub">${taPaceWord(A.pace)}</span></div>
-    <p class="pz-sub" style="font-size:13px">Over ${wk.n} trading days you traded like someone with ${esc(taFmtYears(wk.age))} behind them, against your 6-month ${esc(taFmtYears(A.age))}.${A.pace<0.9&&slip?' What cost you most: '+esc(slip.toLowerCase())+'.':''}</p>`
+    <p class="pz-sub" style="font-size:13px">Over ${wk.n} trading days you traded like someone with ${esc(taFmtYears(wk.age))} behind them, against your 6-month rating.${A.pace<0.9&&slip?' What cost you most: '+esc(slip.toLowerCase())+'.':''}</p>`
     :`<p class="pz-sub" style="font-size:13px">Pace needs at least 3 trading days in the last 7. ${wk.n?'You have '+wk.n+'.':'No trades yet this week.'}</p>`}</section>`;
   const mult=taMultCardHtml(A)+taStandingCardHtml();
   const rows=Object.keys(TA_PART).map(k=>{ const [l,h,w]=TA_PART[k], v=A.parts[k];
     return `<div class="pz-row"><div class="pz-row-t"><span>${esc(l)}<span class="pz-sub" style="display:block;font-size:12px">${esc(h)} · ${w}%</span></span><b>${Math.round(v)}</b></div>${pzBar(v/100,k===A.drag?PZ_COL.low:PZ_COL.xp)}</div>`; }).join('');
   const parts=`<section class="pz-card pz-kv"><b class="pz-kvh">What builds it</b>${rows}<p class="pz-fine">Holding it back most: <b>${esc(TA_PART[A.drag][0].toLowerCase())}</b>.</p></section>`;
-  const W=A.weeks||[], max=Math.max(1,...W.map(w=>w.age));
-  const hist=W.length>1?`<section class="pz-card pz-kv"><b class="pz-kvh">Week by week</b><div class="pz-chart" style="--h:110px;--gap:${W.length>8?'4px':'8px'}">${W.map(w=>
-    `<i style="height:${Math.max(4,Math.round(w.age/max*110))}px;background:${PZ_COL.xp}" data-pz-tip="${esc(taWeekLabel(w.week)+': '+taFmtYears(w.age)+' · rating '+Math.round(w.rating)+' · '+w.n+' trading day'+(w.n===1?'':'s'))}"></i>`).join('')}</div>
-    <p class="pz-fine">Each bar is that week on its own, as a Trader Age.</p></section>`:'';
-  return `${back}${pzHead('Your process, in years','Trader Age')}<div class="pz-wide">${hero}<div class="pz-col">${pace}${mult}${hist}</div><div class="pz-col">${parts}${how}</div></div>`;
+  const hist=taHistoryChartHtml(D), costs=taWhatIfHtml(D);
+  return `${back}${pzHead('Your process, in years','Trader Age')}<div class="pz-wide">${hero}<div class="pz-col">${hist}${pace}${mult}</div><div class="pz-col">${costs}${parts}${how}</div></div>`;
 }
 pzFeature({id:'age', today:{label:'Trader Age',hint:'How seasoned your process looks, in years, against how long you’ve traded',col:0,after:'tilt',html:taCardHtml},
   tab:{name:'age',nav:'progress',html:taScreenHtml}});

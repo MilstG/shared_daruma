@@ -892,7 +892,7 @@ function createSocial(opts) {
         return { key: d.k, score: d.s, parts: { limit: l.lm, journal: l.jn || 0 }, behavior: { flags: Object.fromEntries((d.f || []).map(k => [k, 1])) } }; });
       const A = opts.traderAge(days, J, { now: now(), dayOf: ms => zoneKey(tz, ms), firstAt: (m.stats && m.stats.firstAt) || 0 });
       const r1 = x => x == null ? null : Math.round(x * 10) / 10;
-      m.ta = { at: now(), n: A.n, building: !!A.building, need: A.need, rating: r1(A.rating), age: r1(A.age), recent: r1(A.recent), recentN: A.recentN || 0, pace: r1(A.pace), tradingYears: r1(A.tradingYears), drag: A.drag || null,
+      m.ta = { at: now(), n: A.n, building: !!A.building, need: A.need, rating: r1(A.rating), raw: r1(A.raw), sure: A.sure != null ? Math.round(A.sure * 100) / 100 : null, range: A.range ? A.range.map(r1) : null, age: r1(A.age), recent: r1(A.recent), recentN: A.recentN || 0, pace: r1(A.pace), tradingYears: r1(A.tradingYears), drag: A.drag || null,
         parts: A.parts ? Object.fromEntries(Object.entries(A.parts).map(([k, v]) => [k, r1(v)])) : null,
         week: A.week ? { n: A.week.n, age: r1(A.week.age), rating: r1(A.week.rating), slip: A.week.slip || null } : null,
         weeks: (A.weeks || []).map(w => ({ week: w.week, age: r1(w.age), rating: r1(w.rating), n: w.n })) };

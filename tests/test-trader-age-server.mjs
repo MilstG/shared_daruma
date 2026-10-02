@@ -53,7 +53,7 @@ try {
     ok(ta, 'verified'); eq([ta.n, ta.building], [20, false]);
     // Discipline 100 from the fills, steady, no limit set (70), prep 50 + half journaled 25
     eq([ta.parts.discipline, ta.parts.steadiness, ta.parts.limit, ta.parts.log], [100, 100, 70, 75]);
-    near(ta.rating, 94.5, 0.05); eq(ta.age, 20, 'capped');
+    near(ta.raw, 94.5, 0.05); near(ta.age, 7.8, 0.05, 'held toward 1 year with 20 days'); eq(ta.sure, 0.67); ok(ta.range[0] <= ta.age && ta.range[1] >= ta.age);
     near(ta.tradingYears, 400 / 365.25, 0.05); eq(ta.week.n, 7); ok(ta.pace > 0);
   });
   await t('the fills cache grew to 6 months: an older 50-day (v1) cache is read again from the start of the window', () => {
@@ -82,9 +82,9 @@ try {
   await t('others see the Trader Age only while the member shares verified Discipline', async () => {
     const k2 = (await call('/join', { method: 'POST', body: { handle: 'watcher' } })).d.key;
     const prof = async () => (await call('/profile/steady_one', { key: k2 })).d;
-    const p = await prof(); ok(JSON.stringify(p).includes('"traderAge":20'), 'shown');
+    const p = await prof(); ok(JSON.stringify(p).includes('"traderAge":7.8'), 'shown');
     await call('/me', { method: 'PUT', key: K, body: { share: { verify: false } } });
-    ok(!JSON.stringify(await prof()).includes('"traderAge":20'), 'hidden once verify is off');
+    ok(!JSON.stringify(await prof()).includes('"traderAge":7.8'), 'hidden once verify is off');
     eq((await call('/me', { key: K })).d.me.ta, null, 'and the member’s own goes back to the estimate');
   });
   // ---- standing (spec step 6) ----
