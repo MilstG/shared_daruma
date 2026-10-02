@@ -121,7 +121,7 @@ const ENGINE_FNS = [
   // the anonymous summary a seed wallet contributes to the "traders like you" benchmarks
   'peerSummary',
   // Hyperliquid client (retry/backoff/pagination identical to the browser's)
-  'hlPost', 'fetchAllFills', 'fetchFunding', 'fetchSpotMaps', 'fetchSpotState', 'fetchPortfolio',
+  'hlPost', 'fetchAllFills', 'fetchFunding', 'fetchSpotMaps', 'fetchSpotState', 'fetchPortfolio', 'unifiedAccountOf',
 ];
 // Trivial one-line consts the extracted functions lean on. Consts aren't brace-extractable,
 // so — exactly like the test suites — they are re-declared here. Keep in sync with ledger.html.
@@ -861,6 +861,9 @@ function createApp(opts) {
               uPnl: value - b.entry, wallet: { address: w.address, label: w.label || '' } });
         });
         if (sbal.length) e.spotValue = spotVal;
+        // portfolio margin: one balance for spot and perps (the exchange's own account value) in every view
+        e.unified = E.unifiedAccountOf(sbal, port, spotVal);
+        if (e.unified != null) { e.accountValue = e.unified; e.spotValue = e.unified; }
       } catch (e) { res.error = (e && (e.message || e.msg)) || String(e); } // internal throws carry .msg — '[object Object]' helps nobody
       finally { out.wallets.push(res); }
     }
@@ -882,6 +885,7 @@ function createApp(opts) {
       accountFree: sum(e => e.accountFree),
       spotHoldings: [].concat(...E_.map(e => e.spotHoldings || [])),
       spotAccountValue: sum(e => e.spotValue),
+      unifiedAccountValue: sum(e => e.unified), // in both of the above: a combined total takes it off once
       hlPnl: { all: sum(e => e.hlAll), perp: sum(e => e.hlPerp) },
       spotMaps,
       byWallet: byW,
@@ -1807,7 +1811,7 @@ function createApp(opts) {
           engine: { ok: engine.ok, missing: engine.missing },
           wallets, trades: counts,
           market: market ? { fetchedAt: market.fetchedAt, positions: (market.positions || []).length,
-            accountValue: market.accountValue, spotAccountValue: market.spotAccountValue, hlPnl: market.hlPnl } : null,
+            accountValue: market.accountValue, spotAccountValue: market.spotAccountValue, unifiedAccountValue: market.unifiedAccountValue || null, hlPnl: market.hlPnl } : null,
           settings: (() => { const s = Object.assign({}, S_DEFAULTS, snap.settings || {});
             return { beThreshold: s.beThreshold, rBasis: s.rBasis, riskDefault: s.riskDefault, tz: s.tz }; })(),
           refresh: { running: _refreshing, lastAt: _lastRefreshAt || null,
@@ -1829,7 +1833,8 @@ function createApp(opts) {
           open_positions: market ? (market.positions || []).length : null,
           gross_exposure: null, net_exposure: null,
           account_value: market ? market.accountValue : null,
-          spot_account_value: market ? market.spotAccountValue : null };
+          spot_account_value: market ? market.spotAccountValue : null,
+          unified_account_value: market ? market.unifiedAccountValue || null : null };
         if (d && d.updatedAt) { const t = Date.parse(d.updatedAt); if (isFinite(t)) m.updated_at = t; }
         if (market) {
           const rm = E.openRiskModel(market.positions || []);
@@ -2060,7 +2065,7 @@ function createApp(opts) {
         // body.wallets refreshes) contribute flows the equity can't see. DELETE
         // /api/v1/cache/:addr evicts a stale wallet's caches to restore the full picture.
         const equityNow = !query.wallet && !hasNonSaved && market && (market.accountValue != null || market.spotAccountValue != null)
-          ? (market.accountValue || 0) + (market.spotAccountValue || 0) : null;
+          ? (market.accountValue || 0) + (market.spotAccountValue || 0) - (market.unifiedAccountValue || 0) : null;
         return send(200, { flows: flows.length, skipped, cachedAt,
           ...(hasNonSaved ? { note: 'non-saved cached wallets contribute flows; equity-based outputs withheld — evict stale caches via DELETE /api/v1/cache/:addr' } : {}),
           model: E.capitalModel(flows, closedAll, equityNow),
@@ -2119,7 +2124,7 @@ function createApp(opts) {
         if (!market) return send(409, { error: 'no market snapshot yet — POST /api/v1/refresh first' });
         return send(200, { live: false, fetchedAt: market.fetchedAt,
           positions: market.positions || [], accountValue: market.accountValue,
-          spotHoldings: market.spotHoldings || [], spotAccountValue: market.spotAccountValue,
+          spotHoldings: market.spotHoldings || [], spotAccountValue: market.spotAccountValue, unifiedAccountValue: market.unifiedAccountValue || null,
           hlPnl: market.hlPnl || { all: null, perp: null } });
       }
 
@@ -2322,10 +2327,11 @@ function createApp(opts) {
     }
     fills.sort((x, y) => x.time - y.time);
     const trades = [...E.attributeFunding(E.reconstructTrades(fills, a, 'perp'), []), ...E.attributeFunding(E.reconstructTrades(fills, a, 'spot'), [])];
-    let firstAt = null, ret = null, dd = null;
+    let firstAt = null, ret = null, dd = null, avNow = NaN;
     try { const res = await E.hlPost({ type: 'portfolio', user: a });
       const all = (Array.isArray(res) ? res : []).find(x => x && x[0] === 'allTime'), av = (all && all[1] && all[1].accountValueHistory) || [];
       const p = av.find(x => parseFloat(x[1]) > 0); if (p) firstAt = +p[0]; // the wallet's first funded day: how long it has traded
+      avNow = parseFloat(av.length ? av[av.length - 1][1] : NaN); // the exchange's own account value now (the last point is written at request time)
       const st = portfolioStats(res, 'month'); if (st) { ret = st.ret * 100; dd = st.dd * 100; }
     } catch (e) { /* returns are a bonus; the summary stands without them */ }
     const sum = E.peerSummary(trades.filter(x => !x.isOpen && x.closeTime), { now: t, firstAt, minTrades: cfg.minTrades, days });
@@ -2334,7 +2340,10 @@ function createApp(opts) {
     // dollars, for the owner's seed-wallet table only (public on-chain numbers; never in the groups)
     const from = t - days * 86400000, inWin = trades.filter(x => !x.isOpen && x.closeTime >= from);
     sum.usd = { pnl: Math.round(inWin.reduce((s, x) => s + (x.net || 0), 0)), vol: Math.round(fills.reduce((s, f) => s + (Math.abs(parseFloat(f.sz) * parseFloat(f.px)) || 0), 0)), equity: null, days };
-    try { const res = await E.hlPost({ type: 'clearinghouseState', user: a }); const v = parseFloat(res && res.marginSummary && res.marginSummary.accountValue); if (isFinite(v)) sum.usd.equity = Math.round(v); } catch (e) {}
+    // the exchange's own account value, which covers portfolio-margin accounts (their perp clearinghouse reads 0);
+    // the perp clearinghouse only when that wasn't readable
+    if (isFinite(avNow)) sum.usd.equity = Math.round(avNow);
+    else try { const res = await E.hlPost({ type: 'clearinghouseState', user: a }); const v = parseFloat(res && res.marginSummary && res.marginSummary.accountValue); if (isFinite(v)) sum.usd.equity = Math.round(v); } catch (e) {}
     return sum;
   };
   const forgetAddress = (addr) => { try { fs.unlinkSync(path.join(socialFillsDir, String(addr).toLowerCase() + '.json.gz')); } catch (e) {} };
