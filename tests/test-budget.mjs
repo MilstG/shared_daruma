@@ -1,5 +1,5 @@
 // Size budgets for what each screen downloads, measured as the server sends it: the page plus the
-// app/ scripts that page loads, each gzipped. The journal (/) and Keel (/keel) get different script
+// app/ scripts that page loads, each gzipped. The journal (/) and Daruma (/daruma) get different script
 // lists, so each has its own budget and a failure names the screen that grew. The fonts are files
 // of their own (cached for a year, and only the faces a screen uses are fetched), with a budget of
 // their own. Raising a budget is fine: do it in the same change that needs it, and say why.
@@ -24,17 +24,17 @@ const served = async path => {
   return { html, scripts, raw: raw / KB, gz: gz / KB };
 };
 try {
-  const journal = await served('/'), keel = await served('/keel');
+  const journal = await served('/'), keel = await served('/daruma');
   const BUDGETS = [ // name, measured, raw KB, gzipped KB
     // Oct 2026: fonts moved out of the page and each screen got its own script list. Before, one page
     // carried everything: 1917 KB raw / 734 KB gzipped against 1950 / 740.
     ['the journal (/: page + ' + journal.scripts.length + ' scripts)', journal, 1800, 620],
-    ['Keel (/keel: page + ' + keel.scripts.length + ' scripts, no Chart.js)', keel, 1600, 560],
+    ['Daruma (/daruma: page + ' + keel.scripts.length + ' scripts, no Chart.js)', keel, 1600, 560],
   ];
-  t('each screen loads its code from app/, and Keel leaves Chart.js out', () => {
+  t('each screen loads its code from app/, and Daruma leaves Chart.js out', () => {
     ok(journal.scripts.length > 10 && keel.scripts.length > 10);
     ok(journal.scripts.some(s => s.startsWith('app/chart.umd.js')), 'the journal draws charts');
-    ok(!keel.scripts.some(s => s.startsWith('app/chart.umd.js')), 'Keel never does');
+    ok(!keel.scripts.some(s => s.startsWith('app/chart.umd.js')), 'Daruma never does');
   });
   t('no font is embedded in the page any more', () => {
     for (const p of [journal, keel]) { ok(!p.html.includes('data:font/'), 'a data: font in the page'); ok(/url\(app\/fonts\/inter-400\.woff2\?v=[0-9a-f]{12}\)/.test(p.html), 'fonts are versioned files'); }
