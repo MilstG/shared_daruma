@@ -123,20 +123,21 @@ t('the coach line: limit hit, then today’s slips from fills, then load and for
 });
 
 console.log('\nPath switch and wiring');
-t('the page switches on /keel or ?keel (and the old /pulse) before the app script runs, and repoints the manifest', () => {
-  const i = html.indexOf('<script>/* Keel view'); ok(i > 0 && i < html.indexOf("const PZ=document.body.classList.contains('pz-mode');"));
+t('the page switches on /daruma or ?daruma (and the old /keel and /pulse) before the app script runs, and repoints the manifest', () => {
+  const i = html.indexOf('<script>/* Daruma view'); ok(i > 0 && i < html.indexOf("const PZ=document.body.classList.contains('pz-mode');"));
   const early = html.slice(i + 8, html.indexOf('</script>', i));
-  for (const [path, search, on, shown] of [['/keel', '', true], ['/keel/', '', true], ['/', '?keel', true], ['/x/ledger.html', '?keel=1', true],
-    ['/pulse', '', true, '/keel#today'], ['/pulse/', '', true, '/keel#today'], ['/', '?pulse', true],
-    ['/', '', false], ['/keelx', '', false], ['/pulsex', '', false], ['/', '?impulse=1', false]]) {
+  for (const [path, search, on, shown] of [['/daruma', '', true], ['/daruma/', '', true], ['/', '?daruma', true], ['/x/ledger.html', '?daruma=1', true],
+    ['/keel', '', true, '/daruma#today'], ['/keel/', '', true, '/daruma#today'], ['/', '?keel', true],
+    ['/pulse', '', true, '/daruma#today'], ['/pulse/', '', true, '/daruma#today'], ['/', '?pulse', true],
+    ['/', '', false], ['/darumax', '', false], ['/keelx', '', false], ['/pulsex', '', false], ['/', '?impulse=1', false]]) {
     const cls = new Set(); const attrs = {}; let replaced = null;
     const el = n => ({ setAttribute: (k, v) => { attrs[n] = v; } });
     const sb = { location: { pathname: path, search, hash: '#today', protocol: 'https:' }, history: { state: null, replaceState: (s, t, u) => { replaced = u; } },
       document: { body: { classList: { add: c => cls.add(c) } }, querySelector: s => el(s), title: '' } };
     vm.runInNewContext(early, sb);
     eq(cls.has('pz-mode'), on, path + search);
-    eq(replaced, shown || null, path + ' shows as /keel');
-    if (on) { eq(attrs['link[rel="manifest"]'], '/pulse.webmanifest'); eq(sb.document.title, 'Keel — Ledger'); }
+    eq(replaced, shown || null, path + ' shows as /daruma');
+    if (on) { eq(attrs['link[rel="manifest"]'], '/pulse.webmanifest'); eq(sb.document.title, 'Daruma — Ledger'); }
   }
 });
 t('Pulse forces the coach layer on and redraws only its own view', () => {
@@ -156,34 +157,36 @@ t('a trade cap set in Pulse survives a save from the full app’s day journal', 
 
 console.log('\nServer');
 const listen = app => new Promise(res => app.listen(0, () => res('http://127.0.0.1:' + app.address().port)));
-await t('/keel (and the old /pulse) serve the app, /keel/ and /pulse/ redirect, and Keel has its own manifest and icon', async () => {
+await t('/daruma (and the old /keel and /pulse) serve the app, their trailing-slash forms redirect, and Daruma has its own manifest and icon', async () => {
   const app = server.createApp({ dataDir: mkdtempSync(join(tmpdir(), 'ledger-pulse-')), auth: '', htmlPath });
   const b = await listen(app);
   try {
-    for (const pth of ['/keel', '/pulse']) { const r = await fetch(b + pth); eq(r.status, 200); ok((await r.text()).includes('id="pzView"')); }
-    for (const pth of ['/keel/', '/pulse/']) { const rd = await fetch(b + pth + '?x=1', { redirect: 'manual' }); eq(rd.status, 302); eq(rd.headers.get('location'), '/keel?x=1'); }
+    for (const pth of ['/daruma', '/keel', '/pulse']) { const r = await fetch(b + pth); eq(r.status, 200); ok((await r.text()).includes('id="pzView"')); }
+    for (const pth of ['/daruma/', '/keel/', '/pulse/']) { const rd = await fetch(b + pth + '?x=1', { redirect: 'manual' }); eq(rd.status, 302); eq(rd.headers.get('location'), '/daruma?x=1'); }
     const m = await (await fetch(b + '/pulse.webmanifest')).json();
-    eq(m.start_url, '/keel'); eq(m.id, '/pulse', 'the old id, so installs made as Pulse update in place'); eq(m.short_name, 'Keel'); eq(m.icons.map(i => i.src + ' ' + i.purpose), ['/icons/pulse-192.png any', '/icons/pulse-512.png any', '/icons/pulse-maskable-512.png maskable']);
+    eq(m.start_url, '/daruma'); eq(m.id, '/pulse', 'the old id, so installs made as Pulse update in place'); eq(m.short_name, 'Daruma'); eq(m.icons.map(i => i.src + ' ' + i.purpose), ['/icons/pulse-192.png any', '/icons/pulse-512.png any', '/icons/pulse-maskable-512.png maskable']);
     const ic = await fetch(b + '/pulse-icon.svg'); eq(ic.headers.get('content-type'), 'image/svg+xml');
     const sw = await (await fetch(b + '/sw.js')).text();
-    ok(sw.includes("'/keel'") && sw.includes("'/pulse'") && !sw.includes("mode==='navigate'"), 'only the app shell is cached — help pages never overwrite it');
+    ok(sw.includes("'/daruma'") && sw.includes("'/keel'") && sw.includes("'/pulse'") && !sw.includes("mode==='navigate'"), 'only the app shell is cached — help pages never overwrite it');
   } finally { await new Promise(res => app.close(res)); }
 });
-await t('HOME_VIEW=keel sends / to /keel, and the full journal stays at /ledger.html', async () => {
+await t('HOME_VIEW=daruma (or keel) sends / to /daruma, and the full journal stays at /ledger.html', async () => {
   const plain = server.createApp({ dataDir: mkdtempSync(join(tmpdir(), 'ledger-pulse-')), auth: '', htmlPath, homeView: '' });
-  const app = server.createApp({ dataDir: mkdtempSync(join(tmpdir(), 'ledger-pulse-')), auth: '', htmlPath, homeView: 'keel' });
-  const bp = await listen(plain), b = await listen(app);
+  const app = server.createApp({ dataDir: mkdtempSync(join(tmpdir(), 'ledger-pulse-')), auth: '', htmlPath, homeView: 'daruma' });
+  const old = server.createApp({ dataDir: mkdtempSync(join(tmpdir(), 'ledger-pulse-')), auth: '', htmlPath, homeView: 'keel' });
+  const bp = await listen(plain), b = await listen(app), bo = await listen(old);
   try {
     eq((await fetch(bp + '/', { redirect: 'manual' })).status, 200, 'unset: / is the journal');
     eq((await (await fetch(bp + '/manifest.webmanifest')).json()).start_url, '/');
-    for (const [q, to] of [['', '/keel'], ['?x=1', '/keel?x=1']]) {
+    for (const [q, to] of [['', '/daruma'], ['?x=1', '/daruma?x=1']]) {
       const r = await fetch(b + '/' + q, { redirect: 'manual' }); eq(r.status, 302); eq(r.headers.get('location'), to); }
-    for (const pth of ['/ledger.html', '/index.html', '/keel']) eq((await fetch(b + pth, { redirect: 'manual' })).status, 200, pth);
+    eq((await fetch(bo + '/', { redirect: 'manual' })).headers.get('location'), '/daruma', 'HOME_VIEW=keel, set before the rename, still works');
+    for (const pth of ['/ledger.html', '/index.html', '/daruma']) eq((await fetch(b + pth, { redirect: 'manual' })).status, 200, pth);
     const m = await (await fetch(b + '/manifest.webmanifest')).json(); eq([m.id, m.start_url], ['/', '/ledger.html'], 'the installed journal still opens the journal');
     const k = await (await fetch(b + '/pulse.webmanifest')).json(); eq(k.shortcuts.find(x => x.name === 'Full journal').url, '/ledger.html');
     ok((await (await fetch(b + '/sw.js')).text()).includes("r.type==='opaqueredirect'"), 'the service worker hands the redirect to the browser');
-    ok(html.includes("?'/ledger.html':location.pathname"), 'Keel links the full journal at /ledger.html');
-  } finally { await new Promise(res => plain.close(res)); await new Promise(res => app.close(res)); }
+    ok(html.includes("?'/ledger.html':location.pathname"), 'Daruma links the full journal at /ledger.html');
+  } finally { for (const a of [plain, app, old]) await new Promise(res => a.close(res)); }
 });
 
 t('lists longer than ten page through ten at a time, and the page is kept in range', () => {

@@ -340,7 +340,7 @@ await t('with no AUTH_TOKEN the admin API refuses instead of opening to everyone
     eq((await (await fetch(b + '/api/social/config')).json()).enabled, false, 'the league reports closed');
     eq((await fetch(b + '/api/social/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle: 'friend' }) })).status, 403,
       'no joining while the owner’s journal is open to anyone');
-    const pg = await fetch(b + '/admin'); eq(pg.status, 200); ok((await pg.text()).includes('Keel admin')); }
+    const pg = await fetch(b + '/admin'); eq(pg.status, 200); ok((await pg.text()).includes('Daruma admin')); }
   finally { await new Promise(res => open.close(res)); }
 });
 
