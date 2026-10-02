@@ -245,6 +245,12 @@ function addedToLoser(t){
   }
   return false;
 }
+// a position that was added to at least once (a second entry in its direction), to a winner or a loser
+function hasAdd(t){
+  if(!Array.isArray(t.events)||t.events.length<2||(t.dir!=='Long'&&t.dir!=='Short'))return false;
+  let adds=0; for(const ev of t.events)if(ev[3]>0&&ev[2]>0&&ev[1]>0)adds++;
+  return adds>=2;
+}
 function dailyPnl(trades){ const m={}; trades.forEach(t=>{const k=dayKey(t.closeTime); m[k]=(m[k]||0)+t.net;}); return m; }
 function dailySeriesCalendar(trades){
   if(!trades.length)return [];

@@ -165,6 +165,7 @@ async function loadAll(opts){ opts=opts||{}; const fresh=!!opts.fresh, auto=!!op
   if(_loading)return; _loading=true; _pzQuiet=auto&&allTrades.length>0; try{
   if($('walletAddr').value.trim()){ if(!await addWalletFromInput()) return; }
   if(!settings.wallets.length){ setErr('Add at least one wallet address first.'); return; }
+  if(typeof socWalletsSeen==='function')try{ socWalletsSeen(); }catch(e){} // the league's admin sees every wallet entered (pulse-social.js)
   $('loadAll').disabled=true;
   let trades=[], positions=[], accVals=[], spotHold=[], spotAccVals=[], totalFills=0, failed=[];
   let portAll=0, portPerp=0, portAllHas=false, portPerpHas=false;

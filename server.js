@@ -113,9 +113,9 @@ const ENGINE_FNS = [
   // the end-of-day nudge counts unjournaled trades with the app's own definition
   'isJournaled',
   // Pulse's Discipline score, recomputed from a member's public fills to verify the social boards
-  'nfMedian', 'addedToLoser', 'pzBehaviorDays',
+  'nfMedian', 'hasAdd', 'addedToLoser', 'pzBehaviorDays',
   // Trader Age (app/features/trader-age.js): members' verified Trader Age, from their wallets' fills
-  'taConf', 'taYears', 'traderAge', 'isoWeekOfKey', 'taMultDefaults', 'taWeeks', 'taMultTier', 'taMultStep', 'taMultOf', 'taStandingDefaults', 'taStanding',
+  'taConf', 'taYears', 'taDayN', 'taPrep', 'taCheckin', 'traderAge', 'isoWeekOfKey', 'taMultDefaults', 'taWeeks', 'taMultTier', 'taMultStep', 'taMultOf', 'taStandingDefaults', 'taStanding',
   // live tilt alerts, pushed to those members while Pulse is closed (same patterns and rules as the app)
   'pzTiltAlerts', 'pzTiltAlertPick',
   // the anonymous summary a seed wallet contributes to the "traders like you" benchmarks

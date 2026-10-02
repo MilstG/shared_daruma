@@ -1235,7 +1235,7 @@ function pzConnectHtml(){
       <button type="button" class="pz-cta" id="pzConnect"${busy?' disabled':''}>${busy?'<span class="pz-spin"></span>Loading your trades…':'Connect'}</button>`}
     <div class="pz-wl-or"><span>or</span></div>
     <button type="button" class="pz-ghost" id="pzDemo">Try it with sample data</button>
-    <p class="pz-fine pz-wl-safe">${pzI('lock',14)}<span>Read-only. ${cex?'Bybit and Binance through a key that can’t trade or withdraw':'A public address: no wallet connection, no signature, no keys'}. Your journal ${synced?'syncs to this server.':'stays in this browser.'}</span></p>
+    <p class="pz-fine pz-wl-safe">${pzI('lock',14)}<span>Read-only. ${cex?'Bybit and Binance through a key that can’t trade or withdraw':'A public address: no wallet connection, no signature, no keys'}. Your journal ${synced?'syncs to this server.':'stays in this browser.'}${!cex&&SRV.enabled?' The address is shared with this app’s admin and counted anonymously in “traders like you”.':''}</span></p>
     <div class="pz-wl-more">
       ${link?'':acctConnectHtml()}
       ${tokenAsk?`<details><summary class="pz-fine" style="cursor:pointer">Own this server? Sign in to sync</summary>${pzTokenHtml()}</details>`:''}
