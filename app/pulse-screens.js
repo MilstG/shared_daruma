@@ -25,6 +25,8 @@ function pzXpSources(g, fromKey){
 }
 // features whose screen lives under a tab (pzFeature tab.nav) show their card on that tab too, linking to it
 function pzFeatureCards(nav,D){ return PZ_FEATS.filter(f=>f.tab&&f.tab.nav===nav&&f.today).map(f=>{ try{ return f.today.html(D)||''; }catch(e){ console.warn('feature '+f.id,e); return ''; } }).join(''); }
+// a challenge as a rule for the week ("No SOL trades this week"), else the habit sentence
+function pzChallengeTitle(spec){ const m=spec&&spec.kind==='avoid'&&/^I’m about to take (?:one of my )?(.+)$/.exec(spec.when||''); return m?'No '+m[1]+' this week':habitSentence(spec); }
 function pzProgressHtml(D){
   const {g}=D, L=g.level, cat=g.catalog||{earned:[],families:[],total:0}, nowK=D.todayK, wkFrom=dayKey(lastCompletedWeekRange(Date.now()).to);
   const src=pzXpSources(g,wkFrom), srcRows=[['discipline','Discipline scores',PZ_COL.good],['bonus','Prep, plans, journal, reviews',PZ_COL.xp],['badges','Badges',PZ_TIER_COL[2]],
@@ -42,7 +44,7 @@ function pzProgressHtml(D){
     <p class="pz-fine">XP only comes from process — never from profit or the number of trades. <a href="#how">How it’s counted</a></p></section>`;
   // challenge
   const ch=g.current, chHtml=ch?`<section class="pz-card pz-kv"><div class="pz-kvrow"><span class="pz-lbl" style="color:${PZ_COL.xp}">This week’s challenge</span><span style="font-size:12px;font-weight:700;color:${PZ_COL.xp}">+${pzXpCfg().challenge} XP</span></div>
-      <b style="font-size:16px;line-height:1.35">${esc(habitSentence(ch.ch.spec))}</b>
+      <b style="font-size:16px;line-height:1.35">${esc(pzChallengeTitle(ch.ch.spec))}</b>
       ${ch.res.length?`<div class="pz-dots">${ch.res.slice(-7).map(r=>`<span><i class="${r.kept?'k':'m'}"></i>${esc(DOWN[new Date(r.key+'T00:00:00Z').getUTCDay()])}</span>`).join('')}</div>`:'<p class="pz-sub" style="font-size:13px">Starts with your next trading day.</p>'}
       <div class="pz-kvrow"><span class="pz-sub" style="font-size:12px">${ch.status==='missed'?'Missed once — the rest of the week still earns XP.':'Kept on every trading day this week = done.'}</span><button type="button" class="pz-ghost pz-sm" id="pzSwap" style="width:auto;padding:0 14px">Pick another</button></div></section>`
     :`<section class="pz-card"><p class="pz-sub">A weekly challenge is picked from your biggest leak once you have a few trades.</p></section>`;
@@ -275,7 +277,7 @@ function pzReportHtml(D){
   return `${back}${pzHead('Report card','Graded on process',seg)}
   <div class="pz-wide">${nav}
     <section class="pz-card pz-span pz-rhead"><span class="pz-grade-big" style="color:${gc(r.grade)};border-color:${gc(r.grade)}">${r.grade}</span>
-      <span style="flex:1;min-width:0"><b style="font-size:18px">Process ${Math.round(r.avg)}/100${r.delta!=null?` <small style="color:${r.delta>=0?PZ_COL.good:PZ_COL.low}">${r.delta>=0?'▲':'▼'} ${Math.abs(Math.round(r.delta))} vs the ${kind} before</small>`:''}</b>
+      <span style="flex:1;min-width:0"><b style="font-size:18px">Process ${Math.round(r.avg)}/100${r.delta!=null?` <small style="color:${Math.round(r.delta)===0?'var(--pz-muted)':r.delta>=0?PZ_COL.good:PZ_COL.low}">${Math.round(r.delta)===0?'same as the '+kind+' before':(r.delta>=0?'▲':'▼')+' '+Math.abs(Math.round(r.delta))+' vs the '+kind+' before'}</small>`:''}</b>
       <span class="pz-sub" style="display:block;font-size:13px">${r.good} of ${r.days} trading days at 70+ · ${r.clean} clean · +${r.xp.toLocaleString()} XP${r.badges.length?' · '+r.badges.length+' badge'+(r.badges.length===1?'':'s'):''}</span></span></section>
     <div class="pz-col">
       <section class="pz-card pz-kv"><b class="pz-kvh">Results</b>
@@ -511,7 +513,7 @@ function pzCoachHtml(D){
     ${socAvailable()?'<a class="pz-cta" href="#social" style="max-width:280px">Create your profile to start</a>':'<p class="pz-fine">Open Daruma from your server’s /daruma link to use it.</p>'}</section>`;
   const st=COACH.status;
   if(!st)return `${back}${pzHead('Coach','Your AI coach')}<p class="pz-sub"><span class="pz-spin"></span>Loading…</p>`;
-  if(!st.enabled)return `${back}${pzHead('Coach','Your AI coach')}<section class="pz-card pz-kv"><p class="pz-sub">The AI coach isn’t switched on for this server yet.${owner?' Set <code>COACH_AI=1</code> and an <code>ANTHROPIC_API_KEY</code> (or <code>OPENAI_API_KEY</code>) on the server, then restart it.':' Ask the league owner.'}</p></section>`;
+  if(!st.enabled)return `${back}${pzHead('Coach','Your AI coach')}${typeof _pzLastD!=='undefined'&&_pzLastD?`<section class="pz-card pz-coach"><span class="pz-ico">${pzI('chat',18)}</span><p>${esc(pzCoachLine(_pzLastD))}</p></section>`:''}<section class="pz-card pz-kv"><p class="pz-sub">The AI coach isn’t switched on for this server yet.${owner?' Set <code>COACH_AI=1</code> and an <code>ANTHROPIC_API_KEY</code> (or <code>OPENAI_API_KEY</code>) on the server, then restart it.':' Ask the league owner.'}</p></section>`;
   const msgs=pzCoachLoad();
   const list=msgs.length?msgs.map(m=>`<div class="pz-msg ${m.role==='user'?'me':'co'}"><p>${esc(m.content).replace(/\n/g,'<br>')}</p></div>`).join('')
     :`<div class="pz-msg co"><p>Hi${SOC.me?' @'+esc(SOC.me.handle):''}. I can see your scores, slips, habits and today’s plan${SOC.me&&SOC.me.coachDetail?', plus your recent trades and notes':''}. Ask me anything about your trading process — or pick one below.</p></div>`;
@@ -542,7 +544,7 @@ function socRowsHtml(rows, board, emptyText, key){
 }
 // one "Ranked by" picker instead of a row of pills under the tabs
 function socRankSel(id, opts, cur){
-  return `<div class="pz-field pz-rankby"><label for="${id}" style="font-size:13px;font-weight:600;color:var(--pz-muted)">Ranked by</label><select id="${id}">${opts.map(([k,l])=>`<option value="${esc(k)}"${k===cur?' selected':''}>${esc(l)}</option>`).join('')}</select></div>`;
+  return `<div class="pz-rankby"><span class="pz-lbl" style="color:var(--pz-muted)">Ranked by</span><div class="pz-chiprow" role="group" aria-label="Ranked by">${opts.map(([k,l])=>`<button type="button" class="pz-chipbtn" data-soc-rankfor="${id}" data-v="${esc(k)}" aria-pressed="${k===cur}">${esc(l)}</button>`).join('')}</div><select id="${id}" hidden aria-hidden="true" tabindex="-1">${opts.map(([k,l])=>`<option value="${esc(k)}"${k===cur?' selected':''}>${esc(l)}</option>`).join('')}</select></div>`;
 }
 function socOptHtml(d){
   const need={boards:'Process leaderboards',verify:'Verify my discipline',ret:'Show % return',usd:'Show dollar P&L',global:'Global leaderboards'};
@@ -569,6 +571,7 @@ function socLeagueHtml(g){
     ${L.tiers?`<span class="pz-sub" style="font-size:12px">${d.promote?'Top '+d.promote+' move up to '+esc(T[d.tier+1])+' on Monday':d.tier===T.length-1?'The top tier — hold your place.':'Promotion starts once four or more traders share your tier.'}</span>`:''}</span>
     <a class="pz-link" href="#lg/${esc(L.id)}" style="min-height:0">Info${pzI('chev',14)}</a></section>`;
   const chipsB=socRankSel('socBoardSel',[['rank','League ranking · '+L.metricLabel],...SOC_BOARDS.filter(([k])=>k!==L.metric)],b);
+  const quiet=L.members<=1?`<section class="pz-card pz-kv"><b class="pz-kvh">It’s quiet here</b><p class="pz-sub" style="font-size:13px">You’re the only trader in this league so far. ${SOC.cfg&&SOC.cfg.inviteRequired?'Joining needs the owner’s invite code: ask them to share it.':'Anyone who opens your server’s Daruma link can join.'}</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="pz-cta pz-sm" style="width:auto;padding:0 16px" data-pz-copyurl="${esc(location.origin+'/daruma')}">Copy the link</button><a class="pz-ghost pz-sm" href="#people" style="width:auto;padding:0 16px">Find people</a></div></section>`:'';
   let list='', note='', opt='', mine='';
   // the note says what this league's ranking covers: its season, its month, or its week — and only promises promotion where there are tiers
   const ranks=L.season?'this season ('+L.season.label+')':L.period==='month'?'this month':'this week';
@@ -578,7 +581,7 @@ function socLeagueHtml(g){
   else { const c2=socGet('lb:'+L.id+':'+b,'/leaderboard?board='+b+'&league='+encodeURIComponent(L.id),30000), d2=c2&&c2.d;
     list=d2?socRowsHtml(d2.rows,b,'No one on this board yet.'):`<p class="pz-sub">${c2&&c2.err?esc(c2.err):'<span class="pz-spin"></span>Loading…'}</p>`; note=SOC_BOARD_NOTE[b]||''; opt=socOptHtml(d2)+socOffBoardsHtml(d2);
     mine=d2&&d2.me?`<p class="pz-sub" style="font-size:13px">You’re <b>#${d2.me.rank}</b> of ${d2.total} with ${esc(socValue(b,d2.me.value))}.</p>`:''; }
-  return `${chipsL}${banner}${chipsB}<p class="pz-sub" style="font-size:12px">${esc(note)}</p>${opt}${mine}${list}`;
+  return `${quiet}${chipsL}${banner}${chipsB}<p class="pz-sub" style="font-size:12px">${esc(note)}</p>${opt}${mine}${list}`;
 }
 // a lapsed standing takes you off the leaderboards (your league's own table still counts you)
 function socOffBoardsHtml(d){ return d&&d.offBoards?'<p class="pz-warn">You’re off the leaderboards while your standing is lapsed. Your league table still counts you. <a href="#age">Your standing</a></p>':''; }
@@ -663,7 +666,8 @@ function socPartnerStripHtml(){
 // nudges, mentor notes and season results, until you've read them
 function socInboxHtml(){
   if(!SOC.me)return '';
-  const c=socGet('inbox','/inbox',60000), L=c&&c.d?c.d.items.filter(x=>x.unread):[]; if(!L.length)return '';
+  const st=typeof taStandingMe==='function'&&taStandingMe(), bannerUp=!!(st&&!st.exempt&&['slipping','unverified','lapsed'].includes(st.state));
+  const c=socGet('inbox','/inbox',60000), L=c&&c.d?c.d.items.filter(x=>x.unread&&!(bannerUp&&x.kind==='standing')):[]; if(!L.length)return '';
   const ico={partner:'social',mentor:'coach',season:'medal',duel:'medal',claim:'shield'};
   return `<section class="pz-card pz-kv" aria-label="New for you"><div class="pz-kvrow"><b class="pz-kvh">New for you</b><button type="button" class="pz-linkbtn" id="socInboxRead">Mark read</button></div>
     ${L.slice(0,4).map(x=>`<div class="pz-nowrow"><span style="color:${x.kind==='mentor'?PZ_COL.xp:x.kind==='season'?'#F4C04E':PZ_COL.risk}">${pzI(ico[x.kind]||'bolt',16)}</span><span><b style="font-size:13px;font-weight:600">${esc(x.text)}</b>${x.kind==='claim'&&SOC.me.needsClaim?' <a class="pz-link" href="#account" style="min-height:0;font-size:13px">Claim my wallet ›</a>':''}<span class="pz-sub" style="display:block;font-size:11px">${x.day?'About '+esc(dayLabel(x.day))+' · ':''}${socAgo(x.at)}</span></span></div>`).join('')}</section>`;
@@ -763,6 +767,9 @@ function pzWearHtml(D){
   if(!WEAR.st){ pzWearSync(); return ''; }
   const P=WEAR.st.providers, w=(D.dayE||{}).wear, live=['whoop','oura','apple'].filter(p=>P[p]&&P[p].connected);
   const conn=['whoop','oura'].filter(p=>P[p]&&P[p].configured&&!P[p].connected);
+  const seen=(()=>{ try{ return localStorage.getItem('pz_wear_seen')==='1'; }catch(e){ return false; } })();
+  if(!live.length&&!(w&&w.score!=null)&&seen&&!pzS.wearOpen)return `<button type="button" class="pz-card pz-fold" data-pz-wearx aria-expanded="false"><span style="flex:1;min-width:0;text-align:left"><b style="font-size:15px">Readiness from a wearable</b><span class="pz-sub" style="display:block;font-size:12px">Connect WHOOP, Oura or Apple Health</span></span>${pzI('chev',18)}</button>`;
+  try{ localStorage.setItem('pz_wear_seen','1'); }catch(e){}
   return `<section class="pz-card pz-kv"><div class="pz-kvrow"><b class="pz-kvh">Readiness from a wearable</b>${live.length?`<button type="button" class="pz-linkbtn" data-pz-wsync>Sync</button>`:''}</div>
     ${w&&w.score!=null?`<div class="pz-kvrow"><span class="pz-sub" style="font-size:13px">${esc(PZ_WEAR_NAME[w.src]||w.src)} today${w.hrv?' · HRV '+w.hrv+' ms':''}${w.rhr?' · resting HR '+w.rhr:''}${w.sleepH?' · '+w.sleepH+'h asleep':''}</span><b style="font-size:20px;color:${PZ_COL[pzBand(w.score)]}">${w.score}</b></div>
       <p class="pz-fine">Your readiness today comes from ${esc(PZ_WEAR_NAME[w.src]||w.src)}. The questions below still count for your bonus XP.</p>`
@@ -900,4 +907,13 @@ async function pzGrowthAction(t){
     }
   }catch(e){ pzNote(e.message||String(e),'err'); return true; }
   return false;
+}
+
+// Daruma wiring for the folded cards, the ranked-by chips and the invite link copy
+if(typeof PZ!=='undefined'&&PZ){
+  document.addEventListener('click',async ev=>{ const el=ev.target.closest&&ev.target.closest('[data-pz-fold],[data-pz-wearx],[data-soc-rankfor],[data-pz-copyurl]'); if(!el)return;
+    if(el.dataset.pzFold!==undefined){ pzFoldSet(el.dataset.pzFold,true); pzRender(); return; }
+    if(el.dataset.pzWearx!==undefined){ pzS.wearOpen=true; pzRender(); return; }
+    if(el.dataset.socRankfor){ const sel=document.getElementById(el.dataset.socRankfor); if(sel){ sel.value=el.dataset.v; sel.dispatchEvent(new Event('change',{bubbles:true})); } return; }
+    if(el.dataset.pzCopyurl){ const u=el.dataset.pzCopyurl; try{ await navigator.clipboard.writeText(u); pzNote('Link copied: '+u); }catch(e){ pzNote(u); } } });
 }

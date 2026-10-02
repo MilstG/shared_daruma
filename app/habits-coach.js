@@ -792,7 +792,7 @@ function wireCustomRules(){
 function confLevel(p){ return p==null?'early':p<0.01?'strong':p<0.05?'likely':'early'; }
 function confWords(level){ return {strong:'Very likely real',likely:'Probably real',early:'Early signal — keep watching'}[level]||''; }
 function sampleWords(n){ return n<10?'a handful of trades':n<30?n+' trades, a small sample':n<100?n+' trades':n+' trades, a solid sample'; }
-function usdPlain(x){ const a=Math.abs(x); return a>=100?fmtUsd(a,0):fmtUsd(a).replace(/\.00$/,''); }
+function usdPlain(x){ const a=Math.abs(x); return a>=10?fmtUsd(a,0):fmtUsd(a).replace(/\.00$/,''); } // whole dollars unless under $10
 // 'YYYY-MM-DD' -> 'Mon, Sep 28' (a calendar key, so read it as UTC to keep the same date)
 function dayLabel(k){ const d=new Date(k+'T00:00:00Z'); if(isNaN(d))return k; return DOWN[d.getUTCDay()]+', '+MONTHS[d.getUTCMonth()]+' '+d.getUTCDate(); }
 function daysPlain(ms){ const d=Math.round(ms/86400000); return d>=60?Math.round(d/7)+' weeks':d+' day'+(d===1?'':'s'); }

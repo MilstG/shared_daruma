@@ -186,7 +186,7 @@ function planPzHtml(D){
     <div class="pz-wide"><div class="pz-col"><section class="pz-card" style="display:flex;flex-direction:column;gap:12px">
       <div style="display:flex;gap:10px;align-items:flex-end"><div class="pz-field" style="flex:1;min-width:0"><label for="pzPlCoin" style="font-size:13px">Market</label><input type="text" id="pzPlCoin" maxlength="24" placeholder="BTC" list="pzPlCoins" autocomplete="off" autocapitalize="characters" spellcheck="false"><datalist id="pzPlCoins">${coins.map(c=>`<option value="${esc(c)}">`).join('')}</datalist></div>
         <div class="pz-seg" role="group" aria-label="Side">${[['Long','Long'],['Short','Short']].map(([k,l])=>`<button type="button" data-pz-plside="${k}" aria-pressed="${side===k}">${l}</button>`).join('')}</div></div>
-      <div style="display:flex;gap:10px">${num('pzPlEntry','Entry','optional')}${num('pzPlStop','Stop','needed')}${num('pzPlTarget','Target','optional')}</div>
+      <div style="display:flex;gap:10px">${num('pzPlEntry','Entry','opt.')}${num('pzPlStop','Stop','needed')}${num('pzPlTarget','Target','opt.')}</div>
       <div class="pz-field"><label for="pzPlWhy" style="font-size:13px">Why this trade (one line)</label><input type="text" id="pzPlWhy" maxlength="80" placeholder="Breakout retest" autocomplete="off"></div>
       ${setups.length?`<div class="pz-chiprow pz-wrapr" aria-label="Your setups">${setups.map(x=>`<button type="button" class="pz-chipbtn" data-pz-plwhy="${esc(x)}">${esc(x)}</button>`).join('')}</div>`:''}
       <button type="button" class="pz-cta" data-pz-plsave>Save plan</button>

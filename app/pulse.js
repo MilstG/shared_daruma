@@ -172,7 +172,9 @@ function pzFullHref(){ return /^https?:$/.test(location.protocol)?'/ledger.html'
 function pzNav(tab, level){
   const ft=pzFeatTab(tab);
   const cur=ft?(ft.tab.nav||'today'):tab==='discipline'||tab==='journal'||tab==='review'||tab==='plan'?'today':tab==='profile'||tab==='comp'||tab==='sharing'||tab==='account'||tab==='leagues'||tab==='mentor'||tab==='mentee'||tab==='reviews'||tab==='tr'||tab==='lginfo'||tab==='duels'||tab==='people'||tab==='duelnew'||tab==='podnew'||tab==='post'||tab==='compose'?'social':tab==='deep'||tab==='how'?'trends':tab==='badges'||tab==='report'||tab==='lessons'?'progress':tab;
-  const items=[['today','Today'],['trends','Stats'],['checkin','Prep'],['coach','Coach'],['social','Social'],['progress','Progress']];
+  if(typeof pzCoachStatus==='function')pzCoachStatus(); // asked once per profile, so the bar knows whether there is a coach
+  const noCoach=typeof COACH!=='undefined'&&COACH&&COACH.status&&!COACH.status.enabled; // the owner hasn't switched the AI coach on: no tab for it
+  const items=[['today','Today'],['trends','Stats'],['checkin','Prep'],...(noCoach?[]:[['coach','Coach']]),['social','Social'],['progress','Progress']];
   const lockT=0; // Stats is always open; only its deeper insights are level-gated
   return `<nav class="pz-nav" aria-label="Daruma"><div class="pz-brand">${pzRing('',0.72,'var(--pz-acc)',{size:30})}Daruma</div>
     ${items.map(([k,l])=>`<a href="#${k}"${k===cur?' aria-current="page"':''}${k==='trends'&&lockT?` aria-label="Trends, ${pzNeedsProfile(lockT)?'needs a profile':'unlocks at level '+lockT}"`:''}>${pzI(k==='trends'&&lockT?'lock':k,22)}<span>${l}</span></a>`).join('')}
@@ -181,8 +183,16 @@ function pzNav(tab, level){
 function pzHead(kick,title,extra){
   return `<header class="pz-head"><div><span class="pz-kick">${esc(kick)}</span><h1 class="pz-h1">${esc(title)}</h1></div>${extra||''}</header>`;
 }
+// first and last day under a bar chart
+function pzAxisHtml(a,b){ return a&&b?`<div class="pz-axis"><span>${esc(dayLabel(a))}</span><span>${esc(dayLabel(b))}</span></div>`:''; }
+// Today sections that start folded to a line (they open on a tap, and stay open on this device)
+const PZ_FOLD=new Set(['now','week']);
+function pzFoldOpen(id){ try{ return !!(JSON.parse(localStorage.getItem('pz_fold')||'{}')[id]); }catch(e){ return false; } }
+function pzFoldSet(id,open){ let o={}; try{ o=JSON.parse(localStorage.getItem('pz_fold')||'{}'); }catch(e){} o[id]=!!open; try{ localStorage.setItem('pz_fold',JSON.stringify(o)); }catch(e){} }
+function pzFoldHtml(id){ const x=PZ_SECTIONS.today.find(z=>z[0]===id)||[id,id,''];
+  return `<button type="button" class="pz-card pz-fold" data-pz-fold="${esc(id)}" aria-expanded="false"><span style="flex:1;min-width:0;text-align:left"><b style="font-size:15px">${esc(x[1])}</b><span class="pz-sub" style="display:block;font-size:12px">${esc(x[2])}</span></span>${pzI('chev',18)}</button>`; }
 function pzChips(g, toJournal){
-  return `<div class="pz-chips">${toJournal?`<a class="pz-chip pz-jchip" href="#journal" aria-label="${toJournal} trade${toJournal===1?'':'s'} to journal">${pzI('pen',16)}<span>${toJournal}</span></a>`:''}<a class="pz-chip streak" href="#progress" aria-label="${g.streak.current}-day discipline streak">${pzI('flame',18)}<span>${g.streak.current}</span></a>
+  return `<div class="pz-chips">${toJournal?`<a class="pz-chip pz-jchip" href="#journal" aria-label="${toJournal} trade${toJournal===1?'':'s'} to journal">${pzI('pen',16)}<span>${toJournal}</span><span class="pz-chip-w">to journal</span></a>`:''}<a class="pz-chip streak" href="#progress" aria-label="${g.streak.current}-day discipline streak">${pzI('flame',18)}<span>${g.streak.current}</span><span class="pz-chip-w">day streak</span></a>
     <button type="button" class="pz-chip icon" data-pz-sheet aria-label="Settings and wallets">${pzI('gear',20)}</button></div>`;
 }
 
@@ -527,7 +537,7 @@ function pzNowHtml(D,F){
   const me=hrs.find(x=>x.h===h), rank=me?hrs.indexOf(me):-1, lines=[];
   const lossMin=F.lastLoss?Math.round((F.now-F.lastLoss.closeTime)/60000):null;
   if(!me&&!F.lastOpen&&!(lossMin!=null&&lossMin<60))return ''; // not an hour you trade, nothing today: nothing to say
-  const clock=n=>String(n).padStart(2,'0')+':00', ago=m=>m<120?m+' minute'+(m===1?'':'s'):(m/60).toFixed(1)+' hours';
+  const clock=n=>String(n).padStart(2,'0')+':00', ago=m=>{ if(m<120)return m+' minute'+(m===1?'':'s'); const h=Math.round(m/60); return h+' hour'+(h===1?'':'s'); };
   const n=byH[h]?byH[h].n:0;
   if(me){ const good=rank<3&&me.avg>0, bad=rank>=hrs.length-3&&me.avg<0;
     lines.push([good?PZ_COL.good:bad?PZ_COL.low:'var(--pz-soft)',`It’s ${clock(h)}, ${good?'one of your best hours':bad?'one of your worst hours':'an ordinary hour for you'}`,
@@ -670,7 +680,8 @@ function pzTodayHtml(D){
   // each section fails on its own (a bad record can't blank the screen), and shows only if you keep it on
   const safe=f=>{ try{ return f(); }catch(err){ console.warn('today section',err); return ''; } };
   const F=safe(()=>pzTodayFacts(D))||null;
-  const on=id=>pzShow('today',id), sec=(id,f)=>on(id)?safe(f):'', more=(id,k)=>F&&on(id)?safe(()=>k(D,F)):'';
+  const foldIds=new Set([...PZ_FOLD,...(day?[]:['session'])]), fold=(id,h)=>h&&foldIds.has(id)&&!pzFoldOpen(id)?pzFoldHtml(id):h;
+  const on=id=>pzShow('today',id), sec=(id,f)=>fold(id,on(id)?safe(f):''), more=(id,k)=>fold(id,F&&on(id)?safe(()=>k(D,F)):'');
   return `${pzHead(dayLabel(D.todayK).replace(', ',' · '),'Today',pzChips(g,D.inbox.length))}
     ${safe(()=>pzTaBannerHtml(D))}
     ${safe(()=>typeof taStandingBannerHtml==='function'?taStandingBannerHtml():'')}
@@ -705,7 +716,7 @@ function pzDisciplineHtml(D){
       <div class="pz-big">${d.behavior.clean} of ${d.n} trade${d.n===1?'':'s'} clean${isToday?'':' on your last trading day'}</div>
       <p class="pz-sub">Read from your fills, so it’s the same score the leaderboard verifies. Profit doesn’t count. <a href="#how">How it’s worked out</a></p></section>
       <section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><b style="font-size:15px">Last ${recent.length} trading days</b><span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--pz-streak)">${pzI('flame',16)}${g.streak.current}-day streak</span></div>
-        <div class="pz-chart" style="--h:96px;--gap:5px"><span class="pz-thr" style="bottom:${Math.round(70*0.96)}px"></span>${bars}</div>
+        <div class="pz-chart" style="--h:96px;--gap:5px"><span class="pz-thr" style="bottom:${Math.round(70*0.96)}px"></span>${bars}</div>${pzAxisHtml(recent[0]&&recent[0].key,recent[recent.length-1]&&recent[recent.length-1].key)}
         <p class="pz-sub" style="font-size:12px">Dashed line is 70 — a clean day for your streak. ${g.streak.shields?`You hold ${g.streak.shields} shield${g.streak.shields===1?'':'s'}: each one covers an off day.`:'A perfect week (every trading day 70+) earns a shield that covers one off day.'}</p></section></div>
     <div class="pz-col"><section class="pz-card pz-parts" aria-label="The six checks">${checks}</section>
       </div>
@@ -837,10 +848,10 @@ function pzTrendsHtml(D){
     const hr=h=>String(h).padStart(2,'0')+':00';
     const hrs=st.hours.length>=2?[['Best hour',st.hours[0]],['Worst hour',st.hours[st.hours.length-1]]]:[];
     stats=`<div class="pz-grid3 pz-span" data-sec="stats:tiles">${tile('Net P&L',money(s.net),s.n+' trade'+(s.n===1?'':'s'),col(s.net),exact(s.net))}${tile('Win rate',pzPct(s.winRate),s.wins+' W · '+s.losses+' L')}${tile('Average trade',money(s.expectancy),'',col(s.expectancy),exact(s.expectancy))}
-      ${tile('Profit factor',isFinite(s.profitFactor)?s.profitFactor.toFixed(2):'∞','')}${tile('Average win',pzShort(s.avgWin),'avg loss '+pzShort(s.avgLoss)+' · payoff '+(isFinite(s.payoff)?s.payoff.toFixed(2):'∞'),null,usdPlain(s.avgWin)+' win / '+usdPlain(s.avgLoss)+' loss')}${tile('Fees + funding',money(-(s.fees)+(s.fund||0)),'fees '+pzShort(s.fees),null,exact(-(s.fees)+(s.fund||0)))}</div>
+      ${tile('Profit factor',isFinite(s.profitFactor)?s.profitFactor.toFixed(2):'no losses','')}${tile('Average win',pzShort(s.avgWin),'avg loss '+pzShort(s.avgLoss)+' · payoff '+(isFinite(s.payoff)?s.payoff.toFixed(2):'no losses'),null,usdPlain(s.avgWin)+' win / '+usdPlain(s.avgLoss)+' loss')}${tile('Fees + funding',money(-(s.fees)+(s.fund||0)),'fees '+pzShort(s.fees),null,exact(-(s.fees)+(s.fund||0)))}</div>
       <a class="pz-ghost pz-span pz-deepbtn" href="#deep">${pzLocked('deep',g.level.level)?pzI('lock',16)+'In-depth stats · '+pzLockWord(pzLocked('deep',g.level.level)):'See in-depth stats'}${pzI('chev',18)}</a>
       <section class="pz-card pz-span" data-sec="stats:daily" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-size:15px">Daily P&L</b><span class="pz-sub" style="font-size:12px">${days.length} trading day${days.length===1?'':'s'}${st.days.length>60?' (last 60)':''}</span></div>
-        <div class="pz-chart" style="--h:100px;--gap:${days.length>30?'2px':'5px'}">${bars}</div></section>
+        <div class="pz-chart" style="--h:100px;--gap:${days.length>30?'2px':'5px'}">${bars}</div>${pzAxisHtml(days[0]&&days[0].k,days[days.length-1]&&days[days.length-1].k)}</section>
       <section class="pz-card" data-sec="stats:markets" style="display:flex;flex-direction:column;gap:6px"><b style="font-size:15px">Markets</b>
         ${best.map(x=>`<div class="pz-row-t"><span>${esc(dispMarket(x.k))} · ${x.n}</span><b style="color:${PZ_COL.good}" title="${esc(signedPlain(x.net))}">${esc(pzSigned(x.net))}</b></div>`).join('')||'<p class="pz-sub" style="font-size:13px">No winning market in this range.</p>'}
         ${worst.map(x=>`<div class="pz-row-t"><span>${esc(dispMarket(x.k))} · ${x.n}</span><b style="color:${PZ_COL.low}" title="${esc(signedPlain(x.net))}">${esc(pzSigned(x.net))}</b></div>`).join('')}</section>
@@ -852,7 +863,7 @@ function pzTrendsHtml(D){
   let deep;
   if(lock) deep=`<section class="pz-card pz-span" style="display:flex;align-items:center;gap:14px">${pzI('lock',22)}<span style="flex:1"><b style="font-size:15px">${pzNeedsProfile(lock)?'Deeper insights need a profile':'Deeper insights unlock at level '+lock}</b><br><span class="pz-sub" style="font-size:13px">Does discipline pay for you, how your morning prep relates to your trading, and what moves your score. ${pzNeedsProfile(lock)?'<a href="#social">Create your profile</a> to unlock them.':pzXpToGo(lock,g)}</span></span></section>`;
   else { const ts=pzTrendStats(g.days,ctx.byDay,fromKey), bc=pzBars(ts.days);
-    const chart=ts.days.length?`<div class="pz-chart" style="--h:110px;--gap:${bc.bars.length>20?'3px':'8px'}"><span class="pz-thr" style="bottom:${Math.round(70*1.1)}px"></span>${bc.bars.map(b=>`<i style="height:${Math.max(4,Math.round(b.v*1.1))}px;background:${PZ_COL[pzBand(b.v)]}" data-pz-tip="${esc(b.tip)}"></i>`).join('')}</div>`:'<p class="pz-sub">No trading days in this range.</p>';
+    const chart=ts.days.length?`<div class="pz-chart" style="--h:110px;--gap:${bc.bars.length>20?'3px':'8px'}"><span class="pz-thr" style="bottom:${Math.round(70*1.1)}px"></span>${bc.bars.map(b=>`<i style="height:${Math.max(4,Math.round(b.v*1.1))}px;background:${PZ_COL[pzBand(b.v)]}" data-pz-tip="${esc(b.tip)}"></i>`).join('')}</div>${pzAxisHtml(ts.days[0]&&(ts.days[0].key||ts.days[0].k),ts.days[ts.days.length-1]&&(ts.days[ts.days.length-1].key||ts.days[ts.days.length-1].k))}`:'<p class="pz-sub">No trading days in this range.</p>';
     const tile=(cls,lbl,x)=>`<div class="pz-tile ${cls}"><span class="pz-lbl" style="font-size:11px">${lbl} · ${x.n} day${x.n===1?'':'s'}</span><span class="pz-n">${esc(money(x.avgNet))}</span><span class="pz-t">avg day · ${pzPct(x.winRate)} win rate</span></div>`;
     const rl=pzReadinessLink(ts.days,journal), RF=pzRangeFindings(ctx,from), FA=RF.findings;
     // the six most significant edges and leaks (already ranked by size × confidence); plain notes only fill the gaps
@@ -885,7 +896,7 @@ function pzRangeFindings(ctx, fromMs){
 // ---- screens: in-depth stats (#deep) and how the scores work (#how) ----
 const pzMoney=v=>v==null||!isFinite(v)?'—':pzSigned(v);
 const pzSignCol=v=>v>0?PZ_COL.good:v<0?PZ_COL.low:'var(--pz-text)';
-const pzRatio=v=>v==null?'—':isFinite(v)?v.toFixed(2):'∞';
+const pzRatio=v=>v==null?'—':isFinite(v)?v.toFixed(2):'no losses';
 // a card of label/value rows; tip explains the number on hover
 function pzKv(title, rows, note){
   return `<section class="pz-card pz-kv"><b class="pz-kvh">${esc(title)}</b>${rows.filter(Boolean).map(([l,v,c,tip])=>`<div class="pz-row-t"${tip?` data-pz-tip="${esc(l+'\n'+tip)}" tabindex="0"`:''}><span>${esc(l)}</span><b${c?` style="color:${c}"`:''}>${esc(v)}</b></div>`).join('')}${note?`<p class="pz-fine">${note}</p>`:''}</section>`;
@@ -1141,7 +1152,7 @@ function pzCheckinHtml(D){
     <div class="pz-col"><section class="pz-card" id="pzCkPrev" style="display:flex;align-items:center;gap:16px" aria-live="polite">${pzCkPrevHtml(r,b)}</section>${pzWearHtml(D)}${q}</div>
     <div class="pz-col">
       <section class="pz-card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 10px 10px 16px"><span><b style="font-size:15px">Trade cap today</b><br><span class="pz-sub" style="font-size:12px">The risk dial counts against it</span></span>
-        <span class="pz-step"><button type="button" data-pz-cap="-1" aria-label="One fewer trade">${pzI('minus',18,2.4)}</button><output id="pzCap" aria-live="polite">${ck.maxTrades||'—'}</output><button type="button" data-pz-cap="1" aria-label="One more trade">${pzI('plus',18,2.4)}</button></span></section>
+        <span class="pz-step"><button type="button" data-pz-cap="-1" aria-label="One fewer trade">${pzI('minus',18,2.4)}</button><output id="pzCap" aria-live="polite">${ck.maxTrades||'<small>none</small>'}</output><button type="button" data-pz-cap="1" aria-label="One more trade">${pzI('plus',18,2.4)}</button></span></section>
       <div class="pz-field"><label for="pzLoss">Stop for the day at a loss of ($)</label><input type="number" id="pzLoss" inputmode="decimal" min="0" step="any" value="${ck.maxLoss?esc(ck.maxLoss):''}" placeholder="${nfRules().dailyLossLimit>0?'standing limit '+usdPlain(nfRules().dailyLossLimit):'e.g. 400'}"></div>
       ${pzRulesFormHtml(ck)}
       <div class="pz-field"><label for="pzPlan">One-line plan</label><textarea id="pzPlan" rows="2" placeholder="Only A+ setups at the open. Stop after two losses.">${esc(ck.plan)}</textarea></div>
@@ -1152,7 +1163,7 @@ function pzCheckinHtml(D){
 }
 function pzCkPrevHtml(r,b){
   const txt=r==null?'Tap how you slept, how calm you feel and how focused you are.':b==='good'?'You’re set up well. Normal size, same rules.':b==='mid'?'Start at half size until your first good setup works.':'Low tank. A rest day or paper trades is a winning move.';
-  return `${pzRing(r==null?'—':r,(r||0)/100,PZ_COL[b],{size:88})}<span style="display:flex;flex-direction:column;gap:4px"><span class="pz-lbl" style="color:${r==null?'var(--pz-muted)':PZ_COL[b]}">Readiness${r==null?'':' · '+(b==='good'?'Ready':b==='mid'?'Steady':'Low')}</span><span style="font-size:14px;line-height:1.4;color:var(--pz-soft)">${txt}</span></span>`;
+  return `${pzRing(r==null?'—':r,(r||0)/100,PZ_COL[b],{size:88,cap:r==null?'not set':''})}<span style="display:flex;flex-direction:column;gap:4px"><span class="pz-lbl" style="color:${r==null?'var(--pz-muted)':PZ_COL[b]}">Readiness${r==null?'':' · '+(b==='good'?'Ready':b==='mid'?'Steady':'Low')}</span><span style="font-size:14px;line-height:1.4;color:var(--pz-soft)">${txt}</span></span>`;
 }
 async function pzSaveCheckin(){
   const ck=pzS.ck; if(!ck)return;
@@ -1217,7 +1228,7 @@ function pzWelcomeHero(){
   return `<section class="pz-wl-hero"><div class="pz-wl-brand">${pzRing('',0.72,'var(--pz-acc)',{size:30})}<b>Daruma</b></div>
     <h1>Know when to trade.<br><span>And when to stop.</span></h1>
     <p class="pz-wl-lede">Daruma reads your own fills on Hyperliquid, Lighter, Bybit or Binance and turns them into three dials for your trading day.</p>
-    <div class="pz-wl-dials" aria-hidden="true">${dial('78',0.78,'var(--pz-good)','Readiness')}${dial('84',0.84,'var(--pz-xp)','Discipline')}${dial('Low',0.28,'var(--pz-risk)','Risk')}</div>
+    <div class="pz-wl-dials" aria-hidden="true">${dial('86',0.86,'var(--pz-good)','Form')}${dial('84',0.84,'var(--pz-good)','Discipline')}${dial('1.0×',0.5,'var(--pz-risk)','Load')}</div>
     <ul class="pz-wl-points"><li>${pzI('check',16,2.4)}Two minutes of prep before the open</li><li>${pzI('check',16,2.4)}Revenge trades, size-ups and overtrading caught as they happen</li><li>${pzI('check',16,2.4)}One-line journaling, and how you compare with traders like you</li></ul></section>`;
 }
 function pzConnectHtml(){
@@ -1282,7 +1293,7 @@ function pzSheetHtml(){
     <div style="display:flex;justify-content:space-between;align-items:center"><b id="pzSheetT" style="font-size:18px">Settings</b><button type="button" class="pz-chip icon" data-pz-close aria-label="Close">${pzI('x',20)}</button></div>
     <section><span class="pz-lbl" style="color:var(--pz-muted)">Wallets</span>
       ${settings.wallets.map((w,i)=>`<div class="pz-wl"><span>${w.label?esc(w.label)+' · ':''}<code>${esc(walletShort(w.address))}</code></span><button type="button" class="pz-ghost pz-sm" data-pz-rmw="${i}" aria-label="Remove wallet ${esc(labelFor(w))}">Remove</button></div>`).join('')||'<p class="pz-sub">No wallets yet.</p>'}
-      <div class="pz-field" style="margin-top:10px"><label for="pzAddr2" style="font-size:13px">Add another address</label><input type="text" id="pzAddr2" placeholder="0x…" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="pz-field" style="margin-top:10px"><label for="pzAddr2" style="font-size:13px">${settings.wallets.length?'Add another address':'Add a wallet address'}</label><input type="text" id="pzAddr2" placeholder="0x…" autocomplete="off" autocapitalize="off" spellcheck="false">
         <div style="display:flex;gap:8px"><button type="button" class="pz-ghost pz-sm" id="pzAdd2">Add &amp; load</button>${settings.wallets.length?'<button type="button" class="pz-ghost pz-sm" id="pzRefresh">Refresh now</button>':''}</div></div>
       ${pzS.cex?pzCexFormHtml():`<button type="button" class="pz-ghost pz-sm" data-pz-cex="bybit" style="margin-top:8px">Connect Bybit or Binance</button>`}</section>
     <section><span class="pz-lbl" style="color:var(--pz-muted)">Appearance</span>
@@ -1336,6 +1347,7 @@ function pzRender(){
     html=`${pzNav(tab,lv)}<main class="pz-main" id="pzMain">${body}</main>`;
     socSync(D.g); }
   view.innerHTML=html;
+  for(const el of view.querySelectorAll('.pz-chiprow:not(.pz-wrapr)'))el.classList.toggle('pz-scrolls',el.scrollWidth>el.clientWidth+4);
   pzQuietMount(allTrades.length?_pzLastD:null);
   const sh=$('pzSheet'); if(sh)sh.innerHTML=pzS.sheet?pzSheetHtml():pzS.custom?pzCustomizeHtml(pzS.custom):'';
   view.inert=!!(sh&&(pzS.sheet||pzS.custom)); // with a sheet open, Tab stays inside it
