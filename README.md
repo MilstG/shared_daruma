@@ -74,7 +74,11 @@ generates a seeded, deterministic five-month synthetic history — four perp
 coins with a realistic fat left tail plus a spot position — and runs it through
 the exact same import pipeline, so every panel is populated without pasting a
 wallet. Nothing is fetched and nothing is saved; reload or add a real address
-to clear it.
+to clear it. Its charts and excursions read a price path drawn from the sample
+fills themselves (`demoCandles`: one deterministic path per coin that passes through
+every fill), never the exchange's candles, which could not line up with made-up prices;
+those sample candles are cached under keys of their own, so a real coin's cache is never
+touched.
 
 ## Loading your data
 
@@ -279,10 +283,15 @@ time, month, market volatility and trend;
 **How the scores work** spells out every formula), **Prep** (readiness, today's trade cap,
 loss limit and plan) and **Progress** (level, XP, streak and shields, the
 weekly challenge, badges, share cards). A quick journal screen rates and notes
-unjournaled trades from the last 30 days — the ✎ count at the top of Today and Progress opens it. Each card there has a step-through
-under its chart: one fill at a time, in plain words ("You added 0.5 at 64,210.
-Holding 1.5, average 64,100. Open P&L +$30, banked +$0."), with the fill marked on
-the chart; ← → work too. On a wide screen the tabs become a sidebar.
+unjournaled trades from the last 30 days — the ✎ count at the top of Today and Progress opens it. Each card
+shows the market and side, the net result and %, when it opened and closed, how long it
+was held, the size and the fill count, then a chart of the trade: candles around it with
+a price axis, the holding period shaded and the ground between entry and exit tinted
+with the result, every fill marked on its candle (▲ a buy, ▼ a sell), the entry, exit,
+stop and target as pills on the axis, and the worst and best points while held. Under
+it a step-through replays the fills: a dot per fill jumps to it, the arrows (and ← →)
+step, the chart rings the fill, and a line says the position and P&L after it. Prices
+use one format everywhere (`pzPx`). On a wide screen the tabs become a sidebar.
 
 **Plan a trade.** The *Plan your next trade* card on Today opens a short form:
 market, long or short, stop (required), target and entry (optional), and one line

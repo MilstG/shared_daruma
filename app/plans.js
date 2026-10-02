@@ -168,7 +168,7 @@ function planDiagHtml(closed){
 
 /* ============================ Pulse: Plan a trade, Your plans, step-through ============================ */
 function planPzRR(p){ const en=p.entry>0?p.entry:null; return en&&p.target>0&&p.stop>0?Math.abs(p.target-en)/Math.abs(en-p.stop):null; }
-function planPzPx(v){ return v>0?(+v).toLocaleString(undefined,{maximumFractionDigits:v>=1000?1:v>=1?4:6}):'—'; }
+function planPzPx(v){ return typeof pzPx==='function'?pzPx(v):v>0?(+v).toLocaleString(undefined,{maximumFractionDigits:v>=1000?1:v>=1?4:6}):'—'; }
 // Today: one card to plan the next trade, with what's waiting
 function planTodayHtml(D){
   const now=Date.now(), wait=pplanList(journal).filter(p=>pplanStatus(p,now)==='pending');
@@ -208,19 +208,21 @@ function planPzStatsHtml(closed, R){
     ${S.planned?row('Plan followed',pct(S.adherence)+' · '+S.followed+' of '+S.planned,'Out at your stop or your target, as planned. Getting out early, losing more than the stop, or staying in past it all count as not followed.'):''}
     ${planStripHtml(S,'data-pz-tip',cols)}<p class="pz-sub" style="font-size:14px;margin:2px 0 0">${esc(lead)}</p></section>`;
 }
-// The step-through under a trade's chart: one fill at a time, the position and P&L after it
+// The step-through under a trade's chart: one fill at a time, the position and P&L after it.
+// A dot per fill (filled: a buy; hollow: a sell) jumps straight to it; ← → and the arrows step.
 function planPzRpHtml(t){
   const st=replayFillSteps(t.dir,t.events); if(st.length<2)return '';
   const i=Math.max(-1,Math.min(st.length-1,(pzS.rp||{})[t.id]!=null?pzS.rp[t.id]:-1)), s=st[i];
-  const j=journal[t.id]||{}, p=nfPlan(j), sz=v=>(+v.toPrecision(6)).toLocaleString();
+  const j=journal[t.id]||{}, p=nfPlan(j), sz=v=>(+(+v).toPrecision(5)).toLocaleString('en-US'), px=typeof pzPx==='function'?pzPx:planPzPx, short=t.dir==='Short';
+  const verb=s?(s.what==='entry'?(short?'Sold short':'Bought'):s.what==='add'?'Added':s.what==='exit'?(short?'Covered':'Sold'):'Took off'):'';
+  const dots=st.map((x,n)=>`<button type="button" class="pz-rp-dot${n===i?' on':''}" style="--c:${x.k>0?PZ_COL.mid:t.net>=0?PZ_COL.good:PZ_COL.low}" data-pz-rpi="${n}" aria-pressed="${n===i}" aria-label="Fill ${n+1} of ${st.length}: ${x.k>0?'buy':'sell'} ${sz(x.sz)} at ${px(x.px)}"></button>`).join('');
   const say=!s?`${st.length} fills. Step through them to see the trade the way it happened.`
-    :`${s.what==='entry'?'You got in':s.what==='add'?'You added':s.what==='exit'?'You got out':'You took some off'}: ${sz(s.sz)} at ${planPzPx(s.px)}. `
-      +(s.pos>0?`Holding ${sz(s.pos)}, average ${planPzPx(s.avg)}. Open P&L ${signedPlain(s.open)}`:'Flat')+`, banked ${signedPlain(s.real)}.`
-      +(p&&i===st.length-1?' Plan: stop '+planPzPx(p.stop)+(p.target?', target '+planPzPx(p.target):'')+'.':'');
-  return `<div class="pz-rp" role="group" aria-label="Step through the fills" data-pz-rpg="${esc(t.id)}" aria-keyshortcuts="ArrowLeft ArrowRight"><div style="display:flex;gap:8px;align-items:center">
-    <button type="button" class="pz-chip icon" data-pz-rp="-1" aria-label="Previous fill"${i<0?' disabled':''}>${pzI('back',18)}</button><span class="pz-sub" style="flex:1;text-align:center;font-size:13px">${s?'Fill '+(i+1)+' of '+st.length:'Replay the fills'}</span>
-    <button type="button" class="pz-chip icon" data-pz-rp="1" aria-label="Next fill"${i>=st.length-1?' disabled':''}>${pzI('chev',18)}</button></div>
-    <p class="pz-sub" style="font-size:13px;margin:6px 0 0" aria-live="polite">${esc(say)}</p></div>`;
+    :(s.pos>0?`Holding ${sz(s.pos)} at an average of ${px(s.avg)} · open ${signedPlain(s.open)}`:'Flat')+` · banked ${signedPlain(s.real)}`+(p&&i===st.length-1?' · plan: stop '+px(p.stop)+(p.target?', target '+px(p.target):''):'');
+  return `<div class="pz-rp" role="group" aria-label="Step through the fills" data-pz-rpg="${esc(t.id)}" aria-keyshortcuts="ArrowLeft ArrowRight">
+    <div class="pz-rp-row"><button type="button" class="pz-chip icon pz-rp-btn" data-pz-rp="-1" aria-label="Previous fill"${i<0?' disabled':''}>${pzI('back',16)}</button>
+      <div class="pz-rp-mid"><div class="pz-rp-dots">${dots}</div><span class="pz-rp-lbl">${s?`<b>Fill ${i+1} of ${st.length}</b> · ${esc(verb)} ${esc(sz(s.sz))} at ${esc(px(s.px))}`:'Replay the fills'}</span></div>
+      <button type="button" class="pz-chip icon pz-rp-btn" data-pz-rp="1" aria-label="Next fill"${i>=st.length-1?' disabled':''}>${pzI('chev',16)}</button></div>
+    <p class="pz-rp-say" aria-live="polite">${esc(say)}</p></div>`;
 }
 // the current step's fill, for the chart's marker (null when not stepping)
 function planPzMark(t){ const i=(pzS.rp||{})[t&&t.id]; if(i==null||i<0)return null; const s=replayFillSteps(t.dir,t.events)[i]; return s?{t:s.t,px:s.px,k:s.k}:null; }
@@ -239,23 +241,24 @@ async function planPzAction(el){
     planAttachPending(); // the trade may already be on
     pzNote('Plan saved — it attaches to your next '+p.coin+' '+p.dir.toLowerCase()+'.'); pzRender(); return true; }
   if(ds.pzRp){ const g=el.closest('[data-pz-rpg]'); if(g)planPzStep(g.dataset.pzRpg,+ds.pzRp); return true; }
+  if(ds.pzRpi!==undefined){ const g=el.closest('[data-pz-rpg]'); if(g)planPzStep(g.dataset.pzRpg,+ds.pzRpi,true); return true; }
   return false;
 }
 // one step: redraw only this card's chart and step-through (a full render would drop focus and scroll)
-function planPzStep(id,d){
+function planPzStep(id,d,abs){
   const t=allTrades.find(x=>x.id===id); if(!t)return;
   const n=replayFillSteps(t.dir,t.events).length, rp=pzS.rp=pzS.rp||{};
-  rp[id]=Math.max(-1,Math.min(n-1,(rp[id]!=null?rp[id]:-1)+d));
+  rp[id]=Math.max(-1,Math.min(n-1,abs?d:(rp[id]!=null?rp[id]:-1)+d));
   const sn=document.querySelector('[data-pz-snap="'+CSS.escape(id)+'"]'); if(sn)sn.innerHTML=pzSnapHtml(t);
   const g=document.querySelector('[data-pz-rpg="'+CSS.escape(id)+'"]'); if(!g)return;
-  const had=g.contains(document.activeElement)?document.activeElement.dataset.pzRp:null;
+  const ae=document.activeElement, had=g.contains(ae)?(ae.dataset.pzRpi!=null?'[data-pz-rpi="'+rp[id]+'"]':'[data-pz-rp="'+ae.dataset.pzRp+'"]'):null;
   g.outerHTML=planPzRpHtml(t);
-  const g2=document.querySelector('[data-pz-rpg="'+CSS.escape(id)+'"]'), b=g2&&(g2.querySelector('[data-pz-rp="'+had+'"]:not([disabled])')||g2.querySelector('[data-pz-rp]:not([disabled])'));
-  if(had!=null&&b)b.focus();
+  const g2=document.querySelector('[data-pz-rpg="'+CSS.escape(id)+'"]'), b=g2&&had&&(g2.querySelector(had+':not([disabled])')||g2.querySelector('[data-pz-rp]:not([disabled])'));
+  if(b)b.focus();
 }
 // Pulse wiring of its own (pulse.js's handlers stay untouched): clicks, and ← → on a step-through
 if(typeof PZ!=='undefined'&&PZ){
-  document.addEventListener('click',ev=>{ const el=ev.target.closest&&ev.target.closest('[data-pz-plside],[data-pz-plwhy],[data-pz-pldel],[data-pz-plsave],[data-pz-rp]'); if(el&&!el.disabled)planPzAction(el); });
+  document.addEventListener('click',ev=>{ const el=ev.target.closest&&ev.target.closest('[data-pz-plside],[data-pz-plwhy],[data-pz-pldel],[data-pz-plsave],[data-pz-rp],[data-pz-rpi]'); if(el&&!el.disabled)planPzAction(el); });
   document.addEventListener('keydown',ev=>{ if(ev.key!=='ArrowLeft'&&ev.key!=='ArrowRight')return; const g=ev.target.closest&&ev.target.closest('[data-pz-rpg]'); if(!g)return;
     ev.preventDefault(); planPzStep(g.dataset.pzRpg,ev.key==='ArrowRight'?1:-1); });
 }

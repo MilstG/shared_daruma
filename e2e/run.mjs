@@ -255,6 +255,22 @@ try {
     await p.close();
   });
 
+  await t('the journal tab: with sample data every chart draws its trade inside its own candles, offline', async () => {
+    const { page: p, errors: errs } = await openPage({ width: 1280, height: 900 }, { token: false });
+    await p.goto(BASE + '/daruma'); await p.click('#pzDemo');
+    await p.waitForFunction(() => allTrades.length > 20 && document.querySelector('.pz-rings'));
+    await p.evaluate(() => { location.hash = '#journal'; });
+    await p.waitForFunction(() => document.querySelectorAll('.pz-snapsvg').length >= 4, null, { timeout: 15000 });
+    const chk = await p.evaluate(() => Object.entries(PZ_SNAP).filter(([, s]) => s.st === 'ok').map(([id, s]) => { const t = allTrades.find(x => x.id === id);
+      const lo = Math.min(...s.c.map(c => c[2])), hi = Math.max(...s.c.map(c => c[1])); return [t.coin, t.avgEntry >= lo && t.avgEntry <= hi && (t.isOpen || (t.avgExit >= lo && t.avgExit <= hi))]; }));
+    ok(chk.length >= 4 && chk.every(x => x[1]), JSON.stringify(chk));
+    ok(await p.evaluate(() => document.querySelectorAll('.pz-trade .pz-side').length >= 4 && document.querySelectorAll('.pz-rp-dot').length >= 8), 'side pills and a dot per fill');
+    await p.click('.pz-trade [data-pz-rpi="1"]');
+    ok(/Fill 2 of 2/.test(await p.textContent('.pz-trade .pz-rp-lbl')), 'a dot jumps to its fill');
+    eq(await p.evaluate(() => document.querySelectorAll('.pz-trade .pz-snapsvg circle[r="8"]').length), 1, 'and the chart rings it');
+    eq(errs, [], 'no uncaught errors'); await p.close();
+  });
+
   console.log('\nPulse: tilt alerts and the week card');
   for (const width of [360, 1280]) await t(`at ${width} px: a tilt banner, the break timer, and a PNG of the week (1080×1350 and 1080×1080)`, async () => {
     const { page: p, errors: errs } = await openPage({ width, height: 860 }, { token: false });
