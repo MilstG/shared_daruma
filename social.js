@@ -2040,6 +2040,9 @@ function createSocial(opts) {
     if (head === 'devices' && M === 'DELETE') { // sign out every other device: only the key making this call keeps working
       const h = sha(req.headers['x-pulse-key']); me.keyHash = h; me.keyHashes = []; reindex();
       for (const [k, l] of links) if (l.memberId === me.id) links.delete(k);
+      me.pendingCodes = []; // an unused sign-in code from the owner would let a device straight back in
+      // ?passkeys=1: passkeys go too — someone who had the key could have registered one of their own
+      if (query.passkeys === '1') me.passkeys = [];
       save(me); return json(res, 200, { me: publicMember(me, me) });
     }
     // ---------- the encrypted journal (vault): ciphertext in, ciphertext out ----------

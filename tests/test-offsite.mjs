@@ -73,9 +73,10 @@ function fixtureDir() {
   writeFileSync(join(d, 'vault', 'm1.json'), '{"blob":"ciphertext"}');
   return d;
 }
-t('packs the data that matters, skips the redundant, restores byte-exact', () => {
+await t('packs the data that matters, skips the redundant, restores byte-exact', async () => {
   const d = fixtureDir();
   const b = O.packBundle(d);
+  const ba = await O.packBundleAsync(d); eq(O.unpackBundle(ba.buf).map(f => f.p).sort(), O.unpackBundle(b.buf).map(f => f.p).sort(), 'the async pack holds the same files');
   const files = O.unpackBundle(b.buf).map(f => f.p).sort();
   eq(files, ['att/' + 'k'.repeat(200), 'fills/0xabc.json.gz', 'ledger-data.json', 'vault/m1.json']);
   const out = mkdtempSync(join(tmpdir(), 'ledger-restore-'));
