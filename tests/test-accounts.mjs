@@ -91,7 +91,7 @@ try {
     eq(st.status, 200);
     const host = B.replace('http://', '');
     ok(st.d.message.startsWith(host + ' wants you to sign in with your Ethereum account:\n' + sig.toChecksumAddress(W1) + '\n'));
-    ok(st.d.message.includes('Claim this wallet for @alpha on Keel.') && st.d.message.includes('URI: https://' + host));
+    ok(st.d.message.includes('Claim this wallet for @alpha on Daruma.') && st.d.message.includes('URI: https://' + host));
     eq((await call('/claim/start', { method: 'POST', body: { address: W1 } })).status, 401, 'claiming needs a member key');
     eq((await call('/claim/start', { method: 'POST', key: A, body: { address: 'nope' } })).status, 400);
   });
@@ -189,7 +189,7 @@ try {
     portfolioFor = []; await tick();
     eq(await ret(), ['alpha'], 'charlie’s unproven wallet is off the board');
     const inbox = (await call('/inbox', { key: c })).d.items;
-    ok(inbox.some(x => x.kind === 'claim' && /Claim yours in Account/.test(x.text) && x.url === '/keel#account'), 'charlie hears why, and where to claim');
+    ok(inbox.some(x => x.kind === 'claim' && /Claim yours in Account/.test(x.text) && x.url === '/daruma#account'), 'charlie hears why, and where to claim');
     eq((await call('/me', { key: c })).d.me.needsClaim, true);
     ok(!(await call('/inbox', { key: A })).d.items.some(x => x.kind === 'claim'), 'alpha (claimed) gets no note');
     await tick();

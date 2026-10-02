@@ -153,8 +153,8 @@ const app = server.createApp({ dataDir: mkdtempSync(join(tmpdir(), 'ledger-ta-')
 const B = await new Promise(r => app.listen(0, () => r('http://127.0.0.1:' + app.address().port)));
 try {
   await t('the feature file is on Keel’s page only, versioned like every script', async () => {
-    const k = await (await fetch(B + '/keel')).text(), j = await (await fetch(B + '/')).text();
-    const m = k.match(/<script src="(app\/features\/trader-age\.js\?v=[0-9a-f]{12})"><\/script>/); ok(m, 'on Keel');
+    const k = await (await fetch(B + '/daruma')).text(), j = await (await fetch(B + '/')).text();
+    const m = k.match(/<script src="(app\/features\/trader-age\.js\?v=[0-9a-f]{12})"><\/script>/); ok(m, 'on Daruma');
     ok(!j.includes('trader-age.js'), 'not on the journal');
     const r = await fetch(B + '/' + m[1]); eq(r.status, 200); ok((await r.text()).includes('function traderAge('));
     for (const p of ['/app/features/../server.js', '/app/features/%2e%2e%2fserver.js', '/app/features/x/y.js', '/app/features/.hidden.js']) eq((await fetch(B + p)).status, 404, p);
