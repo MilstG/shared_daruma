@@ -61,6 +61,7 @@ const MAX_KEYS = 10;                       // signed-in devices per member; the 
 const ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
 const B64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 const MAX_MEMBERS = 5000;
+const WALLETS_SEEN_MAX = 20000; // wallets entered in the app that the owner's Wallets list keeps
 const STREAK_MARKS = [7, 14, 21, 30, 50, 75, 100, 150, 200, 365];
 const COMP_TYPES = ['discipline', 'survivor', 'journal', 'return'];
 // guestCap: people using Pulse without a profile stop at this level (their XP still counts, and creating a
@@ -479,7 +480,7 @@ function createSocial(opts) {
   }
   // every section kept as a kv row: one missing here is never loaded or saved (wallet decisions and
   // the admin log would vanish on the next restart)
-  const KV_KEYS = ['config', 'follows', 'comps', 'league', 'leagues', 'badges', 'ownerCoach', 'partners', 'comments', 'leagueSeq', 'wallets', 'adminLog', 'coachUse', 'migrations', 'bench', 'benchSeeds', 'duels', 'benchHist', 'pods', 'ladder', 'visits'];
+  const KV_KEYS = ['config', 'follows', 'comps', 'league', 'leagues', 'badges', 'ownerCoach', 'partners', 'comments', 'leagueSeq', 'wallets', 'adminLog', 'coachUse', 'migrations', 'bench', 'benchSeeds', 'duels', 'benchHist', 'pods', 'ladder', 'visits', 'walletsSeen'];
   let S = { v: 1, members: {} };
   const loadedRaw = new Map(); // what each row held, so the first save writes only what loading changed
   for (const r of q('SELECT k, v FROM kv').all()) if (KV_KEYS.includes(r.k)) try { S[r.k] = JSON.parse(r.v); loadedRaw.set(r.k, r.v); } catch (e) {}
@@ -509,6 +510,9 @@ function createSocial(opts) {
   // the owner's wallet decisions, by address (so a new profile can't launder a rejected wallet):
   // { '0x…': { s: 'approved' | 'rejected', at, by: 'owner' | 'existing', note } }
   if (!S.wallets || typeof S.wallets !== 'object') S.wallets = {};
+  // every wallet address entered in the app, with or without a profile, by address: { '0x…': { first, last } }
+  // (last moves at most once a UTC day); the owner sees them under Wallets and they're queued as seed wallets
+  if (!S.walletsSeen || typeof S.walletsSeen !== 'object' || Array.isArray(S.walletsSeen)) S.walletsSeen = {};
   if (!S.ownerCoach) S.ownerCoach = { k: null, n: 0 };
   // what admins did in the panel, newest last: {at, by, what}
   if (!Array.isArray(S.adminLog)) S.adminLog = [];
@@ -1028,7 +1032,9 @@ function createSocial(opts) {
     for (const [key, text] of out) for (const x of ms) { const xp = mentorPay(x, o, 'outcome', key);
       if (xp) { notify(x, 'mentor', '@' + o.handle + ' ' + text + '. +' + xp + ' XP for your mentoring.', { title: 'Your mentee did it', url: '/daruma#mentee/' + o.handle }); save(x); } } };
   // ---- "traders like you": peer groups from members' summaries and the owner's seed wallets ----
-  const BENCH_FRESH = 21 * 86400000, SEED_REFRESH = 7 * 86400000, SEED_MAX = 5000;
+  // counted seed wallets are read again daily, left-out ones weekly (a new trader may have traded enough since);
+  // a counted one whose re-reads keep failing stops counting after SEED_STALE
+  const BENCH_FRESH = 21 * 86400000, SEED_REFRESH = 86400000, SEED_SKIP_REFRESH = 7 * 86400000, SEED_STALE = 28 * 86400000, SEED_MAX = 5000;
   const benchRows = () => {
     const rows = [], mine = new Set(), src = []; let seeds = 0;
     for (const m of members()) {
@@ -1040,7 +1046,7 @@ function createSocial(opts) {
         src.push({ id: 'm:' + m.id, row: b, at: m.bench.at || now(), slips: Bench.slipRates(m.stats && m.stats.days, m.bench.at || now()) }); }
     }
     if (S.config.bench.seeds) for (const [a, x] of Object.entries(S.benchSeeds))
-      if (x.st === 'ok' && x.sum && x.sum.n >= S.config.bench.minTrades && !mine.has(a) && now() - (x.done || 0) < 4 * SEED_REFRESH) { rows.push(x.sum); seeds++; src.push({ id: 's:' + a, row: x.sum, at: x.done || now() }); }
+      if (x.st === 'ok' && x.sum && x.sum.n >= S.config.bench.minTrades && !mine.has(a) && now() - (x.done || 0) < SEED_STALE) { rows.push(x.sum); seeds++; src.push({ id: 's:' + a, row: x.sum, at: x.done || now() }); }
     return { rows, seeds, src };
   };
   // the weekly history behind "traders like you who improved": a snapshot for each counted
@@ -1070,9 +1076,10 @@ function createSocial(opts) {
   // seed wallets: read one at a time from their public fills, slowly, so the exchange never sees a burst
   let seedBusy = false, seedTimer = null, closing = false;
   const seedDelay = opts.seedDelay != null ? opts.seedDelay : 4000;
+  const seedDue = x => x.st === 'ok' ? !!x.re || now() - (x.done || 0) > SEED_REFRESH : x.st === 'skip' && now() - (x.done || 0) > SEED_SKIP_REFRESH;
   const nextSeed = () => { let due = null;
     for (const [a, x] of Object.entries(S.benchSeeds)) { if (x.st === 'queued') return a;
-      if (x.st === 'ok' && (x.re || now() - (x.done || 0) > SEED_REFRESH) && (!due || x.done < S.benchSeeds[due].done)) due = a; }
+      if (seedDue(x) && (!due || x.done < S.benchSeeds[due].done)) due = a; }
     return due; };
   const seedWhy = r => { const c = S.config.bench;
     return r.why === 'few' ? (r.n || 0) + ' closed trade' + (r.n === 1 ? '' : 's') + ' in the last ' + c.days + ' days (needs ' + c.minTrades + ')'
@@ -1560,7 +1567,7 @@ function createSocial(opts) {
   let ticking = false;
   const tick = async () => {
     try { duelSweep(); } catch (e) { console.warn('[ledger] duels: ' + (e && e.message)); }
-    if (S.config.bench.seeds !== false) seedSchedule(); // weekly re-reads of seed wallets come due on their own
+    if (S.config.bench.seeds !== false) seedSchedule(); // daily re-reads of seed wallets come due on their own
     try { if (S.config.bench.on) benchNow(); } catch (e) {} // a daily build keeps the weekly history going without anyone asking
     if (!push || ticking) return 0; ticking = true; const t = now(), jobs = [];
     try {
@@ -1744,6 +1751,30 @@ function createSocial(opts) {
     if (head === 'visit' && !parts[1] && M === 'POST') {
       const day = utcDayKey(now()), k = day + '|' + sha(ipOf(req) || '');
       if (!visitSeen.has(k)) { visitSeen.add(k); bumpVisit('days', day); }
+      return json(res, 200, { ok: true });
+    }
+    // every wallet entered in the app, profile or not: the owner sees it under Wallets, and it's queued as a
+    // seed wallet, so the benchmarks count it (anonymously, like any seed) once it has traded enough
+    if (head === 'seen' && !parts[1] && M === 'POST') {
+      if (limited(req, 'seen', 30, 600000)) return json(res, 429, { error: 'Too many requests from here. Try again in a few minutes.' });
+      const list = [...new Set((Array.isArray(body.addresses) ? body.addresses : []).slice(0, 20)
+        .filter(a => typeof a === 'string' && ADDR_RE.test(a)).map(a => a.toLowerCase()))];
+      if (!list.length) return json(res, 400, { error: 'no wallet addresses' });
+      const t = now(), day = utcDayKey(t); let seen = false, seeded = false;
+      for (const a of list) {
+        const w = own(S.walletsSeen, a) ? S.walletsSeen[a] : null;
+        if (!w) { S.walletsSeen[a] = { first: t, last: t }; seen = true; }
+        else if (utcDayKey(w.last || 0) !== day) { w.last = t; seen = true; }
+        // a wallet the owner rejected stays out; the owner can still add it by hand under Benchmarks
+        if (!own(S.benchSeeds, a) && walletStatus(a) !== 'rejected' && Object.keys(S.benchSeeds).length < SEED_MAX) {
+          S.benchSeeds[a] = { st: 'queued', added: t, by: 'app' }; seeded = true; }
+      }
+      const all = Object.keys(S.walletsSeen);
+      if (all.length > WALLETS_SEEN_MAX) { // the least recently seen go first
+        all.sort((x, y) => (S.walletsSeen[x].last || 0) - (S.walletsSeen[y].last || 0));
+        for (const a of all.slice(0, all.length - WALLETS_SEEN_MAX)) delete S.walletsSeen[a]; }
+      if (seen || seeded) save(...(seen ? ['walletsSeen'] : []), ...(seeded ? ['benchSeeds'] : []));
+      if (seeded) seedSchedule();
       return json(res, 200, { ok: true });
     }
     if (head === 'config' && M === 'GET')
@@ -1943,12 +1974,17 @@ function createSocial(opts) {
             joinedWith: m.joinedWith || (m.adminMade ? 'admin' : null), createdAt: m.createdAt || null, lastSeen: m.lastSeen || null });
           rows.set(a, r); }
         for (const a of Object.keys(S.wallets)) if (!rows.has(a)) rows.set(a, { address: a, members: [] }); // decided, nobody uses it now
+        for (const a of Object.keys(S.walletsSeen)) if (!rows.has(a)) rows.set(a, { address: a, members: [] }); // entered in the app, no profile uses it
         const rank = { pending: 0, rejected: 1, approved: 2 };
-        const wallets = [...rows.values()].map(r => { const rv = walletReview(r.address);
-          return Object.assign(r, { status: walletStatus(r.address), reviewedAt: rv ? rv.at : null, by: rv ? rv.by : null, note: rv ? rv.note || '' : '' }); })
-          .sort((a, b) => rank[a.status] - rank[b.status] || Math.max(0, ...b.members.map(x => x.createdAt || 0)) - Math.max(0, ...a.members.map(x => x.createdAt || 0)));
+        const recent = r => Math.max(r.seen ? r.seen.last : 0, ...r.members.map(x => x.createdAt || 0));
+        const wallets = [...rows.values()].map(r => { const rv = walletReview(r.address), sn = own(S.walletsSeen, r.address) ? S.walletsSeen[r.address] : null,
+            sd = own(S.benchSeeds, r.address) ? S.benchSeeds[r.address] : null;
+          return Object.assign(r, { status: walletStatus(r.address), reviewedAt: rv ? rv.at : null, by: rv ? rv.by : null, note: rv ? rv.note || '' : '',
+            seen: sn ? { first: sn.first || null, last: sn.last || null } : null, bench: sd ? sd.st : null }); })
+          .sort((a, b) => rank[a.status] - rank[b.status] || recent(b) - recent(a));
         return json(res, 200, { approveWallets: !!S.config.approveWallets, wallets,
-          counts: { pending: wallets.filter(w => w.status === 'pending' && w.members.length).length, approved: wallets.filter(w => w.status === 'approved').length, rejected: wallets.filter(w => w.status === 'rejected').length } });
+          counts: { pending: wallets.filter(w => w.status === 'pending' && w.members.length).length, approved: wallets.filter(w => w.status === 'approved').length, rejected: wallets.filter(w => w.status === 'rejected').length,
+            app: wallets.filter(w => w.seen && !w.members.length).length } });
       }
       if (sub === 'wallets' && M === 'POST') { // {action: approve|reject|clear, addresses: [...] , note?} — or one address in the path
         const action = body.action;

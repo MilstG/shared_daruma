@@ -298,7 +298,7 @@ details>summary{list-style-position:inside}
     return {items:list.slice(p*size,(p+1)*size), html:n>size?`<div class="pager"><button class="sm" data-pg="${esc(key)}" data-d="-1"${p?'':' disabled'} aria-label="Previous page">‹ Prev</button><span class="muted small">${p*size+1}–${Math.min(n,(p+1)*size)} of ${n}</span><button class="sm" data-pg="${esc(key)}" data-d="1"${p<pages-1?'':' disabled'} aria-label="Next page">Next ›</button></div>`:''}; };
   const mlink=m=>`#members/${esc(encodeURIComponent(m.id))}`;
   const D={perf:{},ins:null,ov:null,members:[],leagues:[],badges:[],comps:[],events:[],reports:[],wallets:{approveWallets:false,wallets:[],counts:{pending:0,approved:0,rejected:0}}};
-  const UI={msel:new Set(),ins:{f:{},by:'style',sort:'disc30',metric:'disc30'},tab:'overview',member:null,q:'',filter:'all',wq:'',wfilter:'pending',wsel:new Set(),leagueEdit:null,badgeEdit:null,addOpen:false,code:null,levelDraft:null,custom:null,overrides:null,pages:{}};
+  const UI={msel:new Set(),ins:{f:{},by:'style',sort:'disc30',metric:'disc30'},tab:'overview',member:null,q:'',filter:'all',wq:'',wfilter:null,wsel:new Set(),leagueEdit:null,badgeEdit:null,addOpen:false,code:null,levelDraft:null,custom:null,overrides:null,pages:{}};
   const linkFor=code=>location.origin+'/daruma#link='+encodeURIComponent(code);
   const adminLinkFor=code=>location.origin+'/admin#code='+encodeURIComponent(code);
   const leagueName=id=>{ const L=D.leagues.find(x=>x.id===id); return L?L.name:id; };
@@ -889,20 +889,25 @@ details>summary{list-style-position:inside}
   const wverBtn=(addr,s)=>addr?`<button class="sm fit" data-wtoggle="${esc(addr)}" data-to="${s==='approved'?'reject':'approve'}">${s==='approved'?'Unverify':'Verify'}</button>`:'';
   const walletStatusPill=s=>s==='approved'?'<span class="pill ok fit">approved</span>':s==='rejected'?'<span class="pill ban fit">rejected</span>':'<span class="pill wait fit">waiting</span>';
   const JOINED={invite:'with your invite code',open:'with the open link',admin:'added by you'};
+  // until the owner picks one: what's waiting when approval is on, everything when it's off
+  const wf=()=>UI.wfilter||(D.wallets.approveWallets?'pending':'all');
+  const SEEN_BENCH={ok:['in benchmarks','ok','Counted anonymously in “traders like you”'],skip:['left out of benchmarks','','Too few trades (or a bot) for now: read again weekly'],queued:['benchmark read waiting','wait',''],err:['benchmark read failed','ban','See Benchmarks to retry']};
+  const benchPill=s=>SEEN_BENCH[s]?`<span class="pill ${SEEN_BENCH[s][1]}"${SEEN_BENCH[s][2]?` title="${SEEN_BENCH[s][2]}"`:''}>${SEEN_BENCH[s][0]}</span>`:'';
   function walletPg(){
-    const q=UI.wq.toLowerCase(), f=UI.wfilter;
-    return pager('wallets',D.wallets.wallets.filter(w=>(f==='all'||w.status===f)&&(f!=='pending'||w.members.length)
+    const q=UI.wq.toLowerCase(), f=wf();
+    return pager('wallets',D.wallets.wallets.filter(w=>(f==='all'||(f==='app'?w.seen&&!w.members.length:w.status===f))&&(f!=='pending'||w.members.length)
       &&(!q||w.address.includes(q)||w.members.some(m=>m.handle.toLowerCase().includes(q)))),20);
   }
   function walletRows(){
     const list=walletPg().items;
-    if(!list.length)return `<tr><td colspan="3" class="muted">${UI.wfilter==='pending'?'Nothing waiting.':'No wallets here.'}</td></tr>`;
+    if(!list.length)return `<tr><td colspan="3" class="muted">${wf()==='pending'?'Nothing waiting.':'No wallets here.'}</td></tr>`;
     const short=a=>a.slice(0,8)+'…'+a.slice(-6);
     return list.map(w=>`<tr>
       <td style="vertical-align:top"><input type="checkbox" data-wsel="${esc(w.address)}" aria-label="Select ${esc(w.address)}"${UI.wsel.has(w.address)?' checked':''}></td>
       <td style="vertical-align:top"><div class="row" style="align-items:center;flex-wrap:nowrap;gap:6px"><code class="small fit" title="${esc(w.address)}">${esc(short(w.address))}</code><button class="sm fit" data-copy="${esc(w.address)}" aria-label="Copy address">Copy</button></div>
-        ${w.members.length?w.members.map(m=>`<div style="margin-top:6px"><a href="${mlink(m)}">@${esc(m.handle)}</a> ${m.claimed?'<span class="pill ok">claimed ✓</span>':''}${m.linked?'<span class="pill">mapped by hand</span>':''}${m.banned?' <span class="pill ban">suspended</span>':''}<div class="muted small">${m.joinedWith?'joined '+esc(JOINED[m.joinedWith]||''):'joined'}${m.createdAt?' · '+esc(ago(m.createdAt)):''}</div></div>`).join(''):`<div class="muted small" style="margin-top:6px">no profile uses it now</div>
+        ${w.members.length?w.members.map(m=>`<div style="margin-top:6px"><a href="${mlink(m)}">@${esc(m.handle)}</a> ${m.claimed?'<span class="pill ok">claimed ✓</span>':''}${m.linked?'<span class="pill">mapped by hand</span>':''}${m.banned?' <span class="pill ban">suspended</span>':''}<div class="muted small">${m.joinedWith?'joined '+esc(JOINED[m.joinedWith]||''):'joined'}${m.createdAt?' · '+esc(ago(m.createdAt)):''}</div></div>`).join(''):`<div class="muted small" style="margin-top:6px">${w.seen?'entered in the app · no profile yet · first '+esc(ago(w.seen.first))+(w.seen.last&&w.seen.last!==w.seen.first?' · last '+esc(ago(w.seen.last)):''):'no profile uses it now'}</div>
           <div class="row" style="align-items:center;gap:6px;margin-top:6px"><input id="wmap_${esc(w.address)}" list="memberHandles" placeholder="@member" aria-label="Member to map ${esc(w.address)} to" style="flex:1 1 90px;min-width:0;max-width:180px;width:auto"><button class="sm fit" data-wmap="${esc(w.address)}">Map to member</button></div>`}
+        ${w.bench?`<div style="margin-top:6px">${benchPill(w.bench)}</div>`:''}
         ${w.note?`<div class="muted small" style="margin-top:4px">Note: ${esc(w.note)}</div>`:''}</td>
       <td style="vertical-align:top">${walletStatusPill(w.status)}${w.reviewedAt?`<div class="muted small">${w.by==='existing'?'already in use when approval went on':'by '+(w.by&&w.by!=='owner'?esc(w.by):ME.owner?'you':'the owner')+' · '+esc(ago(w.reviewedAt))}</div>`:''}
         <div class="row" style="align-items:center;margin-top:8px;gap:6px">${w.status!=='approved'?`<button class="sm fit primary" data-wact="approve" data-addr="${esc(w.address)}">Approve</button>`:''}${w.status!=='rejected'?`<button class="sm fit" data-wact="reject" data-addr="${esc(w.address)}">Reject</button>`:''}${w.status!=='pending'?`<button class="sm fit" data-wact="clear" data-addr="${esc(w.address)}" title="Forget the decision: back to waiting">Undo</button>`:''}</div></td></tr>`).join('');
@@ -921,7 +926,7 @@ details>summary{list-style-position:inside}
     return `<div class="row" style="align-items:flex-end;margin-top:14px;max-width:520px">${field('seedSt','Show',sel('seedSt',[['all','All'],['ok','Counted'],['skip','Left out'],['err','Couldn’t be read'],['queued','Waiting']],st))}${field('seedSort','Sort',sel('seedSort',SEED_SORTS,so))}</div>
       <div class="scroll"><table><thead><tr><th>Wallet</th><th>Status</th><th>Style</th><th>Trade size</th><th>Trading for</th><th>Pace</th><th class="n" title="Closed trades in the last ${days} days">Trades</th><th class="n">Win rate</th><th class="n" title="Money won ÷ money lost">PF</th>
         <th class="n" title="Net realized P&L over the last ${days} days, after fees and funding">P&L ${days}d</th><th class="n" title="30-day return, read on chain">Return 30d</th><th class="n" title="Worst drop in the last 30 days">Drawdown</th><th class="n" title="Account value now">Account</th><th>Read</th><th></th></tr></thead><tbody>
-      ${pg.items.map(x=>`<tr><td class="nw"><code class="small" title="${esc(x.address)}">${esc(x.address.slice(0,8)+'…'+x.address.slice(-6))}</code></td>
+      ${pg.items.map(x=>`<tr><td class="nw"><code class="small" title="${esc(x.address)}">${esc(x.address.slice(0,8)+'…'+x.address.slice(-6))}</code>${x.by==='app'?'<div class="muted small">from the app</div>':''}</td>
         <td style="min-width:200px"><span class="pill ${SEED_ST[x.st]?SEED_ST[x.st][1]:''}">${SEED_ST[x.st]?SEED_ST[x.st][0]:esc(x.st)}</span>${x.re?' <span class="pill" title="Still counted with its last read until the new one lands">re-reading</span>':''}${x.why?`<div class="muted small">${esc(x.why)}</div>`:''}</td>
         <td class="small nw">${x.style?esc(L.style[x.style]):'—'}</td><td class="small nw">${x.size?esc(L.size[x.size]):'—'}</td><td class="small nw">${x.exp?esc(L.exp[x.exp]):'—'}</td><td class="small nw">${x.act?esc(L.act[x.act]):'—'}</td>
         <td class="n">${cell(x.n,fmt)}</td><td class="n">${cell(x.wr,v=>Math.round(v)+'%')}</td><td class="n">${cell(x.pf,v=>(+v).toFixed(2))}</td>
@@ -961,7 +966,7 @@ details>summary{list-style-position:inside}
       </div>
       <section class="card"><div class="ch"><h2>Seed wallets <span class="sub2">· ${fmt(total)} of up to ${fmt(B.seedMax)}</span></h2>
           ${total?`<div class="ph-act"><button class="fit" id="bSeedReread"${B.seedReader?'':' disabled'} title="Read every seed wallet again with today’s settings and fills">Re-analyze all</button><button class="sm fit danger" id="bSeedDropAll">Remove all</button></div>`:''}</div>
-        <p class="muted" style="margin-top:0">Kick-start the benchmarks with public Hyperliquid wallets. Paste anything: every 0x address in it is added once. The server reads each wallet’s last ${c.days||90} days of public fills, one every few seconds, works out the same summary a member’s app would (and its 30-day return), and counts it in the groups. Wallets with under ${c.minTrades||15} closed trades, or so many fills they’re clearly bots, are left out. Counted wallets are read again weekly.</p>
+        <p class="muted" style="margin-top:0">Kick-start the benchmarks with public Hyperliquid wallets. Paste anything: every 0x address in it is added once. The server reads each wallet’s last ${c.days||90} days of public fills, one every few seconds, works out the same summary a member’s app would (and its 30-day return), and counts it in the groups. Wallets with under ${c.minTrades||15} closed trades, or so many fills they’re clearly bots, are left out. Counted wallets are read again daily, left-out ones weekly (they may have traded enough since). Every wallet entered in the app is added here too, marked “from the app”.</p>
         ${B.seedReader?'':'<p class="warn">This server can’t read wallets right now: the trade engine isn’t loaded.</p>'}
         ${total?`<div class="chips" style="margin:4px 0 0">${[['ok','counted'],['queued','waiting'],['skip','left out'],['err','couldn’t be read']].map(([k,l])=>`<span class="pill ${SEED_ST[k][1]}">${fmt(sc[k]||0)} ${l}</span>`).join('')}${sc.re?`<span class="pill">${fmt(sc.re)} being re-read</span>`:''}</div>`:''}
         ${left?`<div class="prog" role="status"><span>Reading ${fmt(left)} wallet${left===1?'':'s'} · ${seedEta(B,left)} left</span><div class="bar"><i style="width:${total?Math.max(3,Math.round((1-left/total)*100)):0}%"></i></div></div>`:''}
@@ -1023,17 +1028,17 @@ details>summary{list-style-position:inside}
   function vWallets(){
     const W=D.wallets, c=W.counts;
     return `<datalist id="memberHandles">${D.members.map(m=>`<option value="@${esc(m.handle)}">`).join('')}</datalist>
-    ${tiles([['Waiting for you',fmt(c.pending),W.approveWallets?'don’t count until approved':'approval is off: they count'],['Approved',fmt(c.approved)],['Rejected',fmt(c.rejected),'never count']])}
+    ${tiles([['Waiting for you',fmt(c.pending),W.approveWallets?'don’t count until approved':'approval is off: they count'],['Approved',fmt(c.approved)],['Rejected',fmt(c.rejected),'never count'],['Entered in the app',fmt(c.app||0),'no profile yet']])}
     <section class="card">
       <div class="ch"><h2>Wallets</h2></div>
       <div class="toolbar">
         <input id="wq" placeholder="Search by address or name" aria-label="Search wallets" value="${esc(UI.wq)}">
-        <div>${sel('wFilter',[['pending','Waiting'],['approved','Approved'],['rejected','Rejected'],['all','All']],UI.wfilter,' aria-label="Filter"')}</div>
+        <div>${sel('wFilter',[['pending','Waiting'],['approved','Approved'],['rejected','Rejected'],['app','Entered in the app, no profile'],['all','All']],wf(),' aria-label="Filter"')}</div>
       </div>
       <div class="bulk${UI.wsel.size?' on':''}">
         <button class="sm fit" id="wBulkApprove"${UI.wsel.size?'':' disabled'}>Approve selected (${UI.wsel.size})</button>
         <button class="sm fit" id="wBulkReject"${UI.wsel.size?'':' disabled'}>Reject selected</button>
-        ${UI.wfilter==='pending'&&c.pending?`<button class="sm fit" id="wAllPending">Approve all ${c.pending} waiting</button>`:''}
+        ${wf()==='pending'&&c.pending?`<button class="sm fit" id="wAllPending">Approve all ${c.pending} waiting</button>`:''}
         <input id="wNote" maxlength="120" placeholder="Note for this decision (optional), e.g. paid · referral" aria-label="Note" style="flex:1;min-width:180px;min-height:30px;padding:4px 10px">
       </div>
       <div class="scroll"><table><thead><tr><th style="width:34px"></th><th>Wallet and member</th><th>Status</th></tr></thead><tbody id="wRows">${walletRows()}</tbody></table></div><div id="wPager">${walletPg().html}</div></section>

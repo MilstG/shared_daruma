@@ -133,8 +133,21 @@ function socVisitPing(){
   socFetch('/visit',{method:'POST',body:'{}'}).catch(()=>{});
 }
 function socWasVisitor(){ try{ return !!localStorage.getItem(SOC_VISIT_STORE); }catch(e){ return false; } }
+// Every wallet entered in the app goes to this server, profile or not: the owner sees it under Wallets, and
+// the benchmarks read it like a seed wallet (anonymously, once it has traded enough). Sent when the list
+// changes and at most once a day otherwise. Bybit and Binance keys aren't wallets and never go.
+const SOC_SEEN_STORE='pz_wseen';
+function socWalletsSeen(){
+  if(!socAvailable()||typeof settings==='undefined'||(typeof pzS!=='undefined'&&pzS.demo))return;
+  const addrs=[...new Set((settings.wallets||[]).map(w=>String(w.address).replace(/^lighter:/i,'').toLowerCase()).filter(a=>/^0x[0-9a-f]{40}$/.test(a)))].slice(0,20);
+  if(!addrs.length)return;
+  const memo=new Date().toISOString().slice(0,10)+'|'+addrs.slice().sort().join(',');
+  try{ if(localStorage.getItem(SOC_SEEN_STORE)===memo)return; }catch(e){}
+  socFetch('/seen',{method:'POST',body:JSON.stringify({addresses:addrs})}).then(()=>{ try{ localStorage.setItem(SOC_SEEN_STORE,memo); }catch(e){} }).catch(()=>{});
+}
 function socBoot(){
   if(SOC.cfgTried||!socAvailable())return; SOC.cfgTried=true;
+  try{ socWalletsSeen(); }catch(e){}
   socFetch('/config').then(c=>{ SOC.cfg=c; pzApplyCfg(c); if(!SOC.key)return;
     socMeWatch();
     return socFetch('/me').then(d=>{ SOC.me=d.me; SOC.share=d.share; PZ_CFG.rev++; },e=>{
