@@ -67,7 +67,7 @@ function pzSocialStats(g, habits, J, withLessons){
       const f=Object.keys(fl).filter(k=>fl[k]>0); if(f.length)o.f=f;
       const e=J&&J['day:'+d.key], v=e&&e.eod; if(v&&v.at)o.r=true; if(withLessons&&v&&v.lesson)o.l=String(v.lesson).slice(0,200);
       // the parts of Trader Age the server can't read from the wallet: prep, journaling, the loss limit
-      if(e&&(e.sleep||e.stress||e.focus))o.p=1; const P=d.parts||{}; if(P.journal>0)o.jn=Math.round(P.journal*100)/100; if(P.limit===0||P.limit===1)o.lm=P.limit;
+      if(e&&(e.sleep||e.stress||e.focus))o.p=1; const P=d.parts||{}; if(P.journal>0)o.jn=Math.round(P.journal*100)/100; if(P.limit===0||P.limit===1)o.lm=P.limit; if(P.plan===1||P.plan===0.5)o.pl=P.plan;
       return o; }),
     firstAt:(()=>{ let a=0; for(const t of (typeof allTrades!=='undefined'?allTrades:[])){ const x=+t.openTime||0; if(x>0&&(!a||x<a))a=x; } return a||null; })(),
     xpDays:Object.fromEntries(Object.entries(((g.xpBase||g.xp)&&(g.xpBase||g.xp).byDay)||{}).filter(([k,v])=>v>0).sort().slice(-100))};
@@ -133,8 +133,21 @@ function socVisitPing(){
   socFetch('/visit',{method:'POST',body:'{}'}).catch(()=>{});
 }
 function socWasVisitor(){ try{ return !!localStorage.getItem(SOC_VISIT_STORE); }catch(e){ return false; } }
+// Every wallet entered in the app goes to this server, profile or not: the owner sees it under Wallets, and
+// the benchmarks read it like a seed wallet (anonymously, once it has traded enough). Sent when the list
+// changes and at most once a day otherwise. Bybit and Binance keys aren't wallets and never go.
+const SOC_SEEN_STORE='pz_wseen';
+function socWalletsSeen(){
+  if(!socAvailable()||typeof settings==='undefined'||(typeof pzS!=='undefined'&&pzS.demo))return;
+  const addrs=[...new Set((settings.wallets||[]).map(w=>String(w.address).replace(/^lighter:/i,'').toLowerCase()).filter(a=>/^0x[0-9a-f]{40}$/.test(a)))].slice(0,20);
+  if(!addrs.length)return;
+  const memo=new Date().toISOString().slice(0,10)+'|'+addrs.slice().sort().join(',');
+  try{ if(localStorage.getItem(SOC_SEEN_STORE)===memo)return; }catch(e){}
+  socFetch('/seen',{method:'POST',body:JSON.stringify({addresses:addrs})}).then(()=>{ try{ localStorage.setItem(SOC_SEEN_STORE,memo); }catch(e){} }).catch(()=>{});
+}
 function socBoot(){
   if(SOC.cfgTried||!socAvailable())return; SOC.cfgTried=true;
+  try{ socWalletsSeen(); }catch(e){}
   socFetch('/config').then(c=>{ SOC.cfg=c; pzApplyCfg(c); if(!SOC.key)return;
     socMeWatch();
     return socFetch('/me').then(d=>{ SOC.me=d.me; SOC.share=d.share; PZ_CFG.rev++; },e=>{

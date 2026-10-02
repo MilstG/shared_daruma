@@ -35,15 +35,15 @@ const call = async (p, o = {}) => { const r = await fetch(B + '/api/social' + p,
     body: o.body !== undefined ? JSON.stringify(o.body) : undefined });
   return { status: r.status, d: await r.json().catch(() => ({})) }; };
 const until = async (f, ms = 3000) => { const end = Date.now() + ms; for (;;) { const v = await f(); if (v || Date.now() > end) return v; await new Promise(r => setTimeout(r, 40)); } };
-// what the app sends: the days, with prep done every day, half the trades journaled, no loss limit set
+// what the app sends: the days, with a check-in and a plan every day, half the trades journaled, no loss limit set
 const stats = () => ({ xp: 100, level: 1, tz: 'UTC', firstAt: clock - 400 * DAY,
-  days: Array.from({ length: 20 }, (_, i) => ({ k: key(clock - (19 - i) * DAY), s: 100, b: false, j: false, p: 1, jn: 0.5 })) });
+  days: Array.from({ length: 20 }, (_, i) => ({ k: key(clock - (19 - i) * DAY), s: 100, b: false, j: false, p: 1, pl: 1, jn: 0.5 })) });
 let K;
 try {
   await t('the stats the app sends carry prep, journal share, loss limit and the first fill, cleaned', () => {
-    const s = S.sanitizeStats({ firstAt: 5, days: [{ k: '2026-10-01', s: 80, p: 'yes', jn: 3, lm: 0 }, { k: '2026-10-02', s: 80, lm: 7, jn: 0.333 }] });
+    const s = S.sanitizeStats({ firstAt: 5, days: [{ k: '2026-10-01', s: 80, p: 'yes', jn: 3, lm: 0, pl: 0.5 }, { k: '2026-10-02', s: 80, lm: 7, jn: 0.333, pl: 2 }] });
     eq(s.firstAt, 1420070400000, 'clamped to 2015 or later');
-    eq([s.days[0].p, s.days[0].jn, s.days[0].lm], [1, 1, 0]); eq([s.days[1].p, s.days[1].jn, s.days[1].lm], [undefined, 0.33, undefined]);
+    eq([s.days[0].p, s.days[0].jn, s.days[0].lm, s.days[0].pl], [1, 1, 0, 0.5]); eq([s.days[1].p, s.days[1].jn, s.days[1].lm, s.days[1].pl], [undefined, 0.33, undefined, undefined]);
   });
   await t('a member whose wallet the server reads gets a verified Trader Age on /me', async () => {
     await call('/admin/config', { method: 'PUT', owner: true, body: { requireClaim: false, unlocksOn: false } });
@@ -51,7 +51,7 @@ try {
     eq((await call('/stats', { method: 'POST', key: K, body: stats() })).status, 200);
     const ta = await until(async () => { const m = (await call('/me', { key: K })).d.me; return m.ta && m.ta.n >= 20 ? m.ta : null; });
     ok(ta, 'verified'); eq([ta.n, ta.building], [20, false]);
-    // Discipline 100 from the fills, steady, no limit set (70), prep 50 + half journaled 25
+    // Discipline 100 from the fills, steady, no limit set (70), prep (a plan) 50 + half journaled 25
     eq([ta.parts.discipline, ta.parts.steadiness, ta.parts.limit, ta.parts.log], [100, 100, 70, 75]);
     near(ta.raw, 94.5, 0.05); near(ta.age, 7.8, 0.05, 'held toward 1 year with 20 days'); eq(ta.sure, 0.67); ok(ta.range[0] <= ta.age && ta.range[1] >= ta.age);
     near(ta.tradingYears, 400 / 365.25, 0.05); eq(ta.week.n, 7); ok(ta.pace > 0);
@@ -106,7 +106,7 @@ try {
   await t('under the bar: slipping, with the deadline; past it without trading since, the clock waits', async () => {
     // the owner raises the bar to 90; no prep or journaling brings the 20-day rating to 87
     await call('/admin/config', { method: 'PUT', owner: true, body: { standing: { bar: 90 } } });
-    const noLog = stats(); for (const d of noLog.days) { d.p = 0; d.jn = 0; }
+    const noLog = stats(); for (const d of noLog.days) { d.p = 0; d.pl = 0; d.jn = 0; }
     await call('/stats', { method: 'POST', key: K, body: noLog });
     let st = (await me(K)).standing; eq(st.state, 'slipping'); near(st.recent, 87, 0.05); eq(st.deadline, clock + 14 * DAY);
     clock += 15 * DAY;

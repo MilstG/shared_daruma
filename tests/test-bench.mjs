@@ -15,7 +15,7 @@ const server = require('../server.js');
 const htmlPath = new URL('../ledger.html', import.meta.url).pathname;
 const html = readAppSource(htmlPath);
 const { evalModule } = makeExtractor(html);
-const { peerSummary } = await evalModule(['peerSummary', 'pzBehaviorDays', 'addedToLoser', 'nfMedian'], null, '');
+const { peerSummary } = await evalModule(['peerSummary', 'pzBehaviorDays', 'hasAdd', 'addedToLoser', 'nfMedian'], null, '');
 
 const DAY = 86400000, NOW = Date.parse('2026-10-01T12:00:00Z');
 // n closed trades, one a day at 10:00 going back from yesterday, held `hold` ms; every third loses

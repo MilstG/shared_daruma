@@ -50,7 +50,8 @@ try {
   const fontKB = fonts.reduce((a, f) => a + statSync(join(fontDir, f)).size, 0) / KB;
   t(`fonts (${fonts.length} faces): ${fontKB.toFixed(0)} KB (budget 180)`, () => ok(fontKB <= 180, `fonts are ${fontKB.toFixed(0)} KB — over their 180 KB budget`));
   // each feature in app/features/ is its own file with its own budget: 40 KB raw, 12 KB gzipped unless listed here
-  const FEATURE_BUDGETS = {};
+  // trader-age.js: the habit list (every habit's band and what it's worth) and the then-and-now table
+  const FEATURE_BUDGETS = { 'trader-age.js': [52, 16] };
   const featDir = join(root, 'app', 'features');
   for (const f of readdirSync(featDir).filter(f => f.endsWith('.js'))) {
     const b = readFileSync(join(featDir, f)), [rMax, gMax] = FEATURE_BUDGETS[f] || [40, 12], r = b.length / KB, g = gzipSync(b).length / KB;
