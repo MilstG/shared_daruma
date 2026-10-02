@@ -123,7 +123,7 @@ function pzCoachLine(D){
 }
 
 // ---- UI state (never stored) ----
-const PZ_TABS=['compose','today','trends','checkin','progress','discipline','journal','social','sharing','account','deep','how','badges','report','review','coach','leagues','lessons','mentor','mentee','duels','reviews'];
+const PZ_TABS=['compose','today','trends','checkin','progress','discipline','journal','social','sharing','account','deep','how','badges','report','review','coach','leagues','lessons','mentor','mentee','duels','reviews','podnew'];
 var _pzQuiet=false; // a background refresh of data Pulse already shows: no status toasts
 var pzS={ring:'discipline',range:30,badge:null,ck:null,sheet:false,custom:null,jr:{},note:null};
 // a sign-in link from the league owner (/pulse#link=CODE): keep the code for the sign-in form, drop it from the address bar
@@ -169,7 +169,7 @@ function pzFullHref(){ return /^https?:$/.test(location.protocol)?'/':location.p
 
 
 function pzNav(tab, level){
-  const cur=tab==='discipline'||tab==='journal'||tab==='review'?'today':tab==='profile'||tab==='comp'||tab==='sharing'||tab==='account'||tab==='leagues'||tab==='mentor'||tab==='mentee'||tab==='reviews'||tab==='tr'||tab==='lginfo'||tab==='duels'||tab==='duelnew'||tab==='post'||tab==='compose'?'social':tab==='deep'||tab==='how'?'trends':tab==='badges'||tab==='report'||tab==='lessons'?'progress':tab;
+  const cur=tab==='discipline'||tab==='journal'||tab==='review'?'today':tab==='profile'||tab==='comp'||tab==='sharing'||tab==='account'||tab==='leagues'||tab==='mentor'||tab==='mentee'||tab==='reviews'||tab==='tr'||tab==='lginfo'||tab==='duels'||tab==='duelnew'||tab==='podnew'||tab==='post'||tab==='compose'?'social':tab==='deep'||tab==='how'?'trends':tab==='badges'||tab==='report'||tab==='lessons'?'progress':tab;
   const items=[['today','Today'],['trends','Stats'],['checkin','Check-in'],['coach','Coach'],['social','Social'],['progress','Progress']];
   const lockT=0; // Stats is always open; only its deeper insights are level-gated
   return `<nav class="pz-nav" aria-label="Pulse"><div class="pz-brand">${pzRing('',0.72,'var(--pz-acc)',{size:30})}Pulse</div>
@@ -1271,7 +1271,7 @@ function pzRender(){
     const lv=D.g.level.level;
     const body=tab==='trends'?pzTrendsHtml(D):tab==='deep'?pzDeepHtml(D):tab==='how'?pzHowHtml():tab==='badges'?pzBadgesHtml(D):tab==='report'?pzReportHtml(D)
       :tab==='review'?pzReviewHtml(D):tab==='coach'?pzCoachHtml(D):tab==='leagues'?socFindHtml(D):tab==='lginfo'?socLeagueInfoHtml(D,pzHashArg()):tab==='checkin'?pzCheckinHtml(D):tab==='progress'?pzProgressHtml(D)
-      :tab==='discipline'?pzDisciplineHtml(D):tab==='journal'?pzJournalHtml(D):tab==='social'?socSocialHtml(D):tab==='duels'?socDuelsHtml(D):tab==='duelnew'?socDuelNewHtml(D,pzHashArg()):tab==='sharing'?socSharingHtml(D):tab==='account'?socAccountHtml(D)
+      :tab==='discipline'?pzDisciplineHtml(D):tab==='journal'?pzJournalHtml(D):tab==='social'?socSocialHtml(D):tab==='duels'?socDuelsHtml(D):tab==='duelnew'?socDuelNewHtml(D,pzHashArg()):tab==='podnew'?socPodNewHtml(D):tab==='sharing'?socSharingHtml(D):tab==='account'?socAccountHtml(D)
       :tab==='lessons'?(()=>{ try{ return pzLessonsHtml(D); }catch(e){ console.warn('lessons',e); return `<a class="pz-back" href="#progress">${pzI('back',20)}Progress</a><p class="pz-sub pz-err">Your lessons couldn’t be read (${esc(e.message)}).</p>`; } })():tab==='mentor'?socMentorHtml(D):tab==='mentee'?socMenteeHtml(D,pzHashArg()):tab==='profile'?socProfileHtml(D,pzHashArg()):tab==='post'?socPostHtml(D,pzHashArg()):tab==='compose'?socComposeHtml(D):tab==='reviews'?mrListHtml(D):tab==='tr'?mrThreadHtml(D,pzHashArg(),/\/mod$/.test(location.hash)):tab==='comp'?socCompHtml(D,pzHashArg()):pzTodayHtml(D);
     html=`${pzNav(tab,lv)}<main class="pz-main" id="pzMain">${body}</main>`;
     socSync(D.g); }

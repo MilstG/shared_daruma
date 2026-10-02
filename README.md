@@ -645,7 +645,9 @@ wallet decisions record who made them.
     reason.
   - **More filters:** wallet unverified, wallet waiting for you, and no wallet.
 - **Duels** — on/off, which kinds are allowed, the winner's XP and the limits,
-  every duel running or waiting (with cancel) and recent results.
+  the ladder (on/off, K, duels to be listed) and group duels (on/off, most
+  people), the ladder season's top 10, every duel and group duel running or
+  waiting (with cancel) and recent results.
 - **Insights** — the whole league at once, or any segment of it. Filter by style,
   trade size, experience and activity (the "Traders like you" ranges), league,
   level, month joined, verified, and when last seen. For whatever is in view:
@@ -1125,10 +1127,61 @@ follow and your leagues' members). Money is never staked; XP can be.
   - Switch duels on or off, choose the allowed types, and set the XP bonus,
     the limits and XP stakes (on or off, the most per duel, the most of a
     member's XP at stake).
-  - See every duel running or waiting, and cancel one without a result.
+  - Switch the ladder on or off and set K and the duels to be listed; switch
+    group duels on or off and set their most people (3 to 6).
+  - See the ladder's current season and its top 10, and the last podium.
+  - See every duel and group duel running or waiting, and cancel one without a
+    result.
   - "Duels" is a Pulse feature that unlocks at level 3 (1,200 XP on the default
     curve), so members have a record to compete on and XP to stake. Change the
     level under Features (1 makes it free); the server enforces it too.
+
+#### Duel ladder
+
+Every member has a duel rating, shown on their profile next to their record
+and on the Duels screen.
+
+- **Rating.** Elo-style: everyone starts at 1000, and each 1v1 result (win, loss
+  or draw, forfeits included) moves both sides by up to K points (32 by
+  default). What one side gains the other loses, and beating a higher rating
+  counts more. Duels backed out of before the start, and duels the admins
+  cancel, don't count. Group duels don't change ratings.
+- **Ladder.** The Duels screen ranks members with at least 3 rated duels (the
+  owner sets the number). Only members who share their profile and take
+  challenges are listed; everyone sees their own rating.
+- **Seasons.** One per calendar quarter. The season standing is rating points
+  gained during it. A season closes on the 2nd day of the next quarter, once its
+  last duels have settled. The top 3 with points gained are notified, get a
+  season badge (Duel season champion, runner-up or podium; system badges like
+  league seasons) and a feed line if they share milestones. Then every rating
+  moves 25% of the way back to 1000. Past podiums stay on the Duels screen.
+
+#### Group duels
+
+A member sets up a group duel ("pod") for 3 to 6 people (the owner sets the
+most) from **Social → Duels → Group duel**: Discipline, clean days, last one
+standing, journaling or process XP (no % return, no XP stakes), for a week or a
+month, verified from fills if everyone has verification on. They pick people
+with the same quick picks as a 1v1, or by name; anyone who takes challenges can
+be invited.
+
+- **Invites.** Each invitee has 48 hours to accept or decline. Once 3 people
+  (the creator included) are in, the dates are fixed: the next Monday, or the
+  1st. Invitations still open can be accepted until the start. With fewer than
+  3 in after 48 hours, the group duel lapses. Before the start, the creator can
+  call it off and others can back out; if that leaves fewer than 3, it waits
+  for more answers again or, once the 48 hours are up, it's off.
+- **Scoring.** Each member is scored like one side of a 1v1, then ranked:
+  the higher score wins; in last one standing, whoever falls last (equal
+  results share a place; several still standing share first). A member whose
+  wallet changes mid-duel is out, and so is one who leaves after the start.
+  Anyone out places last.
+- **Results.** Settled the day after it ends. Everyone gets a placing; a sole
+  winner gets the league's duel XP bonus (only if at least one other member
+  played to the end). Profiles show "Group duels won". A group duel counts once
+  toward each member's open-duel limit, invitations included.
+- **Notifications.** Invites, the start, lead changes (once a day at most) and
+  the result.
 
 ### Traders like you
 
