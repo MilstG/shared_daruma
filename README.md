@@ -11,6 +11,12 @@ Hyperliquid's public API. Open `ledger.html` from disk (keep the `app/` folder n
 to it) and it works; serve it with the included companion server and your journal
 persists across devices and reboots.
 
+**Documentation.** This README is the user guide. For running and developing it, see
+[`docs/`](docs/README.md): a step-by-step [Railway deployment guide](docs/deploy-railway.md),
+the [configuration reference](docs/configuration.md), [operations](docs/operations.md)
+(backups, restore, monitoring, self-hosting), the [HTTP API](docs/api.md),
+[architecture](docs/architecture.md) and the [development guide](docs/development.md).
+
 ---
 
 ## Table of contents
@@ -1580,7 +1586,8 @@ is the technical reference. Both are self-contained pages (`help.html`,
 `tech.html`) with no auth — they contain no user data — and redeploy with the
 app so they stay in step with it.
 
-For **Railway** specifically, see [README-deploy.md](README-deploy.md). The two
+For **Railway** specifically, see the step-by-step guide in
+[docs/deploy-railway.md](docs/deploy-railway.md) (summary: [README-deploy.md](README-deploy.md)). The two
 things you must not skip: **attach a Volume at `/data`** (Railway's filesystem
 is wiped on redeploy — no volume, no persistence) and **set `AUTH_TOKEN`**
 (your journal contains wallet addresses and notes; don't leave the API open on
