@@ -10,7 +10,7 @@
 // their mentors for review (reviews.js). Returns are read on the server from the
 // chain, never sent from here. Sample data is never posted.
 const SOC_KEY_STORE='pz_social_key';
-const SOC_DEFAULT_SHARE={profile:true,boards:true,global:false,page:false,feed:true,habits:true,verify:true,ret:false,usd:false,addr:false,mentor:false,bench:true,duels:true};
+const SOC_DEFAULT_SHARE={profile:true,boards:true,global:false,page:false,feed:true,habits:true,verify:true,ret:false,usd:false,addr:false,mentor:false,bench:true,duels:true,seek:false};
 const SOC_SHARE_ROWS=[
   ['profile','Public profile','Your profile page: streak, discipline, badges. Name, level and league show wherever you appear'],
   ['boards','Process leaderboards','Weekly XP, discipline and streak boards in your leagues'],
@@ -23,6 +23,7 @@ const SOC_SHARE_ROWS=[
   ['usd','Show dollar P&L','Reveals your account size to everyone',true],
   ['addr','Show wallet address','Anyone could look up every trade and balance',true],
   ['mentor','Let mentors see my days','Mentors the owner appointed see your scores, slips and the lesson you write each night, and can leave you notes. They see a trade only when you send it for review; never your wallet'],
+  ['seek','Looking for an accountability partner','Shows you under “Looking for a partner” in Find people, so someone who wants one can ask you'],
   ['duels','Accept duel challenges','Other members can challenge you to a week or a month, 1 on 1, on Discipline, clean days, journaling or XP. Nothing starts until you accept; switch off to stop receiving challenges'],
   ['bench','Count me in “Traders like you”','An anonymous summary of your last 90 days (win rate, discipline, how much you journal; trade size only as a range) goes into peer groups of 25 or more, and is kept weekly for about 6 months to see what changed for traders who improved. Other members only ever see the groups, never you; the league’s owner and admins can see your own summary. No trades, coins, amounts or wallet. Switch off to be left out (your history is deleted, and it’s kept from the owner too)']];
 const SOC_BOARDS=[['xp','Weekly XP'],['discipline','Discipline'],['streak','Streak'],['level','All-time XP'],['riskadj','Return / drawdown'],['ret','% Return'],['usd','$ P&L']];
@@ -262,12 +263,12 @@ function peerImpTip(c){
 
 function socHead(){
   return `<header class="pz-head"><div><span class="pz-kick">${SOC.cfg&&SOC.cfg.week?'Week '+esc(SOC.cfg.week.slice(-2)):'Social'}</span><h1 class="pz-h1">Social</h1></div>
-    <div class="pz-chips">${SOC.me.mentor?`<a class="pz-chip" href="#mentor" style="font-weight:700;font-size:13px;padding:0 14px">Mentees</a>`:''}${SOC.me.mentor||SOC.me.admin||(SOC.share&&SOC.share.mentor)?`<a class="pz-chip" href="#reviews" style="font-weight:700;font-size:13px;padding:0 14px">Reviews</a>`:''}<a class="pz-chip icon" href="#u/${esc(SOC.me.handle)}" aria-label="My profile">${socAv(SOC.me.handle,30)}</a><a class="pz-chip icon" href="#sharing" aria-label="What you share">${pzI('gear',20)}</a></div></header>`;
+    <div class="pz-chips">${SOC.me.mentor?`<a class="pz-chip" href="#mentor" style="font-weight:700;font-size:13px;padding:0 14px">Mentees</a>`:''}${SOC.me.mentor||SOC.me.admin||(SOC.share&&SOC.share.mentor)?`<a class="pz-chip" href="#reviews" style="font-weight:700;font-size:13px;padding:0 14px">Reviews</a>`:''}<a class="pz-chip" href="#people" style="font-weight:700;font-size:13px;padding:0 14px">${pzI('social',16)} Find people</a><a class="pz-chip icon" href="#u/${esc(SOC.me.handle)}" aria-label="My profile">${socAv(SOC.me.handle,30)}</a><a class="pz-chip icon" href="#sharing" aria-label="What you share">${pzI('gear',20)}</a></div></header>`;
 }
 function socUnavailableHtml(){
   return `${pzHead('Leagues · competitions · friends','Social')}<section class="pz-card"><p class="pz-sub">Social lives on the Ledger server this page comes from. Open Pulse from your server’s <b>/pulse</b> link to join the league${/^https?:$/.test(location.protocol)?' — this server didn’t answer just now; try again in a moment.':'.'}</p></section>`;
 }
-const SOC_SHARE_GROUPS=[['Profile',['profile','page','feed','habits','mentor','duels']],['Boards',['boards','global','verify','ret','bench']],['Sensitive',['usd','addr']]];
+const SOC_SHARE_GROUPS=[['Profile',['profile','page','feed','habits','mentor','duels','seek']],['Boards',['boards','global','verify','ret','bench']],['Sensitive',['usd','addr']]];
 function socToggles(share, attr){
   return SOC_SHARE_GROUPS.map(([g,keys])=>`<section class="pz-card" style="padding:4px 16px"><span class="pz-lbl" style="display:block;margin:12px 0 2px;color:${g==='Sensitive'?PZ_COL.low:'var(--pz-muted)'}">${g}</span>${socToggleRows(share,attr,keys)}</section>`).join('');
 }
@@ -281,14 +282,18 @@ function socJoinHtml(){
   const linkCard=pzLinkCardHtml(), d=SOC.draft;
   // one column: the pitch, your name and the button first; what you share folds below with a one-line summary
   const on=SOC_SHARE_ROWS.filter(r=>d[r[0]]).map(r=>r[1]), off=SOC_SHARE_ROWS.filter(r=>!d[r[0]]&&r[3]).map(r=>r[1]);
-  return `<div class="pz-join">${pzHead('Leagues · competitions · friends','Join the league')}${linkCard}
+  const autoL=(cfg&&cfg.autoLeagues)||[], skip=SOC.joinSkip||(SOC.joinSkip=[]);
+  const rankings=autoL.length?`<div><span class="pz-lbl" style="color:var(--pz-muted)">Also join ${autoL.length===1?'this ranking':'these rankings'}</span>${autoL.map(L=>`<div class="pz-toggle"><span style="flex:1"><b id="socjl_${esc(L.id)}">${esc(L.name)}</b><span>${L.metricLabel?'Ranked by '+esc(L.metricLabel)+' · ':''}you can leave it, or join others, any time</span></span>
+      <button type="button" role="switch" class="pz-switch" data-soc-jskip="${esc(L.id)}" aria-checked="${!skip.includes(L.id)}" aria-labelledby="socjl_${esc(L.id)}"><i></i></button></div>`).join('')}</div>`:'';
+  return `<div class="pz-join">${pzHead('Duels · partners · mentors · leagues','Create your profile')}${linkCard}
     <section class="pz-card pz-join-card">
       <span class="pz-ico" style="width:48px;height:48px;background:var(--pz-tint-xp);color:var(--pz-xp)">${pzI('progress',24)}</span>
-      <div class="pz-big">Compete on discipline, not luck</div>
-      <p class="pz-sub">Weekly leagues rank XP, which only comes from process. Competitions are scored from your fills. Follow traders and adopt the habits that work for them.${cfg&&cfg.members?' <b>'+cfg.members+' trader'+(cfg.members===1?'':'s')+'</b> in this league so far.':''}</p>
+      <div class="pz-big">Trade alongside other people</div>
+      <p class="pz-sub">Your profile is how you take part: challenge someone to a duel, find an accountability partner, ask a mentor to look at your trading, and climb rankings that count process, never profit.${cfg&&cfg.members?' <b>'+cfg.members+' trader'+(cfg.members===1?'':'s')+'</b> in this league so far.':''}</p>
       <div class="pz-field"><label for="socHandle">Your public name</label><input type="text" id="socHandle" maxlength="20" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="e.g. slowhands"></div>
       ${cfg&&cfg.inviteRequired?'<div class="pz-field"><label for="socInvite">Invite code</label><input type="text" id="socInvite" maxlength="40" autocomplete="off"></div>':''}
-      <button type="button" class="pz-cta" id="socJoin">Join the league</button>
+      ${rankings}
+      <button type="button" class="pz-cta" id="socJoin">Create my profile</button>
       <p class="pz-fine">Your journal, notes and trades stay in this browser. Only the numbers switched on below are sent, and returns are read from the chain, never from this device.</p>
     </section>
     <details class="pz-card pz-join-share" id="socShareBox"${pzS.joinShare?' open':''}><summary><span><b>What you share</b><span class="pz-fine" style="display:block;margin-top:2px">${esc(on.length+' on'+(off.length?' · hidden: '+off.join(', ').toLowerCase():''))} · change any time under Profile &amp; privacy</span></span>${pzI('down',18)}</summary>
@@ -361,7 +366,7 @@ function socProfileHtml(D, handle){
   const follow=p.isMe?`<a class="pz-ghost" href="#sharing">Edit what you share</a>`
     :`<button type="button" class="${p.isFollowing?'pz-ghost':'pz-cta'}" data-soc-follow="${esc(p.handle)}" data-on="${p.isFollowing?1:0}">${p.isFollowing?'Following':'Follow'}</button>
       <button type="button" class="pz-ghost" data-soc-pask="${esc(p.handle)}">Ask to be accountability partners</button>
-      ${p.duelsOpen&&socDuelsOn()&&!pzLocked('duels',D.g.level.level)?`<a class="pz-ghost" href="#duel/${esc(p.handle)}">${pzI('medal',16)} Challenge to a duel</a>`:''}`;
+      ${p.duelsOpen&&socDuelsOn()&&!pzLocked('duels',D.g.level.level)?`<a class="pz-ghost" href="#duel/${esc(p.handle)}">${pzI('medal',16)} Challenge to a duel</a>`:''}${!p.isMe&&p.mentor?`<button type="button" class="pz-ghost" data-soc-pmentor="${esc(p.handle)}">${pzI('coach',16)} Ask @${esc(p.handle)} to mentor you</button>`:''}${!p.isMe&&p.seeking?`<button type="button" class="pz-ghost" data-soc-ppartner="${esc(p.handle)}">Ask to be accountability partners</button>`:''}`;
   const tiles=p.private?'<section class="pz-card"><p class="pz-sub">This profile is private.</p></section>'
     :`<div class="pz-grid3"><div class="pz-tile good"><span class="pz-n">${p.discipline30==null?'—':p.discipline30}</span><span class="pz-t">Discipline · 30d${p.verified?' · verified':''}</span></div>
       <div class="pz-tile warm"><span class="pz-n">${p.streak}</span><span class="pz-t">Day streak · best ${p.best}</span></div>
@@ -739,7 +744,7 @@ function socDuelsHtml(D){
         <div class="pz-grid3"><div class="pz-tile good"><span class="pz-n">${r.w}</span><span class="pz-t">won</span></div><div class="pz-tile hot"><span class="pz-n">${r.l}</span><span class="pz-t">lost</span></div><div class="pz-tile"><span class="pz-n">${r.d}</span><span class="pz-t">drawn</span></div></div>
         ${L?`<div class="pz-kvrow"><span>Rating <b style="font-family:var(--pz-num);font-size:20px;color:${PZ_COL.xp}">${L.me.r}</b></span><span class="pz-sub" style="font-size:12px">${L.me.rank?'#'+L.me.rank+' on the ladder':L.me.n<L.min?L.me.n+' of '+L.min+' duels to join the ladder':'not listed'}${L.me.gain?' · '+(L.me.gain>0?'+':'')+L.me.gain+' this season':''}</span></div>`:''}
         <div class="pz-kvrow" style="gap:8px"><input id="duelWho" aria-label="Name to challenge" placeholder="@name to challenge" autocomplete="off" style="flex:1;min-width:0"><button type="button" class="pz-cta" id="duelGo" style="width:auto;padding:0 18px">Challenge</button></div>
-        ${socDuelPeopleHtml(d)}
+        ${socDuelPeopleHtml(d)}<a class="pz-link" href="#people/duels" style="min-height:0;align-self:flex-start">Find someone to duel ${pzI('chev',14)}</a>
         <p class="pz-fine" style="margin:0">Anyone in the league can be challenged: type their name, pick someone above, or open a profile from a leaderboard. Duels are scored by Pulse from your fills and your app. ${d.stakes?'You can put XP on it (never money): up to '+d.room+' XP right now. ':'No money is ever staked. '}${d.xp?'A duel played to the end gives the winner +'+d.xp+' XP.':''}${d.accepting?'':' You’re not taking challenges (switched off under <a href="#sharing">Profile & privacy</a>).'}</p>
         ${d.podOn?`<a class="pz-ghost" href="#podnew">${pzI('medal',16)} Group duel: 3 to ${d.podMax} people</a>`:''}</section>
       ${grp('Waiting for you',inv)}${grp('Running',act)}${grp('Sent',sent)}</div>
@@ -868,11 +873,56 @@ function socPodNewHtml(D){
 }
 
 // ---- actions ----
+// ---- Find people: duel, partner with, or learn from anyone on this server, no shared league needed ----
+const SOC_PEOPLE_F=[['','Everyone'],['duels','Open to duels'],['partner','Looking for a partner'],['mentor','Mentors']];
+const SOC_STYLE={scalper:'Scalper',day:'Day trader',swing:'Swing trader',position:'Position trader'};
+function socPeopleHtml(D){
+  const back=`<a class="pz-back" href="#social">${pzI('back',20)}Social</a>`;
+  if(!socAvailable()||!SOC.me)return `${back}${socSocialHtml(D)}`;
+  const f=['duels','partner','mentor'].includes(pzHashArg())?pzHashArg():'', q=SOC.pq||'';
+  if(SOC.pkey!==f+'|'+q){ SOC.pkey=f+'|'+q; SOC.ppage=0; } // a new filter or search starts at its first page
+  const n=(SOC.ppage||0)+1;
+  // pages come one at a time ("Show more") and are added to what's shown
+  const pg=i=>socGet('people:'+f+':'+q+':p'+i,'/people?f='+f+'&q='+encodeURIComponent(q)+'&page='+i,20000), c=pg(0);
+  const pages=[]; for(let i=0;i<n;i++){ const ci=i?pg(i):c; if(ci&&ci.d)pages.push(ci.d); }
+  const d=c&&c.d, list=pages.flatMap(x=>x.people), duelLock=pzLocked('duels',D.g.level.level), duelsOn=socDuelsOn();
+  const tabs=`<div class="pz-chiprow" role="group" aria-label="Show">${SOC_PEOPLE_F.map(([k,l])=>`<a class="pz-chipbtn" href="#people${k?'/'+k:''}" aria-pressed="${k===f}">${l}</a>`).join('')}</div>`;
+  const intro={duels:'Members who accept duel challenges. Pick one and set the terms: a week or a month, on Discipline, clean days, journaling or XP.',
+    partner:'Members looking for an accountability partner. Partners see each other’s streak, scores and slips, and can nudge each other. Up to three each.',
+    mentor:'Mentors the league owner appointed. Ask one to look at your trading: they see your days (never your wallet) and can leave you notes and review trades you send.',
+    '':'Everyone with a public profile, most recently active first. You don’t need to share a league to duel, partner or ask a mentor.'}[f];
+  const card=p=>{ const tags=[p.mentor?`<span class="pz-tag info">Mentor</span>`:'',p.seeking?`<span class="pz-tag win">Looking for a partner</span>`:'',p.duels?`<span class="pz-tag">Open to duels</span>`:'',p.style?`<span class="pz-tag">${esc(SOC_STYLE[p.style]||p.style)}</span>`:''].filter(Boolean).join('');
+    const acts=[!duelLock&&duelsOn&&p.duels?`<a class="pz-ghost pz-sm" href="#duel/${esc(p.handle)}">${pzI('medal',14)} Challenge</a>`:'',
+      p.partner==='active'?'<span class="pz-fine">Your partner</span>':p.partner==='sent'?'<span class="pz-fine">Partner request sent</span>':p.partner==='asked'?`<button type="button" class="pz-cta pz-sm" data-soc-ppartner="${esc(p.handle)}">Accept as partner</button>`
+        :(p.seeking||f==='partner')?`<button type="button" class="pz-ghost pz-sm" data-soc-ppartner="${esc(p.handle)}">Ask to partner</button>`:'',
+      p.mentor?(p.askedMentor?'<span class="pz-fine">Asked to mentor you</span>':`<button type="button" class="pz-ghost pz-sm" data-soc-pmentor="${esc(p.handle)}">${pzI('coach',14)} Ask to mentor me</button>`):''].filter(Boolean).join('');
+    return `<section class="pz-card pz-person"><a class="pz-person-h" href="#u/${esc(p.handle)}">${socAv(p.handle,44)}<span class="pz-person-i"><b>@${esc(p.handle)}</b><span class="pz-sub" style="display:block;font-size:12px">Level ${p.level} · ${esc(p.title)}${p.active?' · active this week':''}${p.leagues.length?' · '+esc(p.leagues.join(', ')):''}</span></span>${pzI('chev',16)}</a>
+      ${p.bio?`<p class="pz-bio" style="margin:0">${esc(p.bio)}</p>`:''}${tags?`<div class="pz-tags">${tags}</div>`:''}${acts?`<div class="pz-person-a">${acts}</div>`:''}</section>`; };
+  const last=pages[pages.length-1];
+  return `${back}${pzHead(d?d.total+' '+(d.total===1?'person':'people'):'People','Find people')}
+    <div class="pz-field"><label for="socPq" class="pz-sr">Search people</label><input type="search" id="socPq" value="${esc(q)}" placeholder="Search by name or what they trade" autocomplete="off" enterkeyhint="search"></div>
+    ${tabs}<p class="pz-sub" style="margin:0">${intro}</p>
+    ${f==='partner'&&!(SOC.share&&SOC.share.seek)?`<p class="pz-fine">Want people to find you too? Switch on “Looking for an accountability partner” in <a href="#sharing">Profile &amp; privacy</a>.</p>`:''}
+    ${!d?`<p class="pz-sub">${c&&c.err?esc(c.err):'<span class="pz-spin"></span>Loading…'}</p>`
+      :list.length?`<div class="pz-jgrid">${list.map(card).join('')}</div>${last&&last.more?`<button type="button" class="pz-ghost" data-soc-pmore="1">Show more</button>`:''}`
+      :`<section class="pz-card pz-empty"><b>No one here yet</b><p class="pz-sub">${q?'Nobody matches “'+esc(q)+'”.':f==='mentor'?'This league has no mentors yet. The owner appoints them.':f==='partner'?'Nobody has said they’re looking for a partner yet. Be the first: switch it on in Profile & privacy.':'Nobody else has a public profile yet.'}</p></section>`}`;
+}
+const socPeopleDrop=()=>{ for(const k of Object.keys(SOC.cache))if(k.startsWith('people:'))delete SOC.cache[k]; };
 async function socAction(t){
   const ds=t.dataset;
   const done=(m,kind)=>{ if(m)pzNote(m,kind); socStale(); pzRender(); };
   try{
     if(await socPostAction(t))return true;
+    // sign-up: the default rankings are a choice
+    if(ds.socJskip){ const L=SOC.joinSkip||(SOC.joinSkip=[]), i=L.indexOf(ds.socJskip); if(i<0)L.push(ds.socJskip); else L.splice(i,1); pzRender(); return true; }
+    // find people
+    if(ds.socPmore){ SOC.ppage=(SOC.ppage||0)+1; pzRender(); return true; }
+    if(ds.socPpartner){ const h=ds.socPpartner, r=await socFetch('/partners',{method:'POST',body:JSON.stringify({handle:h})});
+      socPeopleDrop(); delete SOC.cache.partners; done(r.partner&&r.partner.status==='active'?'You and @'+h+' are partners now.':'Asked @'+h+'. They’ll see it under Social.'); return true; }
+    if(ds.socPmentor){ const h=ds.socPmentor;
+      if(!(SOC.share&&SOC.share.mentor)&&!confirm('Asking a mentor lets the league’s mentors see your days: scores, slips and the lesson you write each night. Never your wallet, and a trade only when you send it for review. You can switch it off any time in Profile & privacy.\n\nAsk @'+h+' to mentor you?'))return true;
+      const r=await socFetch('/people/'+encodeURIComponent(h)+'/mentor',{method:'POST',body:JSON.stringify({letIn:true})});
+      if(r.share){ SOC.share=r.share; SOC.draft=null; } socPeopleDrop(); done('Asked @'+h+'. They’ve been told, and they can see your days now.'); return true; }
     // duels
     if(ds.duelType){ pzS.duel.type=ds.duelType; pzRender(); return true; }
     if(ds.duelPeriod){ pzS.duel.period=ds.duelPeriod; pzRender(); return true; }
@@ -962,10 +1012,10 @@ async function socAction(t){
     switch(t.id){
       case 'socJoin': { const h=($('socHandle')||{value:''}).value.trim(), inv=($('socInvite')||{value:''}).value.trim();
         const share=SOC.draft||SOC_DEFAULT_SHARE;
-        const r=await socFetch('/join',{method:'POST',body:JSON.stringify({handle:h,invite:inv,share,address:socAddressFor(share)})});
+        const r=await socFetch('/join',{method:'POST',body:JSON.stringify({handle:h,invite:inv,share,address:socAddressFor(share),skip:SOC.joinSkip||[]})});
         vaultForget(); COACH.tried=false; COACH.msgs=null; SOC.key=r.key; try{ localStorage.setItem(SOC_KEY_STORE,r.key); }catch(e){}
         SOC.me=r.me; PZ_CFG.rev++; SOC.share=r.share; SOC.draft=null; SOC.cache={}; SOC.lastSent='';
-        done('Welcome to the league, @'+r.me.handle+'.'+(r.walletTaken?' Your wallet is claimed by another profile, so it wasn’t added.':'')); return true; }
+        SOC.joinSkip=null; done('Welcome, @'+r.me.handle+'.'+(r.walletTaken?' Your wallet is claimed by another profile, so it wasn’t added.':'')); return true; }
       case 'socSaveShare': { const h=($('socHandle2')||{value:''}).value.trim(), share=SOC.draft||SOC.share;
         let r, taken=false;
         const bio=$('socBio')?$('socBio').value:undefined;
