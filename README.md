@@ -680,9 +680,15 @@ new value (`2`, …) to reset again. Everything lives in `DATA_DIR/admin-2fa.jso
 and sessions. If that file can't be read, the admin panel answers 503 instead of
 dropping everyone's second factor, until it's fixed or reset.
 
-**Admin panel (`/admin`).** Sign in with `AUTH_TOKEN` (the owner) or as an admin. Tabs:
+**Admin panel (`/admin`).** Sign in with `AUTH_TOKEN` (the owner) or as an admin. The
+sections sit in a sidebar, grouped (People, Compete, Progress, Coaching, Community),
+with counts for open reports and wallets waiting for you; on a phone they fold into a
+menu under the top bar. Each page opens with its title, what it's for and its main
+action. Sections:
 
-- **Overview** — members, activity, tiers, top XP, coach use and setup warnings.
+- **Overview** — members, activity, duels, competitions, peer groups, posts and coach
+  use at a glance; **Needs your attention** (reports, wallets waiting, a closed league,
+  server settings to fix); top XP, tiers and recent admin activity.
 - **Members** — search and filter; **add a member** (you get a 7-day sign-in code and a
   `/pulse#link=CODE` link to send them); per member: rename, set or clear the wallet
   (unless claimed), **map more wallets** to them by hand (or make one their main wallet,
@@ -731,7 +737,8 @@ dropping everyone's second factor, until it's fixed or reset.
 - **Benchmarks** — "Traders like you": contributors, peer groups and settings
   (smallest group, when to split groups, whether seed wallets count), a rebuild
   button, and **seed wallets**: paste any text and every 0x address in it is
-  queued, read from its public fills in the background, and counted.
+  queued, read from its public fills in the background, and counted; re-analyze
+  them all, or one, at any time.
 - **Leagues** — create, edit and delete leagues (metric, period, tiers, listed,
   invite code, auto-join), and add or remove members.
 - **Competitions** — create them for everyone or one league; delete.
@@ -1290,7 +1297,10 @@ dimensions to match and see each group's spread.
   each one's last 90 days of fills, a few seconds apart, and runs the same
   summary function the app uses (plus the wallet's 30-day return). Wallets with
   under the bar, or with more than 20,000 fills (bots, market makers), are left
-  out. Counted wallets are re-read weekly; up to 5,000.
+  out. Counted wallets are re-read weekly; up to 5,000. **Re-analyze all** (or
+  **Re-read** on one row) reads them again now, with today's settings and their
+  latest fills: counted wallets keep counting until their new read lands, and
+  the page shows the progress and updates itself while it runs.
 - **The seed table** shows what was read from each wallet:
   - segment: style, trade size, experience and pace;
   - trades, win rate and profit factor;

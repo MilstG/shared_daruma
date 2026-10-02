@@ -7,86 +7,151 @@
 <meta name="robots" content="noindex">
 <title>Pulse admin</title>
 <style>
-:root{--bg:#0A0C0F;--card:#14171C;--card2:#101318;--line:#1F242B;--line2:#2C333C;--text:#F3F5F7;--muted:#A1AAB5;--soft:#D5DBE1;--good:#3FE0A0;--mid:#F4C04E;--low:#FF7A59;--risk:#5AA9FF;--xp:#B69CFF}
+:root{--bg:#090B0E;--side:#0D1014;--card:#12161B;--card2:#0E1216;--hover:#171C22;--line:#1E242C;--line2:#2A313A;--text:#EEF1F4;--muted:#8D97A3;--soft:#C9D1D9;--good:#3FE0A0;--mid:#F4C04E;--low:#FF7A59;--risk:#5AA9FF;--xp:#B69CFF;--r:12px}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.45;font-variant-numeric:tabular-nums}
-a{color:var(--good)}
-a.btnlink{display:inline-flex;align-items:center;min-height:40px;padding:9px 16px;border-radius:999px;border:1px solid var(--line2);color:var(--text);text-decoration:none;font-weight:700}
-a.btnlink:hover{border-color:var(--good)}
-code{font-size:12.5px;background:#1B1F25;padding:1px 5px;border-radius:6px}
-main{max-width:1120px;margin:0 auto;padding:24px 16px 80px;display:flex;flex-direction:column;gap:18px}
-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-h1{margin:0;font-size:26px;letter-spacing:-.01em}
-h2{margin:0 0 12px;font-size:16px}
-h3{margin:16px 0 8px;font-size:14px}
+html{scroll-padding-top:72px}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+a{color:var(--good);text-decoration:none}
+a:hover{text-decoration:underline}
+a.btnlink{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:7px 14px;border-radius:10px;border:1px solid var(--line2);color:var(--text);font-weight:600;font-size:13px;text-decoration:none;background:var(--card)}
+a.btnlink:hover{border-color:var(--muted);text-decoration:none}
+code{font-size:12px;background:#1A1F26;padding:1px 6px;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+h1{margin:0;font-size:22px;letter-spacing:-.015em;font-weight:700}
+h2{margin:0 0 12px;font-size:15px;font-weight:650;letter-spacing:-.005em}
+h3{margin:18px 0 8px;font-size:13px;font-weight:650;color:var(--soft)}
 .muted{color:var(--muted)}
 .small{font-size:12.5px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;min-width:0}
-.sub{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px;min-width:0}
-.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;min-width:0}
-.tile b{display:block;font-size:24px;line-height:1.15;overflow-wrap:anywhere}
-.tile span{font-size:12px;color:var(--muted)}
-.two{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr))}
-.stack{display:flex;flex-direction:column;gap:18px}
-label{display:block;font-size:13px;font-weight:600;margin:10px 0 6px}
-label.inline{display:flex;align-items:center;gap:8px;font-weight:600;margin:10px 0}
-input,select,textarea{width:100%;font:inherit;font-size:14px;padding:10px 12px;border-radius:12px;border:1px solid var(--line2);background:#0F1216;color:var(--text)}
-textarea{resize:vertical}
+/* ---- shell: a sidebar with the sections, the page beside it ---- */
+.shell{min-height:100vh}
+body.in .shell{display:grid;grid-template-columns:236px minmax(0,1fr);background:linear-gradient(90deg,var(--side) 235px,var(--line) 235px,var(--line) 236px,transparent 236px)}
+.side{display:none}
+body.in .side{display:grid;grid-template-rows:auto 1fr auto auto;position:sticky;top:0;height:100vh;background:var(--side);padding:18px 12px 14px;gap:6px;overflow-y:auto;scrollbar-width:thin}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 8px 14px}
+.brand .logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--good),#2BB5C9);display:grid;place-items:center;color:#05130D;font-weight:800;font-size:14px;flex:0 0 auto}
+.brand b{font-size:15px;letter-spacing:-.01em}
+.brand small{display:block;font-size:11.5px;color:var(--muted);font-weight:500;margin-top:-2px}
+.side .me .menu{display:none}
+nav.tabs{display:flex;flex-direction:column;gap:1px}
+nav.tabs .navh{font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.07em;color:#5E6873;padding:14px 10px 6px}
+nav.tabs a{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border-radius:8px;color:var(--soft);text-decoration:none;font-weight:550;font-size:13.5px}
+nav.tabs a:hover{background:var(--hover);color:var(--text)}
+nav.tabs a[aria-current=page]{background:#1A2129;color:var(--text);box-shadow:inset 2px 0 0 var(--good)}
+nav.tabs a .cnt{min-width:20px;padding:0 6px;border-radius:999px;background:#3A2418;color:#FFB39E;font-size:11px;font-weight:700;text-align:center;line-height:18px}
+nav.tabs a .cnt.w{background:#2B2413;color:#F9DC8E}
+.side .links{display:flex;flex-direction:column;gap:2px;padding:10px 0 6px;border-top:1px solid var(--line);margin-top:10px}
+.side .links a{padding:6px 10px;border-radius:8px;color:var(--muted);font-size:13px;font-weight:550}
+.side .links a:hover{background:var(--hover);color:var(--text);text-decoration:none}
+.side .me{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 8px 0;border-top:1px solid var(--line)}
+.side .me #whoami{font-size:12.5px;color:var(--soft);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+main{min-width:0;padding:28px 32px 96px}
+body:not(.in) main{max-width:560px;margin:0 auto;padding-top:10vh}
+#app{max-width:1180px;margin:0 auto}
+/* ---- the page header: title, what it's for, its main actions ---- */
+.ph{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-bottom:18px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+.ph p{margin:4px 0 0;color:var(--muted);max-width:720px}
+.ph .crumb{font-size:12.5px;font-weight:600;display:inline-block;margin-bottom:6px}
+.ph-act{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+/* ---- cards and layout ---- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:20px;min-width:0}
+.card>h2:first-child,.card>.ch:first-child{margin-top:0}
+.ch{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.ch h2{margin:0}
+.ch .sub2{color:var(--muted);font-weight:500;font-size:13px}
+.sub{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+.kpis{display:grid;gap:12px;grid-template-columns:repeat(var(--cols,4),minmax(0,1fr))}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.tile .tl{font-size:12px;color:var(--muted);font-weight:550}
+.tile b{display:block;font-size:24px;line-height:1.2;font-weight:700;letter-spacing:-.02em;overflow-wrap:anywhere}
+.tile .ts{font-size:12px;color:var(--muted)}
+.card .tile{background:var(--card2)}
+.two{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(380px,100%),1fr));align-items:start}
+.stack{display:flex;flex-direction:column;gap:16px}
+.form{max-width:760px}
+/* ---- forms ---- */
+label{display:block;font-size:12.5px;font-weight:600;color:var(--soft);margin:12px 0 6px}
+label.inline{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--text);margin:12px 0 4px}
+input,select,textarea{width:100%;font:inherit;font-size:13.5px;padding:8px 11px;min-height:38px;border-radius:9px;border:1px solid var(--line2);background:#0B0E12;color:var(--text)}
+input:hover,select:hover,textarea:hover{border-color:#3A434E}
+textarea{resize:vertical;line-height:1.45}
+input::placeholder,textarea::placeholder{color:#5E6873}
 input:focus,select:focus,textarea:focus,button:focus-visible,a:focus-visible{outline:2px solid var(--risk);outline-offset:1px}
-input[type=checkbox]{width:18px;height:18px;margin:0;accent-color:var(--good);flex:0 0 auto}
-.row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
-.row>*{flex:1;min-width:120px}
+input[type=checkbox]{width:16px;height:16px;min-height:0;margin:0;padding:0;accent-color:var(--good);flex:0 0 auto}
+.row{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.row>*{flex:1;min-width:140px}
 .row>.fit{flex:0 0 auto;min-width:0}
-button{font:inherit;font-weight:700;border-radius:999px;border:1px solid var(--line2);background:none;color:var(--text);padding:9px 16px;cursor:pointer;min-height:40px}
-button.primary{background:var(--good);border-color:var(--good);color:#07140E}
-button.danger{border-color:#6A2E20;color:#FFB39E}
-button.sm{min-height:32px;padding:4px 12px;font-size:12.5px}
-button.x{min-height:0;padding:0 4px;border:0;font-size:14px;line-height:1}
-button:disabled{opacity:.5;cursor:default}
+.hint{margin:5px 0 0;font-size:12.5px;color:var(--muted)}
+label.inline+.hint{margin:0 0 6px 26px}
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+/* ---- buttons ---- */
+button{font:inherit;font-size:13px;font-weight:600;border-radius:9px;border:1px solid var(--line2);background:#161B21;color:var(--text);padding:7px 14px;cursor:pointer;min-height:36px;white-space:nowrap}
+button:hover:not(:disabled){border-color:#4A5460;background:#1B2128}
+button.primary{background:var(--good);border-color:var(--good);color:#06130D}
+button.primary:hover:not(:disabled){background:#5CEAB2;border-color:#5CEAB2}
+button.danger{border-color:#5A2A1E;color:#FFB39E;background:#1A1210}
+button.danger:hover:not(:disabled){border-color:#8A3E2A;background:#2A1712}
+button.sm{min-height:28px;padding:3px 10px;font-size:12px;border-radius:8px}
+button.x{min-height:0;padding:0 4px;border:0;background:none;font-size:14px;line-height:1}
+button:disabled{opacity:.45;cursor:default}
+/* ---- tables ---- */
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px}
 table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
-th{color:var(--muted);font-weight:600;font-size:12px;white-space:nowrap}
-.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#1B1F25;color:var(--soft);white-space:nowrap}
+th,td{text-align:left;padding:10px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;border-bottom-color:var(--line2)}
+tbody tr:hover td{background:#141920}
+tbody tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right}
+td.nw{white-space:nowrap}
+tr.click{cursor:pointer}
+.lvtbl td,.lvtbl th{padding:6px 10px}
+/* ---- pills, notes, notices ---- */
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:650;background:#1B2027;color:var(--soft);white-space:nowrap;line-height:18px;vertical-align:middle}
 .pill.ban{background:#3A1E16;color:#FFB39E}
-.pill.ok{background:#12301F;color:var(--good)}
-.pill.xp{background:#231C3A;color:var(--xp)}
+.pill.ok{background:#11291C;color:var(--good)}
+.pill.xp{background:#221B38;color:var(--xp)}
 .pill.wait{background:#2B2413;color:#F9DC8E}
-.note{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1B1F25;border:1px solid var(--line2);border-radius:14px;padding:10px 16px;color:var(--soft);max-width:92vw;z-index:20}
+.pill.warnp{background:#3A2418;color:#FFB39E}
+.tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:3px}
+.note{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1B2027;border:1px solid var(--line2);border-radius:10px;padding:10px 16px;color:var(--soft);max-width:92vw;z-index:40;box-shadow:0 8px 30px rgba(0,0,0,.4)}
 .note.err{border-color:#6A2E20;color:#FFB39E}
 .note:empty{display:none}
-.ev{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
+.hide{display:none!important}
+.warn{padding:10px 14px;border-radius:10px;background:#1E1A10;border:1px solid #3D3317;border-left:3px solid var(--mid);color:#F2DDA0;margin:0;font-size:13px}
+.okbox{padding:14px 16px;border-radius:10px;background:#0E2419;border:1px solid #1E5B3F;color:#BDF5DC;overflow-wrap:anywhere}
+.todo{display:flex;flex-direction:column}
+.todo>div{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line)}
+.todo>div:last-child{border-bottom:0;padding-bottom:0}
+.todo>div:first-child{padding-top:0}
+.todo i{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--mid);margin-top:7px;font-style:normal}
+.todo i.bad{background:var(--low)}
+.todo i.ok{background:var(--good)}
+.todo b{display:block;font-size:13.5px}
+.todo span{color:var(--muted);font-size:12.5px}
+/* ---- feed, badges, members ---- */
+.ev{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line)}
+.ev:last-child{border-bottom:0}
 .ev div{flex:1;min-width:0;overflow-wrap:anywhere}
-.ev .stack{flex:0 0 auto}
+.ev .stack{flex:0 0 auto;gap:6px}
 .thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .thumbs img{width:88px;height:64px;object-fit:cover;border-radius:8px;display:block}
 .avimg{width:56px;height:56px;border-radius:50%;object-fit:cover;flex:0 0 auto}
-.pill.warnp{background:#3A2418;color:#FFB39E}
-.hide{display:none!important}
-.warn{padding:12px 14px;border-radius:14px;background:#2B2413;border:1px solid #4A3C18;color:#F9DC8E;margin:0}
-.okbox{padding:12px 14px;border-radius:14px;background:#0F2A1D;border:1px solid #1E5B3F;color:#BDF5DC;overflow-wrap:anywhere}
-nav.tabs{display:flex;gap:6px;overflow-x:auto;padding:4px;background:var(--card);border:1px solid var(--line);border-radius:999px;position:sticky;top:8px;z-index:10;scrollbar-width:none}
-nav.tabs::-webkit-scrollbar{display:none}
-nav.tabs a{flex:0 0 auto;padding:8px 14px;border-radius:999px;color:var(--muted);text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap}
-nav.tabs a[aria-current=page]{background:#1F2630;color:var(--text)}
-.pager{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:10px}
-.hint{margin:4px 0 0;font-size:12.5px;color:var(--muted)}
+.pager{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:12px}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .chk{display:flex;flex-wrap:wrap;gap:8px}
-.chk label{display:flex;align-items:center;gap:8px;margin:0;padding:8px 12px;border:1px solid var(--line2);border-radius:12px;font-weight:600;cursor:pointer}
+.chk label{display:flex;align-items:center;gap:8px;margin:0;padding:7px 12px;border:1px solid var(--line2);border-radius:9px;font-weight:550;color:var(--text);cursor:pointer}
+.chk label:hover{border-color:#4A5460}
 .lcard{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
 .lcard>div:first-child{flex:1;min-width:min(220px,100%)}
-.bicon{font-size:26px;line-height:1;width:40px;text-align:center;flex:0 0 auto}
-.blist{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(min(260px,100%),1fr))}
-.bitem{display:flex;gap:10px;align-items:flex-start}
+.bicon{font-size:24px;line-height:1;width:36px;text-align:center;flex:0 0 auto}
+.blist{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(min(280px,100%),1fr))}
+.bitem{display:flex;gap:12px;align-items:flex-start}
 .bitem>div{flex:1;min-width:0}
-.mhead h2{margin:6px 0 0;font-size:20px;overflow-wrap:anywhere}
-.stat3{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));margin:12px 0 0}
-.stat3>div{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px;min-width:0}
+.mhead h2{margin:0;font-size:20px;overflow-wrap:anywhere}
+.stat3{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));margin:16px 0 0}
+.stat3>div{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
 .stat3 b{display:block;font-size:18px}
 .stat3 span{font-size:12px;color:var(--muted)}
-.bar{height:8px;border-radius:999px;background:#1B1F25;overflow:hidden}
+.bar{height:8px;border-radius:999px;background:#1B2027;overflow:hidden}
 .bar>i{display:block;height:100%;background:var(--good);border-radius:999px}
 .hist{display:flex;align-items:flex-end;gap:3px;height:96px;margin:6px 0 4px}
 .hist i{flex:1;background:var(--risk);border-radius:4px 4px 0 0;min-height:2px}
@@ -94,50 +159,78 @@ nav.tabs a[aria-current=page]{background:#1F2630;color:var(--text)}
 .wk{display:flex;align-items:flex-end;gap:6px;height:90px;margin:6px 0 2px}
 .wk>div{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;min-width:0}
 .wk i{display:block;width:100%;border-radius:4px 4px 0 0;background:var(--good);min-height:2px}
-.fun{display:grid;grid-template-columns:minmax(120px,190px) 1fr auto;gap:8px 10px;align-items:center;font-size:13px}
+.fun{display:grid;grid-template-columns:minmax(120px,190px) 1fr auto;gap:8px 12px;align-items:center;font-size:13px}
 .fun .bar{height:10px}
-.pct{position:relative;height:6px;background:#1B1F25;border-radius:999px;margin-top:4px}
+.pct{position:relative;height:6px;background:#1B2027;border-radius:999px;margin-top:4px}
 .pct>i{position:absolute;top:-3px;width:12px;height:12px;border-radius:50%;margin-left:-6px;background:var(--good);border:2px solid var(--card)}
 .perf{display:grid;gap:10px 18px;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr))}
 .perf>div{padding:10px 0;border-bottom:1px solid var(--line);min-width:0}
 .perf b{font-size:18px}
-.spark{display:flex;align-items:flex-end;gap:2px;height:46px;margin:8px 0}
+.spark{display:flex;align-items:flex-end;gap:2px;height:46px;margin:10px 0}
 .spark i{flex:1;border-radius:3px 3px 0 0;min-height:2px}
-tr.click{cursor:pointer} tr.click:hover td{background:#171B21}
-.lvtbl td,.lvtbl th{padding:6px 8px}
 .code{font:700 20px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em}
 summary{cursor:pointer;color:var(--soft);font-weight:600}
+details>summary{list-style-position:inside}
+.filters{display:grid;gap:4px 12px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+.filters label{margin-top:4px}
+.bulk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin:14px 0 6px;border-radius:10px;background:var(--card2);border:1px solid var(--line)}
+.bulk.on{border-color:#1E5B3F;background:#0D1D16}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.toolbar>input{flex:1;min-width:200px}
+.toolbar>select,.toolbar>div{flex:0 0 auto;width:auto}
+.prog{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--soft);margin-top:12px}
+.prog .bar{flex:1;max-width:320px}
+.prog .bar>i{background:var(--risk)}
+@media (max-width:900px){
+  body.in .shell{display:block;background:none}
+  body.in .side{position:sticky;top:0;z-index:30;height:auto;grid-template-columns:1fr auto;grid-template-rows:auto;grid-template-areas:"brand me" "nav nav" "links links";padding:10px 16px;gap:0;border-right:0;border-bottom:1px solid var(--line);max-height:100vh}
+  .brand{grid-area:brand;padding:0}
+  .side .me .menu{display:inline-flex}
+  .side .me{grid-area:me;border:0;padding:0}
+  .side .me #whoami{display:none}
+  nav.tabs{grid-area:nav;display:none;padding:8px 0 4px}
+  .side .links{grid-area:links;display:none}
+  .side.open nav.tabs,.side.open .links{display:flex}
+  .side.open nav.tabs{display:grid;grid-template-columns:1fr 1fr;gap:2px 8px}
+  .side.open nav.tabs .navh{grid-column:1/-1;padding:10px 10px 2px}
+  .side.open{overflow-y:auto}
+  main{padding:20px 16px 96px}
+  #app{max-width:none}
+}
 @media (max-width:560px){
-  main{padding:16px 16px 80px}
-  h1{font-size:22px}
-  .card{padding:14px;border-radius:16px}
+  h1{font-size:20px}
+  .card{padding:16px}
   .hide-sm{display:none}
   .row>*{min-width:100%}
   .row>.fit{min-width:0}
+  .kpis{grid-template-columns:1fr 1fr!important;gap:8px}
+  .tile{padding:12px}
+  .tile b{font-size:20px}
+  .fun{grid-template-columns:minmax(90px,120px) 1fr auto}
 }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <div><h1>Pulse admin</h1><div class="muted">Members, leagues, badges, levels and everything members can unlock.</div></div>
-    <div class="row" style="flex:0 0 auto;align-items:center"><a class="fit" href="/pulse">Open Pulse</a><a class="fit" href="/">Full journal</a><span id="whoami" class="muted small fit"></span><button id="signout" class="hide fit sm">Sign out</button></div>
-  </header>
-
-  <section class="card" id="login">
-    <h2>Sign in</h2>
-    <p class="muted" style="margin:0">An admin the owner added: open the sign-in link they sent you, or enter its code. The same works for any admin already signed in to Pulse on this device.</p>
-    <div class="row" style="margin-top:10px"><input id="acode" autocomplete="one-time-code" placeholder="sign-in code" aria-label="Admin sign-in code" style="text-transform:uppercase"><button class="primary fit" id="ago">Sign in</button></div>
-    <p class="muted" style="margin:16px 0 0">The owner: use the access token set as <code>AUTH_TOKEN</code> on the server. It’s remembered in this browser.</p>
-    <div class="row" style="margin-top:10px"><input type="password" id="tok" autocomplete="current-password" placeholder="access token" aria-label="Access token"><button class="fit" id="go">Sign in as owner</button></div>
-    <p id="loginErr" class="warn hide" role="alert" style="margin:12px 0 0"></p>
-  </section>
-
-  <div id="app" class="hide stack">
+<div class="shell">
+  <aside class="side" id="side">
+    <div class="brand"><span class="logo" aria-hidden="true">P</span><div><b>Pulse</b><small>Admin</small></div></div>
     <nav class="tabs" id="tabs" aria-label="Admin sections"></nav>
-    <div id="view" class="stack"></div>
-  </div>
-</main>
+    <div class="links"><a href="/pulse">Open Pulse ↗</a><a href="/">Full journal ↗</a></div>
+    <div class="me"><span id="whoami"></span><span class="row fit" style="gap:6px;flex-wrap:nowrap"><button id="signout" class="hide sm fit">Sign out</button><button class="sm fit menu" id="menuBtn" aria-expanded="false" aria-controls="tabs">Menu</button></span></div>
+  </aside>
+  <main>
+    <section class="card" id="login">
+      <div class="brand" style="padding:0 0 16px"><span class="logo" aria-hidden="true">P</span><div><b>Pulse</b><small>Admin</small></div></div>
+      <h1 style="margin-bottom:6px">Sign in</h1>
+      <p class="muted" style="margin:0">An admin the owner added: open the sign-in link they sent you, or enter its code. The same works for any admin already signed in to Pulse on this device.</p>
+      <div class="row" style="margin-top:12px"><input id="acode" autocomplete="one-time-code" placeholder="sign-in code" aria-label="Admin sign-in code" style="text-transform:uppercase"><button class="primary fit" id="ago">Sign in</button></div>
+      <p class="muted" style="margin:20px 0 0;padding-top:16px;border-top:1px solid var(--line)">The owner: use the access token set as <code>AUTH_TOKEN</code> on the server. It’s remembered in this browser.</p>
+      <div class="row" style="margin-top:12px"><input type="password" id="tok" autocomplete="current-password" placeholder="access token" aria-label="Access token"><button class="fit" id="go">Sign in as owner</button></div>
+      <p id="loginErr" class="warn hide" role="alert" style="margin:12px 0 0"></p>
+    </section>
+    <div id="app" class="hide"><div id="view" class="stack"></div></div>
+  </main>
+</div>
 <div class="note" id="note" role="status" aria-live="polite"></div>
 <script src="/admin2fa-ui.js"></script>
 <script>
@@ -160,8 +253,26 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   const XP_LABELS={discipline:['Per Discipline point','× each day’s 0–100 score'],checkin:['Morning check-in',''],plan:['Plan set before trading',''],
     journal:['Every trade journaled',''],stops:['A stop on every trade',''],limit:['Stayed inside the loss limit',''],review:['End-of-day review',''],
     achievement:['Achievement','The base: badge tiers pay ×0.1 to ×3.2 of it'],challenge:['Weekly challenge kept',''],focus:['Focus habit kept','Per kept day']};
-  const TABS=[['overview','Overview'],['insights','Insights'],['members','Members'],['wallets','Wallets'],['bench','Benchmarks'],['duels','Duels'],['leagues','Leagues'],['competitions','Competitions'],['badges','Badges'],['levels','Levels & XP'],
-    ['features','Features'],['coach','Coach'],['routines','Routines'],['feed','Feed & reports'],['settings','Settings']];
+  // the sidebar: sections in groups; each page has a title and a line on what it's for
+  const NAV=[['',[['overview','Overview'],['insights','Insights']]],['People',[['members','Members'],['wallets','Wallets']]],
+    ['Compete',[['leagues','Leagues'],['competitions','Competitions'],['duels','Duels']]],['Progress',[['levels','Levels & XP'],['badges','Badges'],['features','Features']]],
+    ['Coaching',[['coach','Coach'],['routines','Routines'],['bench','Benchmarks']]],['Community',[['feed','Feed & reports']]],['',[['settings','Settings']]]];
+  const TABS=NAV.flatMap(g=>g[1]);
+  const PAGES={overview:['Overview','How the league is doing, and what needs you.'],
+    insights:['Insights','Every member’s process and results, the whole league at once, or any segment of it. Segments use the “Traders like you” groups (style, trade size, experience, activity). Members are told in Profile & privacy that you can see their stats.'],
+    members:['Members','Everyone in the league, and the admins who help you run it.'],
+    wallets:['Wallets','Which wallets count for returns, verified Discipline and return competitions, and which member each belongs to.'],
+    bench:['Benchmarks','“Traders like you”: members compare their last 90 days with anonymous traders of the same style, trade size and experience, in Pulse and the journal’s Review. Only group spreads leave the server.'],
+    duels:['Duels','Members challenge each other for a week or a month, 1 on 1 or in groups, scored by the server from verified fills and synced days. Money is never staked.'],
+    leagues:['Leagues','Each league ranks its members on its own metric. Members can be in several at once, and find listed ones by name or number.'],
+    competitions:['Competitions','Contests with a start and an end: Discipline, survival, journaling or verified return.'],
+    badges:['Reward badges','Your own badges for this league, on top of the app’s built-in catalog of ~280. They show on members’ badge pages and pay the XP you set.'],
+    levels:['Levels & XP','Where the levels fall, what each is called, and what members earn XP for.'],
+    features:['Features','Which Pulse features open at which level.'],
+    coach:['Coach','How much members can ask the AI coach, and what it may see.'],
+    routines:['Routines','The morning check-in and end-of-day questions members answer, by how they trade.'],
+    feed:['Feed & reports','Reported posts, announcements to everyone, and what members can post.'],
+    settings:['Settings','Joining, wallets, sync, and the security of this panel.']};
   // the owner's AUTH_TOKEN, or (for an admin the owner added) this browser's Pulse member key
   let tok=''; try{ tok=localStorage.getItem('srv_token')||''; }catch(e){}
   let mkey=''; try{ mkey=localStorage.getItem('pz_social_key')||''; }catch(e){}
@@ -180,8 +291,8 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   const chk=id=>!!($(id)&&$(id).checked);
   const sel=(id,opts,cur,attrs)=>`<select id="${esc(id)}"${attrs||''}>${opts.map(([v,l])=>`<option value="${esc(v)}"${String(v)===String(cur)?' selected':''}>${esc(l)}</option>`).join('')}</select>`;
   const field=(id,label,input,hint)=>`<div><label for="${esc(id)}">${esc(label)}</label>${input}${hint?`<p class="hint">${hint}</p>`:''}</div>`;
-  const box=(id,label,on,hint)=>`<label class="inline"><input type="checkbox" id="${id}"${on?' checked':''}>${esc(label)}</label>${hint?`<p class="hint" style="margin:-6px 0 6px 26px">${hint}</p>`:''}`;
-  const tiles=list=>`<div class="grid">${list.map(([l,v,s])=>`<div class="tile"><b>${esc(v)}</b><span>${esc(l)}</span>${s?`<div class="muted small">${esc(s)}</div>`:''}</div>`).join('')}</div>`;
+  const box=(id,label,on,hint)=>`<label class="inline"><input type="checkbox" id="${id}"${on?' checked':''}>${esc(label)}</label>${hint?`<p class="hint" style="margin:0 0 8px 26px">${hint}</p>`:''}`;
+  const tiles=list=>`<div class="kpis" style="--cols:${list.length<=4?list.length:list.length===6||list.length===9?3:4}">${list.map(([l,v,s])=>`<div class="tile"><span class="tl">${esc(l)}</span><b>${esc(v)}</b>${s?`<span class="ts">${esc(s)}</span>`:''}</div>`).join('')}</div>`;
   // lists longer than ten show ten at a time
   const pager=(key,list,size)=>{ size=size||10; const n=list.length, pages=Math.max(1,Math.ceil(n/size)), p=Math.max(0,Math.min(UI.pages[key]||0,pages-1)); UI.pages[key]=p;
     return {items:list.slice(p*size,(p+1)*size), html:n>size?`<div class="pager"><button class="sm" data-pg="${esc(key)}" data-d="-1"${p?'':' disabled'} aria-label="Previous page">‹ Prev</button><span class="muted small">${p*size+1}–${Math.min(n,(p+1)*size)} of ${n}</span><button class="sm" data-pg="${esc(key)}" data-d="1"${p<pages-1?'':' disabled'} aria-label="Next page">Next ›</button></div>`:''}; };
@@ -201,7 +312,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     ME=me; $('whoami').textContent=me.owner?'Owner':'Admin · '+me.name;
     Object.assign(D,{ov,members:ms.members,leagues:ls.leagues,badges:bs.badges,comps:cs.competitions,events:ev.events,wallets:ws,log:lg.log,reports:rp.reports,bench:bn,duels:du});
     for(const a of [...UI.wsel])if(!ws.wallets.some(w=>w.address===a))UI.wsel.delete(a);
-    $('login').classList.add('hide'); $('app').classList.remove('hide'); $('signout').classList.remove('hide');
+    $('login').classList.add('hide'); $('app').classList.remove('hide'); $('signout').classList.remove('hide'); document.body.classList.add('in');
     render();
   }
   // run an admin call, then reload everything; returns the call's result, or undefined after showing the error
@@ -218,6 +329,15 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   // Re-rendering after an action keeps what was typed elsewhere on the same screen; only the
   // card the action came from shows the server's fresh values.
   let lastView='';
+  // the page's title, what it's for, and its main actions
+  function pageHead(){ const [t,d]=PAGES[UI.tab]||[UI.tab,''], a=(PAGE_ACT[UI.tab]||(()=>''))();
+    return `<header class="ph"><div><h1>${esc(t)}</h1>${d?`<p>${esc(d)}</p>`:''}</div>${a?`<div class="ph-act">${a}</div>`:''}</header>`; }
+  const PAGE_ACT={
+    overview:()=>`<a class="btnlink" href="#members" data-open="member">Add a member</a><a class="btnlink" href="#competitions">New competition</a><a class="btnlink" href="#feed">Announce</a>`,
+    members:()=>`<button class="${UI.addOpen?'':'primary '}fit" id="addToggle">${UI.addOpen?'Close':'Add member'}</button>`,
+    bench:()=>D.bench?`<button class="fit" id="bRebuild">Rebuild groups now</button>`:'',
+    leagues:()=>UI.leagueEdit?'':'<button class="primary fit" id="lgNew">New league</button>',
+    badges:()=>UI.badgeEdit?'':'<button class="primary fit" id="bNew">New badge</button>'};
   function render(){
     const view=UI.tab+'/'+UI.member, keep=[], foc=document.activeElement&&document.activeElement.id;
     if(view===lastView&&!UI.fresh)for(const el of $('view').querySelectorAll('input[id],textarea[id],select[id]')){
@@ -225,36 +345,44 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       if(el.type==='checkbox'?el.checked!==el.defaultChecked:el.tagName==='SELECT'?[...el.options].some(o=>o.selected!==o.defaultSelected):el.value!==el.defaultValue)
         keep.push([el.id,el.type==='checkbox'?el.checked:el.value]); }
     lastView=view; UI.submitted=null; UI.fresh=false;
-    $('tabs').innerHTML=TABS.map(([k,l])=>`<a href="#${k}"${k===UI.tab?' aria-current="page"':''}>${l}${k==='feed'&&D.reports.length?` <span class="pill warnp">${D.reports.length}</span>`:''}</a>`).join('');
-    const tabs=$('tabs'), cur=tabs.querySelector('[aria-current]'); if(cur)tabs.scrollLeft=Math.max(0,cur.offsetLeft-(tabs.clientWidth-cur.offsetWidth)/2);
+    const cnt={feed:D.reports.length?[D.reports.length,'']:null,wallets:D.wallets.approveWallets&&D.wallets.counts.pending?[D.wallets.counts.pending,'w']:null};
+    $('tabs').innerHTML=NAV.map(([g,items])=>(g?`<div class="navh">${esc(g)}</div>`:'')+items.map(([k,l])=>`<a href="#${k}"${k===UI.tab?' aria-current="page"':''}><span>${esc(l)}</span>${cnt[k]?`<span class="cnt ${cnt[k][1]}" title="${cnt[k][1]?'waiting for you':'open reports'}">${cnt[k][0]}</span>`:''}</a>`).join('')).join('');
     const f={overview:vOverview,insights:vInsights,members:vMembers,wallets:vWallets,bench:vBench,duels:vDuels,leagues:vLeagues,competitions:vComps,badges:vBadges,levels:vLevels,features:vFeatures,coach:vCoach,routines:vRoutines,feed:vFeed,settings:vSettings}[UI.tab];
-    $('view').innerHTML=f();
+    $('view').innerHTML=(UI.tab==='members'&&UI.member&&D.members.some(x=>x.id===UI.member)?'':pageHead())+f();
     for(const [id,v] of keep){ const el=$(id); if(!el)continue; if(el.type==='checkbox')el.checked=v; else el.value=v; }
     const back=foc&&$(foc); if(back&&$('view').contains(back))back.focus({preventScroll:true});
+    pollBench();
   }
 
   // ---------------- overview ----------------
   function vOverview(){
-    const o=D.ov, c=o.config, warn=[];
-    if(!c.open)warn.push('The league is closed to new members (Settings).');
-    if(c.approveWallets&&o.walletsPending)warn.push(`<a href="#wallets">${o.walletsPending} wallet${o.walletsPending===1?' is':'s are'} waiting for your approval.</a> Until you approve them, they don’t count for returns, verified Discipline or return competitions.`);
-    if(o.claims&&!o.originPinned)warn.push('Wallet sign-in isn’t pinned to your address yet. Set <code>PUBLIC_ORIGIN</code> on the server so a look-alike site can’t collect members’ signatures.');
-    if(!o.coachAi)warn.push('The AI coach is off. Set <code>COACH_AI=1</code> and <code>ANTHROPIC_API_KEY</code> (or <code>OPENAI_API_KEY</code>) on the server to switch it on.');
+    const o=D.ov, c=o.config, todo=[];
+    // what needs the owner, most pressing first: [dot, title, detail (html), link]
+    if(D.reports.length)todo.push(['bad',D.reports.length+' open report'+(D.reports.length===1?'':'s'),'Members flagged posts or comments.','#feed']);
+    if(c.approveWallets&&o.walletsPending)todo.push(['',o.walletsPending+' wallet'+(o.walletsPending===1?'':'s')+' waiting for your approval','They don’t count for returns, verified Discipline or return competitions until you approve them.','#wallets']);
+    if(!c.open)todo.push(['','The league is closed to new members','Nobody new can join until you open it.','#settings']);
+    if(o.claims&&!o.originPinned)todo.push(['','Wallet sign-in isn’t pinned to your address','Set <code>PUBLIC_ORIGIN</code> on the server so a look-alike site can’t collect members’ signatures.','']);
+    if(!o.coachAi)todo.push(['','The AI coach is off','Set <code>COACH_AI=1</code> and <code>ANTHROPIC_API_KEY</code> (or <code>OPENAI_API_KEY</code>) on the server to switch it on.','']);
     const main=D.leagues.find(L=>L.id==='main'), live=Math.max(1,o.members-o.banned);
-    const top=D.members.filter(m=>!m.banned).sort((a,b)=>b.xp-a.xp).slice(0,5);
-    return `${tiles([['Members',fmt(o.members),o.banned?o.banned+' suspended':''],['Active this week',fmt(o.active7)],['Leagues',o.leagues],['Reward badges',o.badges],
-      ['Competitions',o.comps],['Duels',D.duels?fmt(D.duels.counts.active):'—',D.duels?fmt(D.duels.counts.pending)+' waiting · '+fmt(D.duels.counts.done30)+' finished in 30d':''],['Traders like you',D.bench?fmt(D.bench.contributors):'—',D.bench?fmt(D.bench.groups.length)+' groups':''],['Posts',fmt(o.posts||0),o.reports?o.reports+' open report'+(o.reports===1?'':'s'):o.mediaBytes?size(o.mediaBytes)+' of pictures':''],['Coach messages today',fmt(o.coachToday),o.coachAi?'AI on':'AI off'],['Claimed wallets',o.claimed||0,o.vaults?o.vaults+' synced journals · '+size(o.vaultBytes):'']])}
-    ${warn.length?`<div class="stack" style="gap:8px">${warn.map(w=>`<p class="warn">${w}</p>`).join('')}</div>`:''}
+    const top=D.members.filter(m=>!m.banned).sort((a,b)=>b.xp-a.xp).slice(0,6), log=(D.log||[]).slice(0,6);
+    return `${tiles([['Members',fmt(o.members),o.banned?o.banned+' suspended':o.leagues+' league'+(o.leagues===1?'':'s')],['Active this week',fmt(o.active7),o.members?Math.round(o.active7/Math.max(1,o.members)*100)+'% of members':''],
+      ['Duels running',D.duels?fmt(D.duels.counts.active):'—',D.duels?fmt(D.duels.counts.pending)+' waiting · '+fmt(D.duels.counts.done30)+' done in 30d':''],['Competitions',fmt(o.comps),o.badges+' reward badge'+(o.badges===1?'':'s')],
+      ['Traders like you',D.bench?fmt(D.bench.contributors):'—',D.bench?fmt(D.bench.groups.length)+' peer group'+(D.bench.groups.length===1?'':'s'):''],['Posts',fmt(o.posts||0),o.mediaBytes?size(o.mediaBytes)+' of pictures':''],
+      ['Coach today',fmt(o.coachToday),o.coachAi?'messages · AI on':'messages · AI off'],['Claimed wallets',fmt(o.claimed||0),o.vaults?o.vaults+' synced journals · '+size(o.vaultBytes):'']])}
     <div class="two">
+      <section class="card"><div class="ch"><h2>Needs your attention</h2>${todo.length?`<span class="pill ${todo.some(t=>t[0]==='bad')?'warnp':'wait'}">${todo.length}</span>`:''}</div>
+        ${todo.length?`<div class="todo">${todo.map(([k,t,d,h])=>`<div><i class="${k}"></i><div><b>${h?`<a href="${h}">${esc(t)}</a>`:esc(t)}</b><span>${d}</span></div></div>`).join('')}</div>`
+          :'<div class="todo"><div><i class="ok"></i><div><b>All clear</b><span>No reports, nothing waiting for you.</span></div></div></div>'}</section>
+      <section class="card"><div class="ch"><h2>Top by XP</h2><a class="small" href="#members">All members →</a></div>
+        ${top.length?`<table><tbody>${top.map((m,i)=>`<tr><td class="muted" style="width:28px">${i+1}</td><td><a href="${mlink(m)}">@${esc(m.handle)}</a></td><td class="muted">Lv ${m.level}</td><td class="n">${fmt(m.xp)} XP</td></tr>`).join('')}</tbody></table>`:'<p class="muted" style="margin:0">No members yet.</p>'}
+      </section>
       <section class="card"><h2>${esc(main?main.name:'Main league')} · tiers</h2>
-        ${o.tiers.map(t=>`<div style="margin:8px 0"><div class="row" style="justify-content:space-between;align-items:center"><span class="fit">${esc(t.tier)}</span><span class="fit muted">${t.n}</span></div><div class="bar"><i style="width:${Math.round(100*t.n/live)}%"></i></div></div>`).join('')}
+        ${o.tiers.map(t=>`<div style="margin:10px 0"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px"><span class="fit small">${esc(t.tier)}</span><span class="fit muted small">${t.n}</span></div><div class="bar"><i style="width:${Math.round(100*t.n/live)}%"></i></div></div>`).join('')}
       </section>
-      <section class="card"><h2>Top by XP</h2>
-        ${top.length?`<table><tbody>${top.map((m,i)=>`<tr><td class="muted">${i+1}</td><td><a href="${mlink(m)}">@${esc(m.handle)}</a></td><td>Lv ${m.level}</td><td>${fmt(m.xp)} XP</td></tr>`).join('')}</tbody></table>`:'<p class="muted">No members yet.</p>'}
+      <section class="card"><h2>Recent admin activity</h2>
+        ${log.length?`<table><tbody>${log.map(x=>`<tr><td class="small"><b>${esc(x.by==='owner'?'Owner':x.by)}</b> <span class="muted">${esc(logWords(x.what))}</span></td><td class="muted small n nw">${esc(ago(x.at))}</td></tr>`).join('')}</tbody></table>${(D.log||[]).length>6?'<p class="hint"><a href="#members">The full log is under Members →</a></p>':''}`:'<p class="muted" style="margin:0">Nothing yet.</p>'}
       </section>
-    </div>
-    <section class="card"><h2>Quick actions</h2><div class="row" style="align-items:center">
-      <a class="fit btnlink" href="#members" data-open="member">Add a member</a><a class="fit btnlink" href="#leagues" data-open="league">New league</a><a class="fit btnlink" href="#badges" data-open="badge">New badge</a><a class="fit btnlink" href="#competitions">New competition</a><a class="fit btnlink" href="#feed">Announce</a></div></section>`;
+    </div>`;
   }
 
   // ---------------- insights: every member's numbers, the whole base and any segment ----------------
@@ -272,10 +400,9 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     if(X.err)return `<section class="card"><p class="warn">Couldn’t load insights: ${esc(X.err)}</p></section>`;
     const M=X.metrics, L=X.labels, F=UI.ins.f, pctOf=(a,b)=>b?Math.round(a/b*100)+'%':'—';
     const pick=(k,label,list)=>field('insf_'+k,label,sel('insf_'+k,[['','All'],...list],F[k]||'',' data-insf="'+k+'"'));
-    const filters=`<div class="row">${pick('style','Style',Object.entries(L.style))}${pick('size','Trade size',Object.entries(L.size))}${pick('exp','Experience',Object.entries(L.exp))}${pick('act','Activity',Object.entries(L.act))}</div>
-      <div class="row">${pick('league','League',Object.entries(L.league))}${pick('level','Level',X.levelBands.map(b=>[b,'Level '+b]))}${pick('cohort','Joined',X.cohortsAll.map(c=>[c,c]))}
-        ${pick('verified','Verified',[['yes','Verified from fills'],['no','Not verified']])}${pick('activity','Seen',Object.entries(X.activity))}</div>
-      ${Object.values(F).some(Boolean)?'<div style="margin-top:10px"><button class="sm fit" id="insClear">Clear filters</button></div>':''}`;
+    const filters=`<div class="filters">${pick('style','Style',Object.entries(L.style))}${pick('size','Trade size',Object.entries(L.size))}${pick('exp','Experience',Object.entries(L.exp))}${pick('act','Activity',Object.entries(L.act))}
+      ${pick('league','League',Object.entries(L.league))}${pick('level','Level',X.levelBands.map(b=>[b,'Level '+b]))}${pick('cohort','Joined',X.cohortsAll.map(c=>[c,c]))}
+        ${pick('verified','Verified',[['yes','Verified from fills'],['no','Not verified']])}${pick('activity','Seen',Object.entries(X.activity))}</div>`;
     const S=X.summary||{};
     const head=tiles([['Members in view',fmt(X.n),X.n!==X.total?'of '+fmt(X.total):'everyone'],['Discipline · median',insVal('disc30',S.disc30,M),'last 30 days'],
       ['Days journaled · median',insVal('journal30',S.journal30,M)],['Win rate · median',insVal('wr',S.wr,M),S.trading!=null?S.trading+' with a summary':''],['Profit factor · median',insVal('pf',S.pf,M)],['30-day return · median',insVal('ret',S.ret,M),'members who share it']]);
@@ -287,8 +414,8 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       <div class="wk">${W.map(w=>`<div title="${esc('Week of '+w.from+': '+w.traders+' traded · Discipline '+(w.disc==null?'—':w.disc)+' · '+(w.journaled==null?'—':w.journaled+'% of days journaled')+' · '+(w.slipsPerDay==null?'—':w.slipsPerDay+' slips a trading day'))}"><i style="height:${w.disc==null?2:Math.max(2,w.disc/wmax*100)}%;background:${w.disc==null?'var(--line2)':w.disc>=70?'var(--good)':w.disc>=50?'var(--mid)':'var(--low)'}"></i><span class="muted small">${esc(w.from.slice(5))}</span></div>`).join('')}</div>
       <div class="scroll"><table><tbody><tr><td class="muted">Traded</td>${W.map(w=>`<td>${w.traders}</td>`).join('')}</tr><tr><td class="muted">Journaled</td>${W.map(w=>`<td>${w.journaled==null?'—':w.journaled+'%'}</td>`).join('')}</tr></tbody></table></div></section>`:'';
     const DI=X.dist, dmax=DI&&DI.hist?Math.max(1,...DI.hist.counts):1;
-    const dist=DI?`<section class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 class="fit" style="margin:0">How members spread</h2>
-        <div class="fit" style="min-width:200px">${sel('insMetric',Object.entries(M).map(([k,d])=>[k,d.label]),UI.ins.metric,' aria-label="Measure"')}</div></div>
+    const dist=DI?`<section class="card"><div class="ch"><h2>How members spread</h2>
+        <div style="min-width:200px">${sel('insMetric',Object.entries(M).map(([k,d])=>[k,d.label]),UI.ins.metric,' aria-label="Measure"')}</div></div>
       ${DI.n?`<div class="hist">${DI.hist.counts.map((c,i)=>{ const w=(DI.hist.hi-DI.hist.lo)/DI.hist.counts.length, a=DI.hist.lo+w*i; return `<i style="height:${Math.round(c/dmax*100)}%" title="${esc(insVal(DI.key,a,M)+' to '+insVal(DI.key,a+w,M)+': '+c+' member'+(c===1?'':'s'))}"></i>`; }).join('')}</div>
         <div class="row small muted" style="justify-content:space-between"><span class="fit">${esc(insVal(DI.key,DI.hist.lo,M))}</span><span class="fit">${esc(insVal(DI.key,DI.hist.hi,M))}</span></div>
         <p class="small" style="margin:8px 0 0">${DI.n} member${DI.n===1?'':'s'} · 10th ${esc(insVal(DI.key,DI.q[0],M))} · quarter ${esc(insVal(DI.key,DI.q[1],M))} · <b>median ${esc(insVal(DI.key,DI.q[2],M))}</b> · three-quarters ${esc(insVal(DI.key,DI.q[3],M))} · 90th ${esc(insVal(DI.key,DI.q[4],M))}</p>`
@@ -297,8 +424,8 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     const slips=X.slips?`<section class="card"><h2>Slips, last 30 days</h2>${SL.some(x=>x.n)?`<div class="fun">${SL.map(x=>`<span>${esc(x.label)}</span><div class="bar" title="${esc(x.n+' times · on '+(x.share==null?'—':x.share+'%')+' of trading days')}"><i style="width:${Math.round(x.n/smax*100)}%;background:var(--low)"></i></div><span class="muted small">${fmt(x.n)}</span>`).join('')}</div>`:'<p class="muted">No slips recorded in this group.</p>'}</section>`:'';
     const BY=[['style','Style'],['size','Trade size'],['exp','Experience'],['act','Activity'],['league','League'],['level','Level'],['cohort','Month joined'],['verified','Verified'],['activity','Last seen']];
     const filterable=['style','size','exp','act','league','level','cohort','verified','activity'];
-    const bd=`<section class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 class="fit" style="margin:0">Segments</h2>
-        <div class="fit" style="min-width:200px">${sel('insBy',BY,UI.ins.by,' aria-label="Split by"')}</div></div>
+    const bd=`<section class="card"><div class="ch"><h2>Segments</h2>
+        <div style="min-width:200px">${sel('insBy',BY,UI.ins.by,' aria-label="Split by"')}</div></div>
       <p class="muted small">Medians per segment. Click one to look at it. Segments under ${X.minSeg} members show their size only.</p>
       <div class="scroll"><table><thead><tr><th>Segment</th><th>Members</th><th>Discipline</th><th>Journaled</th><th>Win rate</th><th>Profit factor</th><th>Return 30d</th><th>Seen 7d</th></tr></thead><tbody>
       ${X.breakdown.map(g=>`<tr${g.key!=null&&filterable.includes(UI.ins.by)?` class="click" data-insset="${esc(UI.ins.by)}" data-insval="${esc(g.key)}" tabindex="0"`:''}><td><b>${esc(g.label)}</b></td><td>${fmt(g.n)}</td>
@@ -307,15 +434,17 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     const coh=`<section class="card"><h2>By month joined</h2><div class="scroll"><table><thead><tr><th>Joined</th><th>Members</th><th>Synced</th><th>Seen in 30 days</th><th>Seen in 7 days</th></tr></thead><tbody>
       ${X.cohorts.map(c=>`<tr><td>${esc(c.month)}</td><td>${fmt(c.joined)}</td><td>${pctOf(c.synced,c.joined)}</td><td>${pctOf(c.active30,c.joined)}</td><td>${pctOf(c.active7,c.joined)}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">No members yet.</td></tr>'}</tbody></table></div></section>`;
     const SORTS=[['disc30','Discipline, best first'],['slipping','Slipping (Discipline down 10+)'],['wr','Win rate'],['pf','Profit factor'],['ret','30-day return'],['journal30','Days journaled'],['xp','XP'],['lastSeen','Last seen']];
-    const mem=`<section class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 class="fit" style="margin:0">Members</h2>
-        <div class="fit" style="min-width:220px">${sel('insSort',SORTS,UI.ins.sort,' aria-label="Sort members"')}</div></div>
+    const mem=`<section class="card"><div class="ch"><h2>Members</h2>
+        <div style="min-width:220px">${sel('insSort',SORTS,UI.ins.sort,' aria-label="Sort members"')}</div></div>
       <div class="scroll"><table><thead><tr><th>Member</th><th>Segment</th><th>Discipline</th><th>Days</th><th>Journaled</th><th>Win rate</th><th>PF</th><th>Return</th><th>Seen</th></tr></thead><tbody>
       ${X.members.map(r=>{ const dlt=r.disc30!=null&&r.discPrev30!=null?r.disc30-r.discPrev30:null;
-        return `<tr><td><a href="#members/${esc(encodeURIComponent(r.id))}">@${esc(r.handle)}</a> <span class="muted small">Lv ${r.level}</span></td><td class="small">${esc(insSeg(r.seg,L))||'<span class="muted">—</span>'}</td>
+        return `<tr><td class="nw"><a href="#members/${esc(encodeURIComponent(r.id))}">@${esc(r.handle)}</a> <span class="muted small">Lv ${r.level}</span></td><td class="small muted" style="min-width:180px">${esc(insSeg(r.seg,L))||'—'}</td>
         <td>${insVal('disc30',r.disc30,M)}${dlt?` <span class="small" style="color:${dlt>0?'var(--good)':'var(--low)'}" title="${esc('vs the 30 days before: '+r.discPrev30)}">${dlt>0?'▲':'▼'}${Math.abs(dlt)}</span>`:''}${r.verified?' <span class="pill ok" title="Verified from fills">✓</span>':''}</td>
-        <td>${r.days30}</td><td>${insVal('journal30',r.journal30,M)}</td><td>${insVal('wr',r.wr,M)}</td><td>${insVal('pf',r.pf,M)}</td><td>${insVal('ret',r.ret,M)}</td><td class="muted small">${esc(ago(r.lastSeen))}</td></tr>`; }).join('')||'<tr><td colspan="9" class="muted">No one matches.</td></tr>'}
+        <td>${r.days30}</td><td>${insVal('journal30',r.journal30,M)}</td><td>${insVal('wr',r.wr,M)}</td><td>${insVal('pf',r.pf,M)}</td><td>${insVal('ret',r.ret,M)}</td><td class="muted small nw">${esc(ago(r.lastSeen))}</td></tr>`; }).join('')||'<tr><td colspan="9" class="muted">No one matches.</td></tr>'}
       </tbody></table></div>${X.more?`<p class="hint">${fmt(X.more)} more not shown: narrow the filters.</p>`:''}</section>`;
-    return `<section class="card"><h2>Insights</h2><p class="muted" style="margin-top:0">Every member’s process and results, the whole league at once, or any segment of it. Segments use the “Traders like you” groups (style, trade size, experience, activity), so a member without a summary yet shows as “not known yet”. Members are told in Profile &amp; privacy that you can see their stats.</p>${filters}</section>
+    const nf=Object.values(F).filter(Boolean).length;
+    return `<section class="card"><div class="ch"><h2>Filter${nf?` <span class="sub2">· ${nf} on</span>`:''}</h2>${nf?'<button class="sm fit" id="insClear">Clear filters</button>':''}</div>${filters}
+      <p class="hint">A member without a “Traders like you” summary yet shows as “not known yet” in the segment filters.</p></section>
       ${X.small?`<p class="warn">Fewer than ${X.minSeg} members match these filters, so their numbers aren’t shown. Their names are below.</p>`:''}
       ${head}<div class="two">${funnel}${weekly||slips}</div><div class="two">${dist}${weekly?slips:''}</div>${bd}<div class="two">${coh}</div>${mem}`;
   }
@@ -366,6 +495,9 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   const NOUNS={leagues:'league',competitions:'competition',badges:'badge',events:'feed post'};
   function logWords(what){ const m=/^(\w+) ([\w-]+)(?:\/([^ ]+))?(?: · (\w+))?/.exec(what||''); if(!m)return what;
     const [,M,sub,id,a]=m, who=id&&D.members.find(x=>x.id===decodeURIComponent(id));
+    if(sub==='members'&&id==='bulk')return ({verify:'verified the wallets of',unverify:'unverified the wallets of',ban:'suspended',unban:'restored',remove:'deleted'}[a]||'changed')+' several members';
+    if(sub==='bench')return ({seed:'added seed wallets',reread:'re-analyzed seed wallets',retry:'retried seed wallets',remove:'removed seed wallets',rebuild:'rebuilt the benchmark groups'}[a]||'changed the benchmarks');
+    if(sub==='duels')return a==='cancel'?'cancelled a duel':'changed a duel';
     if(sub==='members')return id?((ACT_WORDS[a]||'changed')+' '+(who?'@'+who.handle:'a member')):'added a member';
     if(sub==='wallets')return (a==='approve'?'approved':a==='reject'?'rejected':'reviewed')+' wallets';
     if(sub==='config')return 'changed settings';
@@ -374,42 +506,42 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     return what; }
   function vAdmins(){
     const admins=D.members.filter(m=>m.admin), log=(D.log||[]).slice(0,UI.logAll?200:8);
-    return `<section class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 class="fit" style="margin:0">Admins <span class="muted">· ${admins.length+1}</span></h2>
-        ${ME.owner?`<button class="${UI.adminAdd?'':'primary '}fit" id="adminToggle">${UI.adminAdd?'Close':'Add admin'}</button>`:''}</div>
-      <p class="muted small" style="margin:6px 0 0">Admins can do everything in this panel except add or remove admins. They sign in with their own profile, never your access token, so your journal and the server stay yours.</p>
+    return `<section class="card"><div class="ch"><h2>Admins <span class="sub2">· ${admins.length+1}</span></h2>
+        ${ME.owner?`<button class="fit" id="adminToggle">${UI.adminAdd?'Close':'Add admin'}</button>`:''}</div>
+      <p class="muted small" style="margin:0">Admins can do everything in this panel except add or remove admins. They sign in with their own profile, never your access token, so your journal and the server stay yours.</p>
       ${UI.adminAdd?`<div class="sub" style="margin-top:12px"><div class="row" style="align-items:flex-end">${field('adHandle','Their name','<input id="adHandle" maxlength="20" placeholder="alex" autocomplete="off">')}<button class="primary fit" id="adCreate">Create admin and get a link</button></div>
         <p class="hint">Already a member? Open their page and tick “Admin” under Access instead.</p></div>`:''}
       ${UI.code&&UI.code.admin&&!UI.member?codeBox(UI.code):''}
       <div class="scroll" style="margin-top:10px"><table><tbody><tr><td><b>Owner</b> <span class="pill ok">access token</span></td><td class="muted small">${ME.owner?'you':''}</td><td></td></tr>
         ${admins.map(m=>`<tr><td><a href="${mlink(m)}"><b>@${esc(m.handle)}</b></a> ${m.adminMade&&!m.keys?'<span class="pill">not signed in yet</span>':''}${m.banned?'<span class="pill ban">suspended</span>':''}</td><td class="muted small">last seen ${esc(ago(m.lastSeen))}${ME.id===m.id?' · you':''}</td>
           <td>${ME.owner?`<div class="row fit" style="align-items:center"><button class="sm fit" data-adcode="${esc(m.id)}">New sign-in link</button><button class="sm danger fit" data-unadmin="${esc(m.id)}">Remove admin</button></div>`:''}</td></tr>`).join('')}</tbody></table></div>
-      ${(D.log||[]).length?`<h3>Recent admin activity</h3><div class="scroll"><table><tbody>${log.map(x=>`<tr><td class="small"><b>${esc(x.by==='owner'?'Owner':x.by)}</b></td><td class="small">${esc(logWords(x.what))}</td><td class="muted small">${esc(ago(x.at))}</td></tr>`).join('')}</tbody></table></div>
+      ${(D.log||[]).length?`<h3>Recent admin activity</h3><div class="scroll"><table><tbody>${log.map(x=>`<tr><td class="small"><b>${esc(x.by==='owner'?'Owner':x.by)}</b> <span class="muted">${esc(logWords(x.what))}</span></td><td class="muted small n nw">${esc(ago(x.at))}</td></tr>`).join('')}</tbody></table></div>
         ${(D.log||[]).length>8?`<button class="sm" id="logAll">${UI.logAll?'Show less':'Show all'}</button>`:''}`:''}
     </section>`;
   }
   function vMembers(){
     if(UI.member){ const m=D.members.find(x=>x.id===UI.member); if(m)return vMember(m); }
-    return vAdmins()+`<section class="card">
-      <div class="row" style="justify-content:space-between;align-items:center"><h2 class="fit" style="margin:0">Members <span class="muted">· ${D.members.length}</span></h2><button class="${UI.addOpen?'':'primary '}fit" id="addToggle">${UI.addOpen?'Close':'Add member'}</button></div>
-      ${UI.addOpen?`<div class="sub" style="margin-top:12px">
+    return `${UI.addOpen?`<section class="card"><h2>Add a member</h2>
         <div class="row">${field('nmHandle','Name','<input id="nmHandle" maxlength="20" placeholder="sam_trades" autocomplete="off">')}${field('nmAddr','Wallet (optional)','<input id="nmAddr" maxlength="42" placeholder="0x…" autocomplete="off">')}</div>
         <fieldset style="border:0;padding:0;margin:0"><legend style="font-size:13px;font-weight:600;margin:10px 0 6px">Leagues</legend><div class="chk">${D.leagues.map(L=>`<label><input type="checkbox" name="nmLeague" value="${esc(L.id)}" id="nmL_${esc(L.id)}"${L.autoJoin?' checked':''}>${esc(L.name)}</label>`).join('')}</div></fieldset>
         ${box('nmUnlocked','Fully unlocked — every feature and the bigger coach allowance from day one',false)}
         <div style="margin-top:10px"><button class="primary" id="nmCreate">Create and get a sign-in code</button></div>
         <p class="hint">They open the link, or paste the code in Pulse → Social → Account → “Link a device”. It works once, within 7 days.</p>
-      </div>`:''}
+      </section>`:''}
       ${UI.code&&!UI.code.admin&&!UI.member?codeBox(UI.code):''}
-      <div class="row" style="margin-top:12px;align-items:center">
+      <section class="card"><div class="ch"><h2>Members <span class="sub2">· ${D.members.length}</span></h2></div>
+      <div class="toolbar">
         <input id="q" placeholder="Search by name or address" aria-label="Search members" value="${esc(UI.q)}">
-        <div class="fit">${sel('mFilter',[['all','Everyone'],['suspended','Suspended'],['unlocked','Fully unlocked'],['added','Added by you'],['coach','Used the coach today'],['unverified','Wallet unverified'],['waiting','Wallet waiting for you'],['nowallet','No wallet']],UI.filter,' aria-label="Filter"')}</div>
+        <div>${sel('mFilter',[['all','Everyone'],['suspended','Suspended'],['unlocked','Fully unlocked'],['added','Added by you'],['coach','Used the coach today'],['unverified','Wallet unverified'],['waiting','Wallet waiting for you'],['nowallet','No wallet']],UI.filter,' aria-label="Filter"')}</div>
       </div>
-      <p class="hint">Addresses are visible to you as the owner. Members see them only if the member chose to show theirs.</p>
-      <div class="row" id="mBulk" style="align-items:center;margin:10px 0 0;gap:8px">${mBulkHtml()}</div>
-      <div class="scroll"><table><thead><tr><th style="width:34px"><input type="checkbox" id="mSelAll" aria-label="Select everyone on this page" style="width:auto"></th><th>Name</th><th>Wallet</th><th>Level</th><th class="hide-sm">Streak</th><th class="hide-sm">Leagues</th><th class="hide-sm">Coach today</th><th class="hide-sm">30d return</th><th>Last seen</th></tr></thead><tbody id="mRows">${memberRows()}</tbody></table></div><div id="mPager">${memberPg().html}</div></section>`;
+      <div class="bulk${UI.msel.size?' on':''}" id="mBulk">${mBulkHtml()}</div>
+      <div class="scroll"><table><thead><tr><th style="width:34px"><input type="checkbox" id="mSelAll" aria-label="Select everyone on this page"></th><th>Member</th><th>Wallet</th><th>Level</th><th class="hide-sm n">Streak</th><th class="hide-sm">Leagues</th><th class="hide-sm n">Coach</th><th class="hide-sm n">30d return</th><th class="n">Last seen</th></tr></thead><tbody id="mRows">${memberRows()}</tbody></table></div><div id="mPager">${memberPg().html}</div>
+      <p class="hint">Addresses are visible to you as the owner. Members see them only if the member chose to show theirs.</p></section>`+vAdmins();
   }
   function mBulkHtml(){
     const n=UI.msel.size, dis=n?'':' disabled';
-    return `<span class="fit small ${n?'':'muted'}">${n?`<b>${n}</b> selected`:'Select members to act on several at once'}</span>
+    const el=$('mBulk'); if(el)el.classList.toggle('on',!!n);
+    return `<span class="small ${n?'':'muted'}" style="margin-right:auto">${n?`<b>${n}</b> selected`:'Tick members to act on several at once'}</span>
       <button class="sm fit" id="mbVerify"${dis}>Verify wallets</button><button class="sm fit" id="mbUnverify"${dis}>Unverify wallets</button>
       <button class="sm fit" id="mbBan"${dis}>Suspend</button><button class="sm fit" id="mbUnban"${dis}>Restore</button>
       <button class="sm fit danger" id="mbDelete"${dis}>Delete</button>${n?'<button class="sm fit" id="mbClear">Clear selection</button>':''}`; }
@@ -422,23 +554,23 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   function memberRows(){
     const list=memberPg().items;
     return `${list.map(m=>`<tr>
-        <td><input type="checkbox" data-msel="${esc(m.id)}" aria-label="Select @${esc(m.handle)}"${UI.msel.has(m.id)?' checked':''} style="width:auto"></td>
-        <td><a href="${mlink(m)}"><b>@${esc(m.handle)}</b></a> ${pills(m)}</td>
+        <td><input type="checkbox" data-msel="${esc(m.id)}" aria-label="Select @${esc(m.handle)}"${UI.msel.has(m.id)?' checked':''}></td>
+        <td><a href="${mlink(m)}"><b>@${esc(m.handle)}</b></a>${pills(m)?`<div class="tags">${pills(m)}</div>`:''}</td>
         <td>${m.address?`<div class="row" style="gap:6px;align-items:center;flex-wrap:nowrap">${wverPill(m.walletStatus,D.wallets.approveWallets)}${wverBtn(m.address,m.walletStatus)}</div>`:'<span class="muted">—</span>'}</td>
-        <td>${m.level}<div class="muted small">${fmt(m.xp)} XP</div></td><td class="hide-sm">${m.streak}</td>
+        <td class="nw">Lv ${m.level} <span class="muted small">· ${fmt(m.xp)} XP</span></td><td class="hide-sm n">${m.streak}</td>
         <td class="hide-sm">${m.leagues.map(l=>`<span class="pill">${esc(leagueName(l.id))}</span>`).join(' ')||'<span class="muted">—</span>'}</td>
-        <td class="hide-sm">${m.coachUsed}${m.coachLimit!=null?' / '+m.coachLimit:''}</td>
-        <td class="hide-sm">${m.money?(m.money.ret>=0?'+':'')+(m.money.ret*100).toFixed(1)+'% · DD '+(m.money.dd*100).toFixed(1)+'%':'<span class="muted">—</span>'}</td>
-        <td class="small">${esc(ago(m.lastSeen))}</td></tr>`).join('')
+        <td class="hide-sm n nw">${m.coachUsed}${m.coachLimit!=null?' / '+m.coachLimit:''}</td>
+        <td class="hide-sm n nw">${m.money?`<span style="color:${m.money.ret>=0?'var(--good)':'var(--low)'}">${(m.money.ret>=0?'+':'')+(m.money.ret*100).toFixed(1)}%</span><div class="muted small">DD ${(m.money.dd*100).toFixed(1)}%</div>`:'<span class="muted">—</span>'}</td>
+        <td class="small n nw">${esc(ago(m.lastSeen))}</td></tr>`).join('')
         ||`<tr><td colspan="9" class="muted">${D.members.length?(UI.q||UI.filter!=='all'?'Nobody matches.':''):'No members yet. Add one above, or share your /pulse link and people join from the Social tab.'}</td></tr>`}`;
   }
   function vMember(m){
     const grants=(m.grants||[]).slice().reverse(), grantSum=grants.reduce((a,g)=>a+g.xp,0);
     const tierRows=m.leagues.filter(x=>{ const L=D.leagues.find(y=>y.id===x.id); return L&&L.tiers; });
     const cc=D.ov.config.coach;
-    return `<section class="card mhead"><a href="#members">← All members</a><h2>@${esc(m.handle)} ${pills(m)}</h2>
-      <div class="muted small">Joined ${esc(new Date(m.createdAt).toISOString().slice(0,10))} · last seen ${esc(ago(m.lastSeen))} · ${m.keys} device${m.keys===1?'':'s'}${m.vault?' · sync '+size(m.vault):''}</div>
-      <div class="stat3"><div><b>${m.level}</b><span>Level</span></div><div><b>${fmt(m.xp)}</b><span>XP${grantSum?' · '+(grantSum>0?'+':'')+fmt(grantSum)+' from you':''}</span></div><div><b>${m.streak}</b><span>Streak</span></div>
+    return `<header class="ph"><div><a class="crumb" href="#members">← All members</a><h1>@${esc(m.handle)}</h1>
+      <p>Joined ${esc(new Date(m.createdAt).toISOString().slice(0,10))} · last seen ${esc(ago(m.lastSeen))} · ${m.keys} device${m.keys===1?'':'s'}${m.vault?' · sync '+size(m.vault):''}</p>${pills(m)?`<div class="tags" style="margin-top:8px">${pills(m)}</div>`:''}</div></header>
+    <section class="card mhead"><div class="stat3" style="margin:0"><div><b>${m.level}</b><span>Level</span></div><div><b>${fmt(m.xp)}</b><span>XP${grantSum?' · '+(grantSum>0?'+':'')+fmt(grantSum)+' from you':''}</span></div><div><b>${m.streak}</b><span>Streak</span></div>
         <div><b>${m.coachUsed}${m.coachLimit!=null?' / '+m.coachLimit:''}</b><span>Coach today</span></div><div><b>${m.awards.length}</b><span>Reward badges</span></div></div>
       ${UI.code&&UI.code.id===m.id?codeBox(UI.code):''}
     </section>
@@ -448,7 +580,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
         ${field('mHandle','Name',`<input id="mHandle" maxlength="20" value="${esc(m.handle)}">`)}
         ${field('mAddr','Wallet',`<input id="mAddr" maxlength="42" placeholder="0x…" value="${esc(m.address||'')}"${m.claimed?' disabled':''}>`,m.claimed?'Claimed by signature — only the member can change it.':'Used for verified Discipline and returns. Leave empty to remove it.')}
         ${m.address?`<div class="row" style="align-items:center;margin:-4px 0 10px">${wverPill(m.walletStatus,D.wallets.approveWallets)}${wverBtn(m.address,m.walletStatus)}</div>`:''}
-        <div style="margin-top:12px"><button class="primary" data-m="edit">Save profile</button></div>
+        <div class="actions"><button class="primary" data-m="edit">Save profile</button></div>
         ${m.av||m.bio?`<h3>Picture and bio</h3><div class="row" style="align-items:center">${m.av?`<img src="${esc(m.av)}" alt="Profile picture of @${esc(m.handle)}" class="avimg">`:''}<div style="flex:1;min-width:0">${m.bio?`<p style="margin:0;overflow-wrap:anywhere">${esc(m.bio)}</p>`:'<p class="muted" style="margin:0">No bio.</p>'}</div></div>
           <div class="row" style="margin-top:8px">${m.av?'<button class="sm fit" data-m="clearAvatar">Remove picture</button>':''}${m.bio?'<button class="sm fit" data-m="clearBio">Clear bio</button>':''}</div>`:''}
       </section>
@@ -472,12 +604,12 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
         ${ME.owner?box('mAdmin','Admin',m.admin,'Can use this admin panel with their own profile (everything except adding or removing admins). Send them the link from “New sign-in code”, or they open /admin on a device where they use Pulse.'):m.admin?'<p class="muted small">Admin — only the owner changes that.</p>':''}
         ${m.admin?'<p class="muted small">Admins ask the coach without a limit.</p>':field('mCoach','Coach messages a day',`<input id="mCoach" type="number" min="0" max="1000" placeholder="default (${m.unlocked?cc.dailyUnlocked:cc.daily})" value="${m.coachDaily!=null?m.coachDaily:''}">`,'Empty uses the default from the Coach tab. 0 switches the coach off for them.')}
         <div class="row" style="align-items:center;margin-top:6px"><span class="small">Coach today: <b>${m.coachUsed}</b>${m.coachLimit!=null?' of '+m.coachLimit:' (no limit)'}${m.address?' · shared with every profile on this wallet':''}</span>${m.coachUsed?`<button class="sm fit" data-m="coachreset">Reset today’s count</button>`:''}</div>
-        <div style="margin-top:12px"><button class="primary" data-m="access">Save access</button></div>
+        <div class="actions"><button class="primary" data-m="access">Save access</button></div>
       </section>
       <section class="card"><h2>Leagues</h2>
         <div class="chk">${D.leagues.map(L=>`<label><input type="checkbox" name="mLeague" value="${esc(L.id)}"${m.leagues.some(x=>x.id===L.id)?' checked':''}>${esc(L.name)} <span class="muted small">#${L.num}</span></label>`).join('')}</div>
         ${tierRows.map(x=>`<div class="row" style="align-items:center;margin-top:10px"><span>${esc(leagueName(x.id))} tier</span><div class="fit">${sel('tier_'+x.id,TIERS.map((t,i)=>[i,t]),x.tier,` data-tier-league="${esc(x.id)}" aria-label="Tier in ${esc(leagueName(x.id))}"`)}</div></div>`).join('')}
-        <div style="margin-top:12px"><button class="primary" data-m="leagues">Save leagues</button></div>
+        <div class="actions"><button class="primary" data-m="leagues">Save leagues</button></div>
       </section>
       <section class="card"><h2>Reward badges</h2>
         ${D.badges.length?`<div class="stack" style="gap:10px">${pager('mb:'+m.id,D.badges).items.map(b=>{ const has=m.awards.includes(b.id); return `<div class="bitem"><div class="bicon">${esc(b.icon)}</div><div><b>${esc(b.name)}</b><div class="muted small">${esc(b.metric?ruleText(b):'Awarded by hand')}</div></div>
@@ -520,7 +652,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   // ---------------- leagues ----------------
   function leagueForm(L){
     const n=!L, M=D.ov.meta.leagueMetrics;
-    return `<div class="sub" id="leagueForm" style="margin-top:12px"><h3 style="margin-top:0">${n?'New league':'Edit '+esc(L.name)}</h3>
+    return `<section class="card form" id="leagueForm"><h2>${n?'New league':'Edit '+esc(L.name)}</h2>
       <div class="row">${field('lgName','Name',`<input id="lgName" maxlength="40" value="${esc(L?L.name:'')}" placeholder="Risk-adjusted Masters">`)}${field('lgMetric','Ranks members by',sel('lgMetric',Object.entries(M),L?L.metric:'xp'))}${field('lgPeriod','Resets every',sel('lgPeriod',[['week','Week'],['month','Month']],L?L.period:'week'))}</div>
       ${field('lgDesc','Description members see before joining',`<textarea id="lgDesc" rows="2" maxlength="200" placeholder="Best return per unit of drawdown. Verified wallets only.">${esc(L?L.desc:'')}</textarea>`)}
       ${field('lgSeason','Seasons',sel('lgSeason',[['','None'],['month','Monthly — a podium at each month’s end'],['quarter','Quarterly — a podium at each quarter’s end']],L&&L.season?(L.season.id.includes('-Q')?'quarter':'month'):''),'The ranking resets each season; the top three get a badge and a place in the league’s hall of fame. Only for leagues ranked by XP or discipline.')}
@@ -529,13 +661,11 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       ${field('lgInvite','Invite code (optional)',`<input id="lgInvite" maxlength="40" value="${esc(L?L.invite||'':'')}" autocomplete="off">`,'Members need it to join. Empty: anyone can.')}
       ${box('lgAuto','New members join it automatically',L?L.autoJoin:false)}
       ${n?box('lgEveryone','Add everyone who’s already a member',false):''}
-      <div class="row" style="margin-top:10px;align-items:center"><button class="primary fit" id="lgSave" data-id="${L?esc(L.id):''}">${n?'Create league':'Save'}</button><button class="fit" id="lgCancel">Cancel</button></div></div>`;
+      <div class="actions"><button class="primary fit" id="lgSave" data-id="${L?esc(L.id):''}">${n?'Create league':'Save'}</button><button class="fit" id="lgCancel">Cancel</button></div></section>`;
   }
   function vLeagues(){
     const ed=UI.leagueEdit, L0=ed&&ed!=='new'?D.leagues.find(x=>x.id===ed):null;
-    return `<section class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 class="fit" style="margin:0">Leagues</h2>${ed?'':'<button class="primary fit" id="lgNew">New league</button>'}</div>
-      <p class="hint">Each league ranks its members on its own metric. Members can be in several at once, and find listed ones by name or number.</p>
-      ${ed?leagueForm(L0):''}</section>
+    return `${ed?leagueForm(L0):''}
       ${D.leagues.map(L=>{ const out=D.members.filter(m=>!L.roster.some(r=>r.id===m.id));
         return `<section class="card"><div class="lcard"><div><h2 style="margin:0">${esc(L.name)} <span class="muted">#${L.num}</span></h2>
           <div class="chips" style="margin:8px 0">${[esc(L.metricLabel),L.period==='month'?'Monthly':'Weekly',L.tiers?'Tiers':'',L.open?'Listed':'Unlisted',L.inviteRequired?'Invite code':'',L.autoJoin?'Auto-join':'',L.season?'Season: '+L.season.label:''].filter(Boolean).map(x=>`<span class="pill">${x}</span>`).join('')}</div>
@@ -557,7 +687,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       <div class="row">${field('nStart','Starts',`<input id="nStart" type="date" value="${iso(today)}">`)}${field('nEnd','Ends',`<input id="nEnd" type="date" value="${iso(new Date(today.getTime()+6*86400000))}">`)}</div>
       <div class="row">${field('nMin','Minimum / target days','<input id="nMin" type="number" min="1" max="90" value="3">')}${field('nDd','Drawdown cap % (return only)','<input id="nDd" type="number" min="1" max="90" value="8">')}</div>
       ${field('nRule','Rules, in a sentence or two','<textarea id="nRule" rows="2" maxlength="280"></textarea>')}
-      <div style="margin-top:14px"><button class="primary" id="mkComp">Create and announce</button></div></section>
+      <div class="actions"><button class="primary" id="mkComp">Create and announce</button></div></section>
       <section class="card"><h2>All competitions</h2><div class="scroll"><table><thead><tr><th>Title</th><th>Dates</th><th>Entrants</th><th>Leader</th><th></th></tr></thead><tbody>
       ${pager('comps',D.comps).items.map(x=>`<tr><td><b>${esc(x.title)}</b><div class="muted small">${esc(x.type)} · ${esc(x.status)}${x.league?' · '+esc(x.league.name||leagueName(x.league)):''}</div>${x.rule?`<div class="muted small">${esc(x.rule)}</div>`:''}</td><td class="small">${esc(x.start)} → ${esc(x.end)}</td><td>${x.entrants}</td>
         <td class="small">${x.standings&&x.standings[0]?'@'+esc(x.standings[0].handle)+' · '+esc(x.standings[0].note):'<span class="muted">—</span>'}</td>
@@ -571,25 +701,23 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     ['🧭','Explorer','Reached level 10','level','gte',10,200],['🏛️','Founding member','90 days in the league','members','gte',90,150],['🧠','Coach’s pick','For a trade review worth sharing',null,'gte',0,100]];
   function badgeForm(b){
     const n=!b, M=D.ov.meta.badgeMetrics;
-    return `<div class="sub" id="badgeForm" style="margin-top:12px"><h3 style="margin-top:0">${n?'New reward badge':'Edit '+esc(b.name)}</h3>
+    return `<section class="card form" id="badgeForm"><h2>${n?'New reward badge':'Edit '+esc(b.name)}</h2>
       ${n?`<div class="chips" style="margin-bottom:8px;align-items:center"><span class="muted small">Start from:</span>${BADGE_IDEAS.map((x,i)=>`<button class="sm" data-bidea="${i}">${x[0]} ${esc(x[1])}</button>`).join('')}</div>`:''}
       <div class="row"><div style="flex:0 0 90px;min-width:90px">${field('bIcon','Icon',`<input id="bIcon" maxlength="4" value="${esc(b?b.icon:'🏅')}">`)}</div>${field('bName','Name',`<input id="bName" maxlength="40" value="${esc(b?b.name:'')}">`)}${field('bXp','XP when earned',`<input id="bXp" type="number" min="0" max="10000" value="${b?b.xp:100}">`)}</div>
       ${field('bDesc','What it’s for',`<input id="bDesc" maxlength="200" value="${esc(b?b.desc:'')}">`)}
       <div class="row">${field('bMetric','Earned',sel('bMetric',[['','By hand — you award it']].concat(Object.entries(M).map(([k,l])=>[k,'Automatically: '+l])),b&&b.metric?b.metric:''))}
         <div class="fit" style="min-width:90px">${field('bOp','When',sel('bOp',[['gte','≥'],['lte','≤']],b?b.op:'gte'))}</div>${field('bValue','Value',`<input id="bValue" type="number" step="any" value="${b&&b.metric?b.value:''}">`)}</div>
       <p class="hint">Automatic badges are checked whenever a member’s app syncs, and for everyone when you save. Percent metrics are in % (5 = 5%).</p>
-      <div class="row" style="margin-top:10px;align-items:center"><button class="primary fit" id="bSave" data-id="${b?esc(b.id):''}">${n?'Create badge':'Save'}</button><button class="fit" id="bCancel">Cancel</button></div></div>`;
+      <div class="actions"><button class="primary fit" id="bSave" data-id="${b?esc(b.id):''}">${n?'Create badge':'Save'}</button><button class="fit" id="bCancel">Cancel</button></div></section>`;
   }
   function vBadges(){
     const ed=UI.badgeEdit, b0=ed&&ed!=='new'?D.badges.find(x=>x.id===ed):null;
-    return `<section class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 class="fit" style="margin:0">Reward badges</h2>${ed?'':'<button class="primary fit" id="bNew">New badge</button>'}</div>
-      <p class="hint">Your own badges for this league, on top of the app’s built-in catalog of ~280. They show on members’ badge pages and pay the XP you set.</p>
-      ${ed?badgeForm(b0):''}</section>
+    return `${ed?badgeForm(b0):''}
       <section class="card">${D.badges.length?`<div class="blist">${pager('badges',D.badges).items.map(b=>`<div class="sub bitem"><div class="bicon">${esc(b.icon)}</div><div><b>${esc(b.name)}</b>${b.xp?` <span class="pill xp">+${fmt(b.xp)} XP</span>`:''}
         <div class="muted small">${esc(b.metric?ruleText(b):'Awarded by hand')}</div>${b.desc?`<div class="small" style="margin-top:4px">${esc(b.desc)}</div>`:''}
         <div class="muted small" style="margin-top:4px">${b.earned} earned</div>
         <div class="row" style="margin-top:8px;align-items:center"><button class="sm fit" data-bedit="${esc(b.id)}">Edit</button><button class="sm danger fit" data-bdel="${esc(b.id)}" data-n="${esc(b.name)}">Delete</button></div></div></div>`).join('')}</div>`
-        :'<p class="muted" style="margin:0">No reward badges yet.</p>'}${pager('badges',D.badges).html}</section>`;
+        :'<p class="muted" style="margin:0">No reward badges yet. “New badge” above starts one, with a few ideas to start from.</p>'}${pager('badges',D.badges).html}</section>`;
   }
 
   // ---------------- levels & XP ----------------
@@ -602,7 +730,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       <div class="${c.mode==='table'?'hide':''}">${field('lvBase','Curve steepness',`<input id="lvBase" type="number" min="10" max="5000" value="${c.base}">`,'Level n starts at steepness × n × (n − 1) XP. 200 puts level 2 at 400 XP, level 5 at 4,000 and level 10 at 18,000.')}</div>
       <div class="${c.mode==='table'?'':'hide'}">${field('lvTable','XP to reach level 2, 3, 4, …',`<textarea id="lvTable" rows="3" placeholder="300, 800, 1500, 2500, 4000">${esc((c.thresholds||[]).join(', '))}</textarea>`,'Ascending, separated by commas. The last one is the top level.'+(empty?' Until you add some, the curve stays in place.':''))}</div>
       ${field('lvTitles','Level titles, one per line',`<textarea id="lvTitles" rows="6">${esc(c.titles.join('\n'))}</textarea>`,'Up to 30 characters each. Levels past the last title keep it.')}
-      <div class="row" style="margin-top:12px;align-items:center"><button class="fit" id="lvPreview">Preview</button><button class="primary fit" id="lvSave">Save levels</button></div>
+      <div class="actions"><button class="fit" id="lvPreview">Preview</button><button class="primary fit" id="lvSave">Save levels</button></div>
       <p class="hint">Nobody loses XP — only where the levels fall changes. Members’ apps pick it up when they next open Pulse.</p></section>
       <section class="card"><h2>Preview${UI.levelDraft?' <span class="pill">not saved</span>':''}</h2><div class="scroll"><table class="lvtbl"><thead><tr><th>Level</th><th>Starts at</th><th>Title</th><th>Members</th></tr></thead><tbody>
         ${rows.map(([n,s,t])=>{ const k=D.members.filter(m=>!m.banned&&m.xp>=s&&m.xp<levelStart(pc,n+1)).length; return `<tr><td>${n}</td><td>${fmt(s)} XP</td><td>${esc(t)}</td><td class="muted">${k||''}</td></tr>`; }).join('')}
@@ -610,7 +738,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       <section class="card"><h2>How members earn XP</h2>
         <p class="hint" style="margin-top:0">Per day unless noted. Set any to 0 to stop paying it.</p>
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">${Object.keys(XP_LABELS).map(k=>field('xp_'+k,XP_LABELS[k][0],`<input id="xp_${k}" type="number" min="0" max="${k==='discipline'?5:1000}" step="${k==='discipline'?0.1:5}" value="${x[k]}">`,XP_LABELS[k][1]?esc(XP_LABELS[k][1]):'')).join('')}</div>
-        <div style="margin-top:14px"><button class="primary" id="xpSave">Save XP rules</button></div></section>`;
+        <div class="actions"><button class="primary" id="xpSave">Save XP rules</button></div></section>`;
   }
   const levelBody=()=>({mode:val('lvMode'),base:val('lvBase'),thresholds:val('lvTable'),titles:lines(val('lvTitles'))});
   // what the server's sanitizer will make of the form, for the preview
@@ -623,7 +751,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     return `<section class="card"><h2>Unlock features by level</h2>
       ${box('fOn','Unlock Pulse features with levels',c.unlocksOn,'Off: every member gets every feature. Fully unlocked members, and you, always do.')}
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">${Object.entries(mods).map(([k,l])=>field('mod_'+k,l,`<input id="mod_${k}" type="number" min="1" max="100" value="${c.modules[k]}">`,c.modules[k]<=1?'Everyone':'From level '+c.modules[k])).join('')}</div>
-      <div style="margin-top:14px"><button class="primary" id="fSave">Save</button></div>
+      <div class="actions"><button class="primary" id="fSave">Save</button></div>
       <p class="hint">Members see a lock with the level it opens at. The server enforces it for competitions and the coach too.</p></section>`;
   }
 
@@ -638,7 +766,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
         ${field('cOwner','Your own daily limit',`<input id="cOwner" type="number" min="0" max="1000" value="${c.ownerDaily}">`,'0 = no limit. Each member’s day resets at their local midnight.')}
         ${box('cDetail','Members may share their trades and notes with the coach',c.detail,'Each member still chooses, and it’s off until they switch it on. Off here: the coach only ever sees summaries.')}
         <p class="hint">The coach opens at level ${o.config.modules.coach} (see Features). Per-member limits are on each member’s page.</p>
-        <div style="margin-top:14px"><button class="primary" id="cSave">Save coach settings</button></div></section>
+        <div class="actions"><button class="primary" id="cSave">Save coach settings</button></div></section>
       <section class="card"><h2>Today</h2>${tiles([['Messages today',fmt(o.coachToday)],['Members who asked',users.length]])}
         ${users.length?`<div class="scroll" style="margin-top:12px"><table><tbody>${pager('coachusers',users).items.map(m=>`<tr><td><a href="${mlink(m)}">@${esc(m.handle)}</a>${m.admin?' <span class="pill ok">admin</span>':''}</td><td>${m.coachUsed}${m.coachLimit!=null?' / '+m.coachLimit:''}</td><td><button class="sm fit" data-coachreset="${esc(m.id)}">Reset</button></td></tr>`).join('')}</tbody></table></div>${pager('coachusers',users).html}`:''}
         <p class="hint">Messages go to the AI provider (Anthropic or OpenAI, whichever the server uses) and aren’t stored on this server; only the count is.</p></section></div>`;
@@ -653,7 +781,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       <div class="stack" style="gap:12px;margin-top:10px">${Object.entries(ROUTINES).map(([k,r])=>`<div class="sub"><h3 style="margin-top:0">${esc(r.name)}</h3><div class="two" style="gap:12px">
         ${field('ro_'+k+'_m','Morning check-in',`<textarea id="ro_${k}_m" rows="3" placeholder="${esc(r.morning.join('\n'))}">${esc(((ov[k]||{}).morning||[]).join('\n'))}</textarea>`)}
         ${field('ro_'+k+'_e','End-of-day review',`<textarea id="ro_${k}_e" rows="4" placeholder="${esc(r.eod.join('\n'))}">${esc(((ov[k]||{}).eod||[]).join('\n'))}</textarea>`)}</div></div>`).join('')}</div></section>
-      <section class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 class="fit" style="margin:0">Your own profiles</h2><button class="fit" id="rAdd"${custom.length>=12?' disabled':''}>Add profile</button></div>
+      <section class="card"><div class="ch"><h2>Your own profiles</h2><button class="fit" id="rAdd"${custom.length>=12?' disabled':''}>Add profile</button></div>
         <p class="hint">For example “Funded-account trader”, built on Day trader, with questions about the daily loss rule. Members pick them in Pulse → Check-in.</p>
         <div class="stack" style="gap:12px;margin-top:10px">${custom.map((c,i)=>{ const base=ROUTINES[c.base]?c.base:'day'; return `<div class="sub"><div class="row">${field('rc_'+i+'_n','Name',`<input id="rc_${i}_n" maxlength="40" value="${esc(c.name)}">`)}${field('rc_'+i+'_b','Based on',sel('rc_'+i+'_b',Object.entries(ROUTINES).map(([k,r])=>[k,r.name]),base))}</div>
           ${field('rc_'+i+'_d','Who it’s for',`<input id="rc_${i}_d" maxlength="200" value="${esc(c.desc||'')}">`)}
@@ -683,12 +811,12 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       <div class="two"><section class="card"><h2>Announcement</h2>
       <p class="muted" style="margin:0 0 8px">Posts to everyone’s feed from the league.</p>
       <textarea id="ann" rows="3" maxlength="280" placeholder="Survivor starts Monday — set your loss limit in the check-in." aria-label="Announcement"></textarea>
-      <div style="margin-top:10px"><button class="primary" id="postAnn">Post</button></div>
+      <div class="actions" style="border:0;padding-top:0;margin-top:10px"><button class="primary" id="postAnn">Post</button></div>
       <h3>Members’ posts</h3>
       ${box('pOn','Members can post (trades they took, notes)',pc.on)}
       ${box('pPlans','Posts about trades they plan to take',pc.plans,'Shown with “A member’s own plan, shared for accountability. Not advice.”')}
       ${box('pImages','Pictures on posts',pc.images,'Shrunk in the member’s browser before upload; WebP, JPEG or PNG only.')}
-      <div style="margin-top:10px"><button id="pSave">Save</button></div></section>
+      <div class="actions"><button id="pSave">Save</button></div></section>
       <section class="card"><h2>Recent feed</h2><div style="max-height:620px;overflow:auto">
       ${pager('events',D.events).items.map(e=>`<div class="ev"><div><b>${e.admin?'League':'@'+esc(e.handle)}</b> ${postBody(e)}<div class="muted small">${esc(ago(e.at))} · ${e.kudos} kudos${e.post?' · '+e.post.comments+' comment'+(e.post.comments===1?'':'s'):''}</div></div><button class="sm danger" data-delev="${esc(e.id)}">Remove</button></div>`).join('')||'<p class="muted">Nothing posted yet.</p>'}
       </div>${pager('events',D.events).html}</section></div>`;
@@ -730,59 +858,70 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     if(so!=='new')list=list.slice().sort((a,b)=>{ const x=key(a),y=key(b); if(x==null)return y==null?0:1; if(y==null)return -1; return so==='dd'?x-y:y-x; });
     const pg=pager('seeds:'+st+':'+so,list,50), days=(B.config.days||90);
     const cell=(v,f)=>v==null?'<span class="muted">—</span>':f(v);
-    return `<div class="row" style="align-items:center;margin-top:10px">${field('seedSt','Show',sel('seedSt',[['all','All'],['ok','Counted'],['skip','Left out'],['err','Couldn’t be read'],['queued','Waiting']],st))}${field('seedSort','Sort',sel('seedSort',SEED_SORTS,so))}</div>
-      <div class="scroll"><table><thead><tr><th>Wallet</th><th>Status</th><th>Style</th><th>Trade size</th><th>Trading for</th><th>Pace</th><th title="Closed trades in the last ${days} days">Trades</th><th>Win rate</th><th title="Money won ÷ money lost">PF</th>
-        <th title="Net realized P&L over the last ${days} days, after fees and funding">P&L ${days}d</th><th title="30-day return, read on chain">Return 30d</th><th title="Worst drop in the last 30 days">Drawdown</th><th title="Account value now">Account</th><th>Read</th><th></th></tr></thead><tbody>
-      ${pg.items.map(x=>`<tr><td><code class="small" title="${esc(x.address)}">${esc(x.address.slice(0,8)+'…'+x.address.slice(-6))}</code></td>
-        <td><span class="pill ${SEED_ST[x.st]?SEED_ST[x.st][1]:''}">${SEED_ST[x.st]?SEED_ST[x.st][0]:esc(x.st)}</span>${x.why?`<div class="muted small">${esc(x.why)}</div>`:''}</td>
-        <td class="small">${x.style?esc(L.style[x.style]):'—'}</td><td class="small">${x.size?esc(L.size[x.size]):'—'}</td><td class="small">${x.exp?esc(L.exp[x.exp]):'—'}</td><td class="small">${x.act?esc(L.act[x.act]):'—'}</td>
-        <td>${cell(x.n,fmt)}</td><td>${cell(x.wr,v=>Math.round(v)+'%')}</td><td>${cell(x.pf,v=>(+v).toFixed(2))}</td>
-        <td>${cell(x.usd&&x.usd.pnl,v=>`<span style="color:${v>=0?'var(--good)':'var(--low)'}">${usdS(v)}</span>`)}</td>
-        <td>${cell(x.ret,v=>`<span style="color:${v>=0?'var(--good)':'var(--low)'}">${(v>=0?'+':'')+(+v).toFixed(1)}%</span>`)}</td><td>${cell(x.dd,v=>(+v).toFixed(1)+'%')}</td>
-        <td>${cell(x.usd&&x.usd.equity,usdS)}</td><td class="muted small">${x.done?esc(ago(x.done)):'—'}</td>
-        <td><button class="sm fit" data-seeddel="${esc(x.address)}" aria-label="Remove ${esc(x.address)}">Remove</button></td></tr>`).join('')||'<tr><td colspan="15" class="muted">None.</td></tr>'}</tbody></table></div>${pg.html}`;
+    return `<div class="row" style="align-items:flex-end;margin-top:14px;max-width:520px">${field('seedSt','Show',sel('seedSt',[['all','All'],['ok','Counted'],['skip','Left out'],['err','Couldn’t be read'],['queued','Waiting']],st))}${field('seedSort','Sort',sel('seedSort',SEED_SORTS,so))}</div>
+      <div class="scroll"><table><thead><tr><th>Wallet</th><th>Status</th><th>Style</th><th>Trade size</th><th>Trading for</th><th>Pace</th><th class="n" title="Closed trades in the last ${days} days">Trades</th><th class="n">Win rate</th><th class="n" title="Money won ÷ money lost">PF</th>
+        <th class="n" title="Net realized P&L over the last ${days} days, after fees and funding">P&L ${days}d</th><th class="n" title="30-day return, read on chain">Return 30d</th><th class="n" title="Worst drop in the last 30 days">Drawdown</th><th class="n" title="Account value now">Account</th><th>Read</th><th></th></tr></thead><tbody>
+      ${pg.items.map(x=>`<tr><td class="nw"><code class="small" title="${esc(x.address)}">${esc(x.address.slice(0,8)+'…'+x.address.slice(-6))}</code></td>
+        <td style="min-width:200px"><span class="pill ${SEED_ST[x.st]?SEED_ST[x.st][1]:''}">${SEED_ST[x.st]?SEED_ST[x.st][0]:esc(x.st)}</span>${x.re?' <span class="pill" title="Still counted with its last read until the new one lands">re-reading</span>':''}${x.why?`<div class="muted small">${esc(x.why)}</div>`:''}</td>
+        <td class="small nw">${x.style?esc(L.style[x.style]):'—'}</td><td class="small nw">${x.size?esc(L.size[x.size]):'—'}</td><td class="small nw">${x.exp?esc(L.exp[x.exp]):'—'}</td><td class="small nw">${x.act?esc(L.act[x.act]):'—'}</td>
+        <td class="n">${cell(x.n,fmt)}</td><td class="n">${cell(x.wr,v=>Math.round(v)+'%')}</td><td class="n">${cell(x.pf,v=>(+v).toFixed(2))}</td>
+        <td class="n nw">${cell(x.usd&&x.usd.pnl,v=>`<span style="color:${v>=0?'var(--good)':'var(--low)'}">${usdS(v)}</span>`)}</td>
+        <td class="n nw">${cell(x.ret,v=>`<span style="color:${v>=0?'var(--good)':'var(--low)'}">${(v>=0?'+':'')+(+v).toFixed(1)}%</span>`)}</td><td class="n">${cell(x.dd,v=>(+v).toFixed(1)+'%')}</td>
+        <td class="n nw">${cell(x.usd&&x.usd.equity,usdS)}</td><td class="muted small nw">${x.done?esc(ago(x.done)):'—'}</td>
+        <td class="nw">${x.st!=='queued'&&!x.re?`<button class="sm fit" data-seedre="${esc(x.address)}" aria-label="Read ${esc(x.address)} again"${D.bench.seedReader?'':' disabled'}>Re-read</button> `:''}<button class="sm fit danger" data-seeddel="${esc(x.address)}" aria-label="Remove ${esc(x.address)}">Remove</button></td></tr>`).join('')||'<tr><td colspan="15" class="muted">None.</td></tr>'}</tbody></table></div>${pg.html}`;
   }
+  // seed wallets still to read (new, or flagged to read again), and roughly how long that takes
+  const seedLeft=B=>(B.seedCounts.queued||0)+(B.seedCounts.re||0);
+  const seedEta=(B,n)=>{ const s=n*((B.seedDelay!=null?B.seedDelay:4000)/1000+2); return s<90?'under 2 minutes':'about '+Math.round(s/60)+' minutes'; };
   function vBench(){
     const B=D.bench; if(!B)return '<section class="card"><p class="muted">Couldn’t load the benchmarks.</p></section>';
-    const c=B.config, L=B.labels, sc=B.seedCounts;
+    const c=B.config, L=B.labels, sc=B.seedCounts, total=Object.entries(sc).filter(([k])=>k!=='re').reduce((a,[,v])=>a+v,0), left=seedLeft(B);
     const dimName=g=>g.key==='all'?'Everyone':['style','size','exp','act'].filter(k=>g.dims[k]).map(k=>L[k][g.dims[k]]).join(' · ');
-    return `<section class="card"><h2>Traders like you</h2>
-        <p class="muted">Members compare their last 90 days with anonymous traders of the same style, trade size and experience, in Pulse (simple) and the journal's Review (detailed). Each member's app sends a summary unless they switch it off under Profile & privacy. Only group spreads leave the server.</p>
-        <div class="row">${[['Contributors',fmt(B.contributors),B.members+' members · '+B.seeds+' seed wallets'],['Groups',fmt(B.groups.length),B.split?'split by size, experience and activity':'everyone and by style only, until '+fmt(c.splitAt)+' contributors'],['Members switched off',fmt(B.optedOut),fmt(B.withSummary)+' members have a summary'],['Built',esc(ago(B.at)),'rebuilt daily on first use']].map(([l,v,h])=>`<div class="tile"><span class="muted small">${l}</span><b style="font-size:22px">${v}</b><span class="muted small">${h}</span></div>`).join('')}</div>
-        <div><button class="fit" id="bRebuild">Rebuild now</button></div></section>
+    return `${tiles([['Contributors',fmt(B.contributors),B.members+' members · '+B.seeds+' seed wallets'],['Peer groups',fmt(B.groups.length),B.split?'split by size, experience and activity':'everyone and by style, until '+fmt(c.splitAt)+' contributors'],
+        ['Members switched off',fmt(B.optedOut),fmt(B.withSummary)+' members have a summary'],['Groups built',ago(B.at),'daily, and when settings change']])}
+      <div class="two">
       <section class="card"><h2>Settings</h2>
         ${box('bOn','Show “Traders like you”',c.on,'Off hides it in Pulse and the journal. Summaries keep arriving.')}
         ${box('bSeeds','Count seed wallets',c.seeds,'Seed wallets fill the groups while your server is small. They have no journal, so “trades journaled” only uses members.')}
-        <div class="row">${field('bMin','Smallest group','<input id="bMin" type="number" min="10" max="1000" value="'+c.min+'">','A group with fewer traders isn’t shown, so nobody can be picked out. 25 or more is safest; never under 10.')}
-          ${field('bSplit','Split groups from','<input id="bSplit" type="number" min="0" max="100000" value="'+c.splitAt+'">','Below this many contributors, people are compared with everyone and with their own style only.')}</div>
-        <p class="hint">Unlock level: under Features (“Traders like you”, free at level 1).</p>
-        <div class="row">${field('bMinTrades','Fewest trades to count','<input id="bMinTrades" type="number" min="10" max="100" value="'+(c.minTrades||15)+'">','Closed trades a trader (member or seed wallet) needs in the look-back to be counted. Lower counts more traders; each one’s win rate is noisier, but a group still needs '+c.min+' of them.')}
+        <div class="row">${field('bMin','Smallest group','<input id="bMin" type="number" min="10" max="1000" value="'+c.min+'">','Fewer traders and it isn’t shown, so nobody can be picked out. 25+ is safest; never under 10.')}
+          ${field('bSplit','Split groups from','<input id="bSplit" type="number" min="0" max="100000" value="'+c.splitAt+'">','Below this many contributors, people are compared with everyone and their own style only.')}</div>
+        <div class="row">${field('bMinTrades','Fewest trades to count','<input id="bMinTrades" type="number" min="10" max="100" value="'+(c.minTrades||15)+'">','Closed trades in the look-back. Lower counts more traders; each one’s win rate is noisier.')}
           ${field('bDays','Look back','<select id="bDays"><option value="90"'+(c.days!==180?' selected':'')+'>90 days</option><option value="180"'+(c.days===180?' selected':'')+'>180 days</option></select>','180 days counts slower traders. Changing either re-reads the wallets it affects.')}</div>
-        <div><button class="primary" id="benchSave">Save</button></div></section>
-      <section class="card"><details><summary>How traders are grouped</summary>
-        <p class="muted small">Every trader is placed from their closed trades in the look-back (members from their app, seed wallets from their public fills), with the same rules:</p>
-        <ul class="small" style="margin:0;padding-left:18px;line-height:1.6">
-          <li><b>Style</b>, from the typical (median) time a trade is held and how many trades a trading day:
-            <b>Scalper</b> under 20 minutes, or 8+ trades a trading day · <b>Day trader</b> under 8 hours · <b>Swing trader</b> under 10 days · <b>Position trader</b> 10 days or more.</li>
-          <li><b>Trade size</b>, from the typical (median) position at its largest: under $1k · $1k–10k · $10k–100k · $100k+.</li>
-          <li><b>Experience</b>, from the first day the account held money (or its first trade): under 3 months · 3–12 months · 1–3 years · 3+ years.</li>
-          <li><b>Activity</b>, closed trades a week: under 5 · 5–15 · 15–40 · 40+.</li>
-          <li><b>Results</b>: a win or a loss is more than $1 either way. Win rate is wins ÷ (wins + losses); profit factor is money won ÷ money lost.</li>
-        </ul></details></section>
-      <section class="card"><h2>Seed wallets</h2>
-        <p class="muted">Kick-start the benchmarks with public Hyperliquid wallets. Paste anything: every 0x address in it is added once. The server reads each wallet’s last ${c.days||90} days of public fills, about one every few seconds, works out the same summary a member’s app would (and its 30-day return), and counts it in the groups. Wallets with under ${c.minTrades||15} closed trades, or so many fills they’re clearly bots, are left out. ${B.seedReader?'':'<b>This server can’t read wallets right now</b> (the trade engine isn’t loaded).'}</p>
-        <textarea id="bSeedText" aria-label="Wallet addresses to add" rows="4" placeholder="0x… one per line, or paste a CSV or a list from anywhere" spellcheck="false"></textarea>
-        <div class="row" style="align-items:center"><button class="primary fit" id="bSeedAdd">Add wallets</button>
-          <span class="muted small">${fmt(sc.queued||0)} waiting · ${fmt(sc.ok||0)} counted · ${fmt(sc.skip||0)} left out · ${fmt(sc.err||0)} couldn’t be read · up to ${fmt(B.seedMax)}</span></div>
-        ${sc.err||sc.skip?`<div class="row">${sc.err?'<button class="sm fit" id="bSeedRetry">Retry the ones that failed</button>':''}${sc.err?'<button class="sm fit" id="bSeedDropErr">Remove the failed ones</button>':''}${sc.skip?'<button class="sm fit" id="bSeedDropSkip">Remove the left-out ones</button>':''}</div>`:''}
-        ${B.seedList.length?seedTable(B,L)+`
-          <p class="hint">The ${fmt(B.seedList.length)} newest are listed. ${fmt(Object.values(sc).reduce((a,b)=>a+b,0))} in all. Counted wallets are read again weekly. <button class="sm fit" id="bSeedDropAll">Remove all seed wallets</button></p>`:''}
+        <p class="hint">Unlock level: under Features (“Traders like you”, free at level 1).</p>
+        <div class="actions"><button class="primary" id="benchSave">Save</button></div></section>
+      <section class="card"><h2>How traders are grouped</h2>
+        <p class="muted small" style="margin-top:0">Every trader is placed from their closed trades in the look-back (members from their app, seed wallets from their public fills), with the same rules:</p>
+        <div class="todo">
+          <div><i class="ok"></i><div><b>Style</b><span>From the typical (median) time a trade is held and the trades a trading day. <b style="display:inline">Scalper</b> under 20 minutes, or 8+ trades a day · <b style="display:inline">Day trader</b> under 8 hours · <b style="display:inline">Swing trader</b> under 10 days · <b style="display:inline">Position trader</b> 10 days or more.</span></div></div>
+          <div><i class="ok"></i><div><b>Trade size</b><span>The typical (median) position at its largest: under $1k · $1k–10k · $10k–100k · $100k+.</span></div></div>
+          <div><i class="ok"></i><div><b>Experience</b><span>From the first day the account held money (or its first trade): under 3 months · 3–12 months · 1–3 years · 3+ years.</span></div></div>
+          <div><i class="ok"></i><div><b>Activity</b><span>Closed trades a week: under 5 · 5–15 · 15–40 · 40+.</span></div></div>
+          <div><i class="ok"></i><div><b>Results</b><span>A win or a loss is more than $1 either way. Win rate is wins ÷ (wins + losses); profit factor is money won ÷ money lost.</span></div></div>
+        </div></section>
+      </div>
+      <section class="card"><div class="ch"><h2>Seed wallets <span class="sub2">· ${fmt(total)} of up to ${fmt(B.seedMax)}</span></h2>
+          ${total?`<div class="ph-act"><button class="fit" id="bSeedReread"${B.seedReader?'':' disabled'} title="Read every seed wallet again with today’s settings and fills">Re-analyze all</button><button class="sm fit danger" id="bSeedDropAll">Remove all</button></div>`:''}</div>
+        <p class="muted" style="margin-top:0">Kick-start the benchmarks with public Hyperliquid wallets. Paste anything: every 0x address in it is added once. The server reads each wallet’s last ${c.days||90} days of public fills, one every few seconds, works out the same summary a member’s app would (and its 30-day return), and counts it in the groups. Wallets with under ${c.minTrades||15} closed trades, or so many fills they’re clearly bots, are left out. Counted wallets are read again weekly.</p>
+        ${B.seedReader?'':'<p class="warn">This server can’t read wallets right now: the trade engine isn’t loaded.</p>'}
+        ${total?`<div class="chips" style="margin:4px 0 0">${[['ok','counted'],['queued','waiting'],['skip','left out'],['err','couldn’t be read']].map(([k,l])=>`<span class="pill ${SEED_ST[k][1]}">${fmt(sc[k]||0)} ${l}</span>`).join('')}${sc.re?`<span class="pill">${fmt(sc.re)} being re-read</span>`:''}</div>`:''}
+        ${left?`<div class="prog" role="status"><span>Reading ${fmt(left)} wallet${left===1?'':'s'} · ${seedEta(B,left)} left</span><div class="bar"><i style="width:${total?Math.max(3,Math.round((1-left/total)*100)):0}%"></i></div></div>`:''}
+        <textarea id="bSeedText" aria-label="Wallet addresses to add" rows="3" placeholder="0x… one per line, or paste a CSV or a list from anywhere" spellcheck="false" style="margin-top:14px"></textarea>
+        <div class="row" style="align-items:center;margin-top:10px"><button class="primary fit" id="bSeedAdd">Add wallets</button>
+          ${sc.err?'<button class="sm fit" id="bSeedRetry">Retry the failed ones</button><button class="sm fit" id="bSeedDropErr">Remove the failed ones</button>':''}${sc.skip?'<button class="sm fit" id="bSeedDropSkip">Remove the left-out ones</button>':''}</div>
+        ${B.seedList.length?seedTable(B,L)+(B.seedList.length<total?`<p class="hint">The ${fmt(B.seedList.length)} newest of ${fmt(total)} are listed.</p>`:''):''}
       </section>
       <section class="card"><h2>Peer groups</h2>
-        ${B.groups.length?`<div class="scroll"><table><thead><tr><th>Group</th><th>Traders</th><th>Improved</th></tr></thead><tbody>${B.groups.slice(0,60).map(g=>`<tr><td>${esc(dimName(g))}</td><td>${fmt(g.n)}</td><td>${esc(g.imp||'—')}</td></tr>`).join('')}</tbody></table></div>${B.improvers.length?'<p>What improvers changed: '+B.improvers.map(esc).join(' · ')+'</p>':''}
+        ${B.groups.length?`<div class="scroll"><table><thead><tr><th>Group</th><th class="n">Traders</th><th>Improved</th></tr></thead><tbody>${B.groups.slice(0,60).map(g=>`<tr><td>${esc(dimName(g))}</td><td class="n">${fmt(g.n)}</td><td>${esc(g.imp||'—')}</td></tr>`).join('')}</tbody></table></div>${B.improvers.length?'<p>What improvers changed: '+B.improvers.map(esc).join(' · ')+'</p>':''}
           <p class="hint">Biggest first${B.groups.length>60?'; 60 of '+fmt(B.groups.length)+' shown':''}. Combinations with fewer than ${fmt(B.min)} traders aren’t listed: those traders are compared with a wider group.</p>`
-          :`<p class="muted">No group has ${fmt(B.min)} traders yet (${fmt(B.contributors)} contributors so far). Add seed wallets above to get started.</p>`}</section>`;
+          :`<p class="muted" style="margin:0">No group has ${fmt(B.min)} traders yet (${fmt(B.contributors)} contributors so far). Add seed wallets above to get started.</p>`}</section>`;
   }
+  // while seed wallets are being read, the Benchmarks page keeps itself up to date
+  let benchPoll=null;
+  function pollBench(){ clearTimeout(benchPoll); benchPoll=null; const B=D.bench; if(UI.tab!=='bench'||!B||!seedLeft(B))return;
+    benchPoll=setTimeout(async()=>{ benchPoll=null; if(UI.tab!=='bench')return;
+      if(BUSY||document.visibilityState!=='visible')return pollBench();
+      try{ const nb=await api('/bench'); if(UI.tab==='bench'&&!BUSY){ D.bench=nb; render(); return; } }catch(e){}
+      pollBench(); },8000); }
   // ---- Duels: what members can challenge each other on, and the ones running now ----
   const DUEL_ST={pending:['Waiting for an answer',''],active:['Running','ok'],done:['Finished',''],cancelled:['Cancelled','warnp'],declined:['Declined',''],expired:['Expired',''],lapsed:['Too few joined','']};
   function vDuels(){
@@ -792,9 +931,11 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
       <td>${d.start?esc(d.start)+' → '+esc(d.end):'<span class="muted">starts when accepted</span>'}</td>
       <td><span class="pill ${DUEL_ST[d.status]?DUEL_ST[d.status][1]:''}">${DUEL_ST[d.status]?DUEL_ST[d.status][0]:esc(d.status)}</span>${d.awaiting?`<div class="muted small">${d.pod?esc(d.awaiting):'@'+esc(d.awaiting)+' to answer'}</div>`:''}${d.status==='done'?`<div class="muted small">${d.winner?'@'+esc(d.winner)+' won':'draw'}${d.why?' · '+esc(d.why):''}</div>`:''}</td>
       <td>${d.status==='pending'||d.status==='active'?`<button class="sm fit" data-duelcancel="${esc(d.id)}">Cancel</button>`:''}</td></tr>`;
-    return `<section class="card"><h2>Duels</h2>
-        <p class="muted">Members challenge each other to a week or a month, 1 on 1, scored by the server from verified fills and the app’s synced days. Money is never staked; XP can be, if you allow it. A challenge waits 48 hours for an answer; a duel is settled the day after it ends.</p>
-        <div class="row">${[['Running',k.active],['Waiting for an answer',k.pending],['Finished, last 30 days',k.done30],['Declined',k.declined],['Group duels open',X.pods?X.pods.open:0]].map(([l,v])=>`<div class="tile"><span class="muted small">${l}</span><b style="font-size:22px">${fmt(v)}</b></div>`).join('')}</div></section>
+    return `${tiles([['Running',fmt(k.active)],['Waiting for an answer',fmt(k.pending),'a challenge waits 48 hours'],['Finished, last 30 days',fmt(k.done30),fmt(k.declined)+' declined'],['Group duels open',fmt(X.pods?X.pods.open:0)]])}
+      <section class="card">
+        ${X.open.length?`<div class="ch"><h2>Running and waiting <span class="sub2">· ${X.open.length}</span></h2></div><div class="scroll"><table><thead><tr><th>Who</th><th>On</th><th>Dates</th><th>Status</th><th></th></tr></thead><tbody>${X.open.map(row).join('')}</tbody></table></div>
+          <p class="hint">Cancelling ends a duel without a result: nobody wins, loses or gets XP, and both are told.</p>`:'<h2>Running and waiting</h2><p class="muted" style="margin:0">No duels running or waiting.</p>'}</section>
+      <div class="two">
       <section class="card"><h2>Settings</h2>
         ${box('dOn','Duels are on',c.on,'Off hides duels in Pulse and stops new challenges. Duels already running finish.')}
         <p class="muted small" style="margin:6px 0 4px">What members can compete on</p>
@@ -811,39 +952,40 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
         ${box('dPods','Group duels',c.pods!==false,'3 or more members on one measure; no stakes, no % return, no rating change. The winner gets the XP above. It counts as one open duel.')}
         ${field('dPodMax','Most people in a group duel','<input id="dPodMax" type="number" min="3" max="6" value="'+(c.podMax??6)+'">','3 to 6, the creator included.')}
         <p class="hint">Unlock level: under Features (“Duels”, level 3 by default). Members switch off “Accept duel challenges” under Profile & privacy.</p>
-        <div><button class="primary" id="dSave">Save</button></div></section>
+        <div class="actions"><button class="primary" id="dSave">Save</button></div></section>
+      <div class="stack">
       ${LD?`<section class="card"><h2>Ladder season: ${esc(LD.season.label)}</h2><p class="muted small">${esc(LD.season.start)} → ${esc(LD.season.end)} · ${fmt(LD.listed)} on the ladder${LD.last?' · last podium ('+esc(LD.last.label)+'): '+LD.last.podium.map(h=>'@'+esc(h)).join(', '):''}</p>
         ${LD.top.length?`<div class="scroll"><table><thead><tr><th>#</th><th>Who</th><th>Points this season</th><th>Rating</th><th>Duels</th></tr></thead><tbody>${LD.top.map((r,i)=>`<tr><td>${i+1}</td><td>@${esc(r.handle)}</td><td>${r.gain>0?'+':''}${fmt(r.gain)}</td><td>${fmt(r.r)}</td><td>${fmt(r.n)}</td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">No rated duels this season yet.</p>'}</section>`:''}
-      <section class="card"><h2>Running and waiting</h2>
-        ${X.open.length?`<div class="scroll"><table><thead><tr><th>Who</th><th>On</th><th>Dates</th><th>Status</th><th></th></tr></thead><tbody>${X.open.map(row).join('')}</tbody></table></div>
-          <p class="hint">Cancelling ends a duel without a result: nobody wins, loses or gets XP, and both are told.</p>`:'<p class="muted">No duels running or waiting.</p>'}</section>
       <section class="card"><h2>Recent results</h2>
-        ${X.recent.length?`<div class="scroll"><table><thead><tr><th>Who</th><th>On</th><th>Dates</th><th>Result</th><th></th></tr></thead><tbody>${X.recent.map(row).join('')}</tbody></table></div>`:'<p class="muted">No finished duels yet.</p>'}</section>`;
+        ${X.recent.length?`<div class="scroll"><table><thead><tr><th>Who</th><th>On</th><th>Dates</th><th>Result</th><th></th></tr></thead><tbody>${X.recent.map(row).join('')}</tbody></table></div>`:'<p class="muted" style="margin:0">No finished duels yet.</p>'}</section>
+      </div></div>`;
   }
   function vWallets(){
     const W=D.wallets, c=W.counts;
     return `<datalist id="memberHandles">${D.members.map(m=>`<option value="@${esc(m.handle)}">`).join('')}</datalist>
-      <section class="card"><h2>Map a wallet to a member</h2>
-        <div class="row" style="align-items:flex-end">${field('wmap_new_addr','Wallet','<input id="wmap_new_addr" maxlength="42" placeholder="0x…" autocomplete="off">')}${field('wmap_new_who','Member','<input id="wmap_new_who" list="memberHandles" placeholder="@member" autocomplete="off">')}<button class="primary fit" id="wmapNew">Map</button></div>
-        <p class="hint">Or from the member’s page, where you can also pick their main wallet. A mapped wallet belongs to that member alone.</p></section>
-      <section class="card"><h2>Wallet approval</h2>
-      ${box('wOn','Wallets need my approval',W.approveWallets,'A member’s wallet counts for returns, verified Discipline and return competitions only once you approve it. Members can still join and use Pulse; they see that their wallet is waiting. Decisions follow the address, so a rejected wallet stays rejected under a new profile. Wallets you attach to a member yourself count as approved.')}
-      ${!W.approveWallets?'<p class="hint" style="margin-left:26px">Switching it on approves the wallets already in use (marked “already in use”), so nobody’s numbers vanish. You can still reject any of them.</p>':''}
-      <div><button class="primary" id="wSave">Save</button></div></section>
+    ${tiles([['Waiting for you',fmt(c.pending),W.approveWallets?'don’t count until approved':'approval is off: they count'],['Approved',fmt(c.approved)],['Rejected',fmt(c.rejected),'never count']])}
     <section class="card">
-      <div class="row" style="justify-content:space-between;align-items:center"><h2 class="fit" style="margin:0">Wallets</h2>
-        <span class="fit muted small">${c.pending} waiting · ${c.approved} approved · ${c.rejected} rejected</span></div>
-      <div class="row" style="margin-top:12px;align-items:center">
+      <div class="ch"><h2>Wallets</h2></div>
+      <div class="toolbar">
         <input id="wq" placeholder="Search by address or name" aria-label="Search wallets" value="${esc(UI.wq)}">
-        <div class="fit">${sel('wFilter',[['pending','Waiting'],['approved','Approved'],['rejected','Rejected'],['all','All']],UI.wfilter,' aria-label="Filter"')}</div>
+        <div>${sel('wFilter',[['pending','Waiting'],['approved','Approved'],['rejected','Rejected'],['all','All']],UI.wfilter,' aria-label="Filter"')}</div>
       </div>
-      <div class="row" style="margin-top:10px;align-items:center">
+      <div class="bulk${UI.wsel.size?' on':''}">
         <button class="sm fit" id="wBulkApprove"${UI.wsel.size?'':' disabled'}>Approve selected (${UI.wsel.size})</button>
         <button class="sm fit" id="wBulkReject"${UI.wsel.size?'':' disabled'}>Reject selected</button>
         ${UI.wfilter==='pending'&&c.pending?`<button class="sm fit" id="wAllPending">Approve all ${c.pending} waiting</button>`:''}
-        <input id="wNote" maxlength="120" placeholder="Note for this decision (optional), e.g. paid · referral" aria-label="Note" style="flex:1;min-width:180px">
+        <input id="wNote" maxlength="120" placeholder="Note for this decision (optional), e.g. paid · referral" aria-label="Note" style="flex:1;min-width:180px;min-height:30px;padding:4px 10px">
       </div>
-      <div class="scroll"><table><thead><tr><th></th><th>Wallet and member</th><th>Status</th></tr></thead><tbody id="wRows">${walletRows()}</tbody></table></div><div id="wPager">${walletPg().html}</div></section>`;
+      <div class="scroll"><table><thead><tr><th style="width:34px"></th><th>Wallet and member</th><th>Status</th></tr></thead><tbody id="wRows">${walletRows()}</tbody></table></div><div id="wPager">${walletPg().html}</div></section>
+    <div class="two">
+      <section class="card"><h2>Wallet approval</h2>
+      ${box('wOn','Wallets need my approval',W.approveWallets,'A member’s wallet counts for returns, verified Discipline and return competitions only once you approve it. Members can still join and use Pulse; they see that their wallet is waiting. Decisions follow the address, so a rejected wallet stays rejected under a new profile. Wallets you attach to a member yourself count as approved.')}
+      ${!W.approveWallets?'<p class="hint">Switching it on approves the wallets already in use (marked “already in use”), so nobody’s numbers vanish. You can still reject any of them.</p>':''}
+      <div class="actions"><button class="primary" id="wSave">Save</button></div></section>
+      <section class="card"><h2>Map a wallet to a member</h2>
+        <div class="row" style="align-items:flex-end">${field('wmap_new_addr','Wallet','<input id="wmap_new_addr" maxlength="42" placeholder="0x…" autocomplete="off">')}${field('wmap_new_who','Member','<input id="wmap_new_who" list="memberHandles" placeholder="@member" autocomplete="off">')}<button class="primary fit" id="wmapNew">Map</button></div>
+        <p class="hint">Or from the member’s page, where you can also pick their main wallet. A mapped wallet belongs to that member alone.</p></section>
+    </div>`;
   }
   const walletDecide=(action,addresses)=>{ const n=addresses.length, note=val('wNote').trim();
     const word={approve:'Approved',reject:'Rejected',clear:'Back to waiting'}[action];
@@ -852,17 +994,17 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
   // ---------------- settings ----------------
   function vSettings(){
     const o=D.ov, c=o.config;
-    return `<section class="card"><h2>Joining</h2>
+    return `<div class="two"><section class="card"><h2>Joining</h2>
       ${box('sOpen','Open for new members',c.open)}
       ${field('sInvite','Invite code (leave empty for anyone with the link)',`<input id="sInvite" maxlength="40" autocomplete="off" value="${esc(c.inviteCode||'')}">`)}
       <h3>Wallets</h3>
       <label class="inline"><input type="checkbox" id="sClaim"${c.requireClaim?' checked':''}${o.claims?'':' disabled'}>Only count claimed wallets</label>
-      <p class="hint" style="margin:-6px 0 6px 26px">Verified Discipline, returns and return competitions then only use wallets a member proved are theirs by signing with them.${o.claims?'':' (Wallet sign-in isn’t available on this server.)'}</p>
+      <p class="hint" style="margin:0 0 8px 26px">Verified Discipline, returns and return competitions then only use wallets a member proved are theirs by signing with them.${o.claims?'':' (Wallet sign-in isn’t available on this server.)'}</p>
       <p class="hint">Approving or rejecting individual wallets is on the <a href="#wallets">Wallets</a> tab.</p>
       ${o.claims&&!o.originPinned?'<p class="warn small">Wallet sign-in isn’t pinned to your address yet. Set <code>PUBLIC_ORIGIN</code> on the server (e.g. <code>https://pulse.example.com</code>) so a look-alike site can’t collect members’ signatures.</p>':''}
       <h3>Sync</h3>
       ${box('sVault','Encrypted journal sync for members',c.vaultOn!==false,'Members’ journals are encrypted in their browser with their own passphrase. This server stores ciphertext only — you can’t read them.')}
-      <div style="margin-top:14px"><button class="primary" id="sSave">Save settings</button></div></section>`+(window.A2F?A2F.card():'');
+      <div class="actions"><button class="primary" id="sSave">Save settings</button></div></section>`+(window.A2F?A2F.card():'')+'</div>';
   }
 
   // ---------------- events ----------------
@@ -880,7 +1022,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     if(t.id==='seedSt'||t.id==='seedSort'){ UI[t.id]=t.value; UI.fresh=true; return render(); }
     if(t.id==='wFilter'){ UI.wfilter=t.value; UI.pages.wallets=0; UI.wsel.clear(); UI.fresh=false; return render(); }
     if(t.dataset&&t.dataset.wsel){ if(t.checked)UI.wsel.add(t.dataset.wsel); else UI.wsel.delete(t.dataset.wsel);
-      $('wBulkApprove').disabled=$('wBulkReject').disabled=!UI.wsel.size; $('wBulkApprove').textContent='Approve selected ('+UI.wsel.size+')'; return; }
+      $('wBulkApprove').disabled=$('wBulkReject').disabled=!UI.wsel.size; $('wBulkApprove').textContent='Approve selected ('+UI.wsel.size+')'; $('wBulkApprove').parentNode.classList.toggle('on',!!UI.wsel.size); return; }
     if(t.id==='mFilter'){ UI.filter=t.value; UI.pages.members=0; $('mRows').innerHTML=memberRows(); $('mPager').innerHTML=memberPg().html; }
     else if(t.id==='lvMode'){ UI.levelDraft=levelDraft(); render(); }
     else if(t.id&&/^rc_\d+_b$/.test(t.id)){ keepRoutines(); UI.fresh=true; render(); } });
@@ -947,6 +1089,10 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     if(id==='bSeedDropErr')return act(()=>api('/bench',{body:{action:'remove',which:'err'}}),'Removed.');
     if(id==='bSeedDropSkip')return act(()=>api('/bench',{body:{action:'remove',which:'skip'}}),'Removed.');
     if(id==='bSeedDropAll'){ if(!confirm('Remove every seed wallet? Members’ summaries stay.'))return; return act(()=>api('/bench',{body:{action:'remove',which:'all'}}),'All seed wallets removed.'); }
+    if(id==='bSeedReread'){ const B=D.bench, n=B.seedList.length?Object.entries(B.seedCounts).filter(([k])=>k!=='re'&&k!=='queued').reduce((a,[,v])=>a+v,0):0;
+      if(!confirm('Read all '+fmt(n)+' seed wallets again, with today’s settings and their latest fills? It takes '+seedEta(B,n+(B.seedCounts.queued||0))+'. Counted wallets keep counting until their new read lands.'))return;
+      return act(async()=>{ const r=await api('/bench',{body:{action:'reread'}}); note(fmt(r.requeued)+' wallet'+(r.requeued===1?'':'s')+' queued to read again. This page updates as they come in.'); return r; }); }
+    if(d.seedre)return act(()=>api('/bench',{body:{action:'reread',address:d.seedre}}),'Queued to read again.');
     if(d.seeddel)return act(()=>api('/bench',{body:{action:'remove',address:d.seeddel}}),'Removed.');
     if(id==='wSave'){ const on=chk('wOn'); if(on===D.wallets.approveWallets)return note('Nothing changed.');
       if(!on&&!confirm('Switch approval off? Every wallet then counts again, including rejected ones. Your decisions are kept for if you switch it back on.'))return;
@@ -1021,7 +1167,11 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
     // settings
     if(id==='sSave') return act(()=>put({open:chk('sOpen'),inviteCode:val('sInvite').trim(),requireClaim:chk('sClaim'),vaultOn:chk('sVault')}),'Settings saved.');
   });
-  window.addEventListener('hashchange',()=>{ const was=UI.tab+'/'+UI.member; route();
+  // narrow screens: the sections fold into a menu under the top bar
+  const menu=open=>{ $('side').classList.toggle('open',open); $('menuBtn').setAttribute('aria-expanded',String(open)); $('menuBtn').textContent=open?'Close':'Menu'; };
+  $('menuBtn').onclick=()=>menu(!$('side').classList.contains('open'));
+  $('tabs').addEventListener('click',e=>{ if(e.target.closest('a'))menu(false); }); // the page you're on: no hash change, still close
+  window.addEventListener('hashchange',()=>{ const was=UI.tab+'/'+UI.member; route(); menu(false);
     if(UI.tab+'/'+UI.member!==was){ UI.code=null; UI.leagueEdit=null; UI.badgeEdit=null; UI.levelDraft=null; UI.custom=null; UI.overrides=null; }
     if(UI.open){ if(UI.open==='member')UI.addOpen=true; else if(UI.open==='league')UI.leagueEdit='new'; else if(UI.open==='badge')UI.badgeEdit='new'; UI.open=null; }
     if(D.ov){ render(); window.scrollTo(0,0); } });

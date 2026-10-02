@@ -872,7 +872,7 @@ function createSocial(opts) {
   const seedDelay = opts.seedDelay != null ? opts.seedDelay : 4000;
   const nextSeed = () => { let due = null;
     for (const [a, x] of Object.entries(S.benchSeeds)) { if (x.st === 'queued') return a;
-      if (x.st === 'ok' && now() - (x.done || 0) > SEED_REFRESH && (!due || x.done < S.benchSeeds[due].done)) due = a; }
+      if (x.st === 'ok' && (x.re || now() - (x.done || 0) > SEED_REFRESH) && (!due || x.done < S.benchSeeds[due].done)) due = a; }
     return due; };
   const seedWhy = r => { const c = S.config.bench;
     return r.why === 'few' ? (r.n || 0) + ' closed trade' + (r.n === 1 ? '' : 's') + ' in the last ' + c.days + ' days (needs ' + c.minTrades + ')'
@@ -881,6 +881,9 @@ function createSocial(opts) {
   const seedWork = async () => {
     const a = nextSeed(); if (seedBusy || !a || !opts.peerSummaryFor) return;
     seedBusy = true; const x = S.benchSeeds[a];
+    // a counted wallet asked to be re-read keeps its last read if this one fails: only a new read replaces it
+    const keep = x.re && x.st === 'ok' && x.sum;
+    const failed = msg => { if (keep) x.why = 'last re-read failed: ' + msg; else { x.st = 'err'; x.why = msg; } };
     try {
       const r = await opts.peerSummaryFor(a, { minTrades: S.config.bench.minTrades, days: S.config.bench.days });
       if (!own(S.benchSeeds, a)) return; // removed while it was being read
@@ -888,14 +891,14 @@ function createSocial(opts) {
       x.n = r && r.n != null ? r.n : null; x.usd = r && r.usd ? r.usd : null; // shown to the owner in the seed table, never in the groups
       if (sum) { x.st = 'ok'; x.why = ''; x.sum = sum; }
       else if (r && r.ok === false) { x.st = 'skip'; x.why = seedWhy(r); x.sum = null; }
-      else { x.st = 'err'; x.why = String((r && r.error) || 'couldn’t read this wallet').slice(0, 120); }
-    } catch (e) { if (own(S.benchSeeds, a)) { x.st = 'err'; x.why = String((e && e.message) || e).slice(0, 120); } }
-    finally { if (own(S.benchSeeds, a)) { x.done = now(); x.tries = (x.tries || 0) + 1; } seedBusy = false; benchDirty = true; save('benchSeeds');
+      else failed(String((r && r.error) || 'couldn’t read this wallet').slice(0, 120));
+    } catch (e) { if (own(S.benchSeeds, a)) failed(String((e && e.message) || e).slice(0, 120)); }
+    finally { if (own(S.benchSeeds, a)) { x.done = now(); x.tries = (x.tries || 0) + 1; delete x.re; } seedBusy = false; benchDirty = true; save('benchSeeds');
       if (!nextSeed()) { benchDirty = false; benchBuild(); } else seedSchedule(); } // the batch is done: count it now
   };
   const seedSchedule = () => { if (seedTimer || closing || !opts.peerSummaryFor || !nextSeed()) return;
     seedTimer = setTimeout(() => { seedTimer = null; seedWork(); }, seedDelay); if (seedTimer.unref) seedTimer.unref(); };
-  const seedCounts = () => { const c = { queued: 0, ok: 0, skip: 0, err: 0 }; for (const x of Object.values(S.benchSeeds)) c[x.st] = (c[x.st] || 0) + 1; return c; };
+  const seedCounts = () => { const c = { queued: 0, ok: 0, skip: 0, err: 0, re: 0 }; for (const x of Object.values(S.benchSeeds)) { c[x.st] = (c[x.st] || 0) + 1; if (x.re && x.st === 'ok') c.re++; } return c; };
   // ---- duels: one member against another for a week or a month ----
   const DUEL_TTL = 48 * 3600000;
   const duelOpen = d => d.status === 'pending' || d.status === 'active';
@@ -1807,7 +1810,7 @@ function createSocial(opts) {
           optedOut, withSummary: members().filter(m => !m.banned && m.share && m.share.bench !== false && m.bench).length, labels: Bench.DIMS, groups,
           improvers: imp.all ? imp.all.changes.map(c => c.text) : [], histFor: Object.keys(S.benchHist).length,
           seedCounts: seedCounts(), seedMax: SEED_MAX, seedReader: !!opts.peerSummaryFor,
-          seedList: seeds.slice(0, 1000).map(([a, x]) => ({ address: a, st: x.st, why: x.why || '', added: x.added || 0, done: x.done || 0, by: x.by || '', style: x.sum ? x.sum.style : null, size: x.sum ? x.sum.size : null, exp: x.sum ? x.sum.exp : null, act: x.sum ? x.sum.act : null, n: x.sum ? x.sum.n : x.n != null ? x.n : null,
+          seedDelay, seedList: seeds.slice(0, 1000).map(([a, x]) => ({ address: a, st: x.st, re: !!(x.re && x.st === 'ok'), why: x.why || '', added: x.added || 0, done: x.done || 0, by: x.by || '', style: x.sum ? x.sum.style : null, size: x.sum ? x.sum.size : null, exp: x.sum ? x.sum.exp : null, act: x.sum ? x.sum.act : null, n: x.sum ? x.sum.n : x.n != null ? x.n : null,
             wr: x.sum ? x.sum.wr : null, pf: x.sum ? x.sum.pf : null, pay: x.sum ? x.sum.pay : null, fees: x.sum ? x.sum.fees : null, tw: x.sum ? x.sum.tw : null, hold: x.sum ? x.sum.hold : null,
             disc: x.sum ? x.sum.disc : null, rev: x.sum ? x.sum.rev : null, ret: x.sum ? x.sum.ret : null, dd: x.sum ? x.sum.dd : null, usd: x.usd || null })) });
       }
@@ -1823,6 +1826,12 @@ function createSocial(opts) {
           return json(res, 200, { ok: true, found: found.length, added, dupes, full, counts: seedCounts() });
         }
         if (a === 'retry') { let n = 0; for (const x of Object.values(S.benchSeeds)) if (x.st === 'err' || (body.skipped && x.st === 'skip')) { x.st = 'queued'; n++; } save('benchSeeds'); seedSchedule(); return json(res, 200, { ok: true, requeued: n }); }
+        // read wallets again with today's settings and fills: counted ones keep counting until their new read lands
+        if (a === 'reread') { const which = body.which || 'all', one = String(body.address || '').toLowerCase(); let n = 0;
+          for (const [ad, x] of Object.entries(S.benchSeeds)) {
+            if (body.address ? ad !== one : !(which === 'all' || x.st === which)) continue;
+            if (x.st === 'ok') { if (!x.re) { x.re = true; n++; } } else if (x.st !== 'queued') { x.st = 'queued'; x.why = ''; n++; } }
+          save('benchSeeds'); seedSchedule(); return json(res, 200, { ok: true, requeued: n, counts: seedCounts() }); }
         if (a === 'remove') { const which = body.which; let n = 0;
           for (const [ad, x] of Object.entries(S.benchSeeds)) if (which === 'all' || x.st === which || ad === String(body.address || '').toLowerCase()) { delete S.benchSeeds[ad]; n++; }
           save('benchSeeds'); if (n) benchBuild(); return json(res, 200, { ok: true, removed: n, counts: seedCounts() }); }
