@@ -374,6 +374,8 @@ function pzWeekCardDraw(m, fmt, theme){
   return cv;
 }
 async function pzWeekCardBlob(m, fmt, theme){
+  // the fonts are files now: a canvas only draws with a face that's already loaded, so load them first
+  try{ if(document.fonts&&document.fonts.load)await Promise.all(['500 20px "Barlow Condensed"','600 20px "Barlow Condensed"','400 20px Inter','600 20px Inter'].map(f=>document.fonts.load(f).catch(()=>{}))); }catch(e){}
   try{ if(document.fonts&&document.fonts.ready)await document.fonts.ready; }catch(e){}
   const cv=pzWeekCardDraw(m,fmt,theme); return await new Promise(res=>cv.toBlob(res,'image/png'));
 }

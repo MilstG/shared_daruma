@@ -1,30 +1,56 @@
-// Size budget for what every visitor downloads: ledger.html plus the app/ scripts it loads,
-// each served gzipped. This fails the build when the app grows past the budget, so growth is
-// a decision, not a drift. Raising a budget is fine — do it in the same change that needs it,
-// and say why.
-import { readFileSync } from 'node:fs';
+// Size budgets for what each screen downloads, measured as the server sends it: the page plus the
+// app/ scripts that page loads, each gzipped. The journal (/) and Keel (/keel) get different script
+// lists, so each has its own budget and a failure names the screen that grew. The fonts are files
+// of their own (cached for a year, and only the faces a screen uses are fetched), with a budget of
+// their own. Raising a budget is fine: do it in the same change that needs it, and say why.
+import { readFileSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
+import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { t, ok, report } from './harness.mjs';
-import { appScripts } from '../app-source.js';
 
+const require = createRequire(import.meta.url);
+const { createApp } = require('../server.js');
+const root = new URL('..', import.meta.url).pathname;
 const KB = 1024;
-const read = f => readFileSync(new URL('../' + f, import.meta.url));
-const size = files => files.reduce((a, f) => { const b = read(f); return { raw: a.raw + b.length / KB, gz: a.gz + gzipSync(b).length / KB }; }, { raw: 0, gz: 0 });
-const appFiles = ['ledger.html', ...appScripts(read('ledger.html').toString())];
-const BUDGETS = [ // name, files, raw KB, gzipped KB (as served, file by file)
-  // raw went to 1850 with peer benchmarks and duels; then 1950 / 740 gzipped with plans and replay, tilt alerts, the
-  // weekly card, mentor trade reviews, tax-tool exports, improvers and duel pods (Oct 2026). Gzipped is what's downloaded
-  // (cached after the first visit); the e2e timings guard the actual load
-  ['the app (ledger.html + ' + (appFiles.length - 1) + ' app/ scripts)', appFiles, 1950, 740],
-  // the owner's panel only (never sent to members): 100 → 200 KB raw with Insights, bulk actions and the seed table (Oct 2026)
-  ['admin.html', ['admin.html'], 200, 60],
-];
-t('ledger.html loads its code from app/ (at least ten scripts)', () => ok(appFiles.length > 10, appFiles.join(', ')));
-for (const [name, files, rawMax, gzMax] of BUDGETS) {
-  const { raw, gz } = size(files);
-  t(`${name}: ${raw.toFixed(0)} KB raw (budget ${rawMax}), ${gz.toFixed(0)} KB gzipped (budget ${gzMax})`, () => {
-    ok(raw <= rawMax, `${name} is ${raw.toFixed(0)} KB raw — over its ${rawMax} KB budget`);
-    ok(gz <= gzMax, `${name} is ${gz.toFixed(0)} KB gzipped — over its ${gzMax} KB budget`);
+const app = createApp({ dataDir: mkdtempSync(join(tmpdir(), 'ledger-budget-')), auth: '', htmlPath: join(root, 'ledger.html'), push: false, pushTick: false, offsiteTimer: false });
+const B = await new Promise(r => app.listen(0, () => r('http://127.0.0.1:' + app.address().port)));
+const served = async path => {
+  const html = await (await fetch(B + path)).text();
+  const scripts = [...html.matchAll(/<script src="(app\/[^"]+)"/g)].map(m => m[1]);
+  let raw = Buffer.byteLength(html), gz = gzipSync(html).length;
+  for (const s of scripts) { const b = Buffer.from(await (await fetch(B + '/' + s)).arrayBuffer()); raw += b.length; gz += gzipSync(b).length; }
+  return { html, scripts, raw: raw / KB, gz: gz / KB };
+};
+try {
+  const journal = await served('/'), keel = await served('/keel');
+  const BUDGETS = [ // name, measured, raw KB, gzipped KB
+    // Oct 2026: fonts moved out of the page and each screen got its own script list. Before, one page
+    // carried everything: 1917 KB raw / 734 KB gzipped against 1950 / 740.
+    ['the journal (/: page + ' + journal.scripts.length + ' scripts)', journal, 1800, 620],
+    ['Keel (/keel: page + ' + keel.scripts.length + ' scripts, no Chart.js)', keel, 1600, 560],
+  ];
+  t('each screen loads its code from app/, and Keel leaves Chart.js out', () => {
+    ok(journal.scripts.length > 10 && keel.scripts.length > 10);
+    ok(journal.scripts.some(s => s.startsWith('app/chart.umd.js')), 'the journal draws charts');
+    ok(!keel.scripts.some(s => s.startsWith('app/chart.umd.js')), 'Keel never does');
   });
-}
+  t('no font is embedded in the page any more', () => {
+    for (const p of [journal, keel]) { ok(!p.html.includes('data:font/'), 'a data: font in the page'); ok(/url\(app\/fonts\/inter-400\.woff2\?v=[0-9a-f]{12}\)/.test(p.html), 'fonts are versioned files'); }
+  });
+  for (const [name, m, rawMax, gzMax] of BUDGETS) {
+    t(`${name}: ${m.raw.toFixed(0)} KB raw (budget ${rawMax}), ${m.gz.toFixed(0)} KB gzipped (budget ${gzMax})`, () => {
+      ok(m.raw <= rawMax, `${name} is ${m.raw.toFixed(0)} KB raw — over its ${rawMax} KB budget`);
+      ok(m.gz <= gzMax, `${name} is ${m.gz.toFixed(0)} KB gzipped — over its ${gzMax} KB budget`);
+    });
+  }
+  // every face, though a screen only fetches the ones its text uses (woff2 is compressed already)
+  const fontDir = join(root, 'app', 'fonts'), fonts = readdirSync(fontDir).filter(f => f.endsWith('.woff2'));
+  const fontKB = fonts.reduce((a, f) => a + statSync(join(fontDir, f)).size, 0) / KB;
+  t(`fonts (${fonts.length} faces): ${fontKB.toFixed(0)} KB (budget 180)`, () => ok(fontKB <= 180, `fonts are ${fontKB.toFixed(0)} KB — over their 180 KB budget`));
+  // the owner's panel only (never sent to members): 100 → 200 KB raw with Insights, bulk actions and the seed table (Oct 2026)
+  const admin = readFileSync(join(root, 'admin.html')), aRaw = admin.length / KB, aGz = gzipSync(admin).length / KB;
+  t(`admin.html: ${aRaw.toFixed(0)} KB raw (budget 200), ${aGz.toFixed(0)} KB gzipped (budget 60)`, () => { ok(aRaw <= 200); ok(aGz <= 60); });
+} finally { await new Promise(r => app.close(r)); }
 report('budget');

@@ -335,6 +335,8 @@ function cardColors(){ const cs=getComputedStyle(document.body), v=n=>cs.getProp
     gold:v('--gold')||'#C9A85C',profit:v('--profit')||'#2FD08C',loss:v('--loss')||'#F4586A',lbl:v('--lbl')||'#5C6578'}; }
 // spec: {w,h,kicker,title,sub,big:[[label,value]],rows:[[label,right,color?]],foot}
 async function drawCardPng(spec){
+  // the fonts are files now: a canvas only draws with a face that's already loaded, so load them first
+  try{ if(document.fonts&&document.fonts.load)await Promise.all(['400 18px "IBM Plex Mono"','600 26px "IBM Plex Mono"','400 24px Inter','600 46px Inter','600 18px "Barlow Condensed"'].map(f=>document.fonts.load(f).catch(()=>{}))); }catch(e){}
   try{ if(document.fonts&&document.fonts.ready)await document.fonts.ready; }catch(e){}
   // height fits the content: header + big numbers + one line per row + footer
   const W=spec.w||1200, H=Math.max(spec.minH||620,300+((spec.big||[]).length?110:0)+(spec.rows||[]).length*44+120);

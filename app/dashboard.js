@@ -247,7 +247,9 @@ function renderDowHour(trades){
 
 /* ============================ charts ============================ */
 let charts={}; let GRID='rgba(255,255,255,.06)', TXT='#8D97A3';
-Chart.defaults.font.family="Inter, system-ui, -apple-system, 'Segoe UI', sans-serif"; Chart.defaults.font.size=11; Chart.defaults.color=TXT;
+// Keel's page doesn't load Chart.js (it never draws one), so everything here checks it's there first.
+const hasChart=()=>typeof Chart!=='undefined';
+if(hasChart()){ Chart.defaults.font.family="Inter, system-ui, -apple-system, 'Segoe UI', sans-serif"; Chart.defaults.font.size=11; Chart.defaults.color=TXT; }
 // Every chart explains itself on hover: a chart's own lines first (the numbers behind the point,
 // and any footer of its own), then, under them, what the chart shows (chart.$explain, set with
 // explain()) — as the tooltip's after-footer, so it never displaces a chart's own footer. Canvas tooltips
@@ -256,7 +258,7 @@ function wrapTip(text,n){ n=n||52; const out=[]; for(const para of String(text).
   for(const w of para.split(/\s+/)){ if(!w)continue; if(line&&(line+' '+w).length>n){ out.push(line); line=w; } else line=line?line+' '+w:w; }
   out.push(line); } return out; }
 function explain(chart,text){ if(chart)chart.$explain=text; return chart; }
-try{ Object.assign(Chart.defaults.plugins.tooltip,{padding:10,boxPadding:4,bodySpacing:3,footerMarginTop:8,footerSpacing:1,footerColor:'rgba(205,214,228,.82)',
+if(hasChart())try{ Object.assign(Chart.defaults.plugins.tooltip,{padding:10,boxPadding:4,bodySpacing:3,footerMarginTop:8,footerSpacing:1,footerColor:'rgba(205,214,228,.82)',
     footerFont:{weight:'normal',size:10.5},caretPadding:6});
   Chart.defaults.interaction.mode='index'; Chart.defaults.interaction.intersect=false;
   Chart.defaults.plugins.tooltip.callbacks.afterFooter=function(items){ const c=this&&this.chart, ex=c&&c.$explain; if(!ex)return '';
@@ -272,7 +274,7 @@ function applyTheme(t){ t=(t==='bb')?'bb':'ink';
   const light=appearanceIsLight(settings.appearance,prefersLight());
   document.body.classList.toggle('light',light);
   document.body.classList.toggle('bb',!light&&t==='bb');
-  const pal=THEMES[light?'light':t]; GRID=pal.grid; TXT=pal.txt; Chart.defaults.color=TXT;
+  const pal=THEMES[light?'light':t]; GRID=pal.grid; TXT=pal.txt; if(hasChart())Chart.defaults.color=TXT;
   settings.theme=t;
   const b=$('themeBtn'); if(b){ b.textContent=t==='bb'?'◧ BB':'◧ INK'; b.disabled=light; b.title=light?'Colorways apply in dark mode':''; }
   const a=$('appearBtn'); if(a)a.textContent={auto:'◐ Auto',dark:'● Dark',light:'○ Light'}[APPEARANCES.includes(settings.appearance)?settings.appearance:'auto'];

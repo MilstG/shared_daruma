@@ -915,22 +915,48 @@ function createApp(opts) {
   // The app page with its script URLs versioned, and the version itself: a hash of the HTML and every
   // script, written into the page (<meta name="app-version">) and answered by /api/version, so an app
   // that's only ever resumed (an installed phone app) can tell a deploy has happened and reload.
-  const appShell = () => {
+  // The fonts (app/fonts/*.woff2): served as files so the page doesn't carry them, versioned by hash
+  // like the scripts, and only downloaded for the faces a screen actually uses.
+  const _fontFiles = new Map(); // name -> {mtime, size, buf, hash}
+  const fontFile = (name) => {
+    if (!/^[a-z0-9-]+\.woff2$/.test(name)) return null;
+    const file = path.join(appDir, 'fonts', name);
+    let st; try { st = fs.statSync(file); } catch (e) { return null; }
+    if (!st.isFile()) return null;
+    let f = _fontFiles.get(name);
+    if (!f || f.mtime !== st.mtimeMs || f.size !== st.size) {
+      const buf = fs.readFileSync(file);
+      f = { mtime: st.mtimeMs, size: st.size, buf, hash: crypto.createHash('sha1').update(buf).digest('hex').slice(0, 12) };
+      _fontFiles.set(name, f);
+    }
+    return f;
+  };
+  // Each screen gets only the scripts it uses: Keel (/keel, /pulse) never draws a Chart.js chart, so
+  // its page leaves Chart.js out. Opened from disk, ledger.html still loads everything.
+  const SURFACE_SKIP = { journal: [], keel: ['chart.umd.js'] };
+  const appShell = (surface) => {
+    surface = surface === 'keel' ? 'keel' : 'journal';
     let st; try { st = fs.statSync(htmlPath); } catch (e) { return { error: 'app HTML not found on server' }; }
-    let raw; try { raw = _appHtml && _appHtml.mtime === st.mtimeMs && _appHtml.size === st.size ? _appHtml.raw : fs.readFileSync(htmlPath, 'utf8'); }
+    const prev = _appHtml && (_appHtml.journal || _appHtml.keel);
+    let raw; try { raw = prev && prev.mtime === st.mtimeMs && prev.size === st.size ? prev.raw : fs.readFileSync(htmlPath, 'utf8'); }
     catch (e) { return { error: 'app HTML not found on server' }; }
     const names = appScripts(raw).map(r => r.slice(4)), files = names.map(appFile);
     if (files.some(f => !f)) return { error: 'app scripts missing on server: deploy the app/ folder next to ledger.html' };
-    const rawHash = _appHtml && _appHtml.raw === raw ? _appHtml.rawHash : crypto.createHash('sha1').update(raw).digest('hex');
-    const sig = rawHash + ':' + files.map(f => f.hash).join(',');
-    if (!_appHtml || _appHtml.sig !== sig) {
+    const fonts = [...new Set([...raw.matchAll(/url\(app\/fonts\/([a-z0-9-]+\.woff2)\)/g)].map(m => m[1]))].map(n => [n, fontFile(n)]);
+    const rawHash = prev && prev.raw === raw ? prev.rawHash : crypto.createHash('sha1').update(raw).digest('hex');
+    // one version for every screen: a change to the page, any script or any font is a new version
+    const sig = rawHash + ':' + files.map(f => f.hash).join(',') + ':' + fonts.map(([n, f]) => n + (f ? f.hash : '-')).join(',');
+    if (!_appHtml || _appHtml.sig !== sig) _appHtml = { sig };
+    if (!_appHtml[surface]) {
+      const ver = crypto.createHash('sha1').update(sig).digest('hex').slice(0, 12), fh = new Map(fonts.map(([n, f]) => [n, f && f.hash]));
+      const skip = SURFACE_SKIP[surface];
       let i = 0;
-      const ver = crypto.createHash('sha1').update(sig).digest('hex').slice(0, 12);
-      const buf = Buffer.from(raw.replace(/<script src="app\/([a-z0-9.-]+\.js)"><\/script>/g, (m, n) => '<script src="app/' + n + '?v=' + files[i++].hash + '"></script>')
+      const buf = Buffer.from(raw.replace(/<script src="app\/([a-z0-9.-]+\.js)"><\/script>\n?/g, (m, n) => { const f = files[i++]; return skip.includes(n) ? '' : '<script src="app/' + n + '?v=' + f.hash + '"></script>' + (m.endsWith('\n') ? '\n' : ''); })
+        .replace(/url\(app\/fonts\/([a-z0-9-]+\.woff2)\)/g, (m, n) => fh.get(n) ? 'url(app/fonts/' + n + '?v=' + fh.get(n) + ')' : m)
         .replace('<head>', '<head>\n<meta name="app-version" content="' + ver + '">'));
-      _appHtml = { mtime: st.mtimeMs, size: st.size, raw, rawHash, sig, ver, buf, gz: zlib.gzipSync(buf, { level: 9 }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 20) + '"' };
+      _appHtml[surface] = { mtime: st.mtimeMs, size: st.size, raw, rawHash, sig, ver, buf, gz: zlib.gzipSync(buf, { level: 9 }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 20) + '"' };
     }
-    return _appHtml;
+    return _appHtml[surface];
   };
   let _tradesMemo = null; // {sig, trades, builtAt}
   function cacheSig() {
@@ -2396,19 +2422,28 @@ function createApp(opts) {
     if (req.method === 'GET' && (url === '/' || url === '/index.html' || url === '/ledger.html' || url === '/keel' || url === '/pulse')) {
       // the page is ~0.3 MB (its code is in app/*.js, below): sent gzipped, and a browser that already has this
       // version gets a 304 instead of the whole file on every open
-      const shell = appShell();
+      const shell = appShell(url === '/keel' || url === '/pulse' ? 'keel' : 'journal');
       if (shell.error) return json(res, 500, { error: shell.error });
-      const head = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'ETag': _appHtml.etag, 'Vary': 'Accept-Encoding',
+      const head = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'ETag': shell.etag, 'Vary': 'Accept-Encoding',
         'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
         // no other site can frame the journal (a <meta> tag can't say this; browsers ignore it there)
         'X-Frame-Options': 'DENY', 'Content-Security-Policy': "frame-ancestors 'none'" };
-      if ((req.headers['if-none-match'] || '') === _appHtml.etag) { res.writeHead(304, head); return res.end(); }
+      if ((req.headers['if-none-match'] || '') === shell.etag) { res.writeHead(304, head); return res.end(); }
       const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
       res.writeHead(200, gz ? Object.assign(head, { 'Content-Encoding': 'gzip' }) : head);
-      return res.end(gz ? _appHtml.gz : _appHtml.buf);
+      return res.end(gz ? shell.gz : shell.buf);
     }
 
     // --- the app's scripts (app/*.js): long-lived when asked for by their current hash
+    if (req.method === 'GET' && url.startsWith('/app/fonts/')) {
+      const f = fontFile(url.slice(11));
+      if (!f) return json(res, 404, { error: 'not found' });
+      const etag = '"' + f.hash + '"';
+      const head = { 'Content-Type': 'font/woff2', 'ETag': etag, 'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': query.v === f.hash ? 'public, max-age=31536000, immutable' : 'no-cache' };
+      if ((req.headers['if-none-match'] || '') === etag) { res.writeHead(304, head); return res.end(); }
+      res.writeHead(200, head); return res.end(f.buf); // woff2 is already compressed
+    }
     if (req.method === 'GET' && url.startsWith('/app/')) {
       const f = appFile(url.slice(5));
       if (!f) return json(res, 404, { error: 'not found' });
@@ -2447,16 +2482,17 @@ function createApp(opts) {
       // deploy shows on the very next open; offline, or with no answer within 3 s, the cached copy opens
       // instead. API and exchange calls are never intercepted.
       return res.end(
-        // Only the app shell is cached: '/', '/keel' and '/pulse' serve the same file, so any one
-        // refreshes the copy; other pages (help, docs) pass through and never overwrite it.
+        // Only the app shell is cached, one copy per screen: the journal ('/') and Keel ('/keel', which
+        // '/pulse' shares) load different scripts. Other pages (help, docs) pass through and never overwrite them.
         "const C='ledger-v5',S=['/','/index.html','/ledger.html','/keel','/pulse'];" +
         "self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.add('/')))});" +
         "self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C).map(x=>caches.delete(x)))).then(()=>clients.claim()))});" +
         "self.addEventListener('fetch',e=>{const u=new URL(e.request.url);" +
         "if(u.origin!==location.origin||u.pathname.startsWith('/api/')||e.request.method!=='GET')return;" +
-        "if(S.includes(u.pathname)){const net=fetch(e.request).then(r=>{if(r.ok){const cp=r.clone();caches.open(C).then(c=>c.put('/',cp));}return r;});" +
+        "if(S.includes(u.pathname)){const K=u.pathname==='/keel'||u.pathname==='/pulse'?'/keel':'/';" +
+        "const net=fetch(e.request).then(r=>{if(r.ok){const cp=r.clone();caches.open(C).then(c=>c.put(K,cp));}return r;});" +
         "e.waitUntil(net.then(()=>{},()=>{}));" +
-        "const old=()=>caches.match('/');" +
+        "const old=()=>caches.match(K);" +
         "e.respondWith(new Promise(done=>{let sent=false;const send=r=>{if(!sent&&r){sent=true;done(r);}};" +
         "const t=setTimeout(()=>old().then(send),3000);" +
         // a redirect (/ to /keel with HOME_VIEW=keel) goes to the browser as is, never the cached shell
