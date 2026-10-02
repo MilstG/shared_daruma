@@ -149,6 +149,21 @@ download (`GET /api/v1/cache/<address>`). The page itself is served gzipped
 with an ETag, and the installed app opens from its cached copy and updates in
 the background.
 
+**Layout.** The journal has a sidebar with its four sections (Dashboard, Review,
+Diagnostic, Project), Wallets and Load all; on a phone the sections move to a
+bottom tab bar. Review and Diagnostic are long, so a sticky bar of their
+sections sits above them: tap one to jump there, and it follows along as you
+scroll. It uses the same design as Pulse and the admin panel (Inter, rounded cards),
+in dark, light and the black-and-amber colorway.
+
+**Install it on your phone.** Served over https, the journal (`/`) and Pulse
+(`/pulse`) are two installable apps, each with its own manifest and icons
+(PNG 192 and 512, a maskable 512 for Android's shapes, and a 180 home-screen icon
+for iPhone). On Android and desktop Chrome, **Install app** (beside Wallets in the
+journal, or the card on Pulse's Today screen) opens the browser's install prompt.
+On iPhone, tap **Share** in Safari, then **Add to Home Screen**; the same button and card
+say so. Installed, both open full screen and start from their cached copy.
+
 ## The coach
 
 Everything Ledger measures is also said in plain words. At the top of the

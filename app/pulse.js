@@ -582,6 +582,18 @@ function pzDueItems(D){
       items.push(['medal',PZ_COL.mid,x.title,(x.me?'#'+x.me.rank+' of '+x.entrants+' · ':'')+(left<=0?'ends today':left+' day'+(left===1?'':'s')+' left'),'#c/'+x.id]); } }
   return items;
 }
+// Install Pulse on the phone: one card on Today until it's installed or dismissed. Android and
+// desktop Chrome offer a real prompt; iPhone Safari has none, so it says where the button is.
+function pzStandalone(){ try{ return matchMedia('(display-mode: standalone)').matches||navigator.standalone===true; }catch(e){ return false; } }
+function pzIsIOS(){ return /iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1); }
+function pzInstallCardHtml(){
+  if(pzStandalone()||!/^https?:$/.test(location.protocol))return '';
+  try{ if(localStorage.getItem('pz_install_x'))return ''; }catch(e){}
+  const ios=pzIsIOS(); if(!_deferredInstall&&!ios)return '';
+  return `<section class="pz-banner pz-span" aria-label="Install Pulse"><span class="pz-ico" style="width:40px;height:40px;background:var(--pz-tint-good);color:var(--pz-good)">${pzI('plus',20)}</span>
+    <div style="flex:1;min-width:0"><b style="font-size:14px">Put Pulse on your home screen</b><p class="pz-fine" style="margin-top:2px">${ios?'Tap <b>Share</b> in Safari’s toolbar, then <b>Add to Home Screen</b>. It opens full screen, like an app.':'It opens full screen, like an app, and can remind you to check in.'}</p></div>
+    ${ios?'':'<button type="button" class="pz-ghost pz-sm" id="pzInstallCard" style="flex:0 0 auto">Install</button>'}<button type="button" class="pz-chip icon" id="pzInstallX" aria-label="Not now" style="flex:0 0 auto;height:36px;padding:0 10px">${pzI('x',16)}</button></section>`;
+}
 function pzTodayHtml(D){
   const {g,day,last,risk,ready,form,load}=D;
   const shown=day||last, disc=shown?shown.score:null; // until today's first close, the last trading day's score
@@ -638,6 +650,7 @@ function pzTodayHtml(D){
   const on=id=>pzShow('today',id), sec=(id,f)=>on(id)?safe(f):'', more=(id,k)=>F&&on(id)?safe(()=>k(D,F)):'';
   return `${pzHead(dayLabel(D.todayK).replace(', ',' · '),'Today',pzChips(g,D.inbox.length))}
     ${safe(()=>pzTaBannerHtml(D))}
+    ${safe(pzInstallCardHtml)}
     ${sec('oneThing',()=>pzOneThingHtml(D))}
     <div class="pz-wide">${ringsHtml}<div class="pz-span" id="pzRingDetail">${detail}</div>${more('numbers',pzTodayStripHtml)}${sec('level',()=>pzProgressRowHtml(D))}
       ${(()=>{ const card={tilt:()=>sec('tilt',()=>pzTiltHtml(D)),insight:()=>on('insight')?coach:'',session:()=>more('session',pzSessionHtml),positions:()=>more('positions',pzPositionsHtml),
@@ -1362,6 +1375,8 @@ function wirePulse(){
       case 'pzRefresh': pzS.sheet=false; pzRender(); pzNote('Refreshing…','busy'); return loadAll();
       case 'pzCkSave': return pzSaveCheckin();
       case 'pzTokBtn': return pzToken();
+      case 'pzInstallX': try{ localStorage.setItem('pz_install_x','1'); }catch(e){} pzRender(); return;
+      case 'pzInstallCard':
       case 'pzInstall': if(_deferredInstall){ _deferredInstall.prompt(); try{ await _deferredInstall.userChoice; }catch(e){} _deferredInstall=null; pzRender(); } return;
       case 'pzReport': return showReportCard();
       case 'pzSwap': { const g=gameContext(); const c=challengeCandidates(g.ctx.findings); const cur=weekChallenge(); if(!c.length)return;
@@ -1404,6 +1419,7 @@ function wirePulse(){
   let prevTab=pzTab(); window.addEventListener('hashchange',()=>{ const tb=pzTab(); SOC.confirm=null; if(pzS.note&&pzS.note.kind==='err')pzNote(null);
     // a half-typed comment or update belongs to the post it was written on
     for(const id of ['socCText','socUNote','socUExit']){ const el=$(id); if(el)el.value=''; } if(tb==='checkin')pzS.ck=null; if(tb==='sharing'&&prevTab!=='account'){ SOC.draft=null; SOC.draftHandle=null; SOC.draftBio=null; } prevTab=tb; pzRender(); window.scrollTo(0,0); });
-  window.addEventListener('beforeinstallprompt',()=>{ if(pzS.sheet)pzRender(); });
+  window.addEventListener('beforeinstallprompt',()=>{ if(pzS.sheet||!location.hash||location.hash==='#today')pzRender(); });
+  window.addEventListener('appinstalled',()=>{ _deferredInstall=null; pzRender(); });
 }
 if(PZ)wirePulse();

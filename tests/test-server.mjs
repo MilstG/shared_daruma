@@ -176,7 +176,10 @@ await t('sw.js, manifest, icon served with right content types', async () => {
   eq(sw.status, 200); ok((sw.headers.get('content-type') || '').includes('javascript'));
   ok((await sw.text()).includes("u.pathname.startsWith('/api/')"), 'sw never intercepts the API');
   const mf = await (await fetch(base3 + '/manifest.webmanifest')).json();
-  eq(mf.name, 'Ledger'); eq(mf.display, 'standalone');
+  eq([mf.short_name, mf.display, mf.start_url, mf.id], ['Ledger', 'standalone', '/', '/']);
+  for (const i of mf.icons) { const r = await fetch(base3 + i.src); eq([r.status, r.headers.get('content-type')], [200, 'image/png'], i.src); }
+  ok(mf.icons.some(i => i.purpose === 'maskable' && i.sizes === '512x512'), 'a maskable icon for Android');
+  eq((await fetch(base3 + '/icons/../server.js')).status, 404, 'only the icon files');
   const ic = await fetch(base3 + '/icon.svg');
   ok((ic.headers.get('content-type') || '').includes('svg'));
 });

@@ -425,7 +425,31 @@ function activateTab(b){ if(!b)return;
   renderReconcile();
   if(activeTab==='diag') renderDiagnostic(periodTrades(),periodTradesAll());
   if(activeTab==='review') renderReview();
-  if(activeTab==='proj') renderProjection(); }
+  if(activeTab==='proj') renderProjection();
+  buildSecnav(); }
+// Long views (Review, Diagnostic) get a sticky bar of their sections: jump to one, and the bar
+// follows along as you scroll. Built from each section's heading whenever the view re-renders.
+const SECNAV_VIEWS={review:'reviewView',diag:'diagView'};
+let _secnavKey='', _secnavSecs=[];
+function secnavLabel(h){ let t=''; for(const n of h.childNodes){ if(n.nodeType===3)t+=n.textContent; else if(n.nodeType===1&&!/^(SPAN|SMALL|BUTTON)$/.test(n.tagName))t+=n.textContent; }
+  t=t.replace(/\s+/g,' ').trim().replace(/\s*[·—:]\s*$/,''); const cut=t.split(/ [·—] /)[0]; return (cut||t).slice(0,32); }
+function buildSecnav(){ const nav=$('secnav'); if(!nav)return; const vid=SECNAV_VIEWS[activeTab], view=vid&&$(vid);
+  const heads=view?[...view.querySelectorAll('.diag-section > h2')]:[];
+  if(heads.length<4){ nav.classList.add('hide'); nav.innerHTML=''; _secnavKey=''; _secnavSecs=[]; return; }
+  _secnavSecs=heads.map((h,i)=>{ const sec=h.parentElement; if(!sec.id)sec.id='sec-'+activeTab+'-'+i; return {id:sec.id,label:secnavLabel(h)||('Section '+(i+1))}; }).filter(x=>x.label);
+  const key=activeTab+'|'+_secnavSecs.map(x=>x.id+':'+x.label).join('|'); nav.classList.remove('hide');
+  if(key!==_secnavKey){ _secnavKey=key; nav.innerHTML=_secnavSecs.map(x=>`<button type="button" data-sec="${esc(x.id)}">${esc(x.label)}</button>`).join(''); }
+  secnavSpy(); }
+function secnavSpy(){ const nav=$('secnav'); if(!nav||nav.classList.contains('hide')||!_secnavSecs.length)return;
+  const top=nav.getBoundingClientRect().bottom+12; let cur=_secnavSecs[0].id;
+  for(const x of _secnavSecs){ const el=document.getElementById(x.id); if(el&&el.getBoundingClientRect().top<=top+4)cur=x.id; }
+  for(const b of nav.children){ const on=b.dataset.sec===cur; if(on!==b.classList.contains('on')){ b.classList.toggle('on',on); if(on&&b.scrollIntoView&&nav.scrollWidth>nav.clientWidth)nav.scrollLeft=Math.max(0,b.offsetLeft-nav.clientWidth/3); } } }
+$('secnav').addEventListener('click',e=>{ const b=e.target.closest('[data-sec]'); if(!b)return; const el=document.getElementById(b.dataset.sec); if(!el)return;
+  const nav=$('secnav'), off=nav.offsetHeight+(parseFloat(getComputedStyle(nav).top)||0)+12;
+  window.scrollTo({top:el.getBoundingClientRect().top+window.scrollY-off,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}); });
+{ let raf=0; window.addEventListener('scroll',()=>{ if(!raf)raf=requestAnimationFrame(()=>{ raf=0; secnavSpy(); }); },{passive:true});
+  let t=0; const mo=new MutationObserver(()=>{ clearTimeout(t); t=setTimeout(buildSecnav,60); });
+  for(const id of Object.values(SECNAV_VIEWS)){ const el=$(id); if(el)mo.observe(el,{childList:true}); } }
 $('topnav').addEventListener('click',e=>{ const b=e.target.closest('button'); if(b)activateTab(b); });
 $('topnav').addEventListener('keydown',e=>{ if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft')return;
   const btns=[...document.querySelectorAll('#topnav button')]; const i=btns.indexOf(document.activeElement); if(i<0)return;

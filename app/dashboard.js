@@ -246,8 +246,8 @@ function renderDowHour(trades){
 }
 
 /* ============================ charts ============================ */
-let charts={}; let GRID='rgba(26,34,51,.9)', TXT='#5C6578';
-Chart.defaults.font.family="'IBM Plex Mono', monospace"; Chart.defaults.font.size=11; Chart.defaults.color=TXT;
+let charts={}; let GRID='rgba(255,255,255,.06)', TXT='#8D97A3';
+Chart.defaults.font.family="Inter, system-ui, -apple-system, 'Segoe UI', sans-serif"; Chart.defaults.font.size=11; Chart.defaults.color=TXT;
 // Every chart explains itself on hover: a chart's own lines first (the numbers behind the point,
 // and any footer of its own), then, under them, what the chart shows (chart.$explain, set with
 // explain()) — as the tooltip's after-footer, so it never displaces a chart's own footer. Canvas tooltips
@@ -262,7 +262,7 @@ try{ Object.assign(Chart.defaults.plugins.tooltip,{padding:10,boxPadding:4,bodyS
   Chart.defaults.plugins.tooltip.callbacks.afterFooter=function(items){ const c=this&&this.chart, ex=c&&c.$explain; if(!ex)return '';
     const t=typeof ex==='function'?ex(items):ex; return t?wrapTip(t):''; };
 }catch(e){}
-const THEMES={ ink:{grid:'rgba(26,34,51,.9)',txt:'#5C6578'}, bb:{grid:'rgba(44,44,40,.9)',txt:'#8C8C84'}, light:{grid:'rgba(18,24,38,.09)',txt:'#6B7488'} };
+const THEMES={ ink:{grid:'rgba(255,255,255,.06)',txt:'#8D97A3'}, bb:{grid:'rgba(44,44,40,.9)',txt:'#8C8C84'}, light:{grid:'rgba(18,24,38,.09)',txt:'#6B7488'} };
 // Appearance (settings.appearance): 'auto' follows the device's light/dark setting, or 'dark' /
 // 'light' by hand. The colorway (INK/BB) is a dark-mode choice; light replaces it.
 const APPEARANCES=['auto','dark','light'];
@@ -276,7 +276,7 @@ function applyTheme(t){ t=(t==='bb')?'bb':'ink';
   settings.theme=t;
   const b=$('themeBtn'); if(b){ b.textContent=t==='bb'?'◧ BB':'◧ INK'; b.disabled=light; b.title=light?'Colorways apply in dark mode':''; }
   const a=$('appearBtn'); if(a)a.textContent={auto:'◐ Auto',dark:'● Dark',light:'○ Light'}[APPEARANCES.includes(settings.appearance)?settings.appearance:'auto'];
-  const m=document.querySelector('meta[name="theme-color"]'); if(m)m.setAttribute('content',light?'#F3F5F8':document.body.classList.contains('pz-mode')?'#0A0C0F':t==='bb'?'#000000':'#0A0E18');
+  const m=document.querySelector('meta[name="theme-color"]'); if(m)m.setAttribute('content',light?'#F3F5F8':document.body.classList.contains('pz-mode')?'#0A0C0F':t==='bb'?'#000000':'#0A0C0F');
   try{ localStorage.setItem('ledger_light',light?'1':'0'); }catch(e){} // read by the first-paint script in ledger.html
 }
 // cycle Auto -> Dark -> Light, re-theme everything that draws its own colours
