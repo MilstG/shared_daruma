@@ -1062,9 +1062,32 @@ dimensions to match and see each group's spread.
   summary function the app uses (plus the wallet's 30-day return). Wallets with
   under 30 trades, or with more than 20,000 fills (bots, market makers), are left
   out. Counted wallets are re-read weekly; up to 5,000.
+- **Traders like you who improved.** The server keeps each contributor's
+  summary weekly (members and seed wallets; at most one snapshot a week, about
+  26 weeks, never sent out). At each build it looks, per peer group, at everyone
+  followed for 8–12 weeks and finds who moved from the group's bottom half to
+  its top half on Discipline or profit factor. It then compares the median
+  change for those improvers with the median change for everyone else: trades a
+  week, revenge share, hold time, journaling, fees, win rate, average win ÷ loss,
+  and, for members, how often each slip showed up in their synced days. Changes
+  are ranked by effect size (the gap between the two medians over the spread of
+  everyone's changes). A change is shown only when both sides have at least 5
+  traders and the group has at least the smallest group size followed that long.
+  If a group can't say anything yet, a broader one is used, as with the spreads.
+  `GET /api/social/bench` returns it as `improvers: {key, n, nOthers, panel,
+  changes: [{metric, label, unit, improversDelta, othersDelta, from, to, n,
+  nOthers, effect, text}], note}`, where `note` says plainly why nothing is shown.
+  Pulse → Stats has a simple card, "What traders like you changed when they
+  improved", with two or three changes. Each has **Make it my habit**, which adds
+  the matching habit or plugs the matching leak, and a tooltip with the numbers.
+  The journal's Review has the full table. Admin → Benchmarks shows improvers per
+  group and the top changes overall. Members who switch off "Count me in" lose
+  their history at once; members who leave or are removed, and seed wallets taken
+  out, lose theirs at the next build.
 - It's a Pulse feature like the others, **free at level 1**. Set a level under
   Admin → Features to make it an unlock. The AI coach sees the member's standing
-  (group spreads only) and can use it to make a habit concrete.
+  (group spreads only) and can use it to make a habit concrete. It also sees up
+  to three things improvers changed.
 
 ## The Project view
 

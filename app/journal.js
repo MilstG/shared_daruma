@@ -976,7 +976,20 @@ function peersSectionHtml(){
   return head+`<div class="peerctl"><span class="mini-note" style="margin:0">Compare me with</span>${chips}<span class="mini-note" style="margin:0 0 0 auto"><b>${g.n}</b> traders · ${esc(peerGroupName(g))}</span></div>
     ${say?`<p class="lead" style="margin:10px 0 0"><b>What the best quarter does differently:</b> ${esc(say[0])} ${esc(say[1])}</p>`:''}
     <div class="tbl-wrap"><table class="peertbl"><thead><tr><th class="l">Measure</th><th>You</th><th>Typical</th><th data-tip="The median of the group's best quarter by profit factor">Best quarter</th><th class="l">Where you sit</th><th data-tip="Out of 100 traders in this group, how many you do better than">Better than</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="mini-note">Line: the group's 10th to 90th percentile · box: its middle half · tick: typical · diamond: best quarter · dot: you. Groups of ${d.min} or more, built daily from ${d.contributors} anonymous summaries${d.seeds?' ('+d.seeds+' from seed wallets read on chain)':''}. Only the groups' spreads reach this page, never another trader's numbers.${SOC.share&&SOC.share.bench===false?' You aren’t counted yourself (switched off in Pulse under Profile & privacy).':''}</p></div>`;
+    <p class="mini-note">Line: the group's 10th to 90th percentile · box: its middle half · tick: typical · diamond: best quarter · dot: you. Groups of ${d.min} or more, built daily from ${d.contributors} anonymous summaries${d.seeds?' ('+d.seeds+' from seed wallets read on chain)':''}. Only the groups' spreads reach this page, never another trader's numbers.${SOC.share&&SOC.share.bench===false?' You aren’t counted yourself (switched off in Pulse under Profile & privacy).':''}</p>${peersImpHtml(d)}</div>`;
+}
+// What traders like you changed when they improved: each change's median for the improvers against
+// the others over 8–12 weeks, and how many each median covers (group figures only, from the server)
+function peersImpHtml(d){
+  const I=d&&d.improvers; if(!I)return '';
+  const head=`<h3 style="margin:18px 0 4px;font-size:14px">What traders like you changed when they improved</h3>`;
+  if(!I.changes.length)return head+`<p class="lead">${esc(I.note||'Not enough history yet.')}</p>`;
+  const val=(c,v)=>{ if(v==null)return '—'; const m=PEER_M.find(x=>x.k===c.metric); return m?m.f(v):Math.round(v)+'% of days'; };
+  const rows=I.changes.map(c=>`<tr><td class="l"><b>${esc(c.label)}</b><div class="mini-note" style="margin:2px 0 0">${esc(c.text)}.</div></td>
+    <td>${esc(val(c,c.from))} → ${esc(val(c,c.to))}</td><td><b>${esc(peerImpFmt(c,c.improversDelta))}</b></td><td>${esc(peerImpFmt(c,c.othersDelta))}</td>
+    <td>${c.n} / ${c.nOthers}</td><td>${Math.abs(c.effect).toFixed(1)}</td></tr>`).join('');
+  return head+`<div class="tbl-wrap"><table class="peertbl"><thead><tr><th class="l">Change</th><th data-tip="Medians for the traders who improved, 8 to 12 weeks apart">Improvers, then → now</th><th data-tip="Median change for the traders who improved">Improvers’ change</th><th data-tip="Median change for everyone else in the group over the same weeks">Others’ change</th><th data-tip="How many traders each median covers: improvers / others">n</th><th data-tip="The gap between the two medians, in units of the spread of everyone’s changes. Biggest first.">Effect</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="mini-note">${I.n} traders in ${esc(peerGroupName(I))} moved from the bottom half of the group to the top half on Discipline or profit factor over 8 to 12 weeks; ${I.nOthers} others didn’t. % changes are relative; pts are percentage points. Only changes where both sides have 5 or more traders are shown.</p>`;
 }
 function peerStripSvg(m,g,v){
   const q=g.q[m.k], top=g.top[m.k], W=220, lo=Math.min(q[0],v==null?q[0]:v,top==null?q[0]:top), hi=Math.max(q[8],v==null?q[8]:v,top==null?q[8]:top);

@@ -411,7 +411,7 @@ function createSocial(opts) {
   }
   // every section kept as a kv row: one missing here is never loaded or saved (wallet decisions and
   // the admin log would vanish on the next restart)
-  const KV_KEYS = ['config', 'follows', 'comps', 'league', 'leagues', 'badges', 'ownerCoach', 'partners', 'comments', 'leagueSeq', 'wallets', 'adminLog', 'coachUse', 'migrations', 'bench', 'benchSeeds', 'duels'];
+  const KV_KEYS = ['config', 'follows', 'comps', 'league', 'leagues', 'badges', 'ownerCoach', 'partners', 'comments', 'leagueSeq', 'wallets', 'adminLog', 'coachUse', 'migrations', 'bench', 'benchSeeds', 'duels', 'benchHist'];
   let S = { v: 1, members: {} };
   const loadedRaw = new Map(); // what each row held, so the first save writes only what loading changed
   for (const r of q('SELECT k, v FROM kv').all()) if (KV_KEYS.includes(r.k)) try { S[r.k] = JSON.parse(r.v); loadedRaw.set(r.k, r.v); } catch (e) {}
@@ -445,6 +445,8 @@ function createSocial(opts) {
   // "traders like you": the last build of the peer groups, and the owner's seed wallets by address
   if (!S.bench || typeof S.bench !== 'object') S.bench = null;
   if (!S.benchSeeds || typeof S.benchSeeds !== 'object') S.benchSeeds = {};
+  // each contributor's weekly summaries, ~26 weeks, by 'm:<member id>' or 's:<seed address>' (never sent out)
+  if (!S.benchHist || typeof S.benchHist !== 'object' || Array.isArray(S.benchHist)) S.benchHist = {};
   // duels: one member against another for a week or a month, by id
   if (!S.duels || typeof S.duels !== 'object') S.duels = {};
   // October 2026: the coach goes to 3 messages a day for everyone (admins unlimited). Applied once,
@@ -688,6 +690,7 @@ function createSocial(opts) {
     for (const L of Object.values(S.leagues)) for (const h of L.hall || []) for (const r of h.podium || []) if (r.id === id) { r.id = null; r.handle = null; touch('leagues'); }
     if (goneHandle) for (const w of Object.values(S.wallets)) if (w && w.by === goneHandle) { w.by = '(deleted admin)'; touch('wallets'); }
     delete S.members[id]; delete S.follows[id]; dropPairsOf(id); delete S.comments[id]; reindex();
+    if (own(S.benchHist, 'm:' + id)) { delete S.benchHist['m:' + id]; touch('benchHist'); }
     if (opts.onDrop) try { opts.onDrop(id); } catch (e) {}
     for (const k in S.comments) S.comments[k] = S.comments[k].filter(c => c.by !== id);
     for (const L of Object.values(S.leagues)) delete L.members[id];
@@ -793,21 +796,38 @@ function createSocial(opts) {
   // ---- "traders like you": peer groups from members' summaries and the owner's seed wallets ----
   const BENCH_FRESH = 21 * 86400000, SEED_REFRESH = 7 * 86400000, SEED_MAX = 5000;
   const benchRows = () => {
-    const rows = [], mine = new Set(); let seeds = 0;
+    const rows = [], mine = new Set(), src = []; let seeds = 0;
     for (const m of members()) {
       if (m.banned || !m.share || m.share.bench === false || !m.bench || now() - (m.bench.at || 0) > BENCH_FRESH) continue;
       const r = Object.assign({}, m.bench); delete r.at;
       // returns and drawdown only when read on chain for this member (last 30 days)
       if (m.money && m.money.ret != null && walletFor(m)) { r.ret = m.money.ret * 100; r.dd = m.money.dd * 100; }
-      const b = Bench.sanitizeBench(r); if (b) { rows.push(b); if (m.address) mine.add(m.address); }
+      const b = Bench.sanitizeBench(r); if (b) { rows.push(b); if (m.address) mine.add(m.address);
+        src.push({ id: 'm:' + m.id, row: b, at: m.bench.at || now(), slips: Bench.slipRates(m.stats && m.stats.days, m.bench.at || now()) }); }
     }
     if (S.config.bench.seeds) for (const [a, x] of Object.entries(S.benchSeeds))
-      if (x.st === 'ok' && x.sum && !mine.has(a) && now() - (x.done || 0) < 4 * SEED_REFRESH) { rows.push(x.sum); seeds++; }
-    return { rows, seeds };
+      if (x.st === 'ok' && x.sum && !mine.has(a) && now() - (x.done || 0) < 4 * SEED_REFRESH) { rows.push(x.sum); seeds++; src.push({ id: 's:' + a, row: x.sum, at: x.done || now() }); }
+    return { rows, seeds, src };
+  };
+  // the weekly history behind "traders like you who improved": a snapshot for each counted
+  // summary (at most one a week), ~26 weeks kept; members who left, switched off or were removed,
+  // and seed wallets taken out, lose theirs
+  const benchHistUpdate = src => {
+    const H = S.benchHist, curW = Bench.weekOf(now());
+    for (const x of src) H[x.id] = Bench.histPush(H[x.id], Bench.histSnap(x.row, Math.min(x.at, now()), x.slips)).list;
+    for (const id of Object.keys(H)) {
+      const m = id.startsWith('m:') && own(S.members, id.slice(2)) ? S.members[id.slice(2)] : null;
+      const keep = m ? !m.banned && m.share && m.share.bench !== false : id.startsWith('s:') && own(S.benchSeeds, id.slice(2));
+      if (keep) H[id] = Bench.histTrim(H[id], curW);
+      if (!keep || !H[id].length) delete H[id];
+    }
+    // the dimensions each one has now decide their groups
+    return src.map(x => ({ dims: x.row, hist: H[x.id] || [] }));
   };
   const benchBuild = () => { const R = benchRows();
     S.bench = Object.assign(Bench.buildBenchmarks(R.rows, S.config.bench, now()), { seeds: R.seeds, members: R.rows.length - R.seeds, cfg: JSON.stringify(S.config.bench) });
-    save('bench'); return S.bench; };
+    S.bench.imp = Bench.buildImprovers(benchHistUpdate(R.src), S.bench, S.config.bench, now());
+    save('bench', 'benchHist'); return S.bench; };
   // built on the first request that needs it: daily, when the settings change, and within a few
   // minutes of new summaries arriving (a seed batch finishing rebuilds at once)
   let benchDirty = false;
@@ -957,7 +977,18 @@ function createSocial(opts) {
   const lockedFor = (m, mod) => { const need = S.config.unlocksOn && m && !m.unlocked && S.config.modules[mod] > 1 ? S.config.modules[mod] : 0;
     return need && ((m.stats && m.stats.level) || 1) < need ? need : 0; };
   const benchOut = (B, dims) => ({ on: true, at: B.at, contributors: B.contributors, members: B.members, seeds: B.seeds, min: B.min, split: B.split,
-    groups: Bench.groupsFor(B, dims).map(g => ({ key: g.key, dims: g.dims, n: g.n, q: g.q, top: g.top })) });
+    groups: Bench.groupsFor(B, dims).map(g => ({ key: g.key, dims: g.dims, n: g.n, q: g.q, top: g.top })), improvers: impOut(B, dims) });
+  // "what traders like you changed when they improved": the most specific of your groups with
+  // something to say, else a broader one; group medians and counts only, never anyone's history
+  const impOut = (B, dims) => {
+    const gs = Bench.groupsFor(B, dims).filter(g => B.imp && B.imp[g.key]).map(g => Object.assign({ key: g.key, dims: g.dims }, B.imp[g.key]));
+    const g = [...gs].reverse().find(x => x.changes.length) || [...gs].reverse().find(x => !x.why) || gs.sort((a, b) => b.panel - a.panel)[0];
+    if (!g) return { n: 0, nOthers: 0, panel: 0, changes: [], note: 'Not enough history yet. This needs traders like you followed for 8 to 12 weeks.' };
+    const note = g.changes.length ? '' : g.why === 'history' ? `Not enough history yet: it needs ${B.min} traders like you followed for 8 to 12 weeks, and ${g.panel} ${g.panel === 1 ? 'is' : 'are'} so far.`
+      : g.why === 'few' ? `Too few traders like you improved to compare yet: ${g.n} did. It needs at least 5 who improved and 5 who didn’t.`
+      : 'Traders like you who improved didn’t change anything clearly different from the others.';
+    return { key: g.key, dims: g.dims, n: g.n, nOthers: g.nOthers, panel: g.panel, weeks: [8, 12], changes: g.changes, note };
+  };
   const tierOf = m => ({ tier: m.tier || 0, tierName: TIERS[m.tier || 0] });
   // how many follow each member, counted once until the follows change
   const followersOf = id => { if (!folCount) { folCount = new Map();
@@ -1126,6 +1157,7 @@ function createSocial(opts) {
   const tick = async () => {
     try { duelSweep(); } catch (e) { console.warn('[ledger] duels: ' + (e && e.message)); }
     if (S.config.bench.seeds !== false) seedSchedule(); // weekly re-reads of seed wallets come due on their own
+    try { if (S.config.bench.on) benchNow(); } catch (e) {} // a daily build keeps the weekly history going without anyone asking
     if (!push || ticking) return 0; ticking = true; const t = now(), jobs = [];
     try {
       for (const m of members()) {
@@ -1486,9 +1518,11 @@ function createSocial(opts) {
       if (sub === 'bench' && M === 'GET') {
         const B = benchNow(), seeds = Object.entries(S.benchSeeds).sort((a, b) => (b[1].added || 0) - (a[1].added || 0));
         const optedOut = members().filter(m => !m.banned && m.share && m.share.bench === false).length;
-        const groups = Object.entries(B.groups).map(([key, g]) => ({ key, dims: g.dims, n: g.n })).sort((a, b) => b.n - a.n);
+        const imp = B.imp || {}, groups = Object.entries(B.groups).map(([key, g]) => ({ key, dims: g.dims, n: g.n,
+          imp: imp[key] && imp[key].panel ? imp[key].n + ' of ' + imp[key].panel + ' followed 8–12 weeks' : '' })).sort((a, b) => b.n - a.n);
         return json(res, 200, { config: S.config.bench, at: B.at, contributors: B.contributors, members: B.members, seeds: B.seeds, split: B.split, min: B.min,
           optedOut, withSummary: members().filter(m => !m.banned && m.share && m.share.bench !== false && m.bench).length, labels: Bench.DIMS, groups,
+          improvers: imp.all ? imp.all.changes.map(c => c.text) : [], histFor: Object.keys(S.benchHist).length,
           seedCounts: seedCounts(), seedMax: SEED_MAX, seedReader: !!opts.peerSummaryFor,
           seedList: seeds.slice(0, 200).map(([a, x]) => ({ address: a, st: x.st, why: x.why || '', added: x.added || 0, done: x.done || 0, by: x.by || '', style: x.sum ? x.sum.style : null, size: x.sum ? x.sum.size : null, exp: x.sum ? x.sum.exp : null, act: x.sum ? x.sum.act : null, n: x.sum ? x.sum.n : null, wr: x.sum ? x.sum.wr : null, ret: x.sum ? x.sum.ret : null })) });
       }
@@ -2000,6 +2034,7 @@ function createSocial(opts) {
         const other = byHandle(h); if (other && other.id !== me.id) return json(res, 409, { error: 'That name is taken.' }); me.handle = h; reindex(); }
       const prevAddr = me.address, prevVerify = !!me.share.verify, prevMoney = !!(me.share.ret || me.share.usd);
       if (body.share) { me.share = sanitizeShare(body.share, me.share); if (me.share.bench === false && me.bench) { me.bench = null; benchDirty = true; } } // off: their summary is gone from the next build
+      if (me.share.bench === false && own(S.benchHist, 'm:' + me.id)) { delete S.benchHist['m:' + me.id]; touch('benchHist'); } // and their weekly history at once
       if (typeof body.coachDetail === 'boolean') me.coachDetail = body.coachDetail;
       if (body.bio !== undefined) me.bio = cleanText(body.bio, 160);
       // a new picture replaces the old one (whose file goes); null takes it off

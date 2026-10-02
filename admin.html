@@ -623,7 +623,7 @@ summary{cursor:pointer;color:var(--soft);font-weight:600}
           <p class="hint">Newest 200 shown. ${fmt(Object.values(sc).reduce((a,b)=>a+b,0))} in all. Counted wallets are read again weekly. <button class="sm fit" id="bSeedDropAll">Remove all seed wallets</button></p>`:''}
       </section>
       <section class="card"><h2>Peer groups</h2>
-        ${B.groups.length?`<div class="scroll"><table><thead><tr><th>Group</th><th>Traders</th></tr></thead><tbody>${B.groups.slice(0,60).map(g=>`<tr><td>${esc(dimName(g))}</td><td>${fmt(g.n)}</td></tr>`).join('')}</tbody></table></div>
+        ${B.groups.length?`<div class="scroll"><table><thead><tr><th>Group</th><th>Traders</th><th>Improved</th></tr></thead><tbody>${B.groups.slice(0,60).map(g=>`<tr><td>${esc(dimName(g))}</td><td>${fmt(g.n)}</td><td>${esc(g.imp||'—')}</td></tr>`).join('')}</tbody></table></div>${B.improvers.length?'<p>What improvers changed: '+B.improvers.map(esc).join(' · ')+'</p>':''}
           <p class="hint">Biggest first${B.groups.length>60?'; 60 of '+fmt(B.groups.length)+' shown':''}. Combinations with fewer than ${fmt(B.min)} traders aren’t listed: those traders are compared with a wider group.</p>`
           :`<p class="muted">No group has ${fmt(B.min)} traders yet (${fmt(B.contributors)} contributors so far). Add seed wallets above to get started.</p>`}</section>`;
   }

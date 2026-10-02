@@ -23,7 +23,7 @@ const SOC_SHARE_ROWS=[
   ['addr','Show wallet address','Anyone could look up every trade and balance',true],
   ['mentor','Let mentors see my days','Mentors the owner appointed see your scores, slips and the lesson you write each night, and can leave you notes. No trades, P&L or wallet'],
   ['duels','Accept duel challenges','Other members can challenge you to a week or a month, 1 on 1, on Discipline, clean days, journaling or XP. Nothing starts until you accept; switch off to stop receiving challenges'],
-  ['bench','Count me in “Traders like you”','An anonymous summary of your last 90 days (win rate, discipline, how much you journal; trade size only as a range) goes into peer groups of 25 or more. No trades, coins, amounts, name or wallet. Switch off to be left out']];
+  ['bench','Count me in “Traders like you”','An anonymous summary of your last 90 days (win rate, discipline, how much you journal; trade size only as a range) goes into peer groups of 25 or more, and is kept weekly for about 6 months to see what changed for traders who improved. No trades, coins, amounts, name or wallet. Switch off to be left out (your history is deleted)']];
 const SOC_BOARDS=[['xp','Weekly XP'],['discipline','Discipline'],['streak','Streak'],['level','All-time XP'],['riskadj','Return / drawdown'],['ret','% Return'],['usd','$ P&L']];
 const SOC_BOARD_NOTE={
   xp:'XP earned this week in your league — process, never profit. The top of the league moves up on Monday, the bottom moves down.',
@@ -228,6 +228,31 @@ const PEER_GAP_SAY={jour:(t,v)=>[`The best quarter journal ${Math.round(t)}% of 
   disc:(t,v)=>[`The best quarter average ${Math.round(t)} on Discipline.`,`You average ${Math.round(v)}.`],
   fees:(t,v)=>[`The best quarter give ${Math.round(t)}% of their gross profit to fees.`,`You give ${Math.round(v)}%.`]};
 const PEER_WHY={few:'It needs 30 closed trades in the last 90 days.',short:'It needs at least 3 weeks of trading in the last 90 days.',error:'Your summary couldn’t be worked out.'};
+// "What traders like you changed when they improved": the server sends group medians of the changes
+// (d.improvers); each change maps to a habit from the existing system: a leak to plug, a habit from
+// the library, or one written out. Key: metric + the direction the improvers moved.
+function peerImpHabit(c){
+  if(!c)return null; const k=c.metric+(c.improversDelta<0?'-':'+'), run={kind:'self',when:'a trade is working',then:'I let it reach my target instead of closing early'};
+  return {'tw-':{slip:'overtrade'},'rev-':{slip:'revenge'},'jour+':{tpl:'journal-all'},'hold-':{slip:'heldLoser'},'hold+':run,'pay+':run,
+    'fees-':{kind:'self',when:'I enter a trade',then:'I use a limit order unless I must get in now'},'wr+':{kind:'self',when:'a setup isn’t clearly an A+',then:'I skip it'},
+    'afterTwo-':{slip:'afterTwo'},'sizeUp-':{slip:'sizeUp'},'addLoser-':{slip:'addLoser'},'overtrade-':{slip:'overtrade'},'heldLoser-':{slip:'heldLoser'}}[k]||null;
+}
+function peerImpHas(h){
+  if(!h)return false; const L=habitsList();
+  if(h.slip)return L.some(x=>x.kind==='slip'&&x.slip===h.slip); if(h.tpl)return L.some(x=>x.tpl===h.tpl);
+  return L.some(x=>x.kind==='self'&&x.when===h.when&&x.then===h.then);
+}
+async function peerImpAdopt(h){
+  if(!h)return null; if(h.slip)return pzPlugStart(h.slip);
+  return adoptHabit(h.tpl?HABIT_LIBRARY.find(x=>x.tpl===h.tpl):h);
+}
+function peerImpFmt(c, v){
+  if(v==null||!isFinite(v))return '—'; const s=v>0?'+':v<0?'−':'', a=Math.abs(v);
+  return s+(c.unit==='pct'?Math.round(a)+'%':c.unit==='pts'?(Math.round(a*10)/10)+' pts':a.toFixed(2));
+}
+function peerImpTip(c){
+  return c.label+'\nTraders who improved: '+peerImpFmt(c,c.improversDelta)+' (median of '+c.n+')\nThe others: '+peerImpFmt(c,c.othersDelta)+' (median of '+c.nOthers+')\nChange over 8 to 12 weeks'+(c.unit==='pts'?'; pts = percentage points':'');
+}
 
 // ---- screens ----
 
