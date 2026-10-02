@@ -278,18 +278,21 @@ function socToggleRows(share, attr, keys){
 function socJoinHtml(){
   const cfg=SOC.cfg; SOC.draft=SOC.draft||{...SOC_DEFAULT_SHARE};
   if(cfg&&!cfg.open)return `${pzHead('Leagues · competitions · friends','Social')}${pzLinkCardHtml()}<section class="pz-card"><p class="pz-sub">This league isn’t taking new members right now. Ask the person who shared the link.</p></section>`;
-  const linkCard=pzLinkCardHtml();
-  return `${pzHead('Leagues · competitions · friends','Join the league')}${linkCard?`<div style="max-width:560px;margin-bottom:14px">${linkCard}</div>`:''}
-  <div class="pz-wide">
-    <div class="pz-col"><section class="pz-card" style="display:flex;flex-direction:column;gap:10px">
+  const linkCard=pzLinkCardHtml(), d=SOC.draft;
+  // one column: the pitch, your name and the button first; what you share folds below with a one-line summary
+  const on=SOC_SHARE_ROWS.filter(r=>d[r[0]]).map(r=>r[1]), off=SOC_SHARE_ROWS.filter(r=>!d[r[0]]&&r[3]).map(r=>r[1]);
+  return `<div class="pz-join">${pzHead('Leagues · competitions · friends','Join the league')}${linkCard}
+    <section class="pz-card pz-join-card">
+      <span class="pz-ico" style="width:48px;height:48px;background:var(--pz-tint-xp);color:var(--pz-xp)">${pzI('progress',24)}</span>
       <div class="pz-big">Compete on discipline, not luck</div>
-      <p class="pz-sub">Weekly leagues rank XP, which only comes from process. Competitions are scored from your fills. Follow traders and adopt the habits that work for them.</p>
-      <p class="pz-sub">${cfg?cfg.members+' trader'+(cfg.members===1?'':'s')+' in this league so far.':''}</p></section>
+      <p class="pz-sub">Weekly leagues rank XP, which only comes from process. Competitions are scored from your fills. Follow traders and adopt the habits that work for them.${cfg&&cfg.members?' <b>'+cfg.members+' trader'+(cfg.members===1?'':'s')+'</b> in this league so far.':''}</p>
       <div class="pz-field"><label for="socHandle">Your public name</label><input type="text" id="socHandle" maxlength="20" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="e.g. slowhands"></div>
-      ${cfg&&cfg.inviteRequired?'<div class="pz-field"><label for="socInvite">Invite code</label><input type="text" id="socInvite" maxlength="40" autocomplete="off"></div>':''}</div>
-    <div class="pz-col"><b style="display:block;font-size:15px">What you share</b>${socToggles(SOC.draft,'data-soc-draft')}
+      ${cfg&&cfg.inviteRequired?'<div class="pz-field"><label for="socInvite">Invite code</label><input type="text" id="socInvite" maxlength="40" autocomplete="off"></div>':''}
       <button type="button" class="pz-cta" id="socJoin">Join the league</button>
-      <p class="pz-fine">Your journal, notes and trades stay in this browser. Only the numbers switched on here are sent, and returns are read from the chain, never from this device.</p></div>
+      <p class="pz-fine">Your journal, notes and trades stay in this browser. Only the numbers switched on below are sent, and returns are read from the chain, never from this device.</p>
+    </section>
+    <details class="pz-card pz-join-share" id="socShareBox"${pzS.joinShare?' open':''}><summary><span><b>What you share</b><span class="pz-fine" style="display:block;margin-top:2px">${esc(on.length+' on'+(off.length?' · hidden: '+off.join(', ').toLowerCase():''))} · change any time under Profile &amp; privacy</span></span>${pzI('down',18)}</summary>
+      ${socToggles(SOC.draft,'data-soc-draft').replace(/class="pz-card" style="padding:4px 16px"/g,'class="pz-join-grp"')}</details>
   </div>`;
 }
 
