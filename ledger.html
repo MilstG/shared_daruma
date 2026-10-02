@@ -330,6 +330,13 @@ body.bb .chk.on{border-color:var(--lbl)}
 .rpread{font-size:12px;color:var(--muted);font-family:var(--prose)}
 .rpnote{font-size:12.5px;color:var(--text);font-family:var(--prose);border-left:2px solid var(--gold);padding:4px 0 4px 10px;white-space:pre-wrap}
 .rpnote b{color:var(--lbl);font-weight:600;margin-right:6px}
+.rpread .rpfill{color:var(--text)}
+/* plan vs outcome: the verdict line on a trade, the verdict strip (journal and Pulse), Pulse's plan card and step-through */
+.plline{font-size:11.5px;color:var(--muted);margin-top:5px}
+.plstrip{display:flex;gap:2px;height:12px;margin-top:10px;border-radius:6px!important;overflow:hidden}
+.plstrip i{display:block;min-width:4px;height:100%;cursor:default}
+.pz-plancta{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--pz-text)}
+.pz-rp{display:flex;flex-direction:column;margin-top:2px}
 .rvbar{height:6px;background:var(--line2);margin-top:8px;max-width:420px}
 .rvbar i{display:block;height:100%;background:var(--gold)}
 .rvtbl td,.rvtbl th{font-size:11.5px}
@@ -1447,6 +1454,7 @@ a.pz-chipbtn{display:inline-flex;align-items:center;gap:6px;text-decoration:none
 <script src="app/pulse.js"></script>
 <script src="app/pulse-social.js"></script>
 <script src="app/pulse-screens.js"></script>
+<script src="app/plans.js"></script>
 <script src="app/boot.js"></script>
 </body>
 </html>

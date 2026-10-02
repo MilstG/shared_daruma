@@ -264,7 +264,21 @@ time, month, market volatility and trend;
 **How the scores work** spells out every formula), **Check-in** (readiness, today's trade cap,
 loss limit and plan) and **Progress** (level, XP, streak and shields, the
 weekly challenge, badges, share cards). A quick journal screen rates and notes
-unjournaled trades from the last 30 days — the ✎ count at the top of Today and Progress opens it. On a wide screen the tabs become a sidebar.
+unjournaled trades from the last 30 days — the ✎ count at the top of Today and Progress opens it. Each card there has a step-through
+under its chart: one fill at a time, in plain words ("You added 0.5 at 64,210.
+Holding 1.5, average 64,100. Open P&L +$30, banked +$0."), with the fill marked on
+the chart; ← → work too. On a wide screen the tabs become a sidebar.
+
+**Plan a trade.** The *Plan your next trade* card on Today opens a short form:
+market, long or short, stop (required), target and entry (optional), and one line
+on why. The plan waits in your journal (synced like any note) and attaches itself
+to your next trade on that market and side that opens within 24 hours — the
+trade's stop and target come from it, it counts as a plan written live, and the
+line becomes the trade's setup if it has none. No trade in 24 hours and it
+expires; old plans are cleared after 30 days. A trade that already has a plan
+keeps it. Stats → **Your plans** shows the share of trades with a plan, how
+often you followed it, and one sentence on what not following it cost
+("Exiting early cost you about $120 over the last 30 days").
 
 **Your layout.** Every Pulse screen (Today, Stats, Progress) has **Customize
 this screen** at the bottom: show or hide each section, or reset to the default.
@@ -638,7 +652,8 @@ Every trade row expands into a journal entry:
   last changed after the close **written after close**, and the two are scored
   separately under Plan adherence (hindsight plans flatter stop discipline).
   Perp positions opened in the last 7 days with no written stop get a
-  dashboard nudge.
+  dashboard nudge. Once the trade closes, a line under the plan shows the
+  planned R:R, the achieved R and a verdict (see **Plan vs outcome** below).
 - **Notes** — free text.
 - **Attachments** — paste or drop screenshots; stored in this browser (and on
   the server when synced). The ✎ on a thumbnail opens a mark-up editor: arrows,
@@ -670,8 +685,29 @@ they happened. The exit line and the worst/best marks appear only at the end. A
 readout shows the position, average entry and P&L so far at each bar (gross,
 before fees, and in R when the risk is known), and your journal note sits
 underneath. You can play, pause, step a bar back or forward, scrub, and switch
-between 1×, 3× and 8×. **📎 Attach chart** saves the chart as it looks right now
-to the trade's screenshots, ready to mark up with ✎.
+between 1×, 3× and 8×. **⇤ / ⇥** jump from fill to fill, and the readout names
+the fill ("Fill 2 of 4: add 0.5 @ 64,210") with the position size, average entry,
+unrealised and realised P&L after it; the latest fill marker is drawn larger. With
+coach mode on, your plan (stop, target, verdict) sits under the chart with your note. The controls work
+from the keyboard: ← → one bar, Shift+← → one fill, Space play/pause, Home/End.
+**📎 Attach chart** saves the chart as it looks right now to the trade's
+screenshots, ready to mark up with ✎.
+
+**Plan vs outcome.** Every closed trade with a written stop gets one verdict,
+decided from prices: **followed the plan** (out at the stop, give or take 10% of
+1R for slippage, at or past the target, or no target set), **exited early**
+(out before the target, stop not hit), **stop moved or widened** (out beyond the
+stop: a bigger loss than planned) or **held past the stop** (price traded through
+the stop while you were in — a fill beyond it, or the candles' worst price once
+Price excursions has run — and you stayed). 1R is the distance from your actual
+entry to the stop, so a clean stop-out is −1R; planned R:R uses the planned
+entry. Both are gross, before fees. The cost of a deviation is measured against
+what the plan would have paid: the −1R stop-out for a moved stop or a hold past
+it, the target for an early exit — but only when the target printed while you
+held (otherwise nobody knows, and it's listed as not costed). Diagnostic → **Plan
+vs outcome** has the full table: share of trades planned, adherence, average R
+followed vs not, each deviation's count, average R and cost, and planned vs
+achieved R by setup.
 
 Everything you journal becomes analytical fuel: tags, setups, ratings, and
 mistake flags are all mined as pattern-miner families, and the Review view
@@ -777,6 +813,10 @@ The statistician's view of your trading. Sections top to bottom:
   went *through* the stop and you held on counts as a broken stop even if the
   exit recovered (approximate ≈ measurements never convict). Plans written
   live and after the close are reported separately.
+- **Plan vs outcome** — every planned trade's verdict (followed, exited early,
+  stop moved or widened, held past the stop), adherence, average R followed vs
+  not, what each kind of deviation cost against the plan, and planned vs
+  achieved R by setup. Definitions under *The journal* above.
 - **What if I stopped doing X** — pick any condition the miner knows about and
   deterministically replay your actual trade sequence *without* those trades:
   side-by-side net, expectancy, win rate, drawdown, and an
@@ -1454,9 +1494,9 @@ separate job on every push.
 
 Architecture in one paragraph: `ledger.html` holds the markup, styles and fonts,
 and loads its code from `app/` as ordinary scripts, in order: vendored Chart.js,
-then fifteen parts from `core.js` (storage, sync, the exchange API) and
-`engine.js` (reconstruction and analytics) through the views and Pulse to
-`boot.js`, which runs last. The parts share one global scope, the way the single
+then sixteen parts from `core.js` (storage, sync, the exchange API) and
+`engine.js` (reconstruction and analytics) through the views, Pulse and `plans.js`
+(plan vs outcome) to `boot.js`, which runs last. The parts share one global scope, the way the single
 inline script did. **The one rule:** code that runs *while a part loads* (as
 opposed to inside a function called later) may only use names from that part or
 an earlier one. The browser smoke tests catch a break, since every part loads on

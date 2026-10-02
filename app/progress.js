@@ -638,7 +638,7 @@ function pzCostHtml(tr){
 }
 // ---- a chart on every journal card: candles around the trade, with entry, exit, stop and target ----
 const PZ_SNAP={}, _pzSnapQ=[]; let _pzSnapBusy=false;
-function pzSnapSvg(t, candles, ms, plan){
+function pzSnapSvg(t, candles, ms, plan, mk){
   if(!candles||candles.length<2)return '';
   // at most 80 candles: merge neighbours on long trades
   const k=Math.max(1,Math.ceil(candles.length/80)), cs=[];
@@ -658,11 +658,12 @@ function pzSnapSvg(t, candles, ms, plan){
   const labs=[], win=t.net>=0, line=(v,col,dash,lab)=>{ if(!(v>0))return ''; labs.push({y:Y(v),col,lab}); return `<line x1="${L}" x2="${W-R}" y1="${fx(Y(v))}" y2="${fx(Y(v))}" stroke="${col}" stroke-width="1.5"${dash?` stroke-dasharray="${dash}"`:''}/>`; };
   const vx=(ms0,col)=>`<line x1="${fx(X(ms0))}" x2="${fx(X(ms0))}" y1="${T}" y2="${H-B}" stroke="${col}" stroke-width="1" stroke-dasharray="2 3" opacity=".8"/>`;
   return `<svg class="pz-snapsvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(dispMarket(dcoin(t)))} price around the trade: entry ${px(t.avgEntry)}${t.isOpen?'':', exit '+px(t.avgExit)}${plan&&plan.stop>0?', stop '+px(plan.stop):''}${plan&&plan.target>0?', target '+px(plan.target):''}">
-    ${body}${vx(t.openTime,'#F4C04E')}${t.isOpen?'':vx(t.closeTime,win?'#3FE0A0':'#FF7A59')}
+    ${body}${vx(t.openTime,'#F4C04E')}${mk&&mk.px>0?vx(mk.t,'#FFFFFF'):''}${t.isOpen?'':vx(t.closeTime,win?'#3FE0A0':'#FF7A59')}
     ${line(plan&&plan.stop,'#FF7A59','2 3','stop')}${line(plan&&plan.target,'#3FE0A0','2 3','target')}${line(t.avgEntry,'#F4C04E','','in '+px(t.avgEntry))}${t.isOpen?'':line(t.avgExit,win?'#3FE0A0':'#FF7A59','','out '+px(t.avgExit))}
     ${(()=>{ labs.sort((a,b)=>a.y-b.y); for(let i=1;i<labs.length;i++)if(labs[i].y-labs[i-1].y<11)labs[i].y=labs[i-1].y+11;
       const over=labs.length?labs[labs.length-1].y-(H-B):0; if(over>0)labs.forEach(l=>{ l.y-=over; });
       return labs.map(l=>`<text x="${W-R+4}" y="${fx(l.y+4)}" font-size="10" font-weight="700" fill="${l.col}">${esc(l.lab)}</text>`).join(''); })()}
+    ${mk&&mk.px>0?`<circle cx="${fx(X(mk.t))}" cy="${fx(Y(mk.px))}" r="5.5" fill="${mk.k>0?'#F4C04E':'#3FE0A0'}" stroke="#0E1216" stroke-width="2" data-pz-tip="${esc((mk.k>0?'In':'Out')+' at '+px(mk.px)+'\n'+tf(mk.t))}"/>`:''}
     <text x="${L}" y="${H-3}" font-size="10" fill="#8B95A1">${esc(dayLabel(dayKey(cs[0].t)))}</text></svg>`;
 }
 function pzSnapHtml(t){
@@ -670,7 +671,7 @@ function pzSnapHtml(t){
   if(!s){ pzSnapWant(t); return '<div class="pz-snapph"><span class="pz-spin"></span>Loading the chart…</div>'; }
   if(s.st==='busy')return '<div class="pz-snapph"><span class="pz-spin"></span>Loading the chart…</div>';
   if(s.st!=='ok'){ if(Date.now()-(s.at||0)>5*60000){ delete PZ_SNAP[t.id]; return pzSnapHtml(t); } return ''; }
-  return pzSnapSvg(t,s.c,s.ms,typeof nfPlan==='function'?nfPlan(journal[t.id]):null);
+  return pzSnapSvg(t,s.c,s.ms,typeof nfPlan==='function'?nfPlan(journal[t.id]):null,typeof planPzMark==='function'?planPzMark(t):null);
 }
 function pzSnapWant(t){ if(PZ_SNAP[t.id]||typeof ensureTradeCandles!=='function')return; PZ_SNAP[t.id]={st:'busy'}; _pzSnapQ.push(t); pzSnapRun(); }
 async function pzSnapRun(){
