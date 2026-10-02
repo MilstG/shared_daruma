@@ -900,7 +900,7 @@ function createApp(opts) {
   const appDir = path.join(path.dirname(htmlPath), 'app');
   const _appFiles = new Map(); // name -> {mtime, size, buf, gz, hash}
   const appFile = (name) => {
-    if (!/^[a-z0-9.-]+\.js$/.test(name) || name.startsWith('.')) return null; // no paths, no dotfiles
+    if (!/^(?:features\/)?[a-z0-9][a-z0-9.-]*\.js$/.test(name)) return null; // app/ or app/features/ only: no other paths, no dotfiles
     const file = path.join(appDir, name);
     let st; try { st = fs.statSync(file); } catch (e) { return null; }
     if (!st.isFile()) return null;
@@ -931,9 +931,9 @@ function createApp(opts) {
     }
     return f;
   };
-  // Each screen gets only the scripts it uses: Keel (/keel, /pulse) never draws a Chart.js chart, so
-  // its page leaves Chart.js out. Opened from disk, ledger.html still loads everything.
-  const SURFACE_SKIP = { journal: [], keel: ['chart.umd.js'] };
+  // Each screen gets only the scripts it uses: a script tag marked data-only="journal" or "keel" goes in
+  // that screen's page only (Chart.js is journal-only: Keel never draws one). Opened from disk,
+  // ledger.html still loads everything.
   const appShell = (surface) => {
     surface = surface === 'keel' ? 'keel' : 'journal';
     let st; try { st = fs.statSync(htmlPath); } catch (e) { return { error: 'app HTML not found on server' }; }
@@ -949,9 +949,9 @@ function createApp(opts) {
     if (!_appHtml || _appHtml.sig !== sig) _appHtml = { sig };
     if (!_appHtml[surface]) {
       const ver = crypto.createHash('sha1').update(sig).digest('hex').slice(0, 12), fh = new Map(fonts.map(([n, f]) => [n, f && f.hash]));
-      const skip = SURFACE_SKIP[surface];
       let i = 0;
-      const buf = Buffer.from(raw.replace(/<script src="app\/([a-z0-9.-]+\.js)"><\/script>\n?/g, (m, n) => { const f = files[i++]; return skip.includes(n) ? '' : '<script src="app/' + n + '?v=' + f.hash + '"></script>' + (m.endsWith('\n') ? '\n' : ''); })
+      const buf = Buffer.from(raw.replace(/<script src="app\/((?:features\/)?[a-z0-9.-]+\.js)"(?: data-only="(journal|keel)")?><\/script>\n?/g, (m, n, only) => { const f = files[i++];
+        return only && only !== surface ? '' : '<script src="app/' + n + '?v=' + f.hash + '"></script>' + (m.endsWith('\n') ? '\n' : ''); })
         .replace(/url\(app\/fonts\/([a-z0-9-]+\.woff2)\)/g, (m, n) => fh.get(n) ? 'url(app/fonts/' + n + '?v=' + fh.get(n) + ')' : m)
         .replace('<head>', '<head>\n<meta name="app-version" content="' + ver + '">'));
       _appHtml[surface] = { mtime: st.mtimeMs, size: st.size, raw, rawHash, sig, ver, buf, gz: zlib.gzipSync(buf, { level: 9 }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 20) + '"' };

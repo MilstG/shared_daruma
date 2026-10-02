@@ -22,7 +22,7 @@
 @font-face{font-family:'Inter';font-style:normal;font-weight:500;font-display:swap;src:url(app/fonts/inter-500.woff2) format('woff2')}
 @font-face{font-family:'Inter';font-style:normal;font-weight:600;font-display:swap;src:url(app/fonts/inter-600.woff2) format('woff2')}
 </style>
-<script src="app/chart.umd.js"></script>
+<script src="app/chart.umd.js" data-only="journal"></script>
 <style>
 /* ================================================================
    LEDGER — Terminal design system (single source of truth)
@@ -1755,6 +1755,8 @@ a.pz-chipbtn{display:inline-flex;align-items:center;gap:6px;text-decoration:none
 <script src="app/pulse-screens.js"></script>
 <script src="app/reviews.js"></script>
 <script src="app/plans.js"></script>
+<!-- features: one file each in app/features/, plugged in through pzFeature (app/pulse.js) -->
+<script src="app/features/trader-age.js" data-only="keel"></script>
 <script src="app/boot.js"></script>
 </body>
 </html>

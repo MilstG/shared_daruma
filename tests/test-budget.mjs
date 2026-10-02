@@ -49,6 +49,13 @@ try {
   const fontDir = join(root, 'app', 'fonts'), fonts = readdirSync(fontDir).filter(f => f.endsWith('.woff2'));
   const fontKB = fonts.reduce((a, f) => a + statSync(join(fontDir, f)).size, 0) / KB;
   t(`fonts (${fonts.length} faces): ${fontKB.toFixed(0)} KB (budget 180)`, () => ok(fontKB <= 180, `fonts are ${fontKB.toFixed(0)} KB — over their 180 KB budget`));
+  // each feature in app/features/ is its own file with its own budget: 40 KB raw, 12 KB gzipped unless listed here
+  const FEATURE_BUDGETS = {};
+  const featDir = join(root, 'app', 'features');
+  for (const f of readdirSync(featDir).filter(f => f.endsWith('.js'))) {
+    const b = readFileSync(join(featDir, f)), [rMax, gMax] = FEATURE_BUDGETS[f] || [40, 12], r = b.length / KB, g = gzipSync(b).length / KB;
+    t(`feature ${f}: ${r.toFixed(1)} KB raw (budget ${rMax}), ${g.toFixed(1)} KB gzipped (budget ${gMax})`, () => { ok(r <= rMax); ok(g <= gMax); });
+  }
   // the owner's panel only (never sent to members): 100 → 200 KB raw with Insights, bulk actions and the seed table (Oct 2026)
   const admin = readFileSync(join(root, 'admin.html')), aRaw = admin.length / KB, aGz = gzipSync(admin).length / KB;
   t(`admin.html: ${aRaw.toFixed(0)} KB raw (budget 200), ${aGz.toFixed(0)} KB gzipped (budget 60)`, () => { ok(aRaw <= 200); ok(aGz <= 60); });
