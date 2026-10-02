@@ -41,7 +41,7 @@ const browser = await chromium.launch();
 // A page that blocks the outside world, carries the token, and records every uncaught error.
 // Console noise the browser itself makes (blocked requests, the CSP meta warning) isn't a bug.
 async function openPage(viewport, opts = {}) {
-  const page = await browser.newPage({ viewport });
+  const page = await browser.newPage({ viewport, ...(opts.colorScheme ? { colorScheme: opts.colorScheme } : {}) });
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|frame-ancestors/.test(m.text())) errors.push(m.text()); });
@@ -131,6 +131,13 @@ try {
     const card = await page.locator('.diag-card', { has: page.locator('[data-pbedit]') }).innerText();
     ok(/Broke a rule\s*1 trade/.test(card), card);
     eq(errors, [], 'no uncaught errors');
+  });
+  await t('dark by default, even on a device set to light (journal and Keel)', async () => {
+    const { page: lp, errors: le } = await openPage({ width: 390, height: 800 }, { colorScheme: 'light' });
+    for (const path of ['/', '/keel']) { await lp.goto(BASE + path); await lp.waitForFunction(() => typeof settings !== 'undefined');
+      ok(await lp.evaluate(() => matchMedia('(prefers-color-scheme: light)').matches), 'the device is light');
+      ok(!(await lp.evaluate(() => document.body.classList.contains('light'))), 'but the app is dark: ' + path); }
+    eq(le, [], 'no uncaught errors'); await lp.close();
   });
   await t('Light appearance applies everywhere, survives a reload, and is there before first paint', async () => {
     await page.evaluate(() => setAppearance('light'));
