@@ -202,7 +202,7 @@ const PZ_SECTIONS={
     ['tilt','Tilt meter','Losses in a row, re-entry window, size and pace — and quiet mode when it runs hot',1],
     ['session','Your session','P&L curve, trades, and your rules as they stand',1],['positions','Open positions','Size and hold time against your usual',1],
     ['insight','Coach insight','One line on what matters most',1],['next','Next step','Prep in the morning, review at night',1],
-    ['now','Right now','This hour in your history, time since a loss',1],['good','Done right today','Moments you followed a rule that usually costs you',1],['duels','Duels','Challenges waiting for you and duels running',1],
+    ['now','Before you trade','How you do at this hour, the market today, time since a loss',1],['good','Done right today','Moments you followed a rule that usually costs you',1],['duels','Duels','Challenges waiting for you and duels running',1],
     ['lesson','A lesson to revisit','One of your own lessons, back when it’s due',1],
     ['inbox','From your partners and mentor','Nudges, notes and season results',1],['partners','Your partners','Their streak and slips this week',1],
     ['xp','Today’s XP','What earns XP today, and what’s due this week',1],['week','Last 7 trading days','Discipline and net, day by day',1],
@@ -501,29 +501,33 @@ function pzPositionsHtml(D,F){
         ${long||big||!stop?`<span class="pz-sub" style="font-size:12px;color:${PZ_COL.mid}">${[long?'Held far past your usual winner — is the thesis still intact?':'',big?'Bigger than you usually trade.':'',!stop&&t.id?'Write a stop for it in the journal.':''].filter(Boolean).join(' ')}</span>`:''}</div>`; }).join('')}</section>`;
 }
 // right now: this hour in your history, and how long since the last loss
+// "Before you trade": context for this moment, in plain words: how you usually do at this hour,
+// the market today, and how long since your last loss or entry. It shows during the hours you
+// usually trade, or once you've traded today; at 2 a.m. on a day off it stays out of the way.
 function pzNowHtml(D,F){
   const closed=(D.ctx.closed||[]).filter(t=>t.openTime&&t.closeTime>F.now-180*86400000), byH={};
   for(const t of closed){ const h=tzParts(t.openTime).h; const o=byH[h]=byH[h]||{n:0,net:0,w:0,l:0}; o.n++; o.net+=t.net; if(isWin(t.net))o.w++; if(isLoss(t.net))o.l++; }
   const h=tzParts(F.now).h, hrs=Object.entries(byH).filter(([,o])=>o.n>=5).map(([k,o])=>({h:+k,avg:o.net/o.n,n:o.n,wr:o.w+o.l?o.w/(o.w+o.l):null})).sort((a,b)=>b.avg-a.avg);
   const me=hrs.find(x=>x.h===h), rank=me?hrs.indexOf(me):-1, lines=[];
-  const hh=n=>String(n).padStart(2,'0')+':00';
+  const lossMin=F.lastLoss?Math.round((F.now-F.lastLoss.closeTime)/60000):null;
+  if(!me&&!F.lastOpen&&!(lossMin!=null&&lossMin<60))return ''; // not an hour you trade, nothing today: nothing to say
+  const clock=n=>String(n).padStart(2,'0')+':00', ago=m=>m<120?m+' minute'+(m===1?'':'s'):(m/60).toFixed(1)+' hours';
+  const n=byH[h]?byH[h].n:0;
   if(me){ const good=rank<3&&me.avg>0, bad=rank>=hrs.length-3&&me.avg<0;
-    lines.push([good?PZ_COL.good:bad?PZ_COL.low:'var(--pz-soft)',`${hh(h)}–${hh((h+1)%24)} is ${good?'one of your best hours':bad?'one of your worst hours':'an ordinary hour for you'}`,
-      `${me.n} trades over 6 months · avg ${signedPlain(me.avg)}${me.wr!=null?' · '+pzPct(me.wr)+' win rate':''}`]); }
-  else if(hrs.length)lines.push(['var(--pz-soft)',`Few trades at ${hh(h)} in your history`,`Your best hour: ${hh(hrs[0].h)} (avg ${signedPlain(hrs[0].avg)}).`]);
+    lines.push([good?PZ_COL.good:bad?PZ_COL.low:'var(--pz-soft)',`It’s ${clock(h)}, ${good?'one of your best hours':bad?'one of your worst hours':'an ordinary hour for you'}`,
+      `You average ${signedPlain(me.avg)} a trade at this hour${me.wr!=null?', winning '+pzPct(me.wr)+' of them':''} (${me.n} trades in 6 months).${bad?' Trade smaller, or wait for a better hour.':''}`]); }
+  else lines.push(['var(--pz-soft)',`It’s ${clock(h)}, an hour you rarely trade`,`${n?n+' trade'+(n===1?'':'s'):'No trades'} at this hour in 6 months, too few to say how you do.${hrs.length?' Your best hour is '+clock(hrs[0].h)+' (you average '+signedPlain(hrs[0].avg)+').':''}`]);
   pzRegimeWant();
   const rg=pzRegimeOf(F.now);
   if(rg&&(rg.vol||rg.trend)){ const like=rg.vol?(D.ctx.closed||[]).filter(t=>{ const r=pzRegimeOf(t.openTime||t.closeTime); return r&&r.vol===rg.vol&&t.closeTime<F.now-3600000; }):[];
     const avg=like.length?like.reduce((a,t)=>a+t.net,0)/like.length:null;
-    lines.push([avg==null||like.length<5?'var(--pz-soft)':avg<0?PZ_COL.low:PZ_COL.good,
-      `BTC today: ${rg.vol?PZ_VOL[rg.vol].replace(' days','').toLowerCase():''}${rg.vol&&rg.trend?', ':''}${rg.trend?PZ_TREND[rg.trend].toLowerCase():''} so far`,
-      like.length>=5?`On ${PZ_VOL[rg.vol].toLowerCase()} you average ${signedPlain(avg)} over ${like.length} trades.`:'Not enough of your trades on days like this to say how you do.']); }
-  if(F.lastLoss){ const m=Math.round((F.now-F.lastLoss.closeTime)/60000);
-    lines.push([m<15?PZ_COL.low:m<60?PZ_COL.mid:'var(--pz-soft)',m<15?`${m} min since a loss — the re-entry window`:`${m<120?m+' min':(m/60).toFixed(1)+'h'} since your last loss`,
-      m<15?'Most revenge entries happen in the first 15 minutes. Let it pass.':'Losses today: '+F.losses+'.']); }
-  if(F.lastOpen){ const m=Math.round((F.now-F.lastOpen.openTime)/60000); lines.push(['var(--pz-soft)',`Last entry ${m<120?m+' min':(m/60).toFixed(1)+'h'} ago`,dispMarket(dcoin(F.lastOpen))+' '+(F.lastOpen.dir||'')]); }
-  if(!lines.length)return '';
-  return `<section class="pz-card pz-kv"><b class="pz-kvh">Right now</b>${lines.map(([c,a,b])=>`<div class="pz-nowrow"><i style="background:${c}"></i><span><b style="font-size:13px">${esc(a)}</b><span class="pz-sub" style="display:block;font-size:12px">${esc(b)}</span></span></div>`).join('')}</section>`;
+    const kind=[rg.vol?PZ_VOL[rg.vol].replace(' days','').toLowerCase():'',rg.trend?PZ_TREND[rg.trend].toLowerCase():''].filter(Boolean).join(', ');
+    lines.push([avg==null||like.length<5?'var(--pz-soft)':avg<0?PZ_COL.low:PZ_COL.good,`BTC is having a ${kind} day`,
+      like.length>=5?`On ${PZ_VOL[rg.vol].toLowerCase()} like this you average ${signedPlain(avg)} a trade (${like.length} trades).${avg<0?' Be pickier today.':''}`:'You haven’t traded enough days like this to say how you do on them.']); }
+  if(F.lastLoss){ lines.push([lossMin<15?PZ_COL.low:lossMin<60?PZ_COL.mid:'var(--pz-soft)',lossMin<15?`Your last loss was ${ago(lossMin)} ago`:`${ago(lossMin)} since your last loss`,
+      lossMin<15?'Most revenge trades happen in the first 15 minutes after a loss. Let this window pass before your next entry.':F.losses+' loss'+(F.losses===1?'':'es')+' today.']); }
+  if(F.lastOpen){ const m=Math.round((F.now-F.lastOpen.openTime)/60000); lines.push(['var(--pz-soft)',`Your last entry was ${ago(m)} ago`,dispMarket(dcoin(F.lastOpen))+' '+String(F.lastOpen.dir||'').toLowerCase()+'.']); }
+  return `<section class="pz-card pz-kv"><b class="pz-kvh">Before you trade</b>${lines.map(([c,a,b])=>`<div class="pz-nowrow"><i style="background:${c}"></i><span><b style="font-size:13px">${esc(a)}</b><span class="pz-sub" style="display:block;font-size:12px">${esc(b)}</span></span></div>`).join('')}</section>`;
 }
 // level, today's XP, streak and shields, and where you stand in your league
 function pzProgressRowHtml(D){
@@ -596,13 +600,14 @@ function pzInstallCardHtml(){
 }
 function pzTodayHtml(D){
   const {g,day,last,risk,ready,form,load}=D;
-  const shown=day||last, disc=shown?shown.score:null; // until today's first close, the last trading day's score
+  // Discipline is today's score only: before today's first close the dial is empty, with the last
+  // trading day's score as a small line under it (it used to show that score, which read as today's)
   const rings=[
     {k:'form',label:'Form',shown:form.score==null?'—':form.score,pct:(form.score||0)/100,col:PZ_COL[pzBand(form.score)],tip:'Your recent trading against your own usual: 50 is normal for you, higher is better than usual. Tap for the details.'},
-    {k:'discipline',label:'Discipline',cap:day||!last?'':dayLabel(last.key).slice(0,3),shown:disc==null?'—':disc,pct:(disc||0)/100,col:PZ_COL[pzBand(disc)],tip:(shown?shown.behavior.clean+' of '+shown.n+' trade'+(shown.n===1?'':'s')+' clean'+(day?' today':' on '+dayLabel(last.key))+'. ':'')+'The share of trades free of revenge entries, sizing up after losses, adding to losers, trading on after two losses, overtrading and over-held losers. 70+ is a clean day.'},
+    {k:'discipline',label:'Discipline',sub:!day&&last?'Last: '+dayLabel(last.key).slice(0,3)+' · '+last.score:'',shown:day?day.score:'—',pct:day?day.score/100:0,col:day?PZ_COL[pzBand(day.score)]:'var(--pz-track)',tip:(day?day.behavior.clean+' of '+day.n+' trade'+(day.n===1?'':'s')+' clean today. ':'No closed trades yet today'+(last?' (your last trading day, '+dayLabel(last.key)+', scored '+last.score+')':'')+'. ')+'The share of trades free of revenge entries, sizing up after losses, adding to losers, trading on after two losses, overtrading and over-held losers. 70+ is a clean day.'},
     {k:'load',label:'Load',shown:load.score==null?'—':load.ratio.toFixed(1)+'×',pct:(load.score||0)/100,col:pzLoadCol(load.score),tip:'How much you’re trading today against your usual day: 1× is normal, above it is busier than usual.'}];
   const sel=['form','discipline','load'].includes(pzS.ring)?pzS.ring:'discipline';
-  const ringsHtml=`<div class="pz-rings pz-span" role="group" aria-label="Today’s dials">${rings.map(r=>`<button type="button" class="pz-ringbtn" data-pz-ring="${r.k}" aria-pressed="${r.k===sel}" aria-label="${r.label} ${r.shown}${r.cap?', last trading day '+r.cap:''}" data-pz-tip="${esc(r.label+' · '+r.shown+'\n'+r.tip)}">${pzRing(r.shown,r.pct,r.col,r.cap?{cap:r.cap}:null)}<span class="pz-rl">${r.label}</span></button>`).join('')}</div>`;
+  const ringsHtml=`<div class="pz-rings pz-span" role="group" aria-label="Today’s dials">${rings.map(r=>`<button type="button" class="pz-ringbtn" data-pz-ring="${r.k}" aria-pressed="${r.k===sel}" aria-label="${r.label} ${r.shown==='—'?'not yet today':r.shown}${r.sub?', '+r.sub:''}" data-pz-tip="${esc(r.label+' · '+r.shown+'\n'+r.tip)}">${pzRing(r.shown,r.pct,r.col)}<span class="pz-rl">${r.label}</span>${r.sub?`<span class="pz-rs">${esc(r.sub)}</span>`:''}</button>`).join('')}</div>`;
   let det;
   if(sel==='form'){
     if(form.score==null) det={lbl:'Form',col:PZ_COL.good,href:'#trends',link:'Stats',head:form.stale?'No trades in the last 30 days':'Building your baseline',
@@ -634,7 +639,8 @@ function pzTodayHtml(D){
         rows:slips.length?slips.map(k=>({label:PZ_BEH[k],value:f[k]+' trade'+(f[k]===1?'':'s'),pct:f[k]/day.n,color:PZ_COL.low}))
           :[{label:'No revenge entries, size-ups, adding to losers or overtrading',value:'✓',pct:1}]}; }
     else det={lbl:'Discipline',col:PZ_COL.good,href:'#discipline',link:'Breakdown',head:'No closed trades yet today',
-      sub:(last?`Your last trading day (${dayLabel(last.key)}) scored ${last.score}. `:'')+'Discipline is read from your fills: revenge entries, sizing up after losses, adding to losers, trading on after two losses, overtrading.',rows:[]};
+      sub:'Today’s score appears with your first closed trade. It starts at 100 and drops for revenge entries, sizing up after a loss, adding to a loser, trading on after two losses and overtrading, all read from your fills. Prep doesn’t change it: prep sets your readiness and earns XP.'
+        +(last?` Your last trading day (${dayLabel(last.key)}) scored ${last.score}.`:''),rows:[]};
   }
   const detail=`<section class="pz-card pz-detail" aria-live="polite"><div class="pz-dh"><span class="pz-lbl" style="color:${det.col}">${esc(det.lbl)}</span><a class="pz-link" href="${det.href}">${esc(det.link)}${pzI('chev',16)}</a></div>
     <div><div class="pz-big">${esc(det.head)}</div><p class="pz-sub" style="margin-top:4px">${esc(det.sub)}</p></div>${pzRows(det.rows,det.col)}</section>`;
