@@ -78,8 +78,10 @@ function pzNeeds(feature, level, cfg, demo, unlocked){
   const need=(cfg.modules||cfg.unlocks||{})[feature];
   return need>1&&level<need?need:0;
 }
-// Pulse's own check: the league's levels, unless the owner fully unlocked this member (or it's the owner)
-function pzLocked(feature, level){ return pzNeeds(feature,level,pzUnlockCfg(),pzS.demo,!!(SOC.me&&SOC.me.unlocked)||!!(SRV.token&&!SRV.badAuth)); }
+// Pulse's own check: the league's levels, unless the owner fully unlocked this member (or it's the
+// owner, signed in without a member profile). Acting as a member, it's the member's own unlock that
+// counts — the server holds a member's key to it, owner token or not.
+function pzLocked(feature, level){ return pzNeeds(feature,level,pzUnlockCfg(),pzS.demo,SOC.me?!!SOC.me.unlocked:!!(SRV.token&&!SRV.badAuth)); }
 function socValue(board,v){ if(v==null)return '—';
   if(board==='ret')return (v>=0?'+':'−')+Math.abs(v*100).toFixed(1)+'%';
   if(board==='usd')return signedPlain(v);
@@ -216,7 +218,7 @@ function socUnavailableHtml(){
 }
 const SOC_SHARE_GROUPS=[['Profile',['profile','page','feed','habits','mentor','duels']],['Boards',['boards','global','verify','ret','bench']],['Sensitive',['usd','addr']]];
 function socToggles(share, attr){
-  return SOC_SHARE_GROUPS.map(([g,keys])=>`<section class="pz-card" style="padding:4px 16px"><span class="pz-lbl" style="display:block;margin:12px 0 2px;color:${g==='Sensitive'?'#FFB39E':'var(--pz-muted)'}">${g}</span>${socToggleRows(share,attr,keys)}</section>`).join('');
+  return SOC_SHARE_GROUPS.map(([g,keys])=>`<section class="pz-card" style="padding:4px 16px"><span class="pz-lbl" style="display:block;margin:12px 0 2px;color:${g==='Sensitive'?PZ_COL.low:'var(--pz-muted)'}">${g}</span>${socToggleRows(share,attr,keys)}</section>`).join('');
 }
 function socToggleRows(share, attr, keys){
   return SOC_SHARE_ROWS.filter(r=>keys.includes(r[0])).map(([k,l,n,risky])=>`<div class="pz-toggle"><span style="flex:1"><b id="soct_${k}">${esc(l)}</b><span class="${risky?'risky':''}">${esc(n)}</span></span>
@@ -676,9 +678,9 @@ function socDuelsHtml(D){
     done=d.duels.filter(v=>v.status==='done').slice(0,10), other=d.duels.filter(v=>['declined','expired','cancelled'].includes(v.status)).slice(0,5);
   return `${back}${pzHead('One on one','Duels')}
     <div class="pz-wide"><div class="pz-col">
-      <section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><div class="pz-kvrow"><b style="font-size:15px">Your record</b><span class="pz-sub" style="font-size:12px">${act.length+sent.length} of ${d.maxOpen} open</span></div>
+      <section class="pz-card" style="display:flex;flex-direction:column;gap:10px"><div class="pz-kvrow"><b style="font-size:15px">Your record</b><span class="pz-sub" style="font-size:12px">${inv.length+act.length+sent.length} of ${d.maxOpen} open</span></div>
         <div class="pz-grid3"><div class="pz-tile good"><span class="pz-n">${r.w}</span><span class="pz-t">won</span></div><div class="pz-tile hot"><span class="pz-n">${r.l}</span><span class="pz-t">lost</span></div><div class="pz-tile"><span class="pz-n">${r.d}</span><span class="pz-t">drawn</span></div></div>
-        <div class="pz-kvrow" style="gap:8px"><input id="duelWho" placeholder="@name to challenge" autocomplete="off" style="flex:1;min-width:0"><button type="button" class="pz-cta" id="duelGo" style="width:auto;padding:0 18px">Challenge</button></div>
+        <div class="pz-kvrow" style="gap:8px"><input id="duelWho" aria-label="Name to challenge" placeholder="@name to challenge" autocomplete="off" style="flex:1;min-width:0"><button type="button" class="pz-cta" id="duelGo" style="width:auto;padding:0 18px">Challenge</button></div>
         ${socDuelPeopleHtml(d)}
         <p class="pz-fine" style="margin:0">Anyone in the league can be challenged: type their name, pick someone above, or open a profile from a leaderboard. Duels are scored by Pulse from your fills and your app. ${d.stakes?'You can put XP on it (never money): up to '+d.room+' XP right now. ':'No money is ever staked. '}${d.xp?'A duel played to the end gives the winner +'+d.xp+' XP.':''}${d.accepting?'':' You’re not taking challenges (switched off under <a href="#sharing">Profile & privacy</a>).'}</p></section>
       ${grp('Waiting for you',inv)}${grp('Running',act)}${grp('Sent',sent)}</div>
@@ -690,7 +692,8 @@ function socDuelPeopleHtml(d){
   const ppl=(d.people||[]).filter(p=>p.accepting); if(!ppl.length)return '';
   const busy=new Set(d.duels.filter(v=>v.status==='pending'||v.status==='active').map(v=>v.other.handle.toLowerCase()));
   return `<div class="pz-dpeople">${ppl.slice(0,24).map(p=>{ const b=busy.has(p.handle.toLowerCase());
-    return `<a class="pz-dperson" href="#duel/${esc(p.handle)}"${b?' aria-disabled="true"':''} data-pz-tip="${esc('@'+p.handle+' · level '+p.level+' · '+(DUEL_REL[p.rel]||p.rel)+(b?'\nYou already have a duel together':''))}">${socAv(p.handle,32)}<span>@${esc(p.handle)}</span><i>${esc(DUEL_REL[p.rel]||p.rel)}</i></a>`; }).join('')}</div>`;
+    const tag=b?'span':'a', tip=esc('@'+p.handle+' · level '+p.level+' · '+(DUEL_REL[p.rel]||p.rel)+(b?'\nYou already have a duel together':''));
+    return `<${tag} class="pz-dperson"${b?' aria-disabled="true" tabindex="0"':` href="#duel/${esc(p.handle)}"`} data-pz-tip="${tip}">${socAv(p.handle,32)}<span>@${esc(p.handle)}</span><i>${esc(DUEL_REL[p.rel]||p.rel)}</i></${tag}>`; }).join('')}</div>`;
 }
 function socDuelNewHtml(D, handle){
   const back=`<a class="pz-back" href="#duels">${pzI('back',20)}Duels</a>`;
@@ -718,7 +721,7 @@ function socDuelNewHtml(D, handle){
       <p class="pz-fine" style="margin:6px 0 0">It starts on the next Monday (or the 1st) after it’s accepted, so nobody gets a head start.</p></div>
     <div><span class="pz-lbl" style="color:var(--pz-muted)">Conditions</span>
       ${st.type==='disc'?`<div class="pz-toggle"><span style="flex:1"><b>At least ${st.minDays} trading day${st.minDays===1?'':'s'} each</b><span>So nobody wins by not trading</span></span><span style="display:flex;gap:6px"><button type="button" class="pz-chipbtn" data-duel-min="-1" aria-label="Fewer">−</button><button type="button" class="pz-chipbtn" data-duel-min="1" aria-label="More">+</button></span></div>`:''}
-      ${verifiable?`<div class="pz-toggle"><span style="flex:1"><b>Verified from fills</b><span>Scored from both wallets’ public fills, not what the apps report</span></span><button type="button" role="switch" class="pz-switch" data-duel-verified="1" aria-checked="${!!st.verified}"><i></i></button></div>`:''}
+      ${verifiable?`<div class="pz-toggle"><span style="flex:1"><b id="duelVerLbl">Verified from fills</b><span>Scored from both wallets’ public fills, not what the apps report</span></span><button type="button" role="switch" class="pz-switch" data-duel-verified="1" aria-labelledby="duelVerLbl" aria-checked="${!!st.verified}"><i></i></button></div>`:''}
       ${st.type==='ret'?`<div class="pz-toggle"><span style="flex:1"><b>Drawdown cap</b><span>Going past it loses outright</span></span><span class="pz-seg">${[0.05,0.08,0.1,0.15].map(v=>`<button type="button" data-duel-dd="${v}" aria-pressed="${st.ddCap===v}">${v*100}%</button>`).join('')}</span></div>`:''}
       ${d.stakes?socDuelStakeHtml(st,stakeMax,d):''}
       <label class="pz-sub" for="duelMsg" style="display:block;margin-top:8px;font-size:12px">Message (optional)</label><input id="duelMsg" maxlength="140" placeholder="Loser buys coffee" autocomplete="off"></div>

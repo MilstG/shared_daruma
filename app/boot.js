@@ -53,7 +53,7 @@ try{ if(window.Chart&&Chart.defaults)Chart.defaults.animation=false; }catch(e){}
   // data-file persistence bar: offer reconnect if a file was previously linked.
   // In server-sync mode the server is the source of truth — a linked local file
   // applying on top would clobber it, so the FSA flow is skipped entirely.
-  if(SRV.enabled){ renderDatafile(); }
+  if(SRV.enabled){ renderDatafile(); if(!PZ&&typeof socBoot==='function')socBoot(); } // the league's levels and XP weights apply in the full journal too
   else try{ const h=FSA?await idbGet('handle'):null;
     if(h){ const p=await h.queryPermission({mode:'readwrite'});
       if(p==='granted'){ linkedHandle=h; linkedName=h.name; const file=await h.getFile(); const data=JSON.parse(await file.text());

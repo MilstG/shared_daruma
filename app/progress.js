@@ -285,7 +285,7 @@ function progressSectionHtml(){
     chHtml=`<div class="gm-big">${esc(habitSentence(ch.ch.spec))}</div>
       <div class="gm-sub">${ch.res.length?`${dotsHtml(ch.res)} ${kept} of ${ch.res.length} trading day${ch.res.length===1?'':'s'} so far`:'Starts with your next trading day.'}
       ${ch.status==='missed'?' · <span class="neg-t">missed once — the rest of the week still counts for XP</span>':''}</div>
-      <div class="gm-foot"><span class="mini-note" style="margin:0">+150 XP if every trading day this week keeps it</span><button class="btn ghost" id="chSwap">Pick another</button></div>`; }
+      <div class="gm-foot"><span class="mini-note" style="margin:0">+${pzXpCfg().challenge} XP if every trading day this week keeps it</span><button class="btn ghost" id="chSwap">Pick another</button></div>`; }
   else chHtml=`<div class="gm-sub">A challenge is picked from your biggest leak once you have a few trades.</div>`;
   const past=g.challenges.filter(c=>c.ended).slice(-6).reverse();
   const unlocked=g.achievements.filter(a=>a.at).length;
@@ -295,7 +295,7 @@ function progressSectionHtml(){
     :`<div class="metric-row"><span class="ml">Discipline saved you (est.)</span><span class="mv" style="font-weight:400;color:var(--faint)">appears once a rule or avoid-habit has a track record</span></div>`;
   return `<div class="diag-section" id="progressSec"><h2>Progress <span style="font-size:11px;color:var(--faint);font-weight:400">earned by process, never by profit or trade count</span></h2>
     <div class="gm-grid">
-      <div class="diag-card gm"><h3 data-tip="XP per trading day = that day's Discipline score (0–100, read from your fills: no revenge entries, sizing up after losses, adding to losers, trading on after two losses, overtrading or holding losers too long), plus bonus XP for what you log: check-in +10, plan before the first trade +15, trades journaled +15, stops written +10, loss limit respected +10. Also +25 per focus-habit day, +150 per completed weekly challenge, +50 per achievement.">Level</h3>
+      <div class="diag-card gm"><h3 data-tip="${(X=>esc(`XP per trading day = that day's Discipline score (0–100${X.discipline!==1?', ×'+X.discipline:''}, read from your fills: no revenge entries, sizing up after losses, adding to losers, trading on after two losses, overtrading or holding losers too long), plus bonus XP for what you log: check-in +${X.checkin}, plan before the first trade +${X.plan}, trades journaled +${X.journal}, stops written +${X.stops}, loss limit respected +${X.limit}. Also +${X.focus} per focus-habit day, +${X.challenge} per completed weekly challenge, +${X.achievement} per achievement.`))(pzXpCfg())}">Level</h3>
         <div class="gm-big">${L.level} · ${esc(L.title)}</div>
         <div class="xpbar" role="progressbar" aria-valuemin="0" aria-valuemax="${L.need}" aria-valuenow="${L.into}" data-tip="${esc(L.into.toLocaleString()+' of '+L.need.toLocaleString()+' XP into level '+L.level+' ('+pct+'%). '+(L.need-L.into).toLocaleString()+' XP to go.')}"><i style="width:${pct}%"></i></div>
         <div class="gm-sub">${L.into.toLocaleString()} / ${L.need.toLocaleString()} XP to ${esc(pzLevelTitle(L.level+1))} · +${g.weekXp.toLocaleString()} this week</div></div>
@@ -945,6 +945,9 @@ function pzSlipCost(days){
 const pzAddDays=(k,n)=>new Date(Date.parse(k+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
 const PZ_TIERS=['Bronze','Silver','Gold','Platinum','Diamond','Legend'];
 const PZ_TIER_COL=['#C98A5B','#B8C2CC','#F4C04E','#7FE0D2','#8FA8FF','#FF8AD8'];
+// the same tiers as text on a light background, dark enough to read (the fills above stay)
+const PZ_TIER_TXT_LIGHT=['#99582B','#5E6A77','#8C6400','#16786C','#3A55C9','#A8287F'];
+const pzTierText=r=>(typeof document!=='undefined'&&document.body&&document.body.classList.contains('light')?PZ_TIER_TXT_LIGHT:PZ_TIER_COL)[r];
 const PZ_TIER_XP=[5,10,20,40,80,160];
 const PZ_BADGE_CATS={discipline:'Discipline',habits:'Habits',consistency:'Consistency',journal:'Journaling',routine:'Routines',risk:'Risk control',results:'Results',milestones:'Milestones'};
 const pzN=n=>n>=1e6?(n/1e6)+'M':n>=1e3&&n%1e3===0?(n/1e3)+'k':String(n);

@@ -306,7 +306,10 @@ function parseFillsCsv(text){
       if(n>=1e15&&n<2.6e15)return Math.round(n/1000);
       return null;
     }
-    const t=Date.parse(v); return isNaN(t)?null:t;
+    // a date and time with no zone is UTC, as exchanges export it: read in the viewer's own zone
+    // the same file would land at a different time (and trade ids) on every device
+    const m=/^(\d{4}-\d{2}-\d{2})[ T](\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/.exec(v.trim());
+    const t=Date.parse(m?m[1]+'T'+(m[2].length<5||m[2].indexOf(':')===1?'0'+m[2]:m[2])+'Z':v); return isNaN(t)?null:t;
   };
   // "open"/"close" alone don't say buy or sell (closing a short is a buy), so they aren't read as sides;
   // "Open Long"/"Close Short" (and "Long > Short" flips) say both
@@ -409,7 +412,8 @@ function openCexConnect(venue, label){
 let _setRenderTimer=null;
 const debouncedRender=()=>{ clearTimeout(_setRenderTimer); _setRenderTimer=setTimeout(()=>{ if(allTrades.length)render(); },350); };
 $('riskDefault').addEventListener('input',async e=>{ const v=parseFloat(e.target.value); settings.riskDefault=v>0?v:null; await Store.set(S_KEY,settings); debouncedRender(); });
-$('beThresh').addEventListener('input',async e=>{ const v=parseFloat(e.target.value); settings.beThreshold=(isFinite(v)&&v>=0)?v:0; await Store.set(S_KEY,settings); debouncedRender(); });
+$('beThresh').addEventListener('input',async e=>{ const v=parseFloat(e.target.value); settings.beThreshold=(isFinite(v)&&v>=0)?v:0; await Store.set(S_KEY,settings);
+  _minerCache={key:null,res:null,deep:null}; debouncedRender(); }); // wins, losses and streaks move with the band: mined patterns are stale
 $('rBasis').addEventListener('change',async e=>{ settings.rBasis=e.target.value;
   const fixed=settings.rBasis==='fixed'; $('riskDefault').classList.toggle('hide',!fixed);
   $('rBasisNote').textContent=fixed?'$ risk per trade · override per trade':'R-multiples scale to your average loss · override per trade';

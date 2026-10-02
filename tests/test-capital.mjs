@@ -38,6 +38,16 @@ t('vault park is an outflow; vault withdraw an inflow', () => {
   ], ADDR);
   eq(flows.map(f => f.usdc), [-500, 500]);
 });
+t('real ledger shapes: a vault withdrawal pays out netWithdrawnUsd; a send counts by direction, to itself it’s internal', () => {
+  const B_ = '0x' + 'b'.repeat(40);
+  const { flows, skipped } = capitalFlows([
+    { time: T0, delta: { type: 'vaultWithdraw', vault: '0xdf13', user: ADDR, requestedUsd: '50000.0', commission: '0.0', closingCost: '0.0', basis: '49000.0', netWithdrawnUsd: '49990.5' } },
+    { time: T0 + 1, delta: { type: 'send', user: ADDR, destination: B_, sourceDex: '', destinationDex: '', token: 'USDC', amount: '20.0', usdcValue: '20.0', fee: '0.0' } },
+    { time: T0 + 2, delta: { type: 'send', user: B_, destination: ADDR, sourceDex: '', destinationDex: '', token: 'USDC', amount: '5.0', usdcValue: '5.0', fee: '0.0' } },
+    { time: T0 + 3, delta: { type: 'send', user: ADDR, destination: ADDR, sourceDex: '', destinationDex: 'xyz', token: 'USDC', amount: '9.0', usdcValue: '9.0', fee: '0.0' } },
+  ], ADDR);
+  eq(flows.map(f => f.usdc), [49990.5, -20, 5]); eq(skipped, 0);
+});
 t('accountClassTransfer is internal plumbing — neither flow nor skipped', () => {
   const { flows, skipped } = capitalFlows([
     { time: T0, delta: { type: 'accountClassTransfer', usdc: '9999' } },

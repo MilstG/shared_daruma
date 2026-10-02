@@ -1628,7 +1628,7 @@ function createApp(opts) {
   /* ---------------- v1 router ---------------- */
   async function handleV1(req, res, url, query) {
     const send = (code, obj) => json(res, code, obj);
-    const fail = (e) => e && e.code ? send(e.code, { error: e.msg }) : (console.error('[ledger] v1 error:', e), send(500, { error: 'internal error: ' + (e && e.message || e) }));
+    const fail = (e) => e && e.code ? send(e.code, { error: e.msg }) : (console.error('[ledger] v1 error:', e), send(500, { error: 'internal error' }));
 
     if (url === '/api/v1' || url === '/api/v1/') {
       return send(200, {
@@ -2458,13 +2458,13 @@ function createApp(opts) {
 
     // --- wearables (/api/wear/*): connect, sync, and the Apple Health Shortcut's link ---
     if (url === '/api/wear' || url.startsWith('/api/wear/')) {
-      wear.handle(req, res, url, query, wearUid).catch(e => { try { json(res, 500, { error: 'internal error: ' + (e && e.message || e) }); } catch (e2) {} });
+      wear.handle(req, res, url, query, wearUid).catch(e => { try { (console.error('[ledger] request failed:', e), json(res, 500, { error: 'internal error' })); } catch (e2) {} });
       return;
     }
     // --- social (/api/social/*): members authenticate with their own key, admin with AUTH_TOKEN ---
     if (url === '/api/social' || url.startsWith('/api/social/')) {
       social.handle(req, res, url, query).catch(e => {
-        try { json(res, 500, { error: 'internal error: ' + (e && e.message || e) }); } catch (e2) {}
+        try { (console.error('[ledger] request failed:', e), json(res, 500, { error: 'internal error' })); } catch (e2) {}
       });
       return;
     }
@@ -2500,7 +2500,7 @@ function createApp(opts) {
     // --- analytics API v1 (read-only) ---
     if (url === '/api/v1' || url.startsWith('/api/v1/')) {
       handleV1(req, res, url, query).catch(e => {
-        try { json(res, 500, { error: 'internal error: ' + (e && e.message || e) }); } catch (e2) {}
+        try { (console.error('[ledger] request failed:', e), json(res, 500, { error: 'internal error' })); } catch (e2) {}
       });
       return;
     }
