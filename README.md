@@ -1492,10 +1492,10 @@ Treat it as positive visualization of staying the course, nothing more.
   tag, wallet, free-text search, date range; one-click clear.
 - **Timezone (⏱):** toggles all time-of-day and weekday analysis between local
   and UTC — one switch, applied everywhere consistently.
-- **Appearance:** Auto (follows your device's light/dark setting, live), Dark
-  or Light, applied to the full journal and Daruma (Daruma → Settings has the same
-  switch). It syncs with your settings and is applied before the first paint, so
-  a light-mode phone never flashes the dark palette. In light mode, profit/loss
+- **Appearance:** Dark by default, or Light, or Auto (follows your device's
+  light/dark setting, live), applied to the full journal and Daruma (Daruma → Settings
+  has the same switch). It syncs with your settings and is applied before the first
+  paint, so someone who picked Light never flashes the dark palette. In light mode, profit/loss
   colours are deepened to hold contrast on white.
 - **Colors:** two dark-mode colorways, INK and BB (black & amber).
 - **R basis:** what 1R means when a trade has no planned risk journaled —

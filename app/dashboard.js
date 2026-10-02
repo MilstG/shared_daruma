@@ -265,10 +265,10 @@ if(hasChart())try{ Object.assign(Chart.defaults.plugins.tooltip,{padding:10,boxP
     const t=typeof ex==='function'?ex(items):ex; return t?wrapTip(t):''; };
 }catch(e){}
 const THEMES={ ink:{grid:'rgba(255,255,255,.06)',txt:'#8D97A3'}, bb:{grid:'rgba(44,44,40,.9)',txt:'#8C8C84'}, light:{grid:'rgba(18,24,38,.09)',txt:'#6B7488'} };
-// Appearance (settings.appearance): 'auto' follows the device's light/dark setting, or 'dark' /
-// 'light' by hand. The colorway (INK/BB) is a dark-mode choice; light replaces it.
-const APPEARANCES=['auto','dark','light'];
-function appearanceIsLight(mode, prefersLight){ mode=APPEARANCES.includes(mode)?mode:'auto'; return mode==='light'||(mode==='auto'&&!!prefersLight); }
+// Appearance (settings.appearance): dark unless chosen otherwise; 'light' by hand, or 'auto' to
+// follow the device's light/dark setting. The colorway (INK/BB) is a dark-mode choice; light replaces it.
+const APPEARANCES=['dark','light','auto'];
+function appearanceIsLight(mode, prefersLight){ mode=APPEARANCES.includes(mode)?mode:'dark'; return mode==='light'||(mode==='auto'&&!!prefersLight); }
 function prefersLight(){ try{ return matchMedia('(prefers-color-scheme: light)').matches; }catch(e){ return false; } }
 function applyTheme(t){ t=(t==='bb')?'bb':'ink';
   const light=appearanceIsLight(settings.appearance,prefersLight());
@@ -277,18 +277,18 @@ function applyTheme(t){ t=(t==='bb')?'bb':'ink';
   const pal=THEMES[light?'light':t]; GRID=pal.grid; TXT=pal.txt; if(hasChart())Chart.defaults.color=TXT;
   settings.theme=t;
   const b=$('themeBtn'); if(b){ b.textContent=t==='bb'?'◧ BB':'◧ INK'; b.disabled=light; b.title=light?'Colorways apply in dark mode':''; }
-  const a=$('appearBtn'); if(a)a.textContent={auto:'◐ Auto',dark:'● Dark',light:'○ Light'}[APPEARANCES.includes(settings.appearance)?settings.appearance:'auto'];
+  const a=$('appearBtn'); if(a)a.textContent={auto:'◐ Auto',dark:'● Dark',light:'○ Light'}[APPEARANCES.includes(settings.appearance)?settings.appearance:'dark'];
   const m=document.querySelector('meta[name="theme-color"]'); if(m)m.setAttribute('content',light?'#F3F5F8':document.body.classList.contains('pz-mode')?'#0A0C0F':t==='bb'?'#000000':'#0A0C0F');
-  try{ localStorage.setItem('ledger_light',light?'1':'0'); }catch(e){} // read by the first-paint script in ledger.html
+  try{ localStorage.setItem('ledger_appear',light?'light':'dark'); }catch(e){} // read by the first-paint script in ledger.html
 }
-// cycle Auto -> Dark -> Light, re-theme everything that draws its own colours
+// cycle Dark -> Light -> Auto, re-theme everything that draws its own colours
 async function setAppearance(mode){
-  settings.appearance=APPEARANCES.includes(mode)?mode:'auto';
+  settings.appearance=APPEARANCES.includes(mode)?mode:'dark';
   applyTheme(settings.theme); await Store.set(S_KEY,settings);
   if(typeof PZ!=='undefined'&&PZ&&typeof pzRender==='function')pzRender(); else if(allTrades.length)render();
 }
 // a device switching between light and dark (sunset, a phone's schedule) follows along in Auto
-try{ matchMedia('(prefers-color-scheme: light)').addEventListener('change',()=>{ if((settings.appearance||'auto')==='auto')setAppearance('auto'); }); }catch(e){}
+try{ matchMedia('(prefers-color-scheme: light)').addEventListener('change',()=>{ if(settings.appearance==='auto')setAppearance('auto'); }); }catch(e){}
 function destroyCharts(){ Object.values(charts).forEach(c=>c&&c.destroy()); charts={}; }
 const usdTip={callbacks:{label:c=>' '+fmtUsd(c.parsed.y)}};
 function scales(x={}){ return {x:{grid:{color:GRID,drawTicks:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:8},...x},

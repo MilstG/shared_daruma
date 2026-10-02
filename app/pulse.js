@@ -1282,8 +1282,8 @@ function pzSheetHtml(){
         <div style="display:flex;gap:8px"><button type="button" class="pz-ghost pz-sm" id="pzAdd2">Add &amp; load</button>${settings.wallets.length?'<button type="button" class="pz-ghost pz-sm" id="pzRefresh">Refresh now</button>':''}</div></div>
       ${pzS.cex?pzCexFormHtml():`<button type="button" class="pz-ghost pz-sm" data-pz-cex="bybit" style="margin-top:8px">Connect Bybit or Binance</button>`}</section>
     <section><span class="pz-lbl" style="color:var(--pz-muted)">Appearance</span>
-      <div class="pz-seg" role="group" aria-label="Appearance" style="margin-top:6px">${[['auto','Auto'],['dark','Dark'],['light','Light']].map(([v,l])=>`<button type="button" data-pz-appear="${v}" aria-pressed="${(settings.appearance||'auto')===v}" style="flex:1">${l}</button>`).join('')}</div>
-      <p class="pz-fine" style="margin-top:6px">Auto follows your phone’s light or dark setting.</p></section>
+      <div class="pz-seg" role="group" aria-label="Appearance" style="margin-top:6px">${[['dark','Dark'],['light','Light'],['auto','Auto']].map(([v,l])=>`<button type="button" data-pz-appear="${v}" aria-pressed="${(['dark','light','auto'].includes(settings.appearance)?settings.appearance:'dark')===v}" style="flex:1">${l}</button>`).join('')}</div>
+      <p class="pz-fine" style="margin-top:6px">Dark unless you pick otherwise. Auto follows your phone’s light or dark setting.</p></section>
     ${pzProfilePickHtml()}
     ${pzTaSetHtml()}
     ${pzPushHtml()}

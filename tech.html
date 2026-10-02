@@ -7,19 +7,13 @@
 <style>
 /* Same self-contained posture as help.html: no external fonts or scripts.
    Served at GET /docs by server.js; also opens directly from disk. */
+/* dark, like the app */
 :root{
-  --bg:#f7f7f5; --panel:#ffffff; --panel2:#eef0f4; --fg:#1b2130; --muted:#5a6272;
-  --faint:#8a91a0; --line:#dcdfe6; --accent:#5560d8; --profit:#188a5c; --loss:#c73a4e;
-  --gold:#9a7a1f; --code-bg:#eef0f4;
+  --bg:#0c0e14; --panel:#12141c; --panel2:#181b25; --fg:#e6e8ef; --muted:#a7adbd;
+  --faint:#6d7383; --line:#232734; --accent:#8b93ff; --profit:#2fd08c; --loss:#f4586a;
+  --gold:#d9b544; --code-bg:#181b25; color-scheme:dark;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-}
-@media (prefers-color-scheme: dark){
-  :root{
-    --bg:#0c0e14; --panel:#12141c; --panel2:#181b25; --fg:#e6e8ef; --muted:#a7adbd;
-    --faint:#6d7383; --line:#232734; --accent:#8b93ff; --profit:#2fd08c; --loss:#f4586a;
-    --gold:#d9b544; --code-bg:#181b25; color-scheme:dark;
-  }
 }
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font:15px/1.65 var(--sans);margin:0;padding:0 16px 60px}

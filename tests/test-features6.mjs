@@ -51,10 +51,10 @@ t('the replay is wired to the price chart and stops its timer when the chart clo
 });
 
 console.log('\nLight / dark appearance');
-t('Auto follows the device; Dark and Light are fixed; anything else counts as Auto', () => {
-  const isLight = (0, eval)('(()=>{ const APPEARANCES=["auto","dark","light"]; return ' + grabFn('appearanceIsLight') + '; })()');
-  eq([isLight('auto', true), isLight('auto', false), isLight('dark', true), isLight('light', false), isLight(undefined, true), isLight('sepia', false)],
-    [true, false, false, true, true, false]);
+t('Dark by default (nothing chosen, or anything unknown, is dark even on a light device); Light is fixed; Auto follows the device', () => {
+  const isLight = (0, eval)('(()=>{ const APPEARANCES=["dark","light","auto"]; return ' + grabFn('appearanceIsLight') + '; })()');
+  eq([isLight('auto', true), isLight('auto', false), isLight('dark', true), isLight('light', false), isLight(undefined, true), isLight('sepia', true)],
+    [true, false, false, true, false, false]);
 });
 t('Pulse’s mint accent has a deepened light-mode twin in the stylesheet (colour themes are gone)', () => {
   ok(html.includes('#pz{--pz-acc:var(--pz-acc-d,#3FE0A0)'), 'mint on dark');
@@ -63,7 +63,8 @@ t('Pulse’s mint accent has a deepened light-mode twin in the stylesheet (colou
 t('appearance syncs, rides backups, applies before first paint, and follows the device live', () => {
   ok(html.includes("'playbooks','appearance'];"), 'synced settings field');
   ok(html.includes('appearance:settings.appearance}'), 'in snapshots/backups');
-  ok(html.includes("localStorage.getItem('ledger_light')") && html.includes("document.body.classList.add('light')"), 'first-paint script');
+  ok(html.includes("if(localStorage.getItem('ledger_appear')==='light')document.body.classList.add('light')"), 'first-paint script: light only when that’s what was last shown');
+  ok(!/\(function\(\)\{[^\n]*prefers-color-scheme[^\n]*classList\.add\('light'\)/.test(html), 'first paint never follows the device on its own');
   ok(html.includes("matchMedia('(prefers-color-scheme: light)').addEventListener('change'"), 'Auto follows a device switch');
   ok(grabFn('pzSheetHtml').includes('data-pz-appear'), 'Pulse settings has the switch');
   ok(html.includes('body.light #pz{--pz-acc:var(--pz-acc-l'), 'Pulse picks the deepened accent in light');
