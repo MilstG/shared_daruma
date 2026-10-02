@@ -1680,7 +1680,7 @@ separate job on every push.
 
 Architecture in one paragraph: `ledger.html` holds the markup, styles and fonts,
 and loads its code from `app/` as ordinary scripts, in order: vendored Chart.js,
-then sixteen parts from `core.js` (storage, sync, the exchange API) and
+then seventeen parts from `core.js` (storage, sync, the exchange API) and
 `engine.js` (reconstruction and analytics) through the views, Pulse and `plans.js`
 (plan vs outcome) to `boot.js`, which runs last. The parts share one global scope, the way the single
 inline script did. **The one rule:** code that runs *while a part loads* (as
