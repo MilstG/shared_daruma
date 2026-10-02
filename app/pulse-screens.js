@@ -560,7 +560,7 @@ function socMentorHtml(D){
   const c=socGet('mentees','/mentor',30000), L=c&&c.d?c.d.mentees:null;
   if(!L)return `${back}${pzHead('Mentor','Mentees')}<p class="pz-sub">${c&&c.err?esc(c.err):'<span class="pz-spin"></span>Loading…'}</p>`;
   const pg=pzPage('mentees',L);
-  return `${back}${pzHead(L.length+' member'+(L.length===1?'':'s')+' let you in','Mentees')}
+  return `${back}${pzHead(L.length+' member'+(L.length===1?'':'s')+' let you in','Mentees')}<a class="pz-card pz-cardlink" href="#reviews" style="margin-bottom:12px"><b style="flex:1">Trades to review</b>${pzI('chev',18)}</a>
     ${L.length?`<div class="pz-jgrid">${pg.items.map(m=>`<a class="pz-card pz-cardlink" href="#mentee/${esc(m.handle)}">${socAv(m.handle,36)}<span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><b style="font-size:15px">@${esc(m.handle)}</b>
       <span class="pz-sub" style="font-size:12px">7-day discipline ${m.avg7==null?'—':m.avg7} · ${m.slips7} slip${m.slips7===1?'':'s'} · ${m.streak}-day streak${m.lastDay?' · last traded '+esc(dayLabel(m.lastDay)):''}</span>
       <span class="pz-sub" style="font-size:12px">${m.notes} note${m.notes===1?'':'s'} so far</span></span>${pzI('chev',18)}</a>`).join('')}</div>${pg.html}`
@@ -585,7 +585,7 @@ function socMenteeHtml(D, handle){
     <div class="pz-col"><section class="pz-card pz-kv"><b class="pz-kvh">At a glance</b><div class="pz-row-t"><span>7-day discipline</span><b>${m.avg7==null?'—':m.avg7}</b></div><div class="pz-row-t"><span>Slips, 7 days</span><b>${m.slips7}</b></div><div class="pz-row-t"><span>Best streak</span><b>${m.best}</b></div>
       ${m.challenge?`<div class="pz-row-t"><span>Last challenge</span><b>${esc(m.challenge)}</b></div>`:''}${m.habits.length?`<p class="pz-sub" style="font-size:13px">Habits: ${m.habits.map(esc).join(' · ')}</p>`:''}</section>
       ${(notesBy['']||[]).length?`<section class="pz-card pz-kv"><b class="pz-kvh">General notes</b>${notesBy[''].map(n=>`<div class="pz-quote">${esc(n.text)}</div>`).join('')}</section>`:''}
-      <p class="pz-fine">You see what @${esc(m.handle)} chose to share with mentors: scores, slips and their nightly lesson. Never trades, P&amp;L or wallets.</p></div></div>`;
+      <p class="pz-fine">You see what @${esc(m.handle)} chose to share with mentors: scores, slips and their nightly lesson. Trades only when they send one for review (under Trades to review); never wallets.</p></div></div>`;
 }
 
 // ---- reminders: web push to this device, on the member's clock ----

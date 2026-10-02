@@ -376,6 +376,25 @@ function sanitizeTrade(b, prev, opts) {
   if (t.status !== 'closed') { delete t.pct; delete t.r; delete t.usd; }
   return t;
 }
+// A trade a member sends their mentors for review: what a trade post carries (market, side, times,
+// prices, the result as % and R), a size range instead of the size, their note and plan, and the
+// dollar result only for members who share dollar P&L.
+const SIZE_RANGES = ['under $1k', '$1k to $10k', '$10k to $100k', '$100k to $1M', 'over $1M'];
+function sanitizeReviewTrade(b, opts) {
+  if (!b || typeof b !== 'object') return null;
+  const coin = String(b.coin || '').trim(), side = b.side === 'short' ? 'short' : b.side === 'long' ? 'long' : null, openedAt = stamp(b.openedAt);
+  if (!COIN_RE.test(coin) || !side || openedAt == null) return null;
+  const c = stamp(b.closedAt), closedAt = c != null && c >= openedAt ? c : null, num = (v, lo, hi) => v == null || v === '' ? null : clampNum(v, lo, hi);
+  const t = { coin, side, market: b.market === 'spot' ? 'spot' : 'perp', openedAt, closedAt };
+  const label = cleanText(b.label, 40); if (label) t.label = label;
+  for (const k of ['entry', 'stop', 'target'].concat(closedAt ? ['exit'] : [])) { const v = price(b[k]); if (v != null) t[k] = v; }
+  const sz = num(b.size, 0, SIZE_RANGES.length - 1); if (sz != null) t.size = Math.round(sz);
+  if (closedAt) { const pct = num(b.pct, -1000, 1000), r = num(b.r, -100, 100), usd = num(b.usd, -1e9, 1e9);
+    if (pct != null) t.pct = Math.round(pct * 100) / 100; if (r != null) t.r = Math.round(r * 100) / 100;
+    if (usd != null && opts && opts.usd) t.usd = Math.round(usd * 100) / 100; }
+  for (const [k, max] of [['setup', 40], ['note', 1500], ['plan', 500]]) { const v = k === 'setup' ? cleanText(b[k], max) : cleanPost(b[k], max); if (v) t[k] = v; }
+  return t;
+}
 // ---- the HTTP side ----
 // Sign-In with Ethereum (EIP-4361) message text. Wallets recognise this format and check the
 // domain against the page they're on, so it has to be the host the member is looking at.
@@ -687,6 +706,8 @@ function createSocial(opts) {
     return q('DELETE FROM events WHERE id = ?').run(id).changes; });
   const dropComment = c => tx(() => { q('DELETE FROM reports WHERE comment = ?').run(c.id);
     if (q('DELETE FROM comments WHERE id = ?').run(c.id).changes) q('UPDATE events SET comments = max(0, comments - 1) WHERE id = ?').run(c.event); });
+  // a trade sent for review, and its thread
+  const dropReview = id => tx(() => { q('DELETE FROM review_comments WHERE review = ?').run(id); return q('DELETE FROM reviews WHERE id = ?').run(id).changes; });
   const dropMember = (id) => { const gone = own(S.members, id) ? S.members[id].address : null;
     const hadVault = own(S.members, id) && !!S.members[id].vault, goneHandle = own(S.members, id) ? '@' + S.members[id].handle : null;
     // a deleted profile leaves nothing behind: the admin log keeps what was done, not who to
@@ -708,6 +729,11 @@ function createSocial(opts) {
       q('DELETE FROM kudos WHERE member = ?').run(id);
       for (const c of q('SELECT id, event FROM comments WHERE member = ?').all(id)) dropComment(c);
       q('DELETE FROM reports WHERE member = ?').run(id);
+      // the trades they sent for review go with their threads; what they wrote on others' goes too
+      for (const r of q('SELECT id FROM reviews WHERE member = ?').all(id)) dropReview(r.id);
+      q('UPDATE reviews SET comments = max(0, comments - (SELECT count(*) FROM review_comments c WHERE c.review = reviews.id AND c.member = ?)) WHERE id IN (SELECT review FROM review_comments WHERE member = ?)').run(id, id);
+      q('DELETE FROM review_comments WHERE member = ?').run(id);
+      q('UPDATE reviews SET reviewer = NULL WHERE reviewer = ?').run(id);
       dropMedia(q('SELECT id FROM media WHERE member = ?').all(id));
       q('DELETE FROM members WHERE id = ?').run(id); written.delete('m:' + id);
       if (hadVault) store.afterCommit(() => { try { fs.unlinkSync(vaultFile(id)); } catch (e) {} }); // the journal file goes once the row has
@@ -1211,6 +1237,25 @@ function createSocial(opts) {
     return { handle: o.handle, av: avUrl(o), level: st.level || 1, streak: st.streak || 0, avg7: days.length ? Math.round(days.reduce((a, d) => a + d.s, 0) / days.length) : null,
       slips7: days.reduce((a, d) => a + (d.f ? d.f.length : 0), 0), lastDay: days.length ? days[days.length - 1].k : null, seen: o.statsAt || null,
       notes: commentsFor(o.id).length }; };
+  // ---- trade reviews: a trade a member sends their mentors, and the thread on it. The member and
+  // the server's mentors see it while the member lets mentors in; admins read it (read-only) ----
+  const REVIEWS_PER_DAY = 10, REVIEWS_KEEP = 100, REVIEW_COMMENTS_MAX = 200;
+  const reviewById = id => typeof id === 'string' && /^[a-f0-9]{12}$/.test(id) ? q('SELECT * FROM reviews WHERE id = ?').get(id) || null : null;
+  const mentorsOf = m => members().filter(o => o.mentor && !o.banned && o.id !== m.id);
+  const reviewRole = (r, me) => { const o = own(S.members, r.member) ? S.members[r.member] : null; if (!o) return null;
+    return o.id === me.id ? 'mentee' : me.mentor && !o.banned && o.share.mentor ? 'mentor' : null; };
+  const reviewTrade = r => { let t = {}; try { t = JSON.parse(r.data) || {}; } catch (e) {}
+    if (!(own(S.members, r.member) && S.members[r.member].share.usd)) delete t.usd; return t; }; // dollars only while they share them
+  const tradeName = t => (t.label || t.coin) + ' ' + t.side;
+  const reviewOut = (r, viewer) => { const o = own(S.members, r.member) ? S.members[r.member] : null, by = r.reviewer && own(S.members, r.reviewer) ? S.members[r.reviewer] : null;
+    const lastBy = (q('SELECT member FROM review_comments WHERE review = ? ORDER BY at DESC, rowid DESC LIMIT 1').get(r.id) || {}).member;
+    return { id: r.id, key: viewer && viewer.id === r.member ? r.trade : null, at: r.at, last: r.last, handle: o ? o.handle : null, av: avUrl(o), trade: reviewTrade(r),
+      comments: r.comments, reviewed: r.reviewed ? { at: r.reviewed, by: by ? by.handle : null } : null, waiting: !r.reviewed && (!lastBy || lastBy === r.member) }; };
+  const threadOut = (r, viewer, role) => ({ role, review: reviewOut(r, viewer),
+    comments: q('SELECT * FROM review_comments WHERE review = ? ORDER BY at, rowid').all(r.id).filter(c => own(S.members, c.member) && !S.members[c.member].banned)
+      .map(c => ({ id: c.id, at: c.at, text: c.text, handle: S.members[c.member].handle, av: avUrl(S.members[c.member]), mentor: c.member !== r.member, mine: !!viewer && c.member === viewer.id })) });
+  const addReviewComment = (rid, m, text) => tx(() => { q('INSERT INTO review_comments (id, review, member, at, text) VALUES (?, ?, ?, ?, ?)').run(crypto.randomBytes(6).toString('hex'), rid, m.id, now(), text);
+    q('UPDATE reviews SET comments = comments + 1, last = ? WHERE id = ?').run(now(), rid); });
 
   // ---- seasons ----
   const seasonInfo = L => { if (!L.season) return null; const id = seasonOf(L.season, todayKey()), b = seasonBounds(id);
@@ -1689,6 +1734,9 @@ function createSocial(opts) {
         const c = q('SELECT * FROM comments WHERE id = ?').get(parts[2]); if (!c) return json(res, 404, { error: 'no such comment' });
         dropComment(c); return json(res, 200, { ok: true });
       }
+      // trade reviews, read-only: what members sent their mentors and the threads on them, for moderation
+      if (sub === 'reviews' && M === 'GET' && !parts[2]) return json(res, 200, { reviews: q('SELECT * FROM reviews ORDER BY last DESC LIMIT 200').all().map(r => reviewOut(r, null)) });
+      if (sub === 'reviews' && M === 'GET') { const r = reviewById(parts[2]); return r ? json(res, 200, threadOut(r, null, 'admin')) : json(res, 404, { error: 'no such review' }); }
       return json(res, 404, { error: 'not found' });
     }
 
@@ -2080,6 +2128,51 @@ function createSocial(opts) {
         S.comments[o.id] = commentsFor(o.id).filter(c => !(c.id === parts[3] && c.by === me.id)); save('comments'); return json(res, 200, { ok: true }); }
       return json(res, 404, { error: 'not found' });
     }
+    // ---- trade reviews: send a trade to your mentors; they comment and mark it reviewed ----
+    if (head === 'reviews' && !parts[1] && M === 'GET') {
+      const ids = me.mentor ? members().filter(o => o.id !== me.id && !o.banned && o.share.mentor).map(o => o.id) : [];
+      return json(res, 200, { mine: q('SELECT * FROM reviews WHERE member = ? ORDER BY last DESC LIMIT 100').all(me.id).map(r => reviewOut(r, me)),
+        toReview: me.mentor ? q('SELECT * FROM reviews WHERE member IN (SELECT value FROM json_each(?)) ORDER BY last DESC LIMIT 200').all(JSON.stringify(ids)).map(r => reviewOut(r, me)) : null,
+        mentorsOn: !!me.share.mentor, mentors: mentorsOf(me).length }); }
+    if (head === 'reviews' && !parts[1] && M === 'POST') {
+      if (!me.share.mentor) return json(res, 403, { error: 'Switch on “Let mentors see my days” under What you share first.' });
+      const to = mentorsOf(me); if (!to.length) return json(res, 409, { error: 'There are no mentors on this server yet.' });
+      const key = typeof body.key === 'string' && /^[a-z0-9]{6,32}$/.test(body.key) ? body.key : null, tr = sanitizeReviewTrade(body.trade, { usd: !!me.share.usd });
+      if (!key || !tr) return json(res, 400, { error: 'That trade can’t be sent: it needs its market, side and open time.' });
+      const text = cleanPost(body.text, 1000), ex = q('SELECT * FROM reviews WHERE member = ? AND trade = ?').get(me.id, key);
+      if (text && limited(req, 'rcomment:' + me.id, 60, 3600000, true)) return json(res, 429, { error: 'That’s a lot of comments this hour.' });
+      if (!ex && dayLimit(me, 'reviewLog', REVIEWS_PER_DAY)) return json(res, 429, { error: REVIEWS_PER_DAY + ' trades a day can go to review.' });
+      const id = ex ? ex.id : crypto.randomBytes(6).toString('hex');
+      tx(() => { if (ex) q('UPDATE reviews SET data = ?, last = ? WHERE id = ?').run(JSON.stringify(tr), now(), id); // sent again: the summary is brought up to date
+        else { q('INSERT INTO reviews (id, member, trade, at, last, data) VALUES (?, ?, ?, ?, ?, ?)').run(id, me.id, key, now(), now(), JSON.stringify(tr));
+          for (const o of q('SELECT id FROM reviews WHERE member = ? ORDER BY last DESC LIMIT -1 OFFSET ?').all(me.id, REVIEWS_KEEP)) dropReview(o.id); } // the oldest go
+        if (text) addReviewComment(id, me, text); });
+      if (!ex) for (const o of to) notify(o, 'mentor', '@' + me.handle + ' sent a trade for review: ' + tradeName(tr), { title: 'A trade to review', url: '/pulse#tr/' + id });
+      save(me, ...(ex ? [] : to)); return json(res, 200, threadOut(reviewById(id), me, 'mentee'));
+    }
+    if (head === 'reviews' && parts[1]) {
+      const r = reviewById(arg), role = r && reviewRole(r, me);
+      if (!role) return json(res, 404, { error: 'That trade review isn’t here.' });
+      const o = S.members[r.member], what = tradeName(reviewTrade(r));
+      if (!parts[2] && M === 'GET') return json(res, 200, threadOut(r, me, role));
+      if (!parts[2] && M === 'DELETE') { if (role !== 'mentee') return json(res, 403, { error: 'Only the member who sent it can take it back.' }); dropReview(r.id); return json(res, 200, { ok: true }); }
+      if (parts[2] === 'comments' && M === 'POST') {
+        const text = cleanPost(body.text, 1000); if (!text) return json(res, 400, { error: 'Write the comment first.' });
+        if (r.comments >= REVIEW_COMMENTS_MAX) return json(res, 409, { error: 'This thread is full (' + REVIEW_COMMENTS_MAX + ' comments).' });
+        if (limited(req, 'rcomment:' + me.id, 60, 3600000, true)) return json(res, 429, { error: 'That’s a lot of comments this hour.' });
+        addReviewComment(r.id, me, text);
+        // a mentor's comment goes to the member; a reply goes to the mentors in the thread (every mentor, before one of them answered)
+        const inT = new Set(q('SELECT DISTINCT member FROM review_comments WHERE review = ? AND member != ?').all(r.id, r.member).map(x => x.member));
+        const all = role === 'mentor' ? [o] : mentorsOf(o), inThread = all.filter(x => inT.has(x.id)), to = role === 'mentor' || !inThread.length ? all : inThread;
+        for (const x of to) notify(x, 'mentor', '@' + me.handle + (role === 'mentor' ? ' on your ' + what + ': ' : ' replied on their ' + what + ': ') + text, { title: role === 'mentor' ? 'Your mentor on a trade' : 'A reply on a trade', url: '/pulse#tr/' + r.id });
+        if (to.length) save(...to); return json(res, 200, threadOut(reviewById(r.id), me, role)); }
+      if (parts[2] === 'reviewed' && M === 'POST') {
+        if (role !== 'mentor') return json(res, 403, { error: 'Only a mentor marks a trade reviewed.' });
+        const on = body.done !== false; q('UPDATE reviews SET reviewed = ?, reviewer = ? WHERE id = ?').run(on ? now() : null, on ? me.id : null, r.id);
+        if (on && !r.reviewed) { notify(o, 'mentor', '@' + me.handle + ' reviewed your ' + what + ' ✓', { title: 'Trade reviewed', url: '/pulse#tr/' + r.id }); save(o); }
+        return json(res, 200, threadOut(reviewById(r.id), me, role)); }
+      return json(res, 404, { error: 'not found' });
+    }
     if (head === 'me' && M === 'PUT') {
       const r = typeof body.avatar === 'string' && MEDIA_RE.test(body.avatar) ? q('SELECT * FROM media WHERE id = ?').get(body.avatar) : null;
       if (body.avatar !== undefined && body.avatar !== null && (!r || r.member !== me.id || r.kind !== 'avatar')) return json(res, 400, { error: 'That picture didn’t upload. Try again.' });
@@ -2386,5 +2479,5 @@ function createSocial(opts) {
   return { handle, coach, tick, memberOf: req => { const m = byKey(req); return m && !m.banned ? m : null; }, state: () => S, store, close: () => { closing = true; clearTimeout(seedTimer); store.close(); } };
 }
 
-module.exports = { createSocial, sanitizeTrade, sanitizePostCfg, sanitizeStats, sanitizeShare, sanitizeComp, sanitizeVaultBlob, siweMessage, eventsFromStats, portfolioStats, leagueRollover, leagueRolloverBy, isoWeekMonday,
+module.exports = { createSocial, sanitizeTrade, sanitizeReviewTrade, sanitizePostCfg, sanitizeStats, sanitizeShare, sanitizeComp, sanitizeVaultBlob, siweMessage, eventsFromStats, portfolioStats, leagueRollover, leagueRolloverBy, isoWeekMonday,
   boardRows, compStandings, compStatus, disciplineOver, isoWeekOfKey, seasonOf, seasonBounds, seasonLabel, weeksIn, TIERS, DEFAULT_CONFIG, DEFAULT_SHARE };

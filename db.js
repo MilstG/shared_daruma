@@ -44,6 +44,15 @@ const MIGRATIONS = [
      kind TEXT NOT NULL, ref TEXT);
    CREATE INDEX media_member ON media (member, at);
    CREATE INDEX media_ref ON media (ref, at);`,
+  // trades a member sent their mentors for review (one row per trade; the summary they chose to
+  // send is `data`), and the thread on each: the mentors' comments and the member's replies
+  `CREATE TABLE reviews (id TEXT PRIMARY KEY, member TEXT NOT NULL, trade TEXT NOT NULL, at INTEGER NOT NULL, last INTEGER NOT NULL,
+     data TEXT NOT NULL, comments INTEGER NOT NULL DEFAULT 0, reviewed INTEGER, reviewer TEXT);
+   CREATE UNIQUE INDEX reviews_trade ON reviews (member, trade);
+   CREATE INDEX reviews_last ON reviews (last);
+   CREATE TABLE review_comments (id TEXT PRIMARY KEY, review TEXT NOT NULL, member TEXT NOT NULL, at INTEGER NOT NULL, text TEXT NOT NULL);
+   CREATE INDEX review_comments_review ON review_comments (review, at);
+   CREATE INDEX review_comments_member ON review_comments (member);`,
 ];
 
 function open(dataDir) {

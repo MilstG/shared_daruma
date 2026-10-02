@@ -475,6 +475,26 @@ link to join *your* league. A server upgraded from an older version imports its
   mentor's **Mentees** screen with each day's score, slips and the lesson they wrote
   that night, and the mentor can leave a note on any day. Notes arrive in the
   member's inbox (Today → New for you) and as a push notification.
+- **Trade reviews.** A member who lets mentors in can send one trade to the league's
+  mentors: **Ask mentor** on a Pulse journal card, or **Ask my mentor to review this
+  trade** under an expanded trade in the full journal. What goes is the shape of a trade
+  post (market, side, open and close times, entry, exit, planned stop and target, %
+  and R, a size range instead of the size) plus their note and the day's plan; the
+  dollar result only with **Show dollar P&L** on (and it's hidden again if they switch
+  that off). The server knows the trade by a hash of its id, never the id itself (it
+  holds the wallet address). Mentors see it under **Trades to review** (Social →
+  Reviews, `#reviews`), comment as often as they like and mark it **Reviewed ✓**; the
+  member gets each comment in their inbox, replies in the thread (Pulse `#tr/<id>`, or
+  under the trade in the journal) and sees **Reviewed by @mentor**. Only the member
+  and the server's mentors see a thread, and only while the member lets mentors in:
+  switching that off, a suspension, or the owner standing a mentor down closes it at
+  once. Admins read every thread for moderation, read-only (`GET
+  /api/social/admin/reviews[/<id>]`, and in Pulse under Reviews). Limits: 10 new trades a
+  day, 60 comments an hour, 1,000 characters a comment, 200 comments a thread, the newest
+  100 trades per member. The member can take a trade back (its thread goes with it);
+  deleting a profile removes its trades and threads, and its comments on anyone else's.
+  Stored in `pulse.db` (`reviews`, `review_comments`). Routes: `GET/POST /reviews`,
+  `GET/DELETE /reviews/<id>`, `POST /reviews/<id>/comments`, `POST /reviews/<id>/reviewed`.
 - **Reminders (web push).** In Pulse's settings, **Remind me on this device** sends a
   morning check-in reminder and, on days you traded and haven't reviewed, an evening
   review reminder, at times you pick on your own clock; partner nudges, mentor notes
@@ -1209,6 +1229,7 @@ switches moved into **Settings**).
 | **Tax PDF** | Bank-statement-style PDF for your accountant: cover summary per tax year, monthly subtotals, and every realized trade with a running balance and page footers. Generated entirely client-side by a built-in dependency-free PDF writer (base-14 Courier fonts) — nothing leaves your machine, and the strict CSP stays intact. |
 | **Spot lots** | 8949-style lot-level CSV for spot: FIFO cost basis, one row per lot consumed by each sale — quantity, acquired/disposed dates, proceeds, basis, gain, short/long term. Sales of tokens that were transferred or airdropped in (no on-exchange purchase) are emitted at zero cost with an explicit `UNKNOWN BASIS` note for your accountant to resolve. Built from the locally cached fills. |
 | **Tax export by country…** | Tax exports set up for your country, with a preview per tax year before you download. **US**: FIFO lots, short vs long term. **UK**: HMRC's matching for cryptoassets (same day, then the next 30 days, then the Section 104 pool), on the 6 April tax year. **Germany**: FIFO, with coins held more than a year marked tax-free and the year's tax-free total shown. **Australia**: FIFO, flagging gains that may get the 50% CGT discount, on the 1 July income year. **Canada**: adjusted cost base (average cost), flagging possible superficial losses. **Other**: FIFO by calendar year. Set a report currency and paste a daily rate table (`YYYY-MM-DD,rate`, units per 1 USD, e.g. from your central bank). Each fill converts at its own date, and the download stays disabled until every fill has a rate. Two CSVs: spot disposals (asset, quantity, dates, proceeds, costs including fees, gain, matching rule, flag) and closed perp trades (realized P&L, fees, funding and net, each converted at the close date). Every wallet is pooled, since tax is per person. It computes gains, not tax. **Not tax advice.** |
+| **Koinly CSV / CoinTracker CSV** (in Tax export by country…) | Files in the import formats of the two most used crypto tax tools. **Koinly** (universal format): `Date, Sent Amount, Sent Currency, Received Amount, Received Currency, Fee Amount, Fee Currency, Net Worth Amount, Net Worth Currency, Label, Description, TxHash`, dates `YYYY-MM-DD HH:mm:ss` UTC. **CoinTracker**: `Date, Received Quantity, Received Currency, Sent Quantity, Sent Currency, Fee Amount, Fee Currency, Tag`, dates `MM/DD/YYYY HH:mm:ss` UTC. Spot fills are trades (the fee in its own coin). Perps keep the other exports' treatment, one closed trade at its close time: realised profit is received, a loss sent (Koinly `realized gain`, CoinTracker `margin_gain` / `margin_loss`), with the trade's fees in the fee column; its funding is its own row (paid: Koinly `margin fee`, CoinTracker `margin_fee`; received: `realized gain` / `margin_gain`); a fee rebate is `realized gain` / `margin_rebate`. Deposits and withdrawals (capital flows) are untagged transfers in USDC. Amounts stay in the coins traded (both tools price them in your currency); Net Worth is the USD value where the quote is a stablecoin. Pick all history, one tax year (the country's tax year) or a date range. |
 | **Export journal** | Journal entries as JSON. |
 | **Backup all** | Everything portable in one JSON: journal, wallets, settings, saved MAE/MFE measurements, and per-wallet fill caches (which preserve history beyond the API's pagination cap — keep these). Restore via **Open existing** or by importing on another device. |
 | **Backup to server** | (shown when server sync is connected) The same full backup, stored gzipped on the companion server under `DATA_DIR/backups/` — newest 10 kept. List and fetch them back via `GET /api/backups`. |
@@ -1531,7 +1552,7 @@ separate job on every push.
 
 Architecture in one paragraph: `ledger.html` holds the markup, styles and fonts,
 and loads its code from `app/` as ordinary scripts, in order: vendored Chart.js,
-then fifteen parts from `core.js` (storage, sync, the exchange API) and
+then sixteen parts from `core.js` (storage, sync, the exchange API) and
 `engine.js` (reconstruction and analytics) through the views and Pulse to
 `boot.js`, which runs last. The parts share one global scope, the way the single
 inline script did. **The one rule:** code that runs *while a part loads* (as
