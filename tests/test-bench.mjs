@@ -82,8 +82,9 @@ for (let i = 0; i < 40; i++) { const t0 = NOW - (i + 1) * DAY, win = i % 3 !== 0
   FILLS[W('1')].push(fl('B', 10, 100, 0, 0, t0, 2 * i + 1), fl('A', 10, win ? 102 : 99, 10, win ? 20 : -10, t0 + 2 * 3600e3, 2 * i + 2)); }
 const PORT = [['month', { accountValueHistory: [[NOW - 30 * DAY, '1000'], [NOW, '1100']], pnlHistory: [[NOW - 30 * DAY, '0'], [NOW, '100']] }],
   ['allTime', { accountValueHistory: [[NOW - 400 * DAY, '0'], [NOW - 300 * DAY, '500'], [NOW, '1100']], pnlHistory: [[NOW - 300 * DAY, '0'], [NOW, '100']] }]];
+let w1Down = false; // the exchange failing for a wallet that already counts
 const fetchImpl = async (url, o) => { const b = JSON.parse(o.body), u = String(b.user || '').toLowerCase();
-  if (u === W('9')) return { ok: false, status: 500, json: async () => ({}) };
+  if (u === W('9') || (w1Down && u === W('1'))) return { ok: false, status: 500, json: async () => ({}) };
   const out = b.type === 'portfolio' ? PORT : b.type === 'userFillsByTime' ? (FILLS[u] || []).filter(f => f.time >= (b.startTime || 0)) : [];
   return { ok: true, status: 200, json: async () => out }; };
 const dataDir = mkdtempSync(join(tmpdir(), 'ledger-bench-'));
@@ -156,6 +157,16 @@ try {
     const a = (await call('/admin/bench', { owner: true })).d, st = Object.fromEntries(a.seedList.map(x => [x.address, x]));
     eq([st[W('1')].st, st[W('2')].st, st[W('9')].st, st[W('1')].re], ['ok', 'skip', 'err', false]);
     eq((await call('/admin/bench', { method: 'POST', key: keys[1], body: { action: 'reread' } })).status, 401, 'members can’t');
+    w1Down = true;
+    await call('/admin/bench', { method: 'POST', owner: true, body: { action: 'reread', address: W('1') } });
+    ok(await waitFor(async () => (await call('/admin/bench', { owner: true })).d.seedCounts.re === 0), 'the failed re-read finished');
+    const after = (await call('/admin/bench', { owner: true })).d, x = after.seedList.find(y => y.address === W('1'));
+    eq([x.st, x.style, after.seeds], ['ok', 'day', 1], 'a failed re-read keeps the last good read counted');
+    ok(/^last re-read failed/.test(x.why), x.why);
+    w1Down = false;
+    await call('/admin/bench', { method: 'POST', owner: true, body: { action: 'reread', address: W('1') } });
+    ok(await waitFor(async () => (await call('/admin/bench', { owner: true })).d.seedCounts.re === 0));
+    eq((await call('/admin/bench', { owner: true })).d.seedList.find(y => y.address === W('1')).why, '', 'a good read clears the note');
   });
   await t('failed ones can be retried or removed; settings and seeds survive a restart', async () => {
     eq((await call('/admin/bench', { method: 'POST', owner: true, body: { action: 'retry' } })).d.requeued, 1);

@@ -881,6 +881,9 @@ function createSocial(opts) {
   const seedWork = async () => {
     const a = nextSeed(); if (seedBusy || !a || !opts.peerSummaryFor) return;
     seedBusy = true; const x = S.benchSeeds[a];
+    // a counted wallet asked to be re-read keeps its last read if this one fails: only a new read replaces it
+    const keep = x.re && x.st === 'ok' && x.sum;
+    const failed = msg => { if (keep) x.why = 'last re-read failed: ' + msg; else { x.st = 'err'; x.why = msg; } };
     try {
       const r = await opts.peerSummaryFor(a, { minTrades: S.config.bench.minTrades, days: S.config.bench.days });
       if (!own(S.benchSeeds, a)) return; // removed while it was being read
@@ -888,8 +891,8 @@ function createSocial(opts) {
       x.n = r && r.n != null ? r.n : null; x.usd = r && r.usd ? r.usd : null; // shown to the owner in the seed table, never in the groups
       if (sum) { x.st = 'ok'; x.why = ''; x.sum = sum; }
       else if (r && r.ok === false) { x.st = 'skip'; x.why = seedWhy(r); x.sum = null; }
-      else { x.st = 'err'; x.why = String((r && r.error) || 'couldn’t read this wallet').slice(0, 120); }
-    } catch (e) { if (own(S.benchSeeds, a)) { x.st = 'err'; x.why = String((e && e.message) || e).slice(0, 120); } }
+      else failed(String((r && r.error) || 'couldn’t read this wallet').slice(0, 120));
+    } catch (e) { if (own(S.benchSeeds, a)) failed(String((e && e.message) || e).slice(0, 120)); }
     finally { if (own(S.benchSeeds, a)) { x.done = now(); x.tries = (x.tries || 0) + 1; delete x.re; } seedBusy = false; benchDirty = true; save('benchSeeds');
       if (!nextSeed()) { benchDirty = false; benchBuild(); } else seedSchedule(); } // the batch is done: count it now
   };
