@@ -188,7 +188,7 @@ function extraDiagHtml(closed,allv,s){
        <div class="diag-card"><h3 data-tip="How your equity curve recovers from drawdowns, and the depth of your worst losing run.">Drawdown recovery &amp; streak depth</h3>${ddHtml}</div>
        <div class="diag-card"><h3 data-tip="Net directional exposure right now, netting offsetting longs/shorts by coin across wallets.">Open-book net exposure</h3>${(function(){const ne=netExposureByCoin();return ne.length?ne.slice(0,6).map(x=>mrow(esc(x.coin)+(x.wallets>1?' · '+x.wallets+' wallets':''),(x.net>=0?'<span class="pos-t">net long ':'<span class="neg-t">net short ')+fmtUsd(Math.abs(x.net))+'</span>','Signed sum of position notional for this coin across all wallets.')).join(''):'<p class="lead">No open perp positions.</p>';})()}</div>
      </div></div>
-   ${feeHtml}${sizingHtml}${nfDiagExtra(closed)}`;
+   ${feeHtml}${sizingHtml}${nfDiagExtra(closed)}${planDiagHtml(closed)}`;
 }
 function wireExtraDiag(closed,allv,s){
   // cost drag by month
@@ -330,7 +330,7 @@ function journalRow(t,j,R){
         <div style="display:flex;gap:6px">
           <input type="number" data-j="plan_entry" data-id="${esc(t.id)}" value="${(j.plan&&j.plan.entry)?esc(j.plan.entry):''}" placeholder="entry px" step="any" style="flex:1">
           <input type="number" data-j="plan_stop" data-id="${esc(t.id)}" value="${(j.plan&&j.plan.stop)?esc(j.plan.stop):''}" placeholder="stop px" step="any" style="flex:1">
-          <input type="number" data-j="plan_target" data-id="${esc(t.id)}" value="${(j.plan&&j.plan.target)?esc(j.plan.target):''}" placeholder="target px" step="any" style="flex:1"></div></div>
+          <input type="number" data-j="plan_target" data-id="${esc(t.id)}" value="${(j.plan&&j.plan.target)?esc(j.plan.target):''}" placeholder="target px" step="any" style="flex:1"></div>${planOutcomeLine(t,j)}</div>
     </div>
     <div>
       <div class="field"><label>Execution rating</label>
@@ -475,6 +475,7 @@ function nextPlan(prev,e,s,tg,now){
   const p={entry:e>0?e:'',stop:s>0?s:'',target:tg>0?tg:''};
   const same=prev&&String(prev.entry)===String(p.entry)&&String(prev.stop)===String(p.stop)&&String(prev.target)===String(p.target);
   if(!same)p.at=now; else if(prev.at)p.at=prev.at; // unchanged legacy plans stay unstamped (unknown), never "hindsight"
+  if(prev&&prev.why)p.why=prev.why; // the one-line reason from Pulse's Plan a trade stays with the plan
   return p;
 }
 function ensureJ(id){ if(!journal[id])journal[id]={notes:'',tags:[],setup:'',rating:0,mistakes:[],risk:null,plan:null}; return journal[id]; }
@@ -527,6 +528,7 @@ function restoreDrafts(list){
   });
 }
 function render(){
+  try{ planAttachPending(); }catch(e){ console.warn('pending plans',e); } // a plan written in Pulse finds its trade once the trade has loaded
   if(PZ){ // Pulse draws only its own view; the hidden full dashboard isn't rebuilt
     // spot-only history under the default perps view would show empty dials: widen it (not saved)
     view='combined'; // Pulse reads every market: XP, streaks and Today never depend on the full app's view switch

@@ -473,7 +473,8 @@ async function openReplay(id,btn){
     +'<p class="lead" style="font-size:11.5px;color:var(--faint);margin:2px 0 8px">'+itv.name+' candles · \u25b2 = entry / add fill · \u25bc = close fill · gold dash = avg entry'+(!t.isOpen&&t.avgExit>0?' · green dash = avg exit':'')
     +(plan&&plan.stop>0?' · red dots = planned stop':'')+(plan&&plan.target>0?' · green dots = planned target':'')
     +(ex?' · \u2715 = worst / best price while the trade was on':'')+' · hover a candle for OHLC, a marker for the fill</p>'
-    +(ex&&plan&&plan.stop>0&&ex.worst&&(t.dir==='Short'?ex.worst.y>plan.stop:ex.worst.y<plan.stop)?'<p class="lead" style="font-size:12px;margin:0 0 8px;border-left:2px solid var(--loss);padding-left:8px">Price traded through your planned stop (worst '+ex.worst.y.toLocaleString(undefined,{maximumFractionDigits:6})+' vs stop '+plan.stop.toLocaleString(undefined,{maximumFractionDigits:6})+') and the position stayed open.</p>':'');
+    // (past the stop by more than the verdict's slippage band — 10% of entry-to-stop — so a wick can't contradict "followed the plan")
+    +(ex&&plan&&plan.stop>0&&ex.worst&&(t.dir==='Short'?ex.worst.y>plan.stop:ex.worst.y<plan.stop)&&Math.abs(ex.worst.y-plan.stop)>0.1*Math.abs(t.avgEntry-plan.stop)?'<p class="lead" style="font-size:12px;margin:0 0 8px;border-left:2px solid var(--loss);padding-left:8px">Price traded through your planned stop (worst '+ex.worst.y.toLocaleString(undefined,{maximumFractionDigits:6})+' vs stop '+plan.stop.toLocaleString(undefined,{maximumFractionDigits:6})+') and the position stayed open.</p>':'');
   const cv=box.querySelector('canvas');
   if(_replayChart)_replayChart.destroy();
   _replayFor=id;
@@ -523,18 +524,24 @@ function replayWire(box,t,S){
   const start=Math.max(0,S.cIdx(t.openTime)-5), end=n-1;
   let k=end, speed=1;
   const evs=[...(t.events||[])].sort((a,b)=>a[0]-b[0]);
+  // one state per fill (size, average entry, banked P&L) and the candle holding each fill —
+  // Shift+arrows and the ⇤ ⇥ buttons jump between them. The plan + verdict note follows coach mode, like the plan lines.
+  const fs=replayFillSteps(t.dir,evs), fBar=fs.map(f=>S.cIdx(f.t));
   const risk=typeof riskFor==='function'?riskFor(t):null;
-  const j=journal[t.id]||{};
+  const j=journal[t.id]||{}, plan=coachOn()?nfPlan(j):null, pv=plan&&!t.isOpen?planVerdict(t,plan,_excM[t.id]):null;
   const ctl=document.createElement('div'); ctl.className='rpctl';
-  ctl.innerHTML=`<div class="rprow" role="group" aria-label="Replay">
+  ctl.innerHTML=`<div class="rprow" role="group" aria-label="Replay controls. Left and right arrows step one bar, Shift with an arrow jumps to the previous or next fill, Space plays or pauses, Home and End go to the start and the end." aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight Space Home End">
       <button type="button" class="btn ghost" data-rp="start" title="Back to before the entry" aria-label="Back to before the entry">⏮</button>
-      <button type="button" class="btn ghost" data-rp="back" title="One bar back" aria-label="One bar back">◀</button>
+      <button type="button" class="btn ghost" data-rp="pfill" title="Previous fill (Shift+←)" aria-label="Previous fill">⇤</button>
+      <button type="button" class="btn ghost" data-rp="back" title="One bar back (←)" aria-label="One bar back">◀</button>
       <button type="button" class="btn" data-rp="play" aria-label="Play">▶ Replay</button>
-      <button type="button" class="btn ghost" data-rp="fwd" title="One bar forward" aria-label="One bar forward">▶|</button>
+      <button type="button" class="btn ghost" data-rp="fwd" title="One bar forward (→)" aria-label="One bar forward">▶|</button>
+      <button type="button" class="btn ghost" data-rp="nfill" title="Next fill (Shift+→)" aria-label="Next fill">⇥</button>
       <input type="range" min="${start}" max="${end}" value="${end}" step="1" aria-label="Replay position">
       <select aria-label="Replay speed"><option value="1">1×</option><option value="3">3×</option><option value="8">8×</option></select>
       <button type="button" class="btn ghost" data-rp="attach" title="Save this chart, as it looks now, to the trade’s screenshots — then mark it up with ✎">📎 Attach chart</button></div>
     <div class="rpread" aria-live="polite"></div>
+    ${plan?`<div class="rpnote" data-tip="Your written plan, drawn on the chart as dotted lines (red stop, green target). The verdict compares the exit with it — see Diagnostic → Plan vs outcome."><b>Your plan</b>stop ${esc(S.fpx(plan.stop))}${plan.target?' · target '+esc(S.fpx(plan.target)):''}${plan.entry?' · entry '+esc(S.fpx(plan.entry)):''}${j.plan&&j.plan.why?' · '+esc(j.plan.why):''}${pv&&pv.v!=='none'?' → <b style="margin:0">'+esc(planWords(pv.v)[0])+'</b> ('+esc(planFmtR(pv.R))+')':''}</div>`:''}
     ${j.notes?`<div class="rpnote"><b>Your note</b> ${esc(j.notes)}</div>`:''}`;
   box.appendChild(ctl);
   const slider=ctl.querySelector('input[type=range]'), read=ctl.querySelector('.rpread'), playBtn=ctl.querySelector('[data-rp="play"]');
@@ -542,26 +549,32 @@ function replayWire(box,t,S){
     const D=ch.data.datasets, upTo=S.candles[k][0], done=k===end;
     D[0].data=S.wick.slice(0,k+1); D[0].backgroundColor=S.wickBg.slice(0,k+1);
     D[1].data=S.body.slice(0,k+1); D[1].backgroundColor=S.bodyBg.slice(0,k+1);
-    if(S.marks.length&&D[S.MDS]){ const vis=S.marks.map((m,i)=>m.x<=upTo?i:-1).filter(i=>i>=0);
+    if(S.marks.length&&D[S.MDS]){ const vis=S.marks.map((m,i)=>m.x<=upTo?i:-1).filter(i=>i>=0), lastX=vis.length?S.marks[vis[vis.length-1]].x:null;
       D[S.MDS].data=vis.map(i=>S.marks[i]); D[S.MDS].rotation=vis.map(i=>S.marks[i].k>0?0:180);
-      D[S.MDS].backgroundColor=vis.map(i=>S.marks[i].k>0?'rgba(230,180,80,.95)':'rgba(47,208,140,.95)'); }
+      D[S.MDS].backgroundColor=vis.map(i=>S.marks[i].k>0?'rgba(230,180,80,.95)':'rgba(47,208,140,.95)');
+      // while stepping, the latest fill stands out: bigger and white-edged
+      const cur=vis.map(i=>!done&&S.marks[i].x===lastX); D[S.MDS].pointRadius=cur.map(c=>c?9:6); D[S.MDS].borderColor=cur.map(c=>c?'#fff':'rgba(10,14,24,.9)'); D[S.MDS].borderWidth=cur.map(c=>c?2:1); }
     if(S.XDS>=0&&D[S.XDS])D[S.XDS].hidden=!done;
     if(S.EDS>=0&&D[S.EDS])D[S.EDS].hidden=!done;
     ch.update('none');
     const c=S.candles[k], px=isFinite(c[3])?c[3]:(c[1]+c[2])/2, barEnd=c[0]+(k+1<n?S.candles[k+1][0]-c[0]:0)-1;
-    const p=replayPnlAt(t.dir,evs,barEnd,px);
+    const p=replayPnlAt(t.dir,evs,barEnd,px), nf=fs.filter(f=>f.t<=barEnd).length, f=nf?fs[nf-1]:null;
     const r=risk>0?' ('+(p.total/risk>=0?'+':'')+(p.total/risk).toFixed(2)+'R)':'';
-    read.innerHTML=`<span>${esc(new Date(c[0]).toLocaleString())}</span> · close ${esc(S.fpx(px))} · `
-      +(p.pos>0?`holding ${esc(+p.pos.toPrecision(6)+'')} @ ${esc(S.fpx(p.avg))} · `:barEnd<t.openTime?'not in yet · ':'flat · ')
-      +`P&L so far <b class="${cls(p.total)}">${esc(fmtUsd(p.total))}${esc(r)}</b> <span style="color:var(--faint)">gross, before fees</span>`;
+    read.innerHTML=(f&&fBar[nf-1]===k?`<span class="rpfill">Fill ${nf} of ${fs.length}: ${f.what} ${esc(+f.sz.toPrecision(6)+'')} @ ${esc(S.fpx(f.px))}</span> · `:'')
+      +`<span>${esc(new Date(c[0]).toLocaleString())}</span> · close ${esc(S.fpx(px))} · `
+      +(p.pos>0?`holding ${esc(+p.pos.toPrecision(6)+'')} @ avg ${esc(S.fpx(p.avg))} · unrealised <span class="${cls(p.open)}">${esc(fmtUsd(p.open))}</span> · `:barEnd<t.openTime?'not in yet · ':'flat · ')
+      +`realised <span class="${cls(p.realized)}">${esc(fmtUsd(p.realized))}</span> · total <b class="${cls(p.total)}">${esc(fmtUsd(p.total))}${esc(r)}</b> <span style="color:var(--faint)">gross, before fees</span>`;
+    slider.setAttribute('aria-valuetext',new Date(c[0]).toLocaleString()+(nf?', after fill '+nf+' of '+fs.length:', before the entry')+(p.pos>0?', holding '+(+p.pos.toPrecision(6)):''));
   };
   const stop=()=>{ clearInterval(_replayTimer); _replayTimer=null; playBtn.textContent='▶ Replay'; playBtn.setAttribute('aria-label','Play'); };
   const play=()=>{ if(k>=end)show(start); playBtn.textContent='⏸ Pause'; playBtn.setAttribute('aria-label','Pause');
     _replayTimer=setInterval(()=>{ if(!document.body.contains(slider)||_replayChart!==ch){ stop(); return; } if(k>=end){ stop(); return; } show(k+1); },Math.round(450/speed)); };
-  ctl.addEventListener('click',async e=>{ const b=e.target.closest('[data-rp]'); if(!b)return; const a=b.dataset.rp;
+  const act=async(a,b)=>{
     if(a==='play'){ if(_replayTimer)stop(); else play(); return; }
     stop();
-    if(a==='start')show(start); else if(a==='back')show(k-1); else if(a==='fwd')show(k+1);
+    if(a==='start')show(start); else if(a==='end')show(end); else if(a==='back')show(k-1); else if(a==='fwd')show(k+1);
+    else if(a==='nfill'){ const i=fBar.find(x=>x>k); show(i!=null?i:end); }
+    else if(a==='pfill'){ const i=[...fBar].reverse().find(x=>x<k); show(i!=null?i:start); }
     else if(a==='attach'){ try{
         const src=ch.canvas, out=document.createElement('canvas'); out.width=src.width; out.height=src.height;
         const x=out.getContext('2d'); x.fillStyle=getComputedStyle(document.body).getPropertyValue('--panel').trim()||'#0d1117'; x.fillRect(0,0,out.width,out.height); x.drawImage(src,0,0);
@@ -569,7 +582,15 @@ function replayWire(box,t,S){
         arr.push(out.toDataURL('image/jpeg',0.85)); await idbSet('att:'+t.id,arr); loadAttachments(t.id); syncAttUp(t.id);
         b.textContent='📎 Attached'; setTimeout(()=>{ b.textContent='📎 Attach chart'; },1500);
       }catch(err){ setErr('Couldn’t attach the chart: '+err.message); } }
-  });
+  };
+  ctl.addEventListener('click',e=>{ const b=e.target.closest('[data-rp]'); if(b)act(b.dataset.rp,b); });
+  // keyboard: arrows step a bar (on the slider its own arrows do), Shift+arrows jump a fill, Space plays
+  ctl.addEventListener('keydown',e=>{ const tg=e.target, rng=tg.type==='range', K=e.key; let a=null;
+    if(tg.tagName==='SELECT')return;
+    if(K==='ArrowLeft'||K==='ArrowRight'){ if(rng&&!e.shiftKey)return; a=e.shiftKey?(K==='ArrowLeft'?'pfill':'nfill'):(K==='ArrowLeft'?'back':'fwd'); }
+    else if((K==='Home'||K==='End')&&!rng)a=K==='Home'?'start':'end';
+    else if(K===' '&&tg.tagName!=='BUTTON')a='play'; // a focused button's own Space already clicks it
+    if(!a)return; e.preventDefault(); act(a); });
   slider.addEventListener('input',()=>{ stop(); show(+slider.value); });
   ctl.querySelector('select').addEventListener('change',e=>{ speed=+e.target.value||1; if(_replayTimer){ stop(); play(); } });
   show(end);
