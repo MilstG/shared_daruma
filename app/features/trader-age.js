@@ -22,7 +22,7 @@
    ============================================================================ */
 // the settings and the years formula are functions so the server can borrow them, with traderAge,
 // to work out members' verified Trader Age from their wallets (server.js ENGINE_FNS)
-function taConf(){ return {halfLife:30, minDays:15, windowDays:183, cap:20, steadyN:20, shrinkN:3, recentN:30, weekMin:3, paceMax:3, standN:20, priorDays:15, fullDays:60}; }
+function taConf(){ return {halfLife:30, minDays:15, windowDays:183, cap:20, steadyN:20, shrinkN:3, recentN:30, fewChances:5, weekMin:3, paceMax:3, standN:20, priorDays:15, fullDays:60}; }
 const TA=taConf();
 function taYears(r){ return Math.min(TA.cap, Math.pow(2,(r-50)/10)); }
 // a rating back from years (for "get back to 2 years" style messages)
@@ -137,7 +137,7 @@ const TA_HABITS=taHabitList();
 function taHabitDay(h,d,J){ const b=d.behavior||{}, P=d.parts||{}, e=J&&J['day:'+d.key], n=taDayN(d);
   if(h.part==='discipline'){ if(!b.chances)return null; const c=b.chances[h.k]||0; return c?{c, k:(b.kept||{})[h.k]||0}:null; }
   if(h.k==='limit')return P.limit===0||P.limit===1?{c:1,k:P.limit}:null;
-  if(h.k==='plan')return {c:1,k:P.plan>=1?1:P.plan===0.5?0.5:0};
+  if(h.k==='plan')return {c:1,k:P.plan>=1?1:P.plan===0.5?0.5:0,late:P.plan===0.5?1:0};
   if(h.k==='checkin')return {c:1,k:taCheckin(e)?1:0};
   if(h.k==='journal'){ const j=Math.max(0,Math.min(1,+P.journal||0)); return n?{c:n,k:j*n}:{c:1,k:j}; }
   return null; }
@@ -156,7 +156,7 @@ function taHabits(days, J, opts){
   opts=opts||{}; const base=traderAge(days,J,opts); if(!base.n||base.building)return [];
   const now=opts.now||Date.now(), from=(opts.dayOf||(ms=>new Date(ms).toISOString().slice(0,10)))(now-TA.windowDays*864e5);
   const win=(days||[]).filter(d=>d&&d.key&&d.key>=from&&isFinite(d.score)).slice().sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0), rec=win.slice(-TA.recentN);
-  const sum=(h,ds)=>{ let c=0,k=0,any=false; for(const d of ds){ const x=taHabitDay(h,d,J); if(x){ any=true; c+=x.c; k+=x.k; } } return any?{c,k,share:c?k/c:null}:null; };
+  const sum=(h,ds)=>{ let c=0,k=0,late=0,any=false; for(const d of ds){ const x=taHabitDay(h,d,J); if(x){ any=true; c+=x.c; k+=x.k; late+=x.late||0; } } return any?{c,k,late,share:c?k/c:null}:null; };
   const r2=v=>Math.round(v*100)/100;
   return TA_HABITS.map(h=>{
     if(h.k==='steadiness'){ // a measure, not chances: its 6-month and 30-day values, and what evenness would add
@@ -165,8 +165,8 @@ function taHabits(days, J, opts){
     const six=sum(h,win); if(!six)return null; const thirty=sum(h,rec);
     const earn=six.k>0?base.age-traderAge(taHabitAlt(h,days,J,false).days,taHabitAlt(h,days,J,false).J,opts).age:0;
     const cost=six.k<six.c?traderAge(taHabitAlt(h,days,J,true).days,taHabitAlt(h,days,J,true).J,opts).age-base.age:0;
-    return {k:h.k, part:h.part, good:h.good, bad:h.bad, unit:h.unit, day:!!h.day, chances:six.c, kept:six.k, share:six.share, share30:thirty?thirty.share:null,
-      earn:earn>=0.05?r2(earn):0, cost:cost>=0.05?r2(cost):0}; }).filter(Boolean);
+    return {k:h.k, part:h.part, good:h.good, bad:h.bad, unit:h.unit, day:!!h.day, chances:six.c, kept:six.k, late:six.late||0, share:six.share, share30:thirty?thirty.share:null,
+      few:six.c<TA.fewChances, earn:earn>=0.05?r2(earn):0, cost:cost>=0.05?r2(cost):0}; }).filter(Boolean);
 }
 // You against yourself: the last 30 trading days, the 30 before, and the 30 before that (newest last). Each
 // block: its own rating and years (a plain average of its days), Discipline, slips per 100 trades, and how
@@ -300,6 +300,8 @@ function taLocal(D){ const I=taInputs(D.g.days); return traderAge(I.days, I.J, I
 const _taHist=new WeakMap();
 function taHistoryOf(days){ if(!days||!days.length)return []; let h=_taHist.get(days); if(!h){ const I=taInputs(days); h=taHistory(I.days,I.J,I.opts); _taHist.set(days,h); } return h; }
 function taPaceWord(p){ return p>=1.1?'maturing':p<=0.9?'slipping':'steady'; }
+// the ring's colour follows the age: under a year, 1–3 years, 3 years and up
+function taAgeCol(rating){ return rating<50?PZ_COL.low:rating<taRatingFor(3)?PZ_COL.mid:PZ_COL.good; }
 function taPaceCol(p){ return p>=1.1?PZ_COL.good:p<=0.9?PZ_COL.low:PZ_COL.mid; }
 // verified by the server from the wallet's fills, or an estimate made here (with what it takes to verify it)
 function taEstimateNote(A){
@@ -329,9 +331,11 @@ function taCardHtml(D){
 }
 const TA_SLIP={revenge:'Revenge entries',afterTwo:'Trading on after two losses',sizeUp:'Sizing up after a loss',addLoser:'Adding to losers',overtrade:'Overtrading',heldLoser:'Holding losers too long'};
 // a habit band: worst on the left, best on the right, ▼ the 6-month share (labelled), ▲ the last 30 trading days
-function taBandHtml(v6,v30,fmt){ const pos=v=>Math.max(2,Math.min(98,100*v)).toFixed(1)+'%';
-  const tip=esc('6 months: '+fmt(v6)+(v30!=null?' · last 30 trading days: '+fmt(v30):''));
-  return `<div class="pz-band" data-pz-tip="${tip}" role="img" aria-label="${tip}"><span class="pz-band-l" style="left:${pos(v6)}">${esc(fmt(v6))}</span><span class="pz-band-m pz-band-6" style="left:${pos(v6)}">▼</span>${v30!=null?`<span class="pz-band-m pz-band-30" style="left:${pos(v30)}">▲</span>`:''}</div>`; }
+function taBandHtml(v6,v30,fmt,muted){ const pos=v=>Math.max(2,Math.min(98,100*v)).toFixed(1)+'%';
+  const tip=esc('6 months  '+fmt(v6)+(v30!=null?'\nLast 30 trading days  '+fmt(v30):''));
+  // the last 30 days' marker reads the trend at a glance: green when ahead of the 6 months, red when behind
+  const col=v30==null?'':v30-v6>=0.02?PZ_COL.good:v6-v30>=0.02?PZ_COL.low:'var(--pz-muted)';
+  return `<div class="pz-band${muted?' pz-band-few':''}" data-pz-tip="${tip}" role="img" aria-label="${tip}"><span class="pz-band-l" style="left:${pos(v6)}">${esc(fmt(v6))}</span><span class="pz-band-m pz-band-6" style="left:${pos(v6)}">▼</span>${v30!=null?`<span class="pz-band-m pz-band-30" style="left:${pos(v30)};color:${col}">▲</span>`:''}</div>`; }
 // what a habit is worth now: green what the kept ones earn, red what the slips cost
 function taWorthHtml(h){ const e=h.earn>0?`<span style="color:${PZ_COL.good}">+${esc(taFmtDelta(h.earn))}</span>`:'', c=h.cost>0?`<span style="color:${PZ_COL.low}">−${esc(taFmtDelta(h.cost))}</span>`:'';
   return e||c?`<b class="pz-hab-y">${e}${e&&c?' <span class="pz-sub">·</span> ':''}${c}</b>`:'<b class="pz-hab-y pz-sub" style="font-weight:500">—</b>'; }
@@ -340,14 +344,21 @@ function taHabitsHtml(D,A){
   const I=taInputs(D.g.days); let H=[]; try{ H=taHabits(I.days,I.J,I.opts); }catch(e){ console.warn('habits',e); }
   if(!H.length)return '';
   const pct=v=>Math.round(100*v)+'%';
-  const row=h=>{ const sub=h.k==='steadiness'?'The spread of your daily scores, one-trade days discounted':h.k==='journal'?`${Math.round(h.kept)} of ${h.chances} ${h.unit} journaled`:`${h.day||h.k==='checkin'||h.k==='plan'||h.k==='limit'?(h.k==='plan'?h.kept%1?h.kept.toFixed(1):h.kept:h.kept):h.kept} of ${h.chances} ${h.unit} kept`;
-    const band=h.k==='steadiness'?taBandHtml(h.value/100,h.value30!=null?h.value30/100:null,v=>Math.round(100*v)+''):taBandHtml(h.share,h.share30,pct);
-    return `<div class="pz-row"><div class="pz-row-t"><span>${esc(h.good)}<span class="pz-sub" style="display:block;font-size:12px">${esc(sub)}</span></span>${taWorthHtml(h)}</div>${band}</div>`; };
+  const row=h=>{ const few=!!h.few;
+    const sub=h.k==='steadiness'?'The spread of your daily scores, one-trade days discounted'
+      :h.k==='journal'?`${Math.round(h.kept)} of ${h.chances} ${h.unit} journaled`
+      :h.k==='plan'?`${Math.floor(h.kept)} of ${h.chances} ${h.unit} planned${h.late?' · '+h.late+' written late':''}`
+      :h.k==='checkin'?`${h.kept} of ${h.chances} ${h.unit}`
+      :h.k==='limit'?`${h.kept} of ${h.chances} ${h.unit}`
+      :`${h.kept} of ${h.chances} ${h.unit} kept`;
+    const band=h.k==='steadiness'?taBandHtml(h.value/100,h.value30!=null?h.value30/100:null,v=>Math.round(100*v)+''):taBandHtml(h.share,h.share30,pct,few);
+    const worth=few?`<b class="pz-hab-y pz-sub" style="font-weight:500" title="Fewer than ${TA.fewChances} chances in 6 months: too few to say what it’s worth">too few yet</b>`:taWorthHtml(h);
+    return `<div class="pz-row${few?' pz-few':''}"><div class="pz-row-t"><span>${esc(h.good)}<span class="pz-sub" style="display:block;font-size:12px">${esc(sub)}</span></span>${worth}</div>${band}</div>`; };
   const groups=[['discipline','Discipline'],['steadiness','Steadiness'],['limit','Loss limit'],['log','Prep and journal']].map(([p,l])=>{ const rows=H.filter(h=>h.part===p); if(!rows.length)return '';
     const [, , w]=TA_PART[p], v=A.parts?A.parts[p]:null;
     return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:6px"><span class="pz-lbl" style="color:${p===A.drag?PZ_COL.low:'var(--pz-muted)'}">${esc(l)} · ${w}%</span>${v!=null?`<b style="font-family:var(--pz-num);font-size:16px">${Math.round(v)}</b>`:''}</div>${rows.map(row).join('')}`; }).join('');
   return `<section class="pz-card pz-kv"><div class="pz-kvrow"><b class="pz-kvh">What each habit is worth</b><span class="pz-sub" style="font-size:12px;white-space:nowrap">▼ 6 months · ▲ last 30 trading days</span></div>
-    <p class="pz-sub" style="font-size:13px"><span style="color:${PZ_COL.good}">Green</span>: what the times you kept it earn you. <span style="color:${PZ_COL.low}">Red</span>: what the slips cost you. Each on its own, everything else the same.</p>
+    <p class="pz-sub" style="font-size:13px"><span style="color:${PZ_COL.good}">Green</span>: what the times you kept it earn you. <span style="color:${PZ_COL.low}">Red</span>: what the slips cost you. Each on its own, everything else the same. The ▲ is green when the last 30 days beat the 6 months, red when they trail.</p>
     ${groups}
     <p class="pz-fine">From this device’s trades. Years double every 10 rating points, so the figures don’t add up. Holding it back most: <b>${esc(TA_PART[A.drag][0].toLowerCase())}</b>. <a href="#progress">Plug a leak</a> to work on one.</p></section>`;
 }
@@ -359,13 +370,14 @@ function taThenNowHtml(D){
   const last=B[B.length-1], prev=B[B.length-2];
   const arrow=(a,b,hiGood)=>{ if(a==null||b==null||a===b)return ''; const up=a>b, good=hiGood?up:!up; return `<span style="color:${good?PZ_COL.good:PZ_COL.low}">${up?'↑':'↓'}</span>`; };
   const cells=(f,fmt,hiGood)=>B.map((b,i)=>{ const v=f(b); return `<td${i===B.length-1?' class="now"':''}>${v==null?'<span class="pz-sub">—</span>':esc(fmt(v))}${i===B.length-1?' '+arrow(v,f(prev),hiGood):''}</td>`; }).join('');
+  const slipRows=TA_SLIPS.filter(k=>B.some(b=>b.slips&&b.slips[k]>0)).map(k=>[TA_SLIP[k],b=>b.slips?b.slips[k]:null,v=>v.toFixed(1),false,'in']);
   const rows=[['Trader Age',b=>b.age,taFmtDelta,true],['Discipline',b=>b.disc,v=>v+'',true]]
-    .concat(TA_SLIPS.filter(k=>B.some(b=>b.slips&&b.slips[k]>0)).map(k=>[TA_SLIP[k]+' <span class="pz-sub">per 100 trades</span>',b=>b.slips?b.slips[k]:null,v=>v.toFixed(1),false]))
-    .concat([['Loss limit kept',b=>b.limit,v=>v+'%',true],['Plan before the first trade',b=>b.plan,v=>v+'%',true],['Morning check-in',b=>b.checkin,v=>v+'%',true],['Trades journaled',b=>b.journal,v=>v+'%',true]].filter(r=>B.some(b=>r[1](b)!=null)));
+    .concat(slipRows.length?[['Slips, per 100 trades']]:[]).concat(slipRows)
+    .concat([['Kept']]).concat([['Loss limit',b=>b.limit,v=>v+'%',true,'in'],['Plan before the first trade',b=>b.plan,v=>v+'%',true,'in'],['Morning check-in',b=>b.checkin,v=>v+'%',true,'in'],['Trades journaled',b=>b.journal,v=>v+'%',true,'in']].filter(r=>B.some(b=>r[1](b)!=null)));
   const label=(b,i)=>i===B.length-1?'Last 30':i===B.length-2?'Previous 30':'Earlier 30';
   return `<section class="pz-card pz-kv">${head}<p class="pz-sub" style="font-size:13px">You against yourself: each column is 30 trading days${B.some(b=>b.days<TA.recentN)?' (the oldest has '+B[0].days+')':''}. Arrows: the last 30 against the 30 before.</p>
     <table class="pz-tn"><thead><tr><th></th>${B.map((b,i)=>`<th title="${esc(b.from+' to '+b.to)}">${label(b,i)}</th>`).join('')}</tr></thead>
-    <tbody>${rows.map(([l,f,fmt,hi])=>`<tr><td>${l}</td>${cells(f,fmt,hi)}</tr>`).join('')}</tbody></table>
+    <tbody>${rows.map(([l,f,fmt,hi,ind])=>f?`<tr${ind?' class="in"':''}><td>${esc(l)}</td>${cells(f,fmt,hi)}</tr>`:`<tr class="grp"><td colspan="${B.length+1}">${esc(l)}</td></tr>`).join('')}</tbody></table>
     <p class="pz-fine">Trading days only, so a break doesn’t count against you. From this device’s trades.</p></section>`;
 }
 // Trader Age over time (the end of each week with trading, last 26) against how long you've traded,
@@ -380,7 +392,7 @@ function taHistoryChartHtml(D){
   const x=i=>L+(Wd-L-R)*i/(P.length-1), y=v=>T+(Ht-T-B)*(1-(v-lo)/(hi-lo));
   const grid=[[1/12,'1 mo'],[1/4,'3 mo'],[1/2,'6 mo'],[1,'1 yr'],[2,'2 yrs'],[4,'4 yrs'],[8,'8 yrs'],[16,'16 yrs']].filter(([g])=>r(g)>=lo&&r(g)<=hi);
   const line=f=>P.map((p,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(f(p)).toFixed(1)).join(' ');
-  const last=P[P.length-1], tip=p=>esc(taWeekLabel(p.w)+'\nTrader Age '+taFmtYears(p.age)+(p.ty?'\nTrading for '+taFmtYears(p.ty):''));
+  const last=P[P.length-1], tip=p=>esc(taWeekLabel(p.w)+'\nTrader Age  '+taFmtYears(p.age)+(p.ty?'\nTrading for  '+taFmtYears(p.ty):''));
   return `<section class="pz-card pz-kv"><b class="pz-kvh">Over time</b>
     <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px" class="pz-sub"><span><svg width="18" height="8" aria-hidden="true"><path d="M1 4H17" stroke="${PZ_COL.xp}" stroke-width="2" stroke-linecap="round"/></svg> Trader Age</span>${last.ty?`<span><svg width="18" height="8" aria-hidden="true"><path d="M1 4H17" stroke="var(--pz-muted)" stroke-width="2" stroke-dasharray="3 3"/></svg> Time trading</span>`:''}</div>
     <svg viewBox="0 0 ${Wd} ${Ht}" width="100%" role="img" aria-label="${esc('Trader Age by week, from '+taFmtYears(P[0].age)+' to '+taFmtYears(last.age)+(last.ty?', trading for '+taFmtYears(last.ty):''))}" style="display:block;overflow:visible">
@@ -402,17 +414,15 @@ function taScreenHtml(D){
   if(!A.n)return `${back}${pzHead('Your process, in years','Trader Age')}<section class="pz-card"><p class="pz-sub">It starts with your first trading day.</p></section>${taStandingCardHtml()}${how}`;
   if(A.building)return `${back}${pzHead('Your process, in years','Trader Age')}<section class="pz-card pz-kv"><b style="font-size:17px">Building: ${A.need} more trading day${A.need===1?'':'s'}</b>${pzBar((TA.minDays-A.need)/TA.minDays,PZ_COL.xp)}<p class="pz-sub" style="font-size:13px">${A.n} of ${TA.minDays} trading days so far.</p></section>${taStandingCardHtml()}${how}`;
   const ahead=A.tradingYears==null?'Your process, in years':A.age>=A.tradingYears?'Ahead of your experience':'Still catching up with your experience';
+  const wk=A.week, slip=wk.slip&&typeof PZ_BEH!=='undefined'?PZ_BEH[wk.slip]:null;
+  const weekLine=A.pace!=null?`This week, over ${wk.n} trading days, you traded like someone with ${esc(taFmtYears(wk.age))} behind them: ${taPaceWord(A.pace)}.${A.pace<0.9&&slip?' What cost you most: '+esc(slip.toLowerCase())+'.':''}`
+    :`Pace needs 3 trading days in the last 7${wk.n?'; you have '+wk.n:''}.`;
   const hero=`<section class="pz-card pz-hero pz-span">
-    <div class="pz-hero-ring">${pzRing(taFmtYears(A.age).split(' ')[0],Math.min(1,A.rating/100),PZ_COL.xp,{size:132,cap:taFmtYears(A.age).split(' ')[1]||''})}</div>
+    <div class="pz-hero-ring">${pzRing(taFmtYears(A.age).split(' ')[0],Math.min(1,A.rating/100),taAgeCol(A.rating),{size:132,cap:taFmtYears(A.age).split(' ')[1]||''})}</div>
     <div class="pz-hero-main"><span class="pz-lbl" style="color:${PZ_COL.xp}">Trader Age</span><h2 class="pz-hero-t">${esc(ahead)}</h2>
       <p class="pz-sub" style="font-size:13px">${A.tradingYears!=null?`Your process looks ${esc(taFmtYears(A.age))} seasoned, and you’ve been trading for ${esc(taFmtYears(A.tradingYears))}. `:''}Rating ${Math.round(A.rating)} from ${A.n} trading days.</p>
       ${A.tradingYears!=null||A.pace!=null?`<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:4px">${A.tradingYears!=null?`<span><b style="font-family:var(--pz-num);font-size:22px;color:${A.age>=A.tradingYears?PZ_COL.good:PZ_COL.low}">${A.age>=A.tradingYears?'+':'−'}${esc(taFmtDelta(A.age-A.tradingYears))}</b><span class="pz-sub" style="display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase">${A.age>=A.tradingYears?'ahead of':'behind'} your experience</span></span>`:''}${A.pace!=null?`<span><b style="font-family:var(--pz-num);font-size:22px;color:${taPaceCol(A.pace)}">${A.pace.toFixed(1)}×</b><span class="pz-sub" style="display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase">pace this week</span></span>`:''}</div>`:''}
-      ${A.range?`<p class="pz-fine">Likely between ${esc(taFmtYears(A.range[0]))} and ${esc(taFmtYears(A.range[1]))}.${A.sure<1?` With fewer than ${TA.fullDays} trading days it’s held closer to 1 year, and firms up as you trade.`:''}</p>`:''}</div></section>`;
-  const wk=A.week, slip=wk.slip&&typeof PZ_BEH!=='undefined'?PZ_BEH[wk.slip]:null;
-  const pace=`<section class="pz-card pz-kv"><b class="pz-kvh">This week</b>${A.pace!=null?`
-    <div style="display:flex;align-items:baseline;gap:10px"><span style="font-family:var(--pz-num);font-size:32px;font-weight:600;color:${taPaceCol(A.pace)}">${A.pace.toFixed(1)}×</span><span class="pz-sub">${taPaceWord(A.pace)}</span></div>
-    <p class="pz-sub" style="font-size:13px">Over ${wk.n} trading days you traded like someone with ${esc(taFmtYears(wk.age))} behind them, against your 6-month rating.${A.pace<0.9&&slip?' What cost you most: '+esc(slip.toLowerCase())+'.':''}</p>`
-    :`<p class="pz-sub" style="font-size:13px">Pace needs at least 3 trading days in the last 7. ${wk.n?'You have '+wk.n+'.':'No trades yet this week.'}</p>`}</section>`;
+      <p class="pz-fine">${A.range?`Likely between ${esc(taFmtYears(A.range[0]))} and ${esc(taFmtYears(A.range[1]))}.${A.sure<1?` With fewer than ${TA.fullDays} trading days it’s held closer to 1 year, and firms up as you trade.`:''} `:''}${weekLine}</p></div></section>`;
   const mult=taMultCardHtml(A)+taStandingCardHtml();
   const rows=Object.keys(TA_PART).map(k=>{ const [l,h,w]=TA_PART[k], v=A.parts[k];
     return `<div class="pz-row"><div class="pz-row-t"><span>${esc(l)}<span class="pz-sub" style="display:block;font-size:12px">${esc(h)} · ${w}%</span></span><b>${Math.round(v)}</b></div>${pzBar(v/100,k===A.drag?PZ_COL.low:PZ_COL.xp)}</div>`; }).join('');
@@ -420,7 +430,7 @@ function taScreenHtml(D){
   // the four parts on their own only when the habit list can't be made (no trading days on this device)
   const parts=habits?'':`<section class="pz-card pz-kv"><b class="pz-kvh">What builds it</b>${rows}<p class="pz-fine">Holding it back most: <b>${esc(TA_PART[A.drag][0].toLowerCase())}</b>.</p></section>`;
   const hist=taHistoryChartHtml(D), then=taThenNowHtml(D);
-  return `${back}${pzHead('Your process, in years','Trader Age')}<div class="pz-wide">${hero}<div class="pz-col">${habits}${parts}${how}</div><div class="pz-col">${then}${hist}${pace}${mult}</div></div>`;
+  return `${back}${pzHead('Your process, in years','Trader Age')}<div class="pz-wide">${hero}<div class="pz-col">${habits}${parts}${how}</div><div class="pz-col">${then}${hist}${mult}</div></div>`;
 }
 pzFeature({id:'age', today:{label:'Trader Age',hint:'How seasoned your process looks, in years, against how long you’ve traded',col:0,after:'tilt',html:taCardHtml},
   tab:{name:'age',nav:'progress',html:taScreenHtml}});
