@@ -404,8 +404,20 @@ week at a time) and records each week's multiplier, which applies to that week's
 (Discipline plus logging bonuses; achievements, badges, challenges and grants pay what they
 say). XP already earned never changes. Levels and lifetime XP count the multiplier; weekly
 league tables and duels use the XP before it, so a newcomer can still win a week. The owner
-sets the bar and the tiers, or switches it off, in Levels & XP. Tools that need a current
-Trader Age come next.
+sets the bar and the tiers, or switches it off, in Levels & XP.
+
+**Standing.** Duels, competitions, the leaderboards and the coach's full allowance are kept
+by holding Trader Age: the plain average rating of your last 20 trading days at the bar (60,
+Trader Age 2 years). Under it, or without a verified wallet, Keel shows a banner and the inbox
+says so, and there are 14 days of grace to get back. A lapse also needs a trading day after the
+slip began, so a break freezes the clock (an unverified member lapses at the deadline). Once
+lapsed, new duels and duel answers, competition entries and the leaderboards (global and a
+league's other boards) are closed, others can't challenge them, and the coach drops to 1
+message a day; the league's own table, level, XP and badges never change. Back at the bar, or
+verified, it all opens again. Fewer than 15 trading days counts as good. The server works it
+out whenever it's asked (the app's own `taStanding`), admins and fully unlocked members are
+never locked, and the owner sets the bar and the days of grace, or switches it off, in
+Levels & XP.
 
 **Tilt meter and quiet mode.** A live reading (0–100) on Today of the triggers
 that come before a blow-up: losses in a row (30 points at three), a loss in the
@@ -841,7 +853,8 @@ action. Sections:
   awarded by hand, each paying the XP you set.
 - **Levels & XP** — levels on a curve or a table of thresholds, level titles, a live
   preview, the XP every action pays, and the XP multiplier for holding Trader Age (on/off,
-  the bar, the tiers).
+  the bar, the tiers) and standing (on/off, the bar, the days of grace). The member list
+  marks anyone slipping, unverified or lapsed.
 - **Features** — the level each feature unlocks at, and the level people without a
   profile stop at.
 - **Coach** — on/off for members, daily allowances, your own limit, whether members

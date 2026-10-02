@@ -12,9 +12,9 @@ const { readAppSource } = require('../app-source.js');
 const src = readAppSource(htmlPath);
 const { grabFn, evalModule } = makeExtractor(src);
 const consts = ['taRatingFor'].map(n => src.match(new RegExp('^const ' + n + '=.*$', 'm'))[0]).join('\n');
-const { traderAge, taYears, taRatingFor, taFmtYears, taWeeks, taMultStep, taMultOf, taMultDefaults } = await evalModule(
-  ['taConf', 'taYears', 'traderAge', 'isoWeekOfKey', 'taFmtYears', 'taMultDefaults', 'taWeeks', 'taMultTier', 'taMultStep', 'taMultOf'],
-  ['traderAge', 'taYears', 'taRatingFor', 'taFmtYears', 'taWeeks', 'taMultStep', 'taMultOf', 'taMultDefaults'], 'const TA=taConf();\n' + consts);
+const { traderAge, taYears, taRatingFor, taFmtYears, taWeeks, taMultStep, taMultOf, taMultDefaults, taStanding, taStandingDefaults } = await evalModule(
+  ['taConf', 'taYears', 'traderAge', 'isoWeekOfKey', 'taFmtYears', 'taMultDefaults', 'taWeeks', 'taMultTier', 'taMultStep', 'taMultOf', 'taStandingDefaults', 'taStanding'],
+  ['traderAge', 'taYears', 'taRatingFor', 'taFmtYears', 'taWeeks', 'taMultStep', 'taMultOf', 'taMultDefaults', 'taStanding', 'taStandingDefaults'], 'const TA=taConf();\n' + consts);
 
 const DAY = 864e5, NOW = Date.parse('2026-10-20T12:00:00Z');
 const key = ms => new Date(ms).toISOString().slice(0, 10);
@@ -97,6 +97,48 @@ t('weeks from days: each trading week’s own rating, and the 6-month norm once 
   ok(ws.length >= 4); ok(ws.every(w => w.weekRating > 70));
   eq(ws[0].norm, null, 'the first week has too few days for a norm'); ok(ws[ws.length - 1].norm > 70);
   eq(taWeeks(days, {}, { after: ws[1].week }).length, ws.length - 2, 'it can start after the last week already counted');
+});
+t('standing reads the last 20 trading days: a plain average of their ratings', () => {
+  // 40 days at 50 then 20 at 90: the 6-month rating mixes them, the 20-day one is the 90s alone
+  const A = age([...run(40, () => ({ score: 50 }), { endBack: 20 }), ...run(20, () => ({ score: 90 }))]);
+  eq(A.recentN, 20); const daily = traderAge([...run(20, () => ({ score: 90 }))], {}, { now: NOW, raw: true }).daily;
+  ok(A.recent > A.rating, 'recent above the 6-month norm'); near(A.recent, daily.reduce((a, x) => a + x.r, 0) / 20, 6, 'about the 90s’ own rating');
+  eq(age(run(5, () => ({}))).recentN, 5, 'fewer days: all of them');
+});
+// standing: x = {verified, building, recent, lastDay}
+const D14 = 14 * DAY, kd = ms => key(ms);
+const stand = (prev, x, now = NOW, cfg) => taStanding(prev, x, cfg || taStandingDefaults(), now, kd);
+t('standing: at the bar (60 = 2 years) is good, fewer than 15 days is building, both clear the clock', () => {
+  eq(taStandingDefaults(), { on: true, bar: 60, grace: 14 });
+  eq(stand(null, { verified: true, recent: 60 }).state, 'good');
+  eq(stand({ state: 'slipping', since: NOW - DAY }, { verified: true, recent: 75 }), { state: 'good', since: null });
+  eq(stand({ state: 'slipping', since: NOW - DAY }, { verified: true, building: true, recent: 20 }), { state: 'building', since: null });
+  eq(stand(null, { verified: true, recent: 20 }, NOW, { on: false, bar: 60, grace: 14 }).state, 'off');
+});
+t('under the bar: 14 days of grace, then a lapse only once a day has been traded since it began', () => {
+  const s0 = stand(null, { verified: true, recent: 55, lastDay: kd(NOW) });
+  eq([s0.state, s0.since, s0.deadline], ['slipping', NOW, NOW + D14]);
+  eq(stand(s0, { verified: true, recent: 55, lastDay: kd(NOW + 13 * DAY) }, NOW + 13 * DAY).state, 'slipping', 'still in grace');
+  // past the deadline without trading since: the clock waits
+  eq(stand(s0, { verified: true, recent: 55, lastDay: kd(NOW) }, NOW + 30 * DAY).state, 'slipping', 'a break freezes it');
+  const L = stand(s0, { verified: true, recent: 55, lastDay: kd(NOW + 20 * DAY) }, NOW + 20 * DAY);
+  eq([L.state, L.why, L.since], ['lapsed', 'rating', NOW]);
+  eq(stand(L, { verified: true, recent: 61, lastDay: kd(NOW + 21 * DAY) }, NOW + 21 * DAY).state, 'good', 'back at the bar: open again');
+});
+t('unverified: the same 14 days, with no trading needed to lapse, and switching doesn’t restart the clock', () => {
+  const u = stand(null, { verified: false }); eq([u.state, u.deadline], ['unverified', NOW + D14]);
+  eq(stand(u, { verified: false }, NOW + D14).state, 'lapsed'); eq(stand(u, { verified: false }, NOW + D14).why, 'unverified');
+  // slipping → turns verification off → back on: the clock started at the first slip
+  const s = stand(null, { verified: true, recent: 50, lastDay: kd(NOW) }), off = stand(s, { verified: false }, NOW + 5 * DAY);
+  eq(off.since, NOW); eq(stand(off, { verified: true, recent: 50, lastDay: kd(NOW + 15 * DAY) }, NOW + 15 * DAY).state, 'lapsed');
+});
+t('a slip isn’t cleared by building again (a fresh wallet): only a rating back at the bar clears it', () => {
+  const s = stand(null, { verified: true, recent: 50, lastDay: kd(NOW) }); eq(s.slip, true);
+  const fresh = stand(s, { verified: true, building: true, lastDay: kd(NOW + 16 * DAY) }, NOW + 16 * DAY);
+  eq([fresh.state, fresh.why, fresh.since], ['lapsed', 'rating', NOW]);
+  eq(stand(fresh, { verified: true, recent: 65, lastDay: kd(NOW + 40 * DAY) }, NOW + 40 * DAY), { state: 'good', since: null });
+  // someone who was only ever unverified and then verifies a new wallet is building, and good
+  eq(stand(stand(null, { verified: false }), { verified: true, building: true }, NOW + 20 * DAY).state, 'building');
 });
 t('a feature plugs into Keel through pzFeature: a Today card people can hide and move, and a screen of its own', () => {
   ok(grabFn('pzFeature').includes('PZ_SECTIONS.today.push') && grabFn('pzFeature').includes('PZ_TABS.push'));

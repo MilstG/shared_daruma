@@ -81,6 +81,18 @@ function sanitizeMult(b, prev) {
   }
   return { on: !!o.on, bar: o.bar, tiers: o.tiers.map(x => [x[0], x[1]]) };
 }
+// standing: duels, competitions, the leaderboards and the coach's full allowance are kept by holding
+// Trader Age over the last 20 trading days (on, the rating bar, and the days of grace before they lock)
+const DEFAULT_STANDING = { on: true, bar: 60, grace: 14 };
+function sanitizeStanding(b, prev) {
+  const o = Object.assign({}, DEFAULT_STANDING, prev || {});
+  if (b && typeof b === 'object') {
+    if (typeof b.on === 'boolean') o.on = b.on;
+    const bar = clampNum(b.bar, 40, 90); if (bar != null) o.bar = Math.round(bar);
+    const g = clampNum(b.grace, 3, 60); if (g != null) o.grace = Math.round(g);
+  }
+  return { on: !!o.on, bar: o.bar, grace: o.grace };
+}
 const DEFAULT_CONFIG = { open: true, inviteCode: '', unlocksOn: true, requireClaim: false, approveWallets: false, vaultOn: true, guestCap: 3,
   unlocks: { trends: 2, share: 3, compete: 4 } };
 const SHARE_KEYS = ['profile', 'boards', 'global', 'page', 'feed', 'habits', 'verify', 'ret', 'usd', 'addr', 'mentor', 'bench', 'duels', 'seek'];
@@ -470,6 +482,7 @@ function createSocial(opts) {
   delete S.config.themes; // colour themes were dropped
   S.config.guestCap = Math.max(0, Math.min(100, Math.round(+S.config.guestCap))) || 0;
   S.config.mult = sanitizeMult(S.config.mult, null);
+  S.config.standing = sanitizeStanding(S.config.standing, null);
   // v0.4 sections; v0.3's three unlock levels carry over into the feature map
   S.config.modules = SC.sanitizeModules(S.config.modules || S.config.unlocks, null);
   S.config.levels = SC.sanitizeLevels(S.config.levels, null);
@@ -644,7 +657,7 @@ function createSocial(opts) {
   const leagueWindow = L => { const si = L.season ? seasonInfo(L) : null;
     if (si) return { dayFrom: si.start, dayTo: todayKey(), weeks: null, days: Math.round((Date.parse(todayKey()) - Date.parse(si.start)) / 86400000) + 1 };
     return L.period === 'month' ? { weeks: monthWeeks(S.league.week), days: monthDays() } : { weeks: null, days: 7 }; };
-  const leagueBoard = (L, board, viewer) => { const W = leagueWindow(L); return boardRows(leagueMembers(L), board, {
+  const leagueBoard = (L, board, viewer, keep) => { const W = leagueWindow(L); return boardRows(keep ? leagueMembers(L).filter(keep) : leagueMembers(L), board, {
     tier: L.tiers && board === L.metric && viewer ? leagueTier(L, viewer) : undefined, tierAll: true, week: S.league.week,
     weeks: board === 'xp' && W.weeks ? W.weeks : undefined, dayFrom: board === 'xp' ? W.dayFrom : undefined, dayTo: W.dayTo, days: W.days }); };
   // a monthly league's boards cover the month so far: the same window its rollover ranks on
@@ -692,7 +705,8 @@ function createSocial(opts) {
   const awardsOut = m => Object.keys(m.awards || {}).filter(id => own(S.badges, id)).map(id => ({ id, name: S.badges[id].name, icon: S.badges[id].icon, desc: S.badges[id].desc, xp: S.badges[id].xp, at: m.awards[id] }));
   // ---- AI coach allowance: per member per day (their own clock), or the owner's own budget ----
   // Admins ask without a limit (null); everyone else has the day's allowance, unless the owner set one for them.
-  const coachLimitFor = m => m.admin ? null : m.coachDaily != null ? m.coachDaily : m.unlocked ? S.config.coach.dailyUnlocked : S.config.coach.daily;
+  const coachLimitFor = m => m.admin ? null : m.coachDaily != null ? m.coachDaily : m.unlocked ? S.config.coach.dailyUnlocked
+    : standingLapsed(m) ? Math.min(1, S.config.coach.daily) : S.config.coach.daily; // a lapsed standing: 1 a day
   // Counted per profile and per wallet: several profiles on one wallet share its allowance, and
   // taking the wallet off a profile doesn't hand it a fresh one. A count's day follows the asker's
   // clock, fixed for the day once they've asked (changing zones mid-day doesn't start a new count).
@@ -710,7 +724,7 @@ function createSocial(opts) {
     const c = S.config.coach, lvl = (m.stats && m.stats.level) || 1, need = S.config.unlocksOn && !m.unlocked && S.config.modules.coach > 1 ? S.config.modules.coach : 0;
     const limit = coachLimitFor(m), used = coachUsed(m);
     const reason = m.banned ? 'This profile was removed from the league.' : m.admin ? null : !c.members ? 'The owner hasn’t opened the coach to members.'
-      : need && lvl < need ? 'The coach unlocks at level ' + need + '.' : limit <= 0 ? 'The coach is switched off for your profile.' : used >= limit ? 'You’ve used today’s ' + limit + ' coach message' + (limit === 1 ? '' : 's') + '. More tomorrow.' : null;
+      : need && lvl < need ? 'The coach unlocks at level ' + need + '.' : limit <= 0 ? 'The coach is switched off for your profile.' : used >= limit ? 'You’ve used today’s ' + limit + ' coach message' + (limit === 1 ? '' : 's') + '. More tomorrow.' + (m.coachDaily == null && standingLapsed(m) ? ' Your full allowance comes back with your standing.' : '') : null;
     return { allowed: !reason, reason, limit, used, remaining: limit == null ? null : Math.max(0, limit - used), detail: !!(c.detail && m.coachDetail), detailAllowed: !!c.detail, unlockLevel: need || null }; };
   const byHandle = h => { if (!handleIdx) { handleIdx = new Map(); for (const m of members()) handleIdx.set(m.handle.toLowerCase(), m.id); }
     const id = handleIdx.get(String(h || '').toLowerCase()), m = id && own(S.members, id) ? S.members[id] : null;
@@ -878,7 +892,7 @@ function createSocial(opts) {
         return { key: d.k, score: d.s, parts: { limit: l.lm, journal: l.jn || 0 }, behavior: { flags: Object.fromEntries((d.f || []).map(k => [k, 1])) } }; });
       const A = opts.traderAge(days, J, { now: now(), dayOf: ms => zoneKey(tz, ms), firstAt: (m.stats && m.stats.firstAt) || 0 });
       const r1 = x => x == null ? null : Math.round(x * 10) / 10;
-      m.ta = { at: now(), n: A.n, building: !!A.building, need: A.need, rating: r1(A.rating), age: r1(A.age), pace: r1(A.pace), tradingYears: r1(A.tradingYears), drag: A.drag || null,
+      m.ta = { at: now(), n: A.n, building: !!A.building, need: A.need, rating: r1(A.rating), age: r1(A.age), recent: r1(A.recent), recentN: A.recentN || 0, pace: r1(A.pace), tradingYears: r1(A.tradingYears), drag: A.drag || null,
         parts: A.parts ? Object.fromEntries(Object.entries(A.parts).map(([k, v]) => [k, r1(v)])) : null,
         week: A.week ? { n: A.week.n, age: r1(A.week.age), rating: r1(A.week.rating), slip: A.week.slip || null } : null,
         weeks: (A.weeks || []).map(w => ({ week: w.week, age: r1(w.age), rating: r1(w.rating), n: w.n })) };
@@ -905,6 +919,49 @@ function createSocial(opts) {
     const hist = m.multHist || {}, cur = multWeekNow(m);
     return { on: !!cfg.on, now: cur && hist[cur] ? hist[cur] : 1, tier, held: st.count, bar: cfg.bar, hist,
       next: nx ? { weeks: nx[0], mult: nx[1], toGo: Math.max(0, nx[0] - st.count) } : null }; };
+  // ---- standing (spec step 6) ----
+  // Duels, competitions, the leaderboards and the coach's full allowance are kept by holding Trader Age
+  // over the last 20 trading days (the app's own taStanding, app/features/trader-age.js). Under the
+  // bar, or without a verified Trader Age, there are 14 days of grace; a lapse needs a trading day
+  // in them, so a break freezes it. Worked out whenever it's asked, since time passes without new
+  // stats. The owner's admins and fully unlocked members are never locked.
+  const standingOn = () => !!(opts.taStanding && opts.traderAge && S.config.standing.on);
+  const standingCfgOut = () => { const c = S.config.standing; return { on: standingOn(), bar: c.bar, grace: c.grace, years: opts.taStanding ? opts.taStanding.years(c.bar) : null }; };
+  const fmtYears = y => !(y > 0) ? '—' : y < 1 ? Math.max(1, Math.round(y * 12)) + ' months' : (y < 10 ? y.toFixed(1) : String(Math.round(y))) + ' years';
+  const PERKS = 'duels, competitions, the leaderboards and the coach’s full allowance';
+  const standingExempt = m => !!(m.admin || m.unlocked);
+  const standingOf = m => {
+    if (!m || !standingOn()) return { state: 'off', since: null };
+    const tz = (m.stats && m.stats.tz) || 'UTC', verified = !!(m.share && m.share.verify && walletFor(m) && Array.isArray(m.vdays)), ta = verified ? m.ta : null;
+    const lastDay = verified && m.vdays.length ? m.vdays[m.vdays.length - 1].k : null, prev = m.standing && typeof m.standing === 'object' ? m.standing : null;
+    const st = opts.taStanding.of(prev, { verified, building: !ta || !!ta.building, recent: ta && ta.recent != null ? ta.recent : null, lastDay }, S.config.standing, now(), ms => zoneKey(tz, ms));
+    if (!prev || prev.state !== st.state || (prev.since || null) !== (st.since || null) || !!prev.slip !== !!st.slip) {
+      m.standing = { state: st.state, since: st.since || null, slip: !!st.slip, at: now(), told: prev && prev.told || 0 };
+      if (!standingExempt(m)) standingNotify(m, st, prev);
+      save(m);
+    }
+    return st;
+  };
+  const standingNotify = (m, st, prev) => {
+    const yrs = fmtYears(opts.taStanding.years(S.config.standing.bar)), by = st.deadline ? new Date(st.deadline).toISOString().slice(0, 10) : '';
+    // warnings at most every 3 days (a rating right at the bar can cross it day after day); lapses and recoveries always
+    const warn = (st.state === 'slipping' || st.state === 'unverified') && st.state !== (prev && prev.state);
+    if (warn && now() - (m.standing.told || 0) < 3 * 86400000) return;
+    if (warn) m.standing.told = now();
+    if (st.state === 'slipping') notify(m, 'standing', 'Your Trader Age over your last 20 trading days is under ' + yrs + '. Get it back by ' + by + ' to keep ' + PERKS + '.', { title: 'Standing slipping', url: '/keel#age' });
+    else if (st.state === 'unverified' && !(prev && prev.state === 'slipping')) notify(m, 'standing', 'Verify your wallet by ' + by + ' to keep ' + PERKS + '.', { title: 'Verify to keep your perks', url: '/keel#sharing' });
+    else if (st.state === 'lapsed') notify(m, 'standing', (st.why === 'unverified' ? 'Your wallet isn’t verified, so ' : 'Your standing lapsed, so ') + PERKS + ' are locked until ' + (st.why === 'unverified' ? 'it is.' : 'your last 20 trading days are back at ' + yrs + '.'), { title: 'Standing lapsed', url: '/keel#age' });
+    else if (prev && prev.state === 'lapsed' && (st.state === 'good' || st.state === 'building')) notify(m, 'standing', 'Your standing is back: ' + PERKS + ' are open again.', { title: 'Standing back', url: '/keel#age' });
+  };
+  // locked out of a perk: the reason to show (null when it's open to them)
+  const standingLapsed = m => !!m && !standingExempt(m) && standingOf(m).state === 'lapsed';
+  const standingLock = (m, what) => { if (!standingLapsed(m)) return null; const st = standingOf(m);
+    return st.why === 'unverified' ? what + ' need a verified wallet: turn on “Verify my discipline” with your wallet added.'
+      : what + ' are locked while your standing is lapsed. Get your last 20 trading days back to Trader Age ' + fmtYears(opts.taStanding.years(S.config.standing.bar)) + '.'; };
+  const standingOut = m => { const c = standingCfgOut(); if (!c.on) return { on: false };
+    const st = standingOf(m), ta = m.share && m.share.verify ? m.ta : null;
+    return Object.assign({}, c, { state: st.state, why: st.why || null, since: st.since || null, deadline: st.deadline || null, exempt: standingExempt(m),
+      locked: st.state === 'lapsed' && !standingExempt(m), recent: ta && ta.recent != null ? ta.recent : null, recentN: ta ? ta.recentN || 0 : 0 }); };
   // ---- "traders like you": peer groups from members' summaries and the owner's seed wallets ----
   const BENCH_FRESH = 21 * 86400000, SEED_REFRESH = 7 * 86400000, SEED_MAX = 5000;
   const benchRows = () => {
@@ -995,6 +1052,7 @@ function createSocial(opts) {
     if (!b || b.banned) return 'There’s no such member.';
     if (b.id === a.id) return 'You can’t challenge yourself.';
     if (!b.share || b.share.duels === false) return '@' + b.handle + ' isn’t taking challenges.';
+    if (standingLapsed(b)) return '@' + b.handle + ' isn’t taking challenges right now.';
     if (!cfg.types[t.type]) return 'This league doesn’t run ' + Duels.TYPES[t.type].label + ' duels.';
     if (!skipOpen) { if (openCount(a) >= cfg.maxOpen) return 'You have ' + cfg.maxOpen + ' duels going already. Finish one first.';
       if (openCount(b) >= cfg.maxOpen) return '@' + b.handle + ' has ' + cfg.maxOpen + ' duels going already.'; }
@@ -1263,7 +1321,7 @@ function createSocial(opts) {
     if (out.isMe) Object.assign(out, { claimedAddress: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
       vault: m.vault ? { rev: m.vault.rev, size: m.vault.size, at: m.vault.at } : null, requireClaim: !!S.config.requireClaim, vaultOn: !!S.config.vaultOn,
       ta: m.share && m.share.verify ? m.ta || null : null, // verified Trader Age (null: the app shows its own estimate)
-      mult: multOut(m),
+      mult: multOut(m), standing: standingOut(m),
       needsClaim: !!(S.config.requireClaim && m.address && m.claimed !== m.address),
       walletStatus: m.address && (S.config.approveWallets || walletStatus(m.address) === 'rejected') ? walletStatus(m.address) : null, admin: !!m.admin,
       passkeys: (m.passkeys || []).map(k => ({ id: k.id, name: k.name, at: k.at, lastUsed: k.lastUsed || null })),
@@ -1627,7 +1685,7 @@ function createSocial(opts) {
       return json(res, 200, { enabled: adminConfigured, open: S.config.open, inviteRequired: !!S.config.inviteCode, unlocksOn: S.config.unlocksOn,
         unlocks: S.config.unlocks, tiers: TIERS, week: S.league.week, members: members().filter(m => !m.banned).length,
         claims: !!sig, passkeys: true, requireClaim: !!S.config.requireClaim, approveWallets: !!S.config.approveWallets, vaultOn: !!S.config.vaultOn,
-        modules: S.config.modules, levels: S.config.levels, xp: S.config.xp, profiles: S.config.profiles, guestCap: S.config.guestCap, mult: S.config.mult,
+        modules: S.config.modules, levels: S.config.levels, xp: S.config.xp, profiles: S.config.profiles, guestCap: S.config.guestCap, mult: S.config.mult, standing: standingCfgOut(),
         bench: { on: !!S.config.bench.on, minTrades: S.config.bench.minTrades, days: S.config.bench.days }, duels: { on: !!S.config.duels.on },
         coach: { members: S.config.coach.members, daily: S.config.coach.daily, detail: S.config.coach.detail }, posts: postCfgOut(),
         badges: Object.values(S.badges).map(b => ({ id: b.id, name: b.name, icon: b.icon, desc: b.desc, metric: b.metric, metricLabel: b.metric ? SC.BADGE_METRICS[b.metric] : null, op: b.op, value: b.value, xp: b.xp })),
@@ -1695,7 +1753,7 @@ function createSocial(opts) {
           vault: m.vault ? m.vault.size : 0, share: m.share, banned: !!m.banned, unlocked: !!m.unlocked, coachDaily: m.coachDaily != null ? m.coachDaily : null,
           coachUsed: coachUsed(m), coachLimit: coachLimitFor(m), grants: m.grants || [], awards: Object.keys(m.awards || {}).filter(id => own(S.badges, id)),
           wallets: linkedOf(m).filter(a => a !== m.address),
-          leagues: leaguesOf(m).map(L => ({ id: L.id, tier: leagueTier(L, m) })), adminMade: !!m.adminMade, mentor: !!m.mentor, admin: !!m.admin, keys: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0), verified: !!(m.share.verify && Array.isArray(m.vdays)), createdAt: m.createdAt, lastSeen: m.lastSeen || null,
+          leagues: leaguesOf(m).map(L => ({ id: L.id, tier: leagueTier(L, m) })), adminMade: !!m.adminMade, mentor: !!m.mentor, admin: !!m.admin, keys: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0), verified: !!(m.share.verify && Array.isArray(m.vdays)), standing: standingOn() ? standingOf(m).state : null, createdAt: m.createdAt, lastSeen: m.lastSeen || null,
           av: avUrl(m), bio: m.bio || '',
           money: m.money && m.money.ret != null ? { ret: m.money.ret, dd: m.money.dd } : null })) });
       if (sub === 'members' && !parts[2] && M === 'POST') { // the owner adds someone; they sign in with the code it returns
@@ -1847,6 +1905,7 @@ function createSocial(opts) {
         if (typeof body.unlocksOn === 'boolean') c.unlocksOn = body.unlocksOn;
         if (typeof body.vaultOn === 'boolean') c.vaultOn = body.vaultOn;
         if (body.mult) c.mult = sanitizeMult(body.mult, c.mult);
+        if (body.standing) c.standing = sanitizeStanding(body.standing, c.standing);
         if (body.guestCap !== undefined && isFinite(+body.guestCap)) c.guestCap = Math.max(0, Math.min(100, Math.round(+body.guestCap)));
         if (body.modules) c.modules = SC.sanitizeModules(body.modules, c.modules);
         if (body.unlocks) c.modules = SC.sanitizeModules(body.unlocks, c.modules); // v0.3 panels send this name
@@ -2290,6 +2349,7 @@ function createSocial(opts) {
     if (head === 'pods' && !parts[1] && M === 'POST') {
       duelSweep(); // expired invitations stop counting toward the limit
       if (lockedFor(me, 'duels')) return json(res, 403, { error: 'Duels unlock at level ' + lockedFor(me, 'duels') + '.' });
+      if (standingLock(me, 'Duels')) return json(res, 403, { error: standingLock(me, 'Duels'), standing: true });
       const cfg = S.config.duels;
       if (!cfg.on) return json(res, 409, { error: 'Duels are switched off in this league.' });
       if (!cfg.pods) return json(res, 409, { error: 'Group duels are switched off in this league.' });
@@ -2328,6 +2388,7 @@ function createSocial(opts) {
         else {
           const cfg = S.config.duels;
           if (lockedFor(me, 'duels')) return json(res, 403, { error: 'Duels unlock at level ' + lockedFor(me, 'duels') + '.' });
+          if (standingLock(me, 'Duels')) return json(res, 403, { error: standingLock(me, 'Duels'), standing: true });
           if (!cfg.on || !cfg.pods) return json(res, 409, { error: 'Group duels are switched off in this league.' });
           if (openCount(me) - 1 >= cfg.maxOpen) return json(res, 409, { error: 'You have ' + cfg.maxOpen + ' duels going already. Finish one first.' });
           if (p.verified && !(me.share.verify && me.address)) return json(res, 409, { error: 'You need “Verify my discipline” switched on for this verified duel.' });
@@ -2389,6 +2450,7 @@ function createSocial(opts) {
     if (head === 'duels' && !parts[1] && M === 'POST') {
       duelSweep(); // expired challenges stop counting toward the limit
       if (lockedFor(me, 'duels')) return json(res, 403, { error: 'Duels unlock at level ' + lockedFor(me, 'duels') + '.' });
+      if (standingLock(me, 'Duels')) return json(res, 403, { error: standingLock(me, 'Duels'), standing: true });
       const t = Duels.sanitizeTerms(body, S.config.duels); if (t.error) return json(res, 400, { error: t.error });
       const o = byHandle(cleanText(body.to, 30).replace(/^@/, ''));
       const bad = duelProblem(me, o, t); if (bad) return json(res, 409, { error: bad });
@@ -2408,6 +2470,7 @@ function createSocial(opts) {
       const o = S.members[d.a === me.id ? d.b : d.a], a = body.action;
       if (a === 'accept' || a === 'decline' || a === 'counter') {
         if (a !== 'decline' && lockedFor(me, 'duels')) return json(res, 403, { error: 'Duels unlock at level ' + lockedFor(me, 'duels') + '.' });
+        if (a !== 'decline' && standingLock(me, 'Duels')) return json(res, 403, { error: standingLock(me, 'Duels'), standing: true });
         if (d.status !== 'pending') return json(res, 409, { error: d.status === 'expired' ? 'That challenge expired.' : 'That challenge isn’t waiting for an answer.' });
         if (d.awaiting !== me.id) return json(res, 409, { error: 'It’s @' + (o ? o.handle : '') + '’s turn to answer.' });
         if (a === 'decline') { d.status = 'declined'; d.answeredAt = now(); d.awaiting = null;
@@ -2746,15 +2809,15 @@ function createSocial(opts) {
       const board = own(BOARDS, query.board) ? query.board : 'discipline', global = query.scope === 'global';
       refreshAll(me); // background, the viewer first; boards show what's cached
       let rows, L = null;
-      if (global) rows = boardRows(members().filter(m => m.share.global), board, { week: S.league.week });
+      if (global) rows = boardRows(members().filter(m => m.share.global && !standingLapsed(m)), board, { week: S.league.week });
       else { L = own(S.leagues, query.league) && own(S.leagues[query.league].members, me.id) ? S.leagues[query.league] : own((S.leagues.main || {}).members || {}, me.id) ? S.leagues.main : leaguesOf(me)[0] || null;
-        rows = L ? leagueBoard(L, board, me) : []; }
+        rows = L ? leagueBoard(L, board, me, standingOn() ? m => !standingLapsed(m) : null) : []; }
       const mine = rows.find(r => r.id === me.id) || null;
       for (const r of rows.slice(0, 50)) if (own(S.members, r.id)) refreshAll(S.members[r.id]); // the rows on show, a few at a time
       const needKey = global && !me.share.global ? 'global' : !me.share[BOARDS[board].needs] ? BOARDS[board].needs : BOARDS[board].verified && !me.share.verify ? 'verify' : null;
       return json(res, 200, { board, label: BOARDS[board].label, scope: global ? 'global' : 'league', league: L ? { id: L.id, name: L.name } : null,
         rows: rows.slice(0, 50).map(r => ({ rank: r.rank, handle: r.handle, av: avUrl(S.members[r.id]), tier: r.tier, value: r.value, sub: r.sub, me: r.id === me.id })),
-        me: mine, total: rows.length, optedIn: !needKey, need: needKey,
+        me: mine, total: rows.length, optedIn: !needKey, need: needKey, offBoards: standingLapsed(me),
         verifyState: !BOARDS[board].verified || !me.share.verify ? null : !canVerify ? 'unavailable' : !me.address ? 'no-wallet' : !walletFor(me) ? walletBlock(me) : !Array.isArray(me.vdays) ? 'pending' : 'ok' });
     }
     if (head === 'feed' && M === 'GET') {
@@ -2872,6 +2935,7 @@ function createSocial(opts) {
       else {
         const need = S.config.unlocksOn && !me.unlocked && S.config.modules.compete > 1 ? S.config.modules.compete : 0;
         if (need && ((me.stats && me.stats.level) || 1) < need) return json(res, 403, { error: 'Competitions unlock at level ' + need + '.' });
+        if (standingLock(me, 'Competitions')) return json(res, 403, { error: standingLock(me, 'Competitions'), standing: true });
         if (c.type === 'return' && !(me.address && me.share.ret)) return json(res, 400, { error: 'Return competitions read your wallet on chain: add your address and switch on “Show % return” in What you share.' });
         if (c.type === 'return' && !walletFor(me)) return json(res, 400, { error: walletBlock(me) === 'approval' ? 'Your wallet is waiting for the league owner’s approval. You can join return competitions once it’s approved.'
           : walletBlock(me) === 'rejected' ? 'The league owner hasn’t accepted this wallet, so it can’t enter return competitions.'

@@ -574,10 +574,12 @@ function socLeagueHtml(g){
     :L.season?(SOC_BOARD_NOTE[d.board]||'')+' Ranked over '+ranks+'; the top three take the podium.':SOC_BOARD_NOTE[d.board]||'';
   if(b==='rank'){ list=socRowsHtml(d.rows,d.board,'No one in this league has a score yet this period.'); note=leagueNote; mine=d.me?`<p class="pz-sub" style="font-size:13px">You’re <b>#${d.me.rank}</b> of ${d.size} with ${esc(socValue(d.board,d.me.value))}.</p>`:''; }
   else { const c2=socGet('lb:'+L.id+':'+b,'/leaderboard?board='+b+'&league='+encodeURIComponent(L.id),30000), d2=c2&&c2.d;
-    list=d2?socRowsHtml(d2.rows,b,'No one on this board yet.'):`<p class="pz-sub">${c2&&c2.err?esc(c2.err):'<span class="pz-spin"></span>Loading…'}</p>`; note=SOC_BOARD_NOTE[b]||''; opt=socOptHtml(d2);
+    list=d2?socRowsHtml(d2.rows,b,'No one on this board yet.'):`<p class="pz-sub">${c2&&c2.err?esc(c2.err):'<span class="pz-spin"></span>Loading…'}</p>`; note=SOC_BOARD_NOTE[b]||''; opt=socOptHtml(d2)+socOffBoardsHtml(d2);
     mine=d2&&d2.me?`<p class="pz-sub" style="font-size:13px">You’re <b>#${d2.me.rank}</b> of ${d2.total} with ${esc(socValue(b,d2.me.value))}.</p>`:''; }
   return `${chipsL}${banner}${chipsB}<p class="pz-sub" style="font-size:12px">${esc(note)}</p>${opt}${mine}${list}`;
 }
+// a lapsed standing takes you off the leaderboards (your league's own table still counts you)
+function socOffBoardsHtml(d){ return d&&d.offBoards?'<p class="pz-warn">You’re off the leaderboards while your standing is lapsed. Your league table still counts you. <a href="#age">Your standing</a></p>':''; }
 // the global boards: everyone on the server who opted in, whatever their league
 function socBoardsHtml(g){
   const on=!!(SOC.share&&SOC.share.global), b=SOC.gboard||'discipline';
@@ -587,7 +589,7 @@ function socBoardsHtml(g){
     <button type="button" role="switch" class="pz-switch" id="socGlobSw" data-soc-global="${on?'0':'1'}" aria-checked="${on}" aria-labelledby="socGlobL"><i></i></button></div></section>`;
   const list=d?socRowsHtml(d.rows,b,on?'No one on this board yet.':'No one has opted in to this board yet — be the first.'):`<p class="pz-sub">${c&&c.err?esc(c.err):'<span class="pz-spin"></span>Loading…'}</p>`;
   const mine=d&&d.me?`<p class="pz-sub" style="font-size:13px">You’re <b>#${d.me.rank}</b> of ${d.total} with ${esc(socValue(b,d.me.value))}.</p>`:'';
-  return `${chips}${join}<p class="pz-sub" style="font-size:12px">${esc(SOC_BOARD_NOTE[b]||'')}</p>${on?socOptHtml(d):''}${mine}${list}`;
+  return `${chips}${join}<p class="pz-sub" style="font-size:12px">${esc(SOC_BOARD_NOTE[b]||'')}</p>${on?socOptHtml(d):''}${socOffBoardsHtml(d)}${mine}${list}`;
 }
 // find a league by name or number
 function socFindHtml(D){
