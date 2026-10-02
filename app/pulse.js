@@ -343,6 +343,59 @@ function pzTiltNotify(T){
   if(navigator.serviceWorker&&navigator.serviceWorker.getRegistration)navigator.serviceWorker.getRegistration().then(r=>r?r.showNotification('Tilt '+T.score+' — time for a break',{body,tag:'pz-tilt'}):show()).catch(show);
   else show();
 }
+// ---- live tilt alerts: a banner on Today (and a notification) when a pattern shows up ----
+// The patterns and their once-a-day / 30-minute rules are pzTiltAlerts and pzTiltAlertPick.
+// What was said today is kept on this device; "Taking a break" starts the same 15-minute break
+// as quiet mode and is logged on the day (breaks never change the Discipline score).
+let _pzTaMem=null;
+function pzTaState(){ if(_pzTaMem)return Object.assign({},_pzTaMem); try{ return JSON.parse(localStorage.getItem('pzTiltAlerts')||'{}')||{}; }catch(e){ return {}; } }
+function pzTaSave(s){ _pzTaMem=Object.assign({},s); try{ localStorage.setItem('pzTiltAlerts',JSON.stringify(s)); }catch(e){} }
+function pzTaOn(){ return settings.pzTiltAlerts!==false; }
+// run after a refresh: only when today's fills changed since the last look
+function pzTiltAlertCheck(){
+  if(!PZ||!pzTaOn()||!allTrades.length)return null;
+  const D=pzData(), now=Date.now(), s=pzTaState();
+  const sig=D.todayK+':'+(D.ctx.trades||[]).filter(t=>(t.openTime&&dayKey(t.openTime)===D.todayK)||(t.closeTime&&dayKey(t.closeTime)===D.todayK)).map(t=>t.id+(t.isOpen?'o':'c'+t.closeTime)).sort().join(',');
+  if(s.sig===sig)return null; s.sig=sig;
+  const r=pzTiltAlertPick(pzTiltAlerts(D.ctx.trades,{now,dayOf:dayKey,isLoss:PZ_LOSS,maxTrades:D.risk.cap,lossLimit:D.risk.limit}),s.gate,now,D.todayK);
+  s.gate=r.st; if(r.pick)s.cur=Object.assign({},r.pick,{day:D.todayK,shown:now});
+  pzTaSave(s); if(r.pick)pzTaNotify(r.pick); return r.pick;
+}
+function pzTaNotify(a){
+  if(typeof Notification==='undefined'||Notification.permission!=='granted')return;
+  // the loss limit already has its notification (the tripwire): one, not two
+  if(a.k==='limit'){ const k='trip:'+nfDayKey(Date.now()); if(_notified[k])return; _notified[k]=1; }
+  const o={body:a.text,tag:'pz-tilt',data:{url:'/pulse#today'},icon:'/pulse-icon.svg'}, show=()=>{ try{ new Notification(a.title,o); }catch(e){} };
+  try{ if(navigator.serviceWorker&&navigator.serviceWorker.getRegistration)navigator.serviceWorker.getRegistration().then(r=>r?r.showNotification(a.title,o):show()).catch(show); else show(); }catch(e){ show(); }
+}
+// a hidden tab keeps refreshing while it could matter: alerts on, notifications allowed, a trade in the last two hours
+function pzTiltBgWanted(){
+  if(!PZ||!pzTaOn()||typeof Notification==='undefined'||Notification.permission!=='granted')return false;
+  const since=Date.now()-2*3600000; return allTrades.some(t=>(t.openTime||0)>since||(t.closeTime||0)>since);
+}
+function pzTaBannerHtml(D){
+  const a=pzTaState().cur, now=Date.now();
+  if(!pzTaOn()||!a||a.day!==D.todayK||now-a.shown>2*3600000||pzQuietState().until>a.shown)return '';
+  const col=a.k==='limit'||a.k==='limit80'?PZ_COL.mid:PZ_COL.risk;
+  return `<section class="pz-card pz-kv pz-talert" role="status" aria-labelledby="pzTaT" style="border:1px solid color-mix(in srgb, ${col} 50%, var(--pz-line));background:color-mix(in srgb, ${col} 9%, var(--pz-card))">
+    <div class="pz-kvrow"><span class="pz-lbl" style="color:${col}">${pzI('pause',14)} A moment to pause</span><span class="pz-sub" style="font-size:12px">${(p=>'at '+String(p.h).padStart(2,'0')+':'+String(p.min).padStart(2,'0'))(tzParts(a.at))}</span></div>
+    <b id="pzTaT" style="font-size:16px">${esc(a.title)}</b><p style="margin:0;font-size:14px;line-height:1.45">${esc(a.text)}</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="pz-cta pz-sm" style="flex:1;min-height:44px" data-pz-ta="break">Taking a break</button><button type="button" class="pz-ghost pz-sm" style="flex:1" data-pz-ta="dismiss">Dismiss</button></div></section>`;
+}
+async function pzTaAction(kind){
+  const s=pzTaState(), a=s.cur;
+  if(kind==='toggle'){ settings.pzTiltAlerts=!pzTaOn(); await Store.set(S_KEY,settings); pzRender(); return; }
+  if(kind==='push'){ const pr=Object.assign({},SOC.me&&SOC.me.push&&SOC.me.push.prefs); pr.tilt=pr.tilt===false;
+    const r=await socFetch('/push',{method:'PUT',body:JSON.stringify({prefs:pr})}); SOC.me.push.prefs=r.prefs; pzRender(); return; }
+  s.cur=null; pzTaSave(s);
+  if(kind==='break'&&a)return pzQuietAction('break',{src:'alert',p:a.k});
+  pzRender(); const m=$('pzMain'); if(m){ m.setAttribute('tabindex','-1'); m.focus({preventScroll:true}); }
+}
+// the switch in Settings, next to the reminders
+function pzTaSetHtml(){
+  return `<section><span class="pz-lbl" style="color:var(--pz-muted)">Tilt alerts</span>
+    <div class="pz-toggle"><span style="flex:1"><b id="pzTaL">Tell me when a tilt pattern shows up</b><span>Re-entering soon after a loss, losses close together, sizing up, more trades than planned, or near your loss limit. Once per pattern a day, at most every 30 minutes.</span></span><button type="button" role="switch" class="pz-switch" data-pz-ta="toggle" aria-checked="${pzTaOn()}" aria-labelledby="pzTaL"><i></i></button></div></section>`;
+}
 let _pzQuietTick=null;
 function pzQuietMount(D){
   const box=$('pzQuiet'); if(!box)return; let h='';
@@ -358,13 +411,13 @@ function pzQuietMount(D){
     if(!(q.until>Date.now())){ clearInterval(_pzQuietTick); pzRender(); return; }
     const left=q.until-Date.now(); if(el)el.textContent=String(Math.floor(left/60000)).padStart(2,'0')+':'+String(Math.floor(left/1000)%60).padStart(2,'0'); },1000);
 }
-async function pzQuietAction(kind){
+async function pzQuietAction(kind, extra){
   const q=pzQuietState(), D=pzData(), T=pzTiltOf(D);
   if(kind==='open'){ pzS.quiet=true; }
   else if(kind==='ack'){ q.ack=T.key; pzS.quiet=false; pzQuietSave(q); }
   else if(kind==='end'){ q.until=0; q.ack=T.key; pzS.quiet=false; pzQuietSave(q); }
   else if(kind==='break'){ q.until=Date.now()+PZ_QUIET_MIN*60000; q.ack=T.key; pzS.quiet=false; pzQuietSave(q);
-    const k='day:'+D.todayK, e=journal[k]=Object.assign({},journal[k]||{}); e.breaks=(Array.isArray(e.breaks)?e.breaks:[]).concat([{at:Date.now(),min:PZ_QUIET_MIN,tilt:T.score}]).slice(-20);
+    const k='day:'+D.todayK, e=journal[k]=Object.assign({},journal[k]||{}); e.breaks=(Array.isArray(e.breaks)?e.breaks:[]).concat([Object.assign({at:Date.now(),min:PZ_QUIET_MIN,tilt:T.score},extra||{})]).slice(-20);
     e.updatedAt=Date.now(); markJEdit(k); await Store.set(J_KEY,journal); }
   pzRender(); const f=document.querySelector('#pzQuiet button'); if(f)f.focus();
 }
@@ -584,6 +637,7 @@ function pzTodayHtml(D){
   const F=safe(()=>pzTodayFacts(D))||null;
   const on=id=>pzShow('today',id), sec=(id,f)=>on(id)?safe(f):'', more=(id,k)=>F&&on(id)?safe(()=>k(D,F)):'';
   return `${pzHead(dayLabel(D.todayK).replace(', ',' · '),'Today',pzChips(g,D.inbox.length))}
+    ${safe(()=>pzTaBannerHtml(D))}
     ${sec('oneThing',()=>pzOneThingHtml(D))}
     <div class="pz-wide">${ringsHtml}<div class="pz-span" id="pzRingDetail">${detail}</div>${more('numbers',pzTodayStripHtml)}${sec('level',()=>pzProgressRowHtml(D))}
       ${(()=>{ const card={tilt:()=>sec('tilt',()=>pzTiltHtml(D)),insight:()=>on('insight')?coach:'',session:()=>more('session',pzSessionHtml),positions:()=>more('positions',pzPositionsHtml),
@@ -1178,6 +1232,7 @@ function pzSheetHtml(){
       <div class="pz-seg" role="group" aria-label="Appearance" style="margin-top:6px">${[['auto','Auto'],['dark','Dark'],['light','Light']].map(([v,l])=>`<button type="button" data-pz-appear="${v}" aria-pressed="${(settings.appearance||'auto')===v}" style="flex:1">${l}</button>`).join('')}</div>
       <p class="pz-fine" style="margin-top:6px">Auto follows your phone’s light or dark setting.</p></section>
     ${pzProfilePickHtml()}
+    ${pzTaSetHtml()}
     ${pzPushHtml()}
     <section><span class="pz-lbl" style="color:var(--pz-muted)">Your data</span><p class="pz-sub" style="margin-top:6px">${where}</p>
       ${SRV.enabled&&!SRV.needsAuth?'<p class="pz-warn" style="margin-top:10px">This server has no access token set, so everyone who opens this link shares one journal. The owner should set AUTH_TOKEN before sharing it.</p>':''}
@@ -1293,7 +1348,6 @@ function wirePulse(){
       case 'pzCkSave': return pzSaveCheckin();
       case 'pzTokBtn': return pzToken();
       case 'pzInstall': if(_deferredInstall){ _deferredInstall.prompt(); try{ await _deferredInstall.userChoice; }catch(e){} _deferredInstall=null; pzRender(); } return;
-      case 'pzShare': return showShareCard();
       case 'pzReport': return showReportCard();
       case 'pzSwap': { const g=gameContext(); const c=challengeCandidates(g.ctx.findings); const cur=weekChallenge(); if(!c.length)return;
         const curKey=cur&&specKey(cur.spec); let i=(Math.max(0,c.findIndex(x=>specKey(x)===curKey))+1)%c.length;

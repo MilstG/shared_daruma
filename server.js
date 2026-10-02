@@ -113,6 +113,8 @@ const ENGINE_FNS = [
   'isJournaled',
   // Pulse's Discipline score, recomputed from a member's public fills to verify the social boards
   'nfMedian', 'addedToLoser', 'pzBehaviorDays',
+  // live tilt alerts, pushed to those members while Pulse is closed (same patterns and rules as the app)
+  'pzTiltAlerts', 'pzTiltAlertPick',
   // the anonymous summary a seed wallet contributes to the "traders like you" benchmarks
   'peerSummary',
   // Hyperliquid client (retry/backoff/pagination identical to the browser's)
@@ -2234,6 +2236,17 @@ function createApp(opts) {
     return E.pzBehaviorDays(closed, { dayOf: zoneDay(tz || 'UTC'), isLoss: n => n < -1 /* same fixed rule as the app's PZ_LOSS */ })
       .map(d => ({ k: d.key, s: d.score, n: d.n }));
   };
+  // Live tilt alerts for a member with Pulse closed: the same cached fills, today's patterns by the
+  // app's pzTiltAlerts on the member's clock, and its once-a-day / 30-minute rules (state: theirs, kept
+  // by the social layer). The plan and loss limit live in their journal, so those two aren't checked here.
+  const tiltFor = async (addr, tz, state) => {
+    if (!engine.ok || !E.pzTiltAlerts || !E.pzTiltAlertPick) return null;
+    const a = String(addr).toLowerCase(); if (!/^0x[0-9a-f]{40}$/.test(a)) return null;
+    const fills = await recentFills(a); if (!fills) return null;
+    const trades = [...E.attributeFunding(E.reconstructTrades(fills, a, 'perp'), []), ...E.attributeFunding(E.reconstructTrades(fills, a, 'spot'), [])];
+    const now = (opts.now || Date.now)(), dayOf = zoneDay(tz || 'UTC');
+    return E.pzTiltAlertPick(E.pzTiltAlerts(trades, { now, dayOf, isLoss: n => n < -1 }), state, now, dayOf(now));
+  };
   // "Traders like you" seed wallets: the same anonymous summary a member's app sends, worked out here
   // from the wallet's public fills over the last 90 days (and its on-chain return for the last 30).
   // Wallets with more than 20,000 fills in that time are bots or market makers and are left out.
@@ -2296,7 +2309,7 @@ function createApp(opts) {
   const cexRelay = CexRelay.createCexRelay({ env: opts.cexEnv || process.env, fetchImpl: opts.cexFetch || opts.fetchImpl, now: opts.now });
   if (cexRelay.relayOnly && !cexRelay.secretSet) console.warn('[ledger] CEX_RELAY_ONLY is on but CEX_RELAY_SECRET is not set — the relay will refuse every request');
   const social = createSocial({ dataDir, json, authOk, adminConfigured: !!auth, fetchImpl: opts.fetchImpl, now: opts.now, push: pushCfg, onDrop: id => wearRef.forget && wearRef.forget('m:' + id),
-    behaviorFor, peerSummaryFor: opts.peerSummaryFor || peerSummaryFor, seedDelay: opts.seedDelay, tradeCheck: opts.tradeCheck || tradeCheck, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled });
+    behaviorFor, tiltFor: opts.tiltFor || tiltFor, peerSummaryFor: opts.peerSummaryFor || peerSummaryFor, seedDelay: opts.seedDelay, tradeCheck: opts.tradeCheck || tradeCheck, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled });
   // readiness from WHOOP, Oura or Apple Health: the owner (AUTH_TOKEN) or a member (Pulse key)
   const wearOrigin = req => { if (publicOrigins[0]) { try { return new URL(publicOrigins[0]).origin; } catch (e) {} }
     return hostVetted && req.headers.host ? 'https://' + req.headers.host : opts.wearOrigin || null; };
