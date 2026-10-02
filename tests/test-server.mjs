@@ -57,6 +57,25 @@ await t('health is unauthenticated and reports auth mode + app sync capability',
   eq(r.status, 200);
   eq(await r.json(), { ok: true, auth: true, appSyncCapable: true });
 });
+await t('fonts are files: versioned in the page, cached for a year by hash, only real woff2 files served', async () => {
+  const body = await (await fetch(base + '/')).text();
+  const m = body.match(/url\((app\/fonts\/inter-400\.woff2)\?v=([0-9a-f]{12})\)/);
+  ok(m, 'the page names the font file with its hash'); ok(!body.includes('data:font/'), 'no font embedded in the page');
+  const r = await fetch(base + '/' + m[1] + '?v=' + m[2]);
+  eq([r.status, r.headers.get('content-type')], [200, 'font/woff2']); ok(/immutable/.test(r.headers.get('cache-control')));
+  const b = Buffer.from(await r.arrayBuffer()); eq(b.subarray(0, 4).toString('latin1'), 'wOF2');
+  eq((await fetch(base + '/' + m[1] + '?v=000000000000')).headers.get('cache-control'), 'no-cache', 'a stale hash revalidates');
+  eq((await fetch(base + '/' + m[1], { headers: { 'If-None-Match': r.headers.get('etag') } })).status, 304);
+  for (const p of ['/app/fonts/../server.js', '/app/fonts/nope.woff2', '/app/fonts/inter-400.ttf', '/app/fonts/%2e%2e%2fserver.js']) eq((await fetch(base + p)).status, 404, p);
+});
+await t('each screen gets its own page: Keel leaves Chart.js out; both share one version and the offline cache keeps them apart', async () => {
+  const j = await (await fetch(base + '/')).text(), k = await (await fetch(base + '/keel')).text(), p = await (await fetch(base + '/pulse')).text();
+  ok(j.includes('src="app/chart.umd.js?v=')); ok(!k.includes('chart.umd.js')); eq(p, k, '/pulse is Keel');
+  const ver = s => s.match(/name="app-version" content="([0-9a-f]+)"/)[1];
+  eq(ver(j), ver(k), 'one version for both screens');
+  const sw = await (await fetch(base + '/sw.js')).text();
+  ok(sw.includes("const K=u.pathname==='/keel'||u.pathname==='/pulse'?'/keel':'/';") && sw.includes('c.put(K,cp)') && sw.includes('caches.match(K)'), 'a cached copy per screen');
+});
 await t('the page carries its version, and /api/version (unauthenticated, never cached) answers the same one', async () => {
   const body = await (await fetch(base + '/pulse')).text();
   const m = body.match(/<meta name="app-version" content="([0-9a-f]{12})">/);

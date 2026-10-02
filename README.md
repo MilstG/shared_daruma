@@ -1777,9 +1777,12 @@ values, a whole-file parse check of every script block, and the server over
 real HTTP (auth, revision conflicts, restart survival, the capital endpoint,
 digest lifecycle, server-held backups, the metrics endpoint). The suites extract functions **directly from `ledger.html`**, so
 they test exactly what ships — there is no second copy of the code to drift
-out of sync. `tests/test-budget.mjs` adds a size budget: the build fails if
-app (`ledger.html` plus every `app/` script, what a visitor downloads) grows past
-its raw or gzipped budget, so growth is a choice rather than a drift.
+out of sync. `tests/test-budget.mjs` adds size budgets, one per screen, measured as
+the server sends them: the journal (`/`: the page plus its `app/` scripts) and Keel
+(`/keel`, which leaves Chart.js out because it never draws one). The fonts are files in
+`app/fonts/`, versioned and cached for a year like the scripts, and a browser only
+fetches the faces a screen uses, so they have a budget of their own. A test that fails
+names the screen that grew, so growth is a choice rather than a drift.
 
 **Browser smoke tests** (`e2e/run.mjs`) run the real app in Chromium against the
 real server, fully offline (every request off the local server is blocked). They
