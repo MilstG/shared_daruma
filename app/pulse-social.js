@@ -179,7 +179,8 @@ function peerMine(){
   const ctx=coachContext(), key=_coachMemo.key+'|'+_jrev;
   if(_peerMine.key===key)return _peerMine.v;
   let v; try{ const first=Math.min(...ctx.closed.map(t=>t.openTime||t.closeTime));
-    v=peerSummary(ctx.closed,{now:Date.now(),dayOf:dayKey,firstAt:isFinite(first)?first:null,isJournaled:t=>isJournaled(journal[t.id])});
+    const bc=(SOC.cfg&&SOC.cfg.bench)||{};
+    v=peerSummary(ctx.closed,{now:Date.now(),minTrades:bc.minTrades,days:bc.days,dayOf:dayKey,firstAt:isFinite(first)?first:null,isJournaled:t=>isJournaled(journal[t.id])});
     // your own on-chain return, when you share it, sits you among the verified numbers too
     const mo=SOC.me; if(v.ok&&mo&&mo.ret!=null){ v.ret=mo.ret*100; v.dd=(mo.dd||0)*100; }
   }catch(e){ v={ok:false,why:'error'}; }
@@ -227,7 +228,9 @@ const PEER_GAP_SAY={jour:(t,v)=>[`The best quarter journal ${Math.round(t)}% of 
   rev:(t,v)=>[`The best quarter revenge trade on ${Math.round(t)}% of their trades.`,`You: ${Math.round(v)}%.`],
   disc:(t,v)=>[`The best quarter average ${Math.round(t)} on Discipline.`,`You average ${Math.round(v)}.`],
   fees:(t,v)=>[`The best quarter give ${Math.round(t)}% of their gross profit to fees.`,`You give ${Math.round(v)}%.`]};
-const PEER_WHY={few:'It needs 30 closed trades in the last 90 days.',short:'It needs at least 3 weeks of trading in the last 90 days.',error:'Your summary couldn’t be worked out.'};
+// why there's no summary yet, with the league's own bar
+function peerWhy(m){ return m.why==='few'&&m.need?'It needs '+m.need+' closed trades in the last '+(m.days||90)+' days.':m.why==='short'?'It needs at least 2 weeks of trading in the last '+(m.days||90)+' days.':PEER_WHY[m.why]||''; }
+const PEER_WHY={few:'It needs more closed trades in the last few months.',short:'It needs at least 2 weeks of trading.',error:'Your summary couldn’t be worked out.'};
 
 // ---- screens ----
 

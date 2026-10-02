@@ -476,11 +476,13 @@ function pzBehaviorDays(closed, opts){
 // Sizes and activity are reduced to ranges; nothing here names a coin, a dollar amount or a wallet.
 // o: {now, dayOf, firstAt (first trade ever, for experience), isJournaled (app only)}
 function peerSummary(closed, o){
-  o=o||{}; const now=o.now||Date.now(), from=now-90*86400000, DAY=86400000;
+  // the league owner sets the bar (Admin → Benchmarks): at least minTrades closed trades in the last
+  // `days` days (15 in 90 by default), over at least two weeks, so one lucky week can't skew a group
+  o=o||{}; const DAY=86400000, now=o.now||Date.now(), look=o.days===180?180:90, minN=Math.max(10,Math.min(100,Math.round(+o.minTrades)||15)), from=now-look*DAY;
   const tr=(closed||[]).filter(t=>!t.isOpen&&t.closeTime>=from&&t.closeTime<=now&&t.openTime&&!t.partialHistory);
-  const n=tr.length; if(n<30)return {ok:false,why:'few',n}; // 30 closed trades over at least 3 weeks, so one lucky week can't skew a group
+  const n=tr.length; if(n<minN)return {ok:false,why:'few',n,need:minN,days:look};
   const first=Math.min(...tr.map(t=>t.closeTime)), last=Math.max(...tr.map(t=>t.closeTime));
-  if((last-first)/DAY<21)return {ok:false,why:'short',n};
+  if((last-first)/DAY<14)return {ok:false,why:'short',n,days:look};
   const med=a=>{ const s=[...a].sort((x,y)=>x-y), k=s.length; return k?(k%2?s[(k-1)/2]:(s[k/2-1]+s[k/2])/2):null; };
   const r1=v=>Math.round(v*10)/10, r2=v=>Math.round(v*100)/100;
   // the same style rule as Pulse's profile (pzDetectProfile)

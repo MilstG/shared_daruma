@@ -2235,13 +2235,14 @@ function createApp(opts) {
   // "Traders like you" seed wallets: the same anonymous summary a member's app sends, worked out here
   // from the wallet's public fills over the last 90 days (and its on-chain return for the last 30).
   // Wallets with more than 20,000 fills in that time are bots or market makers and are left out.
-  const peerSummaryFor = async (addr) => {
+  const peerSummaryFor = async (addr, cfg) => {
+    cfg = cfg || {}; const days = cfg.days === 180 ? 180 : 90;
     if (!engine.ok || !E.peerSummary) return { error: 'the trade engine isn’t available on this server' };
     const a = String(addr).toLowerCase(); if (!/^0x[0-9a-f]{40}$/.test(a)) return { error: 'not a wallet address' };
     const t = (opts.now || Date.now)(), fills = [], seen = new Set();
-    let start = t - 90 * 86400000;
+    let start = t - days * 86400000;
     for (let page = 0; ; page++) {
-      if (page >= 10) return { ok: false, why: 'bot' };
+      if (page >= (days === 180 ? 20 : 10)) return { ok: false, why: 'bot' };
       const batch = await E.hlPost({ type: 'userFillsByTime', user: a, startTime: start, aggregateByTime: true });
       if (!Array.isArray(batch) || !batch.length) break;
       for (const f of batch) { const id = f.tid + '-' + f.oid + '-' + f.time; if (!seen.has(id)) { seen.add(id); fills.push(f); } }
@@ -2256,9 +2257,13 @@ function createApp(opts) {
       const p = av.find(x => parseFloat(x[1]) > 0); if (p) firstAt = +p[0]; // the wallet's first funded day: how long it has traded
       const st = portfolioStats(res, 'month'); if (st) { ret = st.ret * 100; dd = st.dd * 100; }
     } catch (e) { /* returns are a bonus; the summary stands without them */ }
-    const sum = E.peerSummary(trades.filter(x => !x.isOpen && x.closeTime), { now: t, firstAt });
+    const sum = E.peerSummary(trades.filter(x => !x.isOpen && x.closeTime), { now: t, firstAt, minTrades: cfg.minTrades, days });
     if (sum.ok && sum.tw > 1500) return { ok: false, why: 'bot' };
     if (sum.ok) Object.assign(sum, { ret, dd });
+    // dollars, for the owner's seed-wallet table only (public on-chain numbers; never in the groups)
+    const from = t - days * 86400000, inWin = trades.filter(x => !x.isOpen && x.closeTime >= from);
+    sum.usd = { pnl: Math.round(inWin.reduce((s, x) => s + (x.net || 0), 0)), vol: Math.round(fills.reduce((s, f) => s + (Math.abs(parseFloat(f.sz) * parseFloat(f.px)) || 0), 0)), equity: null, days };
+    try { const res = await E.hlPost({ type: 'clearinghouseState', user: a }); const v = parseFloat(res && res.marginSummary && res.marginSummary.accountValue); if (isFinite(v)) sum.usd.equity = Math.round(v); } catch (e) {}
     return sum;
   };
   const forgetAddress = (addr) => { try { fs.unlinkSync(path.join(socialFillsDir, String(addr).toLowerCase() + '.json.gz')); } catch (e) {} };

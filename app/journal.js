@@ -954,7 +954,7 @@ function peersSectionHtml(){
   if(!peerCanAsk())return '';
   if(SOC.cfg&&SOC.cfg.bench&&SOC.cfg.bench.on===false)return '';
   let mine; try{ mine=peerMine(); }catch(e){ return ''; }
-  if(!mine.ok)return head+`<p class="lead">${esc(PEER_WHY[mine.why]||'')}${mine.n?' You have '+mine.n+'.':''}</p></div>`;
+  if(!mine.ok)return head+`<p class="lead">${esc(peerWhy(mine))}${mine.n?' You have '+mine.n+'.':''}</p></div>`;
   const P=peerData(mine), d=P&&P.d;
   if(!d)return head+`<p class="lead">${P&&P.err?'Couldn’t load the comparison: '+esc(P.err):'Loading your peer groups…'}</p></div>`;
   if(d.on===false)return '';

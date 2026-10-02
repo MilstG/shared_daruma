@@ -693,7 +693,7 @@ function pzPeersHtml(g){
   const lock=pzLocked('peers',g.level.level);
   if(lock)return sec(`${head}</div><p class="pz-sub" style="font-size:13px;margin:0">${pzI('lock',14)} Unlocks at level ${lock}. ${pzXpToGo(lock,g)}</p>`);
   const mine=peerMine();
-  if(!mine.ok)return sec(`${head}</div><p class="pz-sub" style="font-size:13px;margin:0">See how you compare with traders who trade like you. ${esc(PEER_WHY[mine.why]||'')}${mine.n?' You have '+mine.n+'.':''}</p>`);
+  if(!mine.ok)return sec(`${head}</div><p class="pz-sub" style="font-size:13px;margin:0">See how you compare with traders who trade like you. ${esc(peerWhy(mine))}${mine.n?' You have '+mine.n+'.':''}</p>`);
   const P=peerData(mine), d=P&&P.d;
   if(!d)return sec(`${head}</div><p class="pz-sub" style="font-size:13px;margin:0">${P&&P.err?'Couldn’t load the comparison: '+esc(P.err):'Loading your peer group…'}</p>`);
   if(d.on===false)return '';

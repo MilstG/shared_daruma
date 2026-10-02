@@ -804,10 +804,10 @@ function createSocial(opts) {
       const r = Object.assign({}, m.bench); delete r.at;
       // returns and drawdown only when read on chain for this member (last 30 days)
       if (m.money && m.money.ret != null && walletFor(m)) { r.ret = m.money.ret * 100; r.dd = m.money.dd * 100; }
-      const b = Bench.sanitizeBench(r); if (b) { rows.push(b); if (m.address) mine.add(m.address); }
+      const b = Bench.sanitizeBench(r); if (b && b.n >= S.config.bench.minTrades) { rows.push(b); if (m.address) mine.add(m.address); }
     }
     if (S.config.bench.seeds) for (const [a, x] of Object.entries(S.benchSeeds))
-      if (x.st === 'ok' && x.sum && !mine.has(a) && now() - (x.done || 0) < 4 * SEED_REFRESH) { rows.push(x.sum); seeds++; }
+      if (x.st === 'ok' && x.sum && x.sum.n >= S.config.bench.minTrades && !mine.has(a) && now() - (x.done || 0) < 4 * SEED_REFRESH) { rows.push(x.sum); seeds++; }
     return { rows, seeds };
   };
   const benchBuild = () => { const R = benchRows();
@@ -825,16 +825,20 @@ function createSocial(opts) {
     for (const [a, x] of Object.entries(S.benchSeeds)) { if (x.st === 'queued') return a;
       if (x.st === 'ok' && now() - (x.done || 0) > SEED_REFRESH && (!due || x.done < S.benchSeeds[due].done)) due = a; }
     return due; };
-  const SEED_WHY = { few: 'fewer than 30 closed trades in the last 90 days', short: 'under 3 weeks of trading in the last 90 days', bot: 'too many fills for one person (a bot or market maker)' };
+  const seedWhy = r => { const c = S.config.bench;
+    return r.why === 'few' ? (r.n || 0) + ' closed trade' + (r.n === 1 ? '' : 's') + ' in the last ' + c.days + ' days (needs ' + c.minTrades + ')'
+      : r.why === 'short' ? 'under 2 weeks of trading in the last ' + c.days + ' days'
+      : r.why === 'bot' ? 'too many fills for one person (a bot or market maker)' : 'not enough trading to compare'; };
   const seedWork = async () => {
     const a = nextSeed(); if (seedBusy || !a || !opts.peerSummaryFor) return;
     seedBusy = true; const x = S.benchSeeds[a];
     try {
-      const r = await opts.peerSummaryFor(a);
+      const r = await opts.peerSummaryFor(a, { minTrades: S.config.bench.minTrades, days: S.config.bench.days });
       if (!own(S.benchSeeds, a)) return; // removed while it was being read
       const sum = r && r.ok ? Bench.sanitizeBench(r) : null;
+      x.n = r && r.n != null ? r.n : null; x.usd = r && r.usd ? r.usd : null; // shown to the owner in the seed table, never in the groups
       if (sum) { x.st = 'ok'; x.why = ''; x.sum = sum; }
-      else if (r && r.ok === false) { x.st = 'skip'; x.why = SEED_WHY[r.why] || 'not enough trading to compare'; x.sum = null; }
+      else if (r && r.ok === false) { x.st = 'skip'; x.why = seedWhy(r); x.sum = null; }
       else { x.st = 'err'; x.why = String((r && r.error) || 'couldn’t read this wallet').slice(0, 120); }
     } catch (e) { if (own(S.benchSeeds, a)) { x.st = 'err'; x.why = String((e && e.message) || e).slice(0, 120); } }
     finally { if (own(S.benchSeeds, a)) { x.done = now(); x.tries = (x.tries || 0) + 1; } seedBusy = false; benchDirty = true; save('benchSeeds');
@@ -1271,7 +1275,7 @@ function createSocial(opts) {
         unlocks: S.config.unlocks, tiers: TIERS, week: S.league.week, members: members().filter(m => !m.banned).length,
         claims: !!sig, passkeys: true, requireClaim: !!S.config.requireClaim, approveWallets: !!S.config.approveWallets, vaultOn: !!S.config.vaultOn,
         modules: S.config.modules, levels: S.config.levels, xp: S.config.xp, profiles: S.config.profiles,
-        bench: { on: !!S.config.bench.on }, duels: { on: !!S.config.duels.on },
+        bench: { on: !!S.config.bench.on, minTrades: S.config.bench.minTrades, days: S.config.bench.days }, duels: { on: !!S.config.duels.on },
         coach: { members: S.config.coach.members, daily: S.config.coach.daily, detail: S.config.coach.detail }, posts: postCfgOut(),
         badges: Object.values(S.badges).map(b => ({ id: b.id, name: b.name, icon: b.icon, desc: b.desc, metric: b.metric, metricLabel: b.metric ? SC.BADGE_METRICS[b.metric] : null, op: b.op, value: b.value, xp: b.xp })),
         leagues: Object.values(S.leagues).filter(L => L.open).length });
@@ -1491,7 +1495,11 @@ function createSocial(opts) {
         if (body.coach) c.coach = SC.sanitizeCoachCfg(body.coach, c.coach);
         if (body.profiles) c.profiles = SC.sanitizeProfiles(body.profiles, c.profiles);
         if (body.posts) c.posts = sanitizePostCfg(body.posts, c.posts);
-        if (body.bench) c.bench = Bench.sanitizeBenchCfg(body.bench, c.bench);
+        if (body.bench) { const was = c.bench; c.bench = Bench.sanitizeBenchCfg(body.bench, c.bench);
+          // a new bar or window: left-out wallets get another look (and a new window means re-reading the counted ones too)
+          if (was && (was.minTrades !== c.bench.minTrades || was.days !== c.bench.days)) {
+            for (const x of Object.values(S.benchSeeds)) if (x.st === 'skip' || (x.st === 'ok' && (was.days !== c.bench.days || (x.sum && x.sum.n < c.bench.minTrades)))) { x.st = 'queued'; x.why = ''; }
+            benchDirty = true; save('benchSeeds'); seedSchedule(); } }
         if (body.duels) c.duels = Duels.sanitizeDuelCfg(body.duels, c.duels);
         if (typeof body.requireClaim === 'boolean' && body.requireClaim !== c.requireClaim) {
           c.requireClaim = body.requireClaim;
@@ -1537,7 +1545,9 @@ function createSocial(opts) {
         return json(res, 200, { config: S.config.bench, at: B.at, contributors: B.contributors, members: B.members, seeds: B.seeds, split: B.split, min: B.min,
           optedOut, withSummary: members().filter(m => !m.banned && m.share && m.share.bench !== false && m.bench).length, labels: Bench.DIMS, groups,
           seedCounts: seedCounts(), seedMax: SEED_MAX, seedReader: !!opts.peerSummaryFor,
-          seedList: seeds.slice(0, 200).map(([a, x]) => ({ address: a, st: x.st, why: x.why || '', added: x.added || 0, done: x.done || 0, by: x.by || '', style: x.sum ? x.sum.style : null, size: x.sum ? x.sum.size : null, exp: x.sum ? x.sum.exp : null, act: x.sum ? x.sum.act : null, n: x.sum ? x.sum.n : null, wr: x.sum ? x.sum.wr : null, ret: x.sum ? x.sum.ret : null })) });
+          seedList: seeds.slice(0, 1000).map(([a, x]) => ({ address: a, st: x.st, why: x.why || '', added: x.added || 0, done: x.done || 0, by: x.by || '', style: x.sum ? x.sum.style : null, size: x.sum ? x.sum.size : null, exp: x.sum ? x.sum.exp : null, act: x.sum ? x.sum.act : null, n: x.sum ? x.sum.n : x.n != null ? x.n : null,
+            wr: x.sum ? x.sum.wr : null, pf: x.sum ? x.sum.pf : null, pay: x.sum ? x.sum.pay : null, fees: x.sum ? x.sum.fees : null, tw: x.sum ? x.sum.tw : null, hold: x.sum ? x.sum.hold : null,
+            disc: x.sum ? x.sum.disc : null, rev: x.sum ? x.sum.rev : null, ret: x.sum ? x.sum.ret : null, dd: x.sum ? x.sum.dd : null, usd: x.usd || null })) });
       }
       if (sub === 'bench' && M === 'POST') {
         const a = body.action;

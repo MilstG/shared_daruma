@@ -1097,13 +1097,25 @@ dimensions to match and see each group's spread.
   A group needs at least 25 traders (the owner can set 10 or more); below 200
   contributors only "everyone" and "same style" groups exist. Only each group's
   deciles leave the server, and a "best quarter" figure only when it covers at
-  least 10 traders. Summaries need 30 closed trades over at least 3 weeks.
+  least 10 traders. A trader counts with 15 closed trades in the last 90 days, over at
+  least 2 weeks; the owner sets the bar (10–100 trades) and the look-back (90 or 180
+  days) in Admin → Benchmarks, and changing either re-reads the seed wallets it affects.
 - **Seed wallets.** To get started before you have many members, the owner can
   bulk-add public Hyperliquid wallets in Admin → Benchmarks. The server reads
   each one's last 90 days of fills, a few seconds apart, and runs the same
   summary function the app uses (plus the wallet's 30-day return). Wallets with
-  under 30 trades, or with more than 20,000 fills (bots, market makers), are left
+  under the bar, or with more than 20,000 fills (bots, market makers), are left
   out. Counted wallets are re-read weekly; up to 5,000.
+- **The seed table** shows what was read from each wallet:
+  - segment: style, trade size, experience and pace;
+  - trades, win rate and profit factor;
+  - realised P&L in dollars over the look-back, 30-day return and drawdown, and
+    account value.
+
+  You can filter it by status and sort it by P&L, return, profit factor, win rate,
+  trades, account value or drawdown. The dollar figures are for you only; they
+  never go into the groups. Left-out wallets show how many trades they had.
+  "How traders are grouped" in the same tab spells out the rules.
 - It's a Pulse feature like the others, **free at level 1**. Set a level under
   Admin → Features to make it an unlock. The AI coach sees the member's standing
   (group spreads only) and can use it to make a habit concrete.
