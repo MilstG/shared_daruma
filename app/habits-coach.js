@@ -502,7 +502,7 @@ const RV_HABITS=[ // key, label, how a day is graded (true kept / false missed /
   ['plan','Plan written before the first trade',d=>d.parts.plan==null?null:d.parts.plan>=1?true:d.parts.plan===0?false:null,false],
   ['rules','Your rules kept',d=>d.parts.rules==null?null:d.parts.rules>=1,false],
   ['planned','Stops written while the trade was open',d=>d.parts.planned==null?null:d.parts.planned>=1,false],
-  ['checkin','Morning check-in done',d=>d.checkin,false],
+  ['checkin','Morning prep done',d=>d.checkin,false],
   ['review','End-of-day review written',d=>d.review,false],
   ['journal','Every trade journaled',d=>d.parts.journal==null?null:d.parts.journal>=1,false],
   ['revenge','No revenge entries',d=>!d.flags.revenge,false],

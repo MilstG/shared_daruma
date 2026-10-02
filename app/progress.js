@@ -295,7 +295,7 @@ function progressSectionHtml(){
     :`<div class="metric-row"><span class="ml">Discipline saved you (est.)</span><span class="mv" style="font-weight:400;color:var(--faint)">appears once a rule or avoid-habit has a track record</span></div>`;
   return `<div class="diag-section" id="progressSec"><h2>Progress <span style="font-size:11px;color:var(--faint);font-weight:400">earned by process, never by profit or trade count</span></h2>
     <div class="gm-grid">
-      <div class="diag-card gm"><h3 data-tip="${(X=>esc(`XP per trading day = that day's Discipline score (0–100${X.discipline!==1?', ×'+X.discipline:''}, read from your fills: no revenge entries, sizing up after losses, adding to losers, trading on after two losses, overtrading or holding losers too long), plus bonus XP for what you log: check-in +${X.checkin}, plan before the first trade +${X.plan}, trades journaled +${X.journal}, stops written +${X.stops}, loss limit respected +${X.limit}. Also +${X.focus} per focus-habit day, +${X.challenge} per completed weekly challenge, +${X.achievement} per achievement.`))(pzXpCfg())}">Level</h3>
+      <div class="diag-card gm"><h3 data-tip="${(X=>esc(`XP per trading day = that day's Discipline score (0–100${X.discipline!==1?', ×'+X.discipline:''}, read from your fills: no revenge entries, sizing up after losses, adding to losers, trading on after two losses, overtrading or holding losers too long), plus bonus XP for what you log: morning prep +${X.checkin}, plan before the first trade +${X.plan}, trades journaled +${X.journal}, stops written +${X.stops}, loss limit respected +${X.limit}. Also +${X.focus} per focus-habit day, +${X.challenge} per completed weekly challenge, +${X.achievement} per achievement.`))(pzXpCfg())}">Level</h3>
         <div class="gm-big">${L.level} · ${esc(L.title)}</div>
         <div class="xpbar" role="progressbar" aria-valuemin="0" aria-valuemax="${L.need}" aria-valuenow="${L.into}" data-tip="${esc(L.into.toLocaleString()+' of '+L.need.toLocaleString()+' XP into level '+L.level+' ('+pct+'%). '+(L.need-L.into).toLocaleString()+' XP to go.')}"><i style="width:${pct}%"></i></div>
         <div class="gm-sub">${L.into.toLocaleString()} / ${L.need.toLocaleString()} XP to ${esc(pzLevelTitle(L.level+1))} · +${g.weekXp.toLocaleString()} this week</div></div>
@@ -430,7 +430,7 @@ const PZ_BEH={revenge:'Entered within 15 minutes of a loss',afterTwo:'Kept tradi
 // What counts as a loss for Discipline: fixed (more than $1 lost), NOT the personal break-even
 // setting, so the app and the server's verification score the same trades the same way.
 const PZ_LOSS=n=>n<-1;
-const PZ_BONUS={checkin:['Morning check-in',10],plan:['Plan before your first trade',15],journal:['Today’s trades journaled',15],stops:['Stops written while trades were open',10],limit:['Respected your loss limit',10],review:['End-of-day review',15]};
+const PZ_BONUS={checkin:['Morning prep',10],plan:['Plan before your first trade',15],journal:['Today’s trades journaled',15],stops:['Stops written while trades were open',10],limit:['Respected your loss limit',10],review:['End-of-day review',15]};
 // Per trading day (by close day): the share of trades with none of the six slips, 0–100.
 // Baselines (usual size, usual trades per day, usual winner hold) come only from trades that
 // closed before that day's first entry, so a day is never judged against itself.
@@ -705,7 +705,7 @@ function pzGoalEval(g, x){
     return {pct:sh==null?0:Math.min(1,sh/g.target),now:sh==null?'No trades yet':sh+'% · '+j+' of '+tr.length+' trades',status:monthOver?(sh!=null&&sh>=g.target?'done':'missed'):sh==null||sh>=g.target?'on':'behind'}; }
   if(g.kind==='checkin'){ let n=0; for(const k in x.J){ if(!k.startsWith('day:')||!inMonth(k.slice(4)))continue; const e=x.J[k]; if(e&&(+e.sleep||+e.stress||+e.focus))n++; }
     const left=g.month===today.slice(0,7)?pzDaysBetween(today,pzMonthEnd(g.month))+1:0;
-    return {pct:Math.min(1,n/g.target),now:n+' of '+g.target+' check-ins',status:n>=g.target?'done':monthOver||n+left<g.target?'missed':'on'}; }
+    return {pct:Math.min(1,n/g.target),now:n+' of '+g.target+' days prepped',status:n>=g.target?'done':monthOver||n+left<g.target?'missed':'on'}; }
   // run goals: the clock starts with the goal and restarts after a break. Days you don't trade
   // never break it, but they don't prove anything either: it also takes three trading days per
   // week of the target (for the limit goal, trading days with a loss limit set).
@@ -717,7 +717,7 @@ function pzGoalEval(g, x){
   const run=Math.max(0,pzDaysBetween(from,today)), traded=x.days.filter(d=>d.key>=g.start&&(broke?d.key>broke:true)&&counts(d)).length;
   return {pct:Math.min(1,run/span,traded/needT),now:run+' of '+span+' days · '+Math.min(traded,needT)+' of '+needT+' trading days'+(broke?' · restarted '+x.label(broke):''),
     status:run>=span&&traded>=needT?'done':broke&&run<3?'behind':'on',
-    note:g.kind==='limit'&&!x.days.some(d=>d.key>=g.start&&counts(d))?'Counts the days you trade with a loss limit set in your check-in.':''};
+    note:g.kind==='limit'&&!x.days.some(d=>d.key>=g.start&&counts(d))?'Counts the days you trade with a loss limit set in your prep.':''};
 }
 // goals as synced: only kinds this version knows, no dropped ones
 const pzGoalList=()=>(Array.isArray(settings.pzGoals)?settings.pzGoals:[]).filter(x=>x&&typeof x.id==='string'&&PZ_GOAL_KINDS[x.kind]&&!x.dropped);
@@ -742,7 +742,7 @@ function pzGoalsHtml(g){
       <button type="button" class="pz-chip icon" data-pz-goaldel="${esc(go.id)}" aria-label="${go.done||go.missed?'Clear':'Drop'} this goal">${pzI('x',16)}</button></div>`; };
   const active=list.filter(x=>!x.done&&!x.missed).length, f=pzS.goalNew;
   const unit=v=>f.kind==='disc'?v+'+ average':f.kind==='journal'?v+'%':f.kind==='checkin'?v+' days':v+' weeks';
-  const form=f?`<div class="pz-goalform"><div class="pz-field"><label for="pzGk" style="font-size:13px">Goal</label><select id="pzGk">${Object.entries({disc:'Discipline average for the month',noslip:'Weeks without a slip',journal:'Share of trades journaled this month',checkin:'Check-ins this month',limit:'Weeks inside your loss limit'}).map(([k,l])=>`<option value="${k}"${f.kind===k?' selected':''}>${l}</option>`).join('')}</select></div>
+  const form=f?`<div class="pz-goalform"><div class="pz-field"><label for="pzGk" style="font-size:13px">Goal</label><select id="pzGk">${Object.entries({disc:'Discipline average for the month',noslip:'Weeks without a slip',journal:'Share of trades journaled this month',checkin:'Days prepped this month',limit:'Weeks inside your loss limit'}).map(([k,l])=>`<option value="${k}"${f.kind===k?' selected':''}>${l}</option>`).join('')}</select></div>
       ${f.kind==='noslip'?`<div class="pz-field"><label for="pzGs" style="font-size:13px">Which slip</label><select id="pzGs">${Object.entries(PZ_SLIP_TOPIC).map(([k,l])=>`<option value="${k}"${f.slip===k?' selected':''}>${l[0].toUpperCase()+l.slice(1)}</option>`).join('')}</select></div>`:''}
       <div class="pz-field"><label for="pzGt" style="font-size:13px">Target</label><select id="pzGt">${PZ_GOAL_KINDS[f.kind].targets.map(v=>`<option value="${v}"${+f.target===v?' selected':''}>${unit(v)}</option>`).join('')}</select></div>
       <div style="display:flex;gap:8px"><button type="button" class="pz-cta pz-sm" style="flex:1;min-height:42px" id="pzGsave">Set this goal</button><button type="button" class="pz-ghost pz-sm" style="flex:1" id="pzGcancel">Cancel</button></div></div>`
@@ -844,7 +844,7 @@ function pzTilt(o){
     ['size',sx==null?0:sx>=1.5?1:sx>=1.2?0.5:0,sx==null?'':'Entries at '+sx.toFixed(1)+'× your usual size'],
     ['pace',recent>=4?1:recent>=3?0.6:o.paceX>=2?0.6:0,recent>=3?recent+' entries in the last hour':'Twice your usual number of trades'],
     ['risk',used==null?0:used>=1?1:used>=0.75?0.6:0,used==null?'':Math.round(used*100)+'% of today’s risk budget used'],
-    ['ready',rd==null?0:rd<40?1:rd<60?0.5:0,rd==null?'':'Readiness '+rd+' from your check-in']];
+    ['ready',rd==null?0:rd<40?1:rd<60?0.5:0,rd==null?'':'Readiness '+rd+' from your prep']];
   const reasons=parts.filter(p=>p[1]>0).map(([k,v,text])=>({k,pts:Math.round(PZ_TILT_W[k]*v),text})).sort((a,b)=>b.pts-a.pts);
   const score=Math.min(100,reasons.reduce((a,r)=>a+r.pts,0));
   return {score,band:score>=PZ_TILT_HOT?'hot':score>=PZ_TILT_WARM?'warm':'calm',reasons,run,since,recent,
@@ -1038,10 +1038,10 @@ const PZ_FAMILIES=[
   ['jrun','journal','Every trade, every day',t=>'every trade journaled '+t+' trading days running',[3,7,14,30,60,120],2],
   ['notes','journal','Reflective',t=>t+' trades with notes',[5,25,75,200,500,1000],3],
   ['setups','journal','Setup spotter',t=>t+' trades tagged with a setup',[10,50,150,400,1000,2500],5],
-  ['checkin','routine','Self-aware',t=>t+' morning check-in'+(t===1?'':'s'),[1,7,30,90,180,365],0],
+  ['checkin','routine','Self-aware',t=>t+' morning'+(t===1?'':'s')+' prepped',[1,7,30,90,180,365],0],
   ['plan','routine','Plan first',t=>t+' days with a plan before the first trade',[1,7,30,90,180,365],0],
   ['review','routine','Day reviewed',t=>t+' end-of-day review'+(t===1?'':'s'),[1,7,30,90,180,365],0],
-  ['ready','routine','Rested and ready',t=>t+' check-ins at readiness 70+',[3,15,45,100,200,365],4],
+  ['ready','routine','Rested and ready',t=>t+' preps at readiness 70+',[3,15,45,100,200,365],4],
   ['limitok','risk','Inside the lines',t=>t+' days inside your loss limit',[5,20,50,100,200,365],1],
   ['walked','risk','Walked away',t=>t+' time'+(t===1?'':'s')+' you hit the limit and stopped',[1,3,6,12,24,48],3],
   ['stoplive','risk','Stop first',t=>t+' stops written while the trade was open',[5,25,75,200,500,1000],2],

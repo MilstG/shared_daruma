@@ -2472,7 +2472,7 @@ function createApp(opts) {
         description: 'Readiness, discipline and risk for your trading day.',
         start_url: '/pulse', scope: '/', display: 'standalone', orientation: 'portrait', background_color: '#0A0C0F', theme_color: '#0A0C0F',
         categories: ['finance', 'productivity', 'health'], icons: appIcons('pulse'),
-        shortcuts: [{ name: 'Check-in', url: '/pulse#checkin' }, { name: 'Journal', url: '/pulse#journal' }, { name: 'Full journal', url: '/' }] }));
+        shortcuts: [{ name: 'Prep', url: '/pulse#checkin' }, { name: 'Journal', url: '/pulse#journal' }, { name: 'Full journal', url: '/' }] }));
     }
     { const m = req.method === 'GET' && /^\/icons\/(ledger|pulse)-(180|192|512|maskable-512)\.png$/.exec(url);
       if (m) return fs.readFile(path.join(__dirname, 'icons', m[1] + '-' + m[2] + '.png'), (err, buf) => {

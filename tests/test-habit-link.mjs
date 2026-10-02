@@ -33,9 +33,9 @@ t('every trading day is a point: its habit score against the day’s total resul
   eq(L.points.map(p => p.v), [100, 200, 300, 400, 500], 'the day’s dollars, summed');
   // in play: plan (kept on some days), check-in (kept), and the four fill checks; review was never done, so it isn’t held against anyone
   eq(L.tracked.includes('End-of-day review written'), false);
-  ok(L.tracked.includes('Morning check-in done') && L.tracked.includes('Plan written before the first trade'));
+  ok(L.tracked.includes('Morning prep done') && L.tracked.includes('Plan written before the first trade'));
   const p0 = L.points[0], p1 = L.points[1], p4 = L.points[4];
-  eq([p0.kept.length, p0.missed.length, p0.score], [6, 0, 100], 'plan + check-in + four clean fill checks');
+  eq([p0.kept.length, p0.missed.length, p0.score], [6, 0, 100], 'plan + morning prep + four clean fill checks');
   eq([p1.missed, p1.score], [['Plan written before the first trade'], 83]);
   ok(p4.missed.includes('No revenge entries'), 'a revenge entry is a missed habit');
 });

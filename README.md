@@ -260,10 +260,10 @@ your fills — and gets sharper the more you log.
   trades than your usual day, and holding a loser over 3× your usual winner hold.
   A loss here is a fixed "more than $1", so the server can verify the same score.
 - **Load** (50 = your usual day, 100 = twice it): trades opened and size traded
-  today against your median day. Set a trade cap or loss limit in the check-in and
+  today against your median day. Set a trade cap or loss limit in Prep and
   Load also tracks them.
 - **Bonus XP** for what you choose to log, never a penalty for skipping it:
-  check-in +10, plan before your first trade +15, trades journaled +15, stops
+  morning prep +10, plan before your first trade +15, trades journaled +15, stops
   written +10, loss limit respected +10, end-of-day review +15. A day's XP is its
   Discipline score plus that bonus, plus achievements, kept challenges and focus
   habits. The league owner can change every one of these numbers and the level
@@ -276,7 +276,7 @@ curve and drawdown, results/risk/consistency figures, what each Discipline slip
 cost against clean trades, plan vs execution, how trades land, P&L by hour and
 weekday, fees and funding, and tables by market, side, position size, holding
 time, month, market volatility and trend;
-**How the scores work** spells out every formula), **Check-in** (readiness, today's trade cap,
+**How the scores work** spells out every formula), **Prep** (readiness, today's trade cap,
 loss limit and plan) and **Progress** (level, XP, streak and shields, the
 weekly challenge, badges, share cards). A quick journal screen rates and notes
 unjournaled trades from the last 30 days — the ✎ count at the top of Today and Progress opens it. Each card there has a step-through
@@ -313,7 +313,7 @@ down arrows next to each one); the top of the screen stays where it is.
 Your choices sync with your settings. Today's default is lean: today's one thing
 (the focus you set in last night's review), the dials, net / entries / risk
 used, your session with today's rules as kept-or-broken chips, the one next
-step (check-in or review), what's due for XP this week, and the last seven
+step (morning prep or review), what's due for XP this week, and the last seven
 trading days; level and league standing and the full last-day card can be
 switched on.
 
@@ -330,7 +330,7 @@ the last trading day's score and the lesson you wrote; the last seven trading
 days; and what's coming up (challenge, habits due, leaks being plugged,
 competitions ending).
 
-**Plans the app can check.** Besides the free-text plan, the check-in takes
+**Plans the app can check.** Besides the free-text plan, Prep takes
 structured rules that are checked against your fills at the end of the day:
 which setups and markets you'll trade, a stop time, a maximum number of open
 positions and "stop after two losses". Setups are picked from chips (your own
@@ -365,13 +365,13 @@ journaling, risk, P&L, habits, social …), each with six tiers from Bronze to
 Legend; new ones are revealed as you earn the earlier ones. Members can switch
 on a public **badge page** at `/b/<name>` to share.
 
-**Readiness from a wearable.** The check-in can take readiness from **WHOOP** or
+**Readiness from a wearable.** Prep can take readiness from **WHOOP** or
 **Oura** (sign in once; the owner registers an app with each and sets its keys, see
 the deploy guide) or from **Apple Health** through a personal link an iPhone
 Shortcut posts the morning's HRV, resting heart rate and sleep to. WHOOP's recovery
 and Oura's readiness are used as they are; for Apple Health readiness is HRV against
 your own 30-day median (60%) and hours asleep against eight (40%). A day's wearable
-score replaces the check-in answers as its readiness (the answers still earn their
+score replaces the prep answers as its readiness (the answers still earn their
 XP), so Stats' readiness-versus-discipline comparison shows which days your
 discipline breaks. Days sync every 30 minutes while Pulse is open and are stored
 with your journal.
@@ -380,7 +380,7 @@ with your journal.
 that come before a blow-up: losses in a row (30 points at three), a loss in the
 last 15 minutes (20), entries at 1.5× your usual size (15), four entries in an
 hour or twice your usual day (15), three quarters of your risk budget used (10)
-and low readiness from the check-in (10). Profit plays no part. At 65 a new
+and low readiness from your prep (10). Profit plays no part. At 65 a new
 loss or entry turns on **quiet mode**: a full-screen card that lists what pushed
 the reading up, brings back the lesson you wrote about that slip, and offers a
 15-minute break with a countdown (or "I'm calm"). One answer covers one episode.
@@ -391,7 +391,7 @@ today's fills for five specific patterns and, when one shows up, puts a calm ban
 at the top of Today that names it ("3 losses in 40 minutes. This is when revenge
 trades happen. Step away for 15 minutes?"): a re-entry within 15 minutes of a loss,
 3 losses within 45 minutes, a trade over 1.5× your usual size right after a loss,
-more trades than your check-in's max trades (or well past your usual day: over
+more trades than your prep's max trades (or well past your usual day: over
 1.5× its median, at least 3), and your loss limit 80% used or reached (the same
 limit as the tripwire, which keeps its own notification: one, not two). Only what
 happened in the last hour counts, and "today" is today on your clock. **Taking a
@@ -428,7 +428,7 @@ quiet mode shows the one that matches what's tilting you.
 **Process goals.** Up to three at a time, on Progress: a month's Discipline
 average (70/80/90, at least five trading days), weeks without one slip (2/4/8;
 the clock restarts after one), a share of the month's trades journaled, a
-number of check-ins in the month, or weeks inside your loss limit. Each shows a
+number of days prepped in the month, or weeks inside your loss limit. Each shows a
 progress ring and on-track / behind; reaching one earns the **Goal getter**
 badge family.
 
@@ -573,7 +573,7 @@ link to join *your* league. A server upgraded from an older version imports its
   Stored in `pulse.db` (`reviews`, `review_comments`). Routes: `GET/POST /reviews`,
   `GET/DELETE /reviews/<id>`, `POST /reviews/<id>/comments`, `POST /reviews/<id>/reviewed`.
 - **Reminders (web push).** In Pulse's settings, **Remind me on this device** sends a
-  morning check-in reminder and, on days you traded and haven't reviewed, an evening
+  morning prep reminder and, on days you traded and haven't reviewed, an evening
   review reminder, at times you pick on your own clock; partner nudges, mentor notes,
   season results and tilt alerts (see Tilt alerts above) come the same way. It's standard web push, encrypted end to end
   (RFC 8291) with the server's own keys — no third-party service. On iPhone it needs
