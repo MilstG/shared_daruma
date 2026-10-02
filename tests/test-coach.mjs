@@ -54,7 +54,7 @@ t('confidence words come from p-values, sample words from counts', () => {
   ok(ctx.sampleWords(250).includes('solid')); ok(ctx.sampleWords(5).includes('handful'));
 });
 t('money reads like a person wrote it', () => {
-  eq(ctx.usdPlain(-3163.58), '$3,164'); eq(ctx.usdPlain(41.2), '$41.20'); eq(ctx.usdPlain(40), '$40');
+  eq(ctx.usdPlain(-3163.58), '$3,164'); eq(ctx.usdPlain(41.2), '$41'); eq(ctx.usdPlain(40), '$40'); eq(ctx.usdPlain(4.2), '$4.20'); eq(ctx.usdPlain(9.99), '$9.99'); // whole dollars unless under $10
   eq(ctx.signedPlain(-114.27), '−$114'); eq(ctx.daysPlain(123 * DAY), '18 weeks'); eq(ctx.daysPlain(DAY), '1 day');
 });
 t('welchP separates clearly different groups and not identical ones', () => {

@@ -383,7 +383,8 @@ your own 30-day median (60%) and hours asleep against eight (40%). A day's weara
 score replaces the prep answers as its readiness (the answers still earn their
 XP), so Stats' readiness-versus-discipline comparison shows which days your
 discipline breaks. Days sync every 30 minutes while Daruma is open and are stored
-with your journal.
+with your journal. Once the card has been seen it folds to one line on Prep until a
+wearable is connected.
 
 **Trader Age.** How seasoned your trading process looks, in years, next to how long you've
 actually traded (counted from your first fill). Each trading day is rated from 0 to 100:
@@ -477,7 +478,9 @@ volatility and by trend and says so when you lose in one and make it back in
 another ("You lose on volatile days … and make it back on normal days"); Today's
 **Before you trade** shows today's conditions and how you do on days like it, with how you
 usually do at this hour and how long since your last loss (a warning in the 15 minutes after
-one). It shows during the hours you usually trade, or once you've traded today.
+one). It shows during the hours you usually trade, or once you've traded today. On Today it starts folded to one line (as does
+**Last 7 trading days**, and the session chart on a day with no trades yet); a tap opens it,
+and it stays open on that device.
 
 **Lessons library.** Each review's lesson line and its mistake answer become
 lessons (you can add your own). They come back on Today after 1, 3, 7, 14, 30 and

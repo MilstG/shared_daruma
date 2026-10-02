@@ -904,6 +904,12 @@ body.light .pz-nudge.warn .pz-ico{background:#F6E7BF;color:#9A5A00}
 .pz-chip{display:inline-flex;align-items:center;gap:6px;height:44px;padding:0 14px;border-radius:22px!important;text-decoration:none;font-family:var(--pz-num);font-size:20px;font-weight:600;border:1px solid var(--pz-line);background:var(--pz-card);color:var(--pz-text);cursor:pointer}
 #pz a.pz-chip.streak{background:#1A1510;border-color:#3A2C18;color:var(--pz-streak)}
 #pz a.pz-chip.pz-jchip{background:#1C1A2E;border-color:#35305E;color:#B69CFF;font-size:17px}
+.pz-chip-w{display:none;font:600 12px/1 var(--pz-sans,inherit);letter-spacing:0;opacity:.85;margin-left:-2px}@media (min-width:900px){.pz-chip-w{display:inline}}
+.pz-axis{display:flex;justify-content:space-between;font-size:11px;color:var(--pz-muted);margin-top:-2px}
+.pz-chiprow.pz-scrolls{mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent);-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent)}
+#pz button.pz-fold{display:flex;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;color:var(--pz-text);cursor:pointer}
+.pz-rankby{display:flex;flex-direction:column;gap:6px;min-width:0;max-width:100%}.pz-rankby .pz-chiprow{max-width:100%}
+@media (min-width:700px){#pz .pz-pill{min-height:40px}}
 #pz a.pz-chip.lvl{width:44px;padding:0;justify-content:center;border:2px solid var(--pz-xp);color:var(--pz-text)}
 .pz-chip.icon{width:44px;padding:0;justify-content:center;color:var(--pz-muted)}
 .pz-back{display:inline-flex;align-items:center;gap:2px;min-height:44px;font-size:14px;font-weight:600;text-decoration:none}
@@ -1093,7 +1099,7 @@ body.pz-quiet-on{overflow:hidden}
 .pz-ends{display:flex;justify-content:space-between;font-size:12px;color:var(--pz-muted);margin-top:6px}
 .pz-step{display:flex;align-items:center;gap:6px}
 .pz-step button{width:44px;height:44px;border-radius:14px!important;border:1px solid var(--pz-line2);background:#1B1F25;color:var(--pz-text);cursor:pointer;display:flex;align-items:center;justify-content:center}
-.pz-step output{min-width:36px;text-align:center;font-family:var(--pz-num);font-size:28px;font-weight:600}
+.pz-step output{min-width:36px;text-align:center;font-family:var(--pz-num);font-size:28px;font-weight:600}.pz-step output small{font:600 12px var(--pz-sans,inherit);color:var(--pz-muted);letter-spacing:.02em}
 .pz-field{display:flex;flex-direction:column;gap:8px}
 .pz-rankby{max-width:420px;gap:6px}
 .pz-field label{font-size:15px;font-weight:700}
@@ -1261,7 +1267,7 @@ body.light .pz-wl-card{box-shadow:0 18px 50px rgba(17,24,33,.10)}
 .pz-vs b{font-family:var(--pz-num);font-size:40px;line-height:1;font-weight:600}
 .pz-vs .pz-sub{font-size:11.5px;overflow-wrap:anywhere}
 .pz-dmarks{display:grid;gap:4px;align-items:center}
-.pz-dmlab{font-size:11px;color:var(--pz-muted);padding-right:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:64px}
+.pz-dmlab{font-size:11px;color:var(--pz-muted);padding-right:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:112px}
 .pz-dm{display:grid;place-items:center;aspect-ratio:1;border-radius:6px!important;font:600 11px var(--pz-num);color:#fff;min-width:0;cursor:default}
 .pz-dm.sm{border-radius:3px!important}
 .pz-dres{text-align:center;font:600 26px var(--pz-num);padding:6px;border-radius:12px!important;background:var(--pz-track)}
@@ -1274,7 +1280,7 @@ body.light .pz-dres.won{background:#E6F6EF} body.light .pz-dres.lost{background:
 .pz-dtype[aria-pressed="true"]{border-color:var(--pz-xp);background:rgba(182,156,255,.12)}
 .pz-dpeople{display:flex;gap:8px;overflow-x:auto;padding:2px 0 4px;scrollbar-width:none} .pz-dpeople::-webkit-scrollbar{display:none}
 .pz-dperson{flex:none;display:flex;flex-direction:column;align-items:center;gap:3px;width:68px;text-decoration:none;color:var(--pz-text);font-size:11.5px}
-.pz-dperson span{max-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600} .pz-dperson i{font-style:normal;font-size:10.5px;color:var(--pz-muted);max-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pz-dperson span{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600} .pz-dperson i{font-style:normal;font-size:10.5px;color:var(--pz-muted);max-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pz-dperson[aria-disabled="true"]{opacity:.45}
 body.light .pz-dtype[aria-pressed="true"]{background:#EFEAFD}
 button.pz-dperson{background:none;border:0;padding:4px 0;font:inherit;cursor:pointer;border-radius:12px!important}
