@@ -28,7 +28,7 @@ t('stats are clamped and filtered: bad days, badges and oversized text never get
 });
 t('sharing defaults keep money and the address private', () => {
   const sh = S.sanitizeShare({ usd: true, profile: 'yes' });
-  eq(sh, { profile: true, boards: true, global: false, page: false, feed: true, habits: true, verify: true, ret: false, usd: true, addr: false, mentor: false, bench: true, duels: true });
+  eq(sh, { profile: true, boards: true, global: false, page: false, feed: true, habits: true, verify: true, ret: false, usd: true, addr: false, mentor: false, bench: true, duels: true, seek: false }, 'looking for a partner is off until you say so');
 });
 t('“Traders like you” is on for existing members too (an anonymous summary; they can switch it off)', () => {
   const old = { profile: true, boards: true, feed: true, habits: true, ret: false, usd: false, addr: false, verify: true };

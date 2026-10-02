@@ -525,8 +525,18 @@ link to join *your* league. A server upgraded from an older version imports its
   Profile, Boards and Sensitive; claiming a wallet, devices, journal sync and leaving
   live one level down, under **What you share → Account**.
 
+- **Your profile.** Taking part (duels, partners, mentors, leagues, competitions)
+  starts with **Create your profile** under Social: a name, what you share, and which of
+  the owner's default rankings to join (the leagues set to auto-join, each a switch, on by
+  default). A profile without any league works: duels and partners don't need one.
+- **Find people** (Social → Find people, `#people`). Everyone with a public profile, and
+  every mentor, most recently active first: picture, level, bio, trading style, shared
+  leagues and what they're open to. Search by name or bio; filter **Open to duels**,
+  **Looking for a partner** (members who switch that on under What you share) or
+  **Mentors**. Each card can challenge, ask to partner or ask to mentor. Never trades,
+  P&L or wallets.
 - **Accountability partners.** Up to three per member, by mutual request (Social →
-  Feed). Partners see each other's streak, the last 14 days' Discipline scores and
+  Feed, or from Find people). Partners see each other's streak, the last 14 days' Discipline scores and
   which slips happened — never trades, P&L or wallets — can send a nudge (one every
   six hours) and set a shared challenge for the week that the other can adopt as a
   habit. Today shows a slim row per partner.
@@ -538,7 +548,10 @@ link to join *your* league. A server upgraded from an older version imports its
   switch on **Let mentors see my days** (What you share → Profile) show up on the
   mentor's **Mentees** screen with each day's score, slips and the lesson they wrote
   that night, and the mentor can leave a note on any day. Notes arrive in the
-  member's inbox (Today → New for you) and as a push notification.
+  member's inbox (Today → New for you) and as a push notification. Members can ask a
+  particular mentor from Find people or the mentor's profile (**Ask to mentor me**, once a
+  day per mentor): it switches on Let mentors see my days after a yes, tells that mentor,
+  and puts the member first on their Mentees screen with an "asked for you" tag.
 - **Trade reviews.** A member who lets mentors in can send one trade to the league's
   mentors: **Ask mentor** on a Pulse journal card, or **Ask my mentor to review this
   trade** under an expanded trade in the full journal. What goes is the shape of a trade

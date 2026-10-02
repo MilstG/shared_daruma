@@ -65,13 +65,13 @@ const STREAK_MARKS = [7, 14, 21, 30, 50, 75, 100, 150, 200, 365];
 const COMP_TYPES = ['discipline', 'survivor', 'journal', 'return'];
 const DEFAULT_CONFIG = { open: true, inviteCode: '', unlocksOn: true, requireClaim: false, approveWallets: false, vaultOn: true,
   unlocks: { trends: 2, share: 3, compete: 4 } };
-const SHARE_KEYS = ['profile', 'boards', 'global', 'page', 'feed', 'habits', 'verify', 'ret', 'usd', 'addr', 'mentor', 'bench', 'duels'];
+const SHARE_KEYS = ['profile', 'boards', 'global', 'page', 'feed', 'habits', 'verify', 'ret', 'usd', 'addr', 'mentor', 'bench', 'duels', 'seek'];
 // mentor: the league's mentors can see your trading days (scores, slips, the lesson you wrote) and comment on them — opt-in
 // global: appear on the server-wide leaderboards (every member, every league) — opt-in
 // page: a public badge page at /b/<name> that anyone with the link can open — opt-in
 // duels: other members can challenge you 1 on 1 (you still choose whether to accept)
 // bench: an anonymous summary of your trading counts toward "traders like you" — on unless switched off
-const DEFAULT_SHARE = { profile: true, boards: true, global: false, page: false, feed: true, habits: true, verify: true, ret: false, usd: false, addr: false, mentor: false, bench: true, duels: true };
+const DEFAULT_SHARE = { profile: true, boards: true, global: false, page: false, feed: true, habits: true, verify: true, ret: false, usd: false, addr: false, mentor: false, bench: true, duels: true, seek: false };
 
 const sha = s => crypto.createHash('sha256').update(String(s)).digest('hex');
 const clampNum = (v, lo, hi) => { if (v !== null && typeof v === 'object') return null; const n = +v; return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : null; };
@@ -1179,7 +1179,7 @@ function createSocial(opts) {
     const out = { id: m.id, handle: m.handle, ...tierOf(m), level: st.level || 1, title: levelTitle(st.level || 1),
       followers: followersOf(m.id),
       following: (S.follows[m.id] || []).length, isFollowing: !!viewer && (S.follows[viewer.id] || []).includes(m.id), isMe: !!viewer && viewer.id === m.id,
-      claimed: !!m.claimed, av: avUrl(m), bio: m.bio || '', duelsOpen: !!(m.share && m.share.duels !== false) };
+      claimed: !!m.claimed, av: avUrl(m), bio: m.bio || '', duelsOpen: !!(m.share && m.share.duels !== false), mentor: !!m.mentor, seeking: !!(m.share && m.share.seek) };
     if (out.isMe) Object.assign(out, { claimedAddress: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
       vault: m.vault ? { rev: m.vault.rev, size: m.vault.size, at: m.vault.at } : null, requireClaim: !!S.config.requireClaim, vaultOn: !!S.config.vaultOn,
       walletStatus: m.address && (S.config.approveWallets || walletStatus(m.address) === 'rejected') ? walletStatus(m.address) : null, admin: !!m.admin,
@@ -1525,7 +1525,8 @@ function createSocial(opts) {
         bench: { on: !!S.config.bench.on, minTrades: S.config.bench.minTrades, days: S.config.bench.days }, duels: { on: !!S.config.duels.on },
         coach: { members: S.config.coach.members, daily: S.config.coach.daily, detail: S.config.coach.detail }, posts: postCfgOut(),
         badges: Object.values(S.badges).map(b => ({ id: b.id, name: b.name, icon: b.icon, desc: b.desc, metric: b.metric, metricLabel: b.metric ? SC.BADGE_METRICS[b.metric] : null, op: b.op, value: b.value, xp: b.xp })),
-        leagues: Object.values(S.leagues).filter(L => L.open).length });
+        leagues: Object.values(S.leagues).filter(L => L.open).length,
+        autoLeagues: Object.values(S.leagues).filter(L => L.autoJoin).map(L => ({ id: L.id, name: L.name, metricLabel: SC.LEAGUE_METRICS ? SC.LEAGUE_METRICS[L.metric] || '' : '' })) });
 
     // ---------- owner: admin ----------
     if (head === 'admin') {
@@ -1978,7 +1979,8 @@ function createSocial(opts) {
       const m = { id, handle, keyHash: sha(key), createdAt: now(), lastSeen: now(), tier: 0, share: sanitizeShare(body.share),
         address, stats: null, weekXp: {}, money: null, banned: false, joinedWith: S.config.inviteCode ? 'invite' : 'open' };
       S.members[id] = m; S.follows[id] = []; reindex();
-      for (const L of Object.values(S.leagues)) if (L.autoJoin) joinLeague(L, m);
+      const skip = new Set(Array.isArray(body.skip) ? body.skip.map(String) : []); // rankings the new member chose not to join
+      for (const L of Object.values(S.leagues)) if (L.autoJoin && !skip.has(L.id)) joinLeague(L, m);
       recent.push(now()); joinTimes.set(ip, recent);
       if (joinTimes.size > 1000) for (const [k, v] of joinTimes) if (!v.length || now() - v[v.length - 1] > 3600000) joinTimes.delete(k); // addresses an hour quiet
       if (m.share.feed) pushEvent(m, { type: 'join', text: 'joined the league' });
@@ -2324,6 +2326,43 @@ function createSocial(opts) {
       save('duels', me, ...(o ? [o] : []));
       return json(res, 200, { ok: true, duel: duelView(d, me) });
     }
+    // ---- people: find members to duel, partner with or learn from, without sharing a league ----
+    // Lists members whose profile is public (and every mentor, whose role is to be found): name,
+    // picture, level, bio and trading style, and what they're open to. Never trades, P&L or wallets.
+    if (head === 'people' && !parts[1] && M === 'GET') {
+      const q = cleanText(query.q, 40).replace(/^@/, '').toLowerCase(), f = ['duels', 'partner', 'mentor'].includes(query.f) ? query.f : '';
+      const duelsOn = !!S.config.duels.on, week = 7 * 86400000;
+      const pairWith = o => pairsOf(me).find(p => p.a === o.id || p.b === o.id);
+      let list = members().filter(o => o.id !== me.id && !o.banned && (o.mentor || (o.share && o.share.profile !== false)));
+      if (f === 'duels') list = list.filter(o => duelsOn && o.share.duels !== false);
+      if (f === 'partner') list = list.filter(o => o.share.seek);
+      if (f === 'mentor') list = list.filter(o => o.mentor);
+      if (q) list = list.filter(o => o.handle.toLowerCase().includes(q) || (o.share.profile !== false && (o.bio || '').toLowerCase().includes(q)));
+      const total = list.length, page = Math.max(0, Math.min(200, parseInt(query.page, 10) || 0)), size = 30;
+      list.sort((a, b) => (q ? (+b.handle.toLowerCase().startsWith(q)) - (+a.handle.toLowerCase().startsWith(q)) : 0) || ((b.lastSeen || 0) - (a.lastSeen || 0)));
+      const mine = new Set(leaguesOf(me).map(L => L.id));
+      return json(res, 200, { total, page, more: total > (page + 1) * size, people: list.slice(page * size, (page + 1) * size).map(o => {
+        const pub = o.share.profile !== false, pr = pairWith(o), st = o.stats || {};
+        return { handle: o.handle, av: avUrl(o), level: st.level || 1, title: levelTitle(st.level || 1), bio: pub ? o.bio || '' : '',
+          style: pub && o.share.bench !== false && o.bench && o.bench.style ? o.bench.style : null,
+          active: (o.lastSeen || 0) > now() - week, duels: duelsOn && o.share.duels !== false, seeking: !!o.share.seek, mentor: !!o.mentor,
+          following: (S.follows[me.id] || []).includes(o.id), partner: pr ? (pr.status === 'active' ? 'active' : pr.from === me.id ? 'sent' : 'asked') : null,
+          leagues: leaguesOf(o).filter(L => mine.has(L.id)).map(L => L.name).slice(0, 3),
+          askedMentor: !!(o.mentor && me.mentorAsks && me.mentorAsks[o.id]) }; }) });
+    }
+    // ask a particular mentor to look at your trading: it lets mentors in (they see your days, never your
+    // wallet) when the member says so, tells that mentor, and puts you first on their list
+    if (head === 'people' && parts[1] && parts[2] === 'mentor' && M === 'POST') {
+      const o = byHandle(arg); if (!o || o.banned || !o.mentor || o.id === me.id) return json(res, 404, { error: 'No mentor by that name.' });
+      if (!me.share.mentor) { if (body.letIn !== true) return json(res, 409, { error: 'Let mentors see your days first (Profile & privacy).', needsLetIn: true });
+        me.share = sanitizeShare({ mentor: true }, me.share); }
+      const last = me.mentorAsks && me.mentorAsks[o.id];
+      if (last && now() - last < 86400000) return json(res, 429, { error: 'You asked @' + o.handle + ' today already.' });
+      if (limited(req, 'mask:' + me.id, 10, 86400000, true)) return json(res, 429, { error: 'Too many requests today.' });
+      me.mentorAsks = Object.assign({}, me.mentorAsks, { [o.id]: now() });
+      notify(o, 'mentor', '@' + me.handle + ' would like you to mentor them. Their days are open to you now.', { title: 'A mentoring request', url: '/pulse#mentee/' + me.handle });
+      save(me); return json(res, 200, { ok: true, share: me.share });
+    }
     if (head === 'partners' && M === 'GET' && !parts[1]) return json(res, 200, { partners: pairsOf(me).map(p => pairOut(p, me)).filter(Boolean) });
     if (head === 'partners' && !parts[1] && M === 'POST') {
       const o = byHandle(cleanText(body.handle, 21).replace(/^@/, ''));
@@ -2374,7 +2413,8 @@ function createSocial(opts) {
     if (head === 'notes' && parts[1] === 'read' && M === 'POST') { for (const c of commentsFor(me.id)) c.read = true; save('comments'); return json(res, 200, { ok: true }); }
     if (head === 'mentor') {
       if (!me.mentor) return json(res, 403, { error: 'Only mentors the owner appointed can see this.' });
-      if (!parts[1] && M === 'GET') return json(res, 200, { mentees: menteesOf(me).map(menteeSummary).sort((a, b) => (b.seen || 0) - (a.seen || 0)) });
+      if (!parts[1] && M === 'GET') return json(res, 200, { mentees: menteesOf(me).map(o => Object.assign(menteeSummary(o), { asked: !!(o.mentorAsks && o.mentorAsks[me.id]) }))
+        .sort((a, b) => (b.asked - a.asked) || ((b.seen || 0) - (a.seen || 0))) });
       const o = byHandle(arg); if (!o || o.id === me.id || o.banned || !o.share.mentor) return json(res, 404, { error: 'That member hasn’t let mentors in.' });
       if (!parts[2] && M === 'GET') { const st = o.stats || {};
         return json(res, 200, { mentee: Object.assign(menteeSummary(o), { best: st.best || 0, habits: o.share.habits ? st.habits || [] : [], challenge: st.lastChallenge || '',
