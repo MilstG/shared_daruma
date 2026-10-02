@@ -166,6 +166,11 @@ let A, Bk;
 try {
   // competitions unlock at level 4 by default; these tests join at level 1
   await call('/admin/config', { method: 'PUT', admin: true, body: { unlocksOn: false } });
+  await t('a new server only counts claimed wallets; these tests then count every wallet, as a server from before that did', async () => {
+    eq((await call('/config')).d.requireClaim, true);
+    eq((await call('/admin/config', { method: 'PUT', admin: true, body: { requireClaim: false } })).status, 200);
+    eq((await call('/config')).d.requireClaim, false);
+  });
   await t('joining: names are validated and unique; the key is returned once and only its hash is stored', async () => {
     eq((await call('/join', { method: 'POST', body: { handle: 'no spaces' } })).status, 400);
     const a = await call('/join', { method: 'POST', body: { handle: 'alpha_1', address: '0x' + 'a'.repeat(40), share: { ret: true } } });

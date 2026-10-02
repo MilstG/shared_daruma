@@ -603,9 +603,13 @@ gas, nothing moves. The server writes the message and keeps it by a single-use n
 for 10 minutes, then recovers the signer itself (`vendor/eth-sig.js`, the audited
 noble libraries bundled in — nothing to install). A claimed wallet is locked to one
 profile: nobody else can name it, anyone who had typed it loses it, others see a ✓,
-and only another signature from that wallet moves it. The owner can switch on
-**Only count claimed wallets**, after which verified Discipline, returns and return
-competitions only use claimed wallets. Smart-contract wallets (which can't produce a
+and only another signature from that wallet moves it. **Only count claimed wallets**
+(Settings) makes verified Discipline, returns and return competitions use claimed
+wallets only, so nobody can put a well-known trader's wallet on their profile and borrow
+its numbers. It's on for a new server. A server that already had members keeps its
+setting, and the admin Overview lists "Wallet proof is off" until the owner turns it on.
+Turning it on sends each member with an unclaimed wallet a note on how to claim.
+Their verified numbers pause until they do. Smart-contract wallets (which can't produce a
 plain signature) and email-login wallets without an exportable key can't claim yet.
 
 **Passkeys.** Under Account, a signed-in member can **Add a passkey on this
@@ -672,6 +676,26 @@ cards at 3 and joining competitions at 4. XP only comes from process, so unlocki
 map every feature (insights, in-depth stats, share cards, competitions, AI coach,
 end-of-day review, report cards) to a level, switch unlocks off, or **fully unlock**
 chosen members. Sample data shows everything. The full journal at `/` is never locked.
+
+**Without a profile.** Anyone can use Keel with just a wallet. Their levels stop at
+the owner's cap (Features → **Without a profile**: level 3 by default, 0 for no limit).
+Their XP keeps counting, so creating a profile unlocks everything they earned at once.
+At the default cap, share cards are the last thing open. Anything the owner puts past
+the cap shows "needs a profile" instead of a level. Competitions, the AI coach, "traders
+like you" and duels always need a profile. The cap applies only where someone could
+create a profile: never to the owner, members, sample data, a closed league, or a page
+opened without a server.
+
+**Invite link.** With an invite code set, Settings shows an invite link
+(`/keel?invite=CODE`) with a Copy button. Opening it fills the code in on the "Create
+your profile" form. The code is kept on that device until they join, and it's taken off
+the address bar.
+
+**Visitors.** The Overview counts people using Keel with a wallet and no profile. Each
+device says "used today" at most once a day, and the server only adds 1 to that day's
+count. One address counts once a day. No wallet, device ID or address is stored. Next
+to it, **Visitors who joined** shows how many of the last 30 days' new members had used
+Keel without a profile on that device first.
 
 **Admins.** You can share the panel without sharing your access token. Members →
 **Add admin**, type a name, and send them the link it shows (good for 7 days): opening it
@@ -786,14 +810,15 @@ action. Sections:
   awarded by hand, each paying the XP you set.
 - **Levels & XP** — levels on a curve or a table of thresholds, level titles, a live
   preview, and the XP every action pays.
-- **Features** — the level each feature unlocks at.
+- **Features** — the level each feature unlocks at, and the level people without a
+  profile stop at.
 - **Coach** — on/off for members, daily allowances, your own limit, whether members
   may share trades and notes, today's usage.
 - **Routines** — replace the built-in profiles' questions and add your own profiles.
 - **Wallets** — wallet approval on/off, and approve or reject each member's wallet
   (single or in bulk, with a note); waiting wallets come first.
-- **Feed** — announcements and moderation. **Settings** — open/closed, invite code,
-  claimed wallets only, encrypted sync, and **Security**: two-factor for the panel (above).
+- **Feed** — announcements and moderation. **Settings** — open/closed, invite code and
+  invite link, claimed wallets only, encrypted sync, and **Security**: two-factor for the panel (above).
 
 Without `AUTH_TOKEN` the admin API refuses every request instead of opening to everyone.
 

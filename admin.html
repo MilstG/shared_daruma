@@ -292,7 +292,7 @@ details>summary{list-style-position:inside}
   const sel=(id,opts,cur,attrs)=>`<select id="${esc(id)}"${attrs||''}>${opts.map(([v,l])=>`<option value="${esc(v)}"${String(v)===String(cur)?' selected':''}>${esc(l)}</option>`).join('')}</select>`;
   const field=(id,label,input,hint)=>`<div><label for="${esc(id)}">${esc(label)}</label>${input}${hint?`<p class="hint">${hint}</p>`:''}</div>`;
   const box=(id,label,on,hint)=>`<label class="inline"><input type="checkbox" id="${id}"${on?' checked':''}>${esc(label)}</label>${hint?`<p class="hint" style="margin:0 0 8px 26px">${hint}</p>`:''}`;
-  const tiles=list=>`<div class="kpis" style="--cols:${list.length<=4?list.length:list.length===6||list.length===9?3:4}">${list.map(([l,v,s])=>`<div class="tile"><span class="tl">${esc(l)}</span><b>${esc(v)}</b>${s?`<span class="ts">${esc(s)}</span>`:''}</div>`).join('')}</div>`;
+  const tiles=list=>`<div class="kpis" style="--cols:${list.length<=4?list.length:list.length===6||list.length===9?3:list.length===10?5:4}">${list.map(([l,v,s])=>`<div class="tile"><span class="tl">${esc(l)}</span><b>${esc(v)}</b>${s?`<span class="ts">${esc(s)}</span>`:''}</div>`).join('')}</div>`;
   // lists longer than ten show ten at a time
   const pager=(key,list,size)=>{ size=size||10; const n=list.length, pages=Math.max(1,Math.ceil(n/size)), p=Math.max(0,Math.min(UI.pages[key]||0,pages-1)); UI.pages[key]=p;
     return {items:list.slice(p*size,(p+1)*size), html:n>size?`<div class="pager"><button class="sm" data-pg="${esc(key)}" data-d="-1"${p?'':' disabled'} aria-label="Previous page">‹ Prev</button><span class="muted small">${p*size+1}–${Math.min(n,(p+1)*size)} of ${n}</span><button class="sm" data-pg="${esc(key)}" data-d="1"${p<pages-1?'':' disabled'} aria-label="Next page">Next ›</button></div>`:''}; };
@@ -361,6 +361,7 @@ details>summary{list-style-position:inside}
     if(D.reports.length)todo.push(['bad',D.reports.length+' open report'+(D.reports.length===1?'':'s'),'Members flagged posts or comments.','#feed']);
     if(c.approveWallets&&o.walletsPending)todo.push(['',o.walletsPending+' wallet'+(o.walletsPending===1?'':'s')+' waiting for your approval','They don’t count for returns, verified Discipline or return competitions until you approve them.','#wallets']);
     if(!c.open)todo.push(['','The league is closed to new members','Nobody new can join until you open it.','#settings']);
+    if(o.claims&&!c.requireClaim)todo.push(['','Wallet proof is off',(o.unclaimed?fmt(o.unclaimed)+' member wallet'+(o.unclaimed===1?' counts':'s count'):'Wallets count')+' without proof that they belong to the member, so anyone can show a well-known trader’s numbers. Turn on “Only count claimed wallets” in Settings.','#settings']);
     if(o.claims&&!o.originPinned)todo.push(['','Wallet sign-in isn’t pinned to your address','Set <code>PUBLIC_ORIGIN</code> on the server so a look-alike site can’t collect members’ signatures.','']);
     if(!o.coachAi)todo.push(['','The AI coach is off','Set <code>COACH_AI=1</code> and <code>ANTHROPIC_API_KEY</code> (or <code>OPENAI_API_KEY</code>) on the server to switch it on.','']);
     const main=D.leagues.find(L=>L.id==='main'), live=Math.max(1,o.members-o.banned);
@@ -368,7 +369,9 @@ details>summary{list-style-position:inside}
     return `${tiles([['Members',fmt(o.members),o.banned?o.banned+' suspended':o.leagues+' league'+(o.leagues===1?'':'s')],['Active this week',fmt(o.active7),o.members?Math.round(o.active7/Math.max(1,o.members)*100)+'% of members':''],
       ['Duels running',D.duels?fmt(D.duels.counts.active):'—',D.duels?fmt(D.duels.counts.pending)+' waiting · '+fmt(D.duels.counts.done30)+' done in 30d':''],['Competitions',fmt(o.comps),o.badges+' reward badge'+(o.badges===1?'':'s')],
       ['Traders like you',D.bench?fmt(D.bench.contributors):'—',D.bench?fmt(D.bench.groups.length)+' peer group'+(D.bench.groups.length===1?'':'s'):''],['Posts',fmt(o.posts||0),o.mediaBytes?size(o.mediaBytes)+' of pictures':''],
-      ['Coach today',fmt(o.coachToday),o.coachAi?'messages · AI on':'messages · AI off'],['Claimed wallets',fmt(o.claimed||0),o.vaults?o.vaults+' synced journals · '+size(o.vaultBytes):'']])}
+      ['Coach today',fmt(o.coachToday),o.coachAi?'messages · AI on':'messages · AI off'],['Claimed wallets',fmt(o.claimed||0),o.vaults?o.vaults+' synced journals · '+size(o.vaultBytes):''],
+      ...(o.visitors?[['Visitors without a profile',fmt(o.visitors.today),'today · '+o.visitors.avg7+'/day this week · '+o.visitors.avg30+'/day in 30d'],
+        ['Visitors who joined',fmt(o.visitors.conv30),'of '+fmt(o.visitors.joins30)+' new member'+(o.visitors.joins30===1?'':'s')+' in 30 days']]:[])])}
     <div class="two">
       <section class="card"><div class="ch"><h2>Needs your attention</h2>${todo.length?`<span class="pill ${todo.some(t=>t[0]==='bad')?'warnp':'wait'}">${todo.length}</span>`:''}</div>
         ${todo.length?`<div class="todo">${todo.map(([k,t,d,h])=>`<div><i class="${k}"></i><div><b>${h?`<a href="${h}">${esc(t)}</a>`:esc(t)}</b><span>${d}</span></div></div>`).join('')}</div>`
@@ -752,7 +755,19 @@ details>summary{list-style-position:inside}
       ${box('fOn','Unlock Keel features with levels',c.unlocksOn,'Off: every member gets every feature. Fully unlocked members, and you, always do.')}
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">${Object.entries(mods).map(([k,l])=>field('mod_'+k,l,`<input id="mod_${k}" type="number" min="1" max="100" value="${c.modules[k]}">`,c.modules[k]<=1?'Everyone':'From level '+c.modules[k])).join('')}</div>
       <div class="actions"><button class="primary" id="fSave">Save</button></div>
-      <p class="hint">Members see a lock with the level it opens at. The server enforces it for competitions and the coach too.</p></section>`;
+      <p class="hint">Members see a lock with the level it opens at. The server enforces it for competitions and the coach too.</p></section>
+      <section class="card"><h2>Without a profile</h2>
+        <p class="hint" style="margin-top:0">People can use Keel with just a wallet. Their levels stop here until they create a profile: their XP keeps counting, and creating a profile unlocks everything they’ve earned at once.</p>
+        ${field('fGuest','Levels stop at',`<input id="fGuest" type="number" min="0" max="100" value="${c.guestCap||0}" style="max-width:200px">`,c.guestCap?'Level '+c.guestCap+' · 0 = no limit':'No limit')}
+        ${guestSplit(c)}
+        <div class="actions"><button class="primary" id="fSaveGuest">Save</button></div></section>`;
+  }
+  // which level-gated features someone without a profile still gets under the cap (the rest need one anyway)
+  const NEEDS_PROFILE=['compete','coach','peers','duels'];
+  function guestSplit(c){
+    const mods=D.ov.meta.modules, cap=c.guestCap||0, ks=Object.keys(mods).filter(k=>!NEEDS_PROFILE.includes(k));
+    const open=ks.filter(k=>!cap||!c.unlocksOn||(c.modules[k]||1)<=cap), shut=ks.filter(k=>!open.includes(k));
+    return `<p class="hint">Without a profile: ${open.length?open.map(k=>esc(mods[k])).join(', '):'none of the level features'}${shut.length?'. <b>Needs a profile:</b> '+shut.map(k=>esc(mods[k])).join(', '):''}. ${NEEDS_PROFILE.map(k=>esc(mods[k])).join(', ')} always need one.</p>`;
   }
 
   // ---------------- coach ----------------
@@ -992,14 +1007,16 @@ details>summary{list-style-position:inside}
     return act(async()=>{ const r=await api('/wallets',{body:{action,addresses,note}}); addresses.forEach(a=>UI.wsel.delete(a)); return r; },word+(n>1?' ('+n+' wallets).':'.')); };
 
   // ---------------- settings ----------------
+  const inviteLink=code=>location.origin+'/keel?invite='+encodeURIComponent(code);
   function vSettings(){
     const o=D.ov, c=o.config;
     return `<div class="two"><section class="card"><h2>Joining</h2>
       ${box('sOpen','Open for new members',c.open)}
       ${field('sInvite','Invite code (leave empty for anyone with the link)',`<input id="sInvite" maxlength="40" autocomplete="off" value="${esc(c.inviteCode||'')}">`)}
+      ${c.inviteCode?`<div class="field"><label for="sInviteLink">Invite link: opens Keel with the code filled in</label><div class="row" style="gap:8px;flex-wrap:nowrap"><input id="sInviteLink" readonly value="${esc(inviteLink(c.inviteCode))}" style="flex:1;min-width:0"><button type="button" class="fit" id="sCopyInvite">Copy</button></div></div>`:''}
       <h3>Wallets</h3>
       <label class="inline"><input type="checkbox" id="sClaim"${c.requireClaim?' checked':''}${o.claims?'':' disabled'}>Only count claimed wallets</label>
-      <p class="hint" style="margin:0 0 8px 26px">Verified Discipline, returns and return competitions then only use wallets a member proved are theirs by signing with them.${o.claims?'':' (Wallet sign-in isn’t available on this server.)'}</p>
+      <p class="hint" style="margin:0 0 8px 26px">Verified Discipline, returns and return competitions then only use wallets a member proved are theirs by signing with them.${o.claims?'':' (Wallet sign-in isn’t available on this server.)'}${o.claims&&!c.requireClaim&&o.unclaimed?` Switching it on pauses those numbers for the ${fmt(o.unclaimed)} member${o.unclaimed===1?' who hasn’t':'s who haven’t'} claimed yet, and each gets a note on how to claim.`:''}</p>
       <p class="hint">Approving or rejecting individual wallets is on the <a href="#wallets">Wallets</a> tab.</p>
       ${o.claims&&!o.originPinned?'<p class="warn small">Wallet sign-in isn’t pinned to your address yet. Set <code>PUBLIC_ORIGIN</code> on the server (e.g. <code>https://pulse.example.com</code>) so a look-alike site can’t collect members’ signatures.</p>':''}
       <h3>Sync</h3>
@@ -1148,7 +1165,7 @@ details>summary{list-style-position:inside}
     if(id==='lvSave'){ const body=levelBody(); UI.levelDraft=null; return act(()=>put({levels:body}),'Levels saved.'); }
     if(id==='xpSave'){ const xp=nums(Object.keys(XP_LABELS),'xp_'); return act(()=>put({xp}),'XP rules saved. Members’ apps pick them up when they next open Keel.'); }
     // features
-    if(id==='fSave') return act(()=>put({unlocksOn:chk('fOn'),modules:nums(Object.keys(D.ov.meta.modules),'mod_')}),'Saved.');
+    if(id==='fSave'||id==='fSaveGuest') return act(()=>put({unlocksOn:chk('fOn'),modules:nums(Object.keys(D.ov.meta.modules),'mod_'),guestCap:+val('fGuest')||0}),'Saved.');
     // coach
     if(id==='cSave') return act(()=>put({coach:Object.assign({members:chk('cMembers'),detail:chk('cDetail')},...[['daily','cDaily'],['dailyUnlocked','cDailyU'],['ownerDaily','cOwner']].map(([k,id])=>val(id).trim()===''?{}:{[k]:+val(id)}))}),'Coach settings saved.');
     // routines
@@ -1166,6 +1183,8 @@ details>summary{list-style-position:inside}
     if(d.delev) return act(()=>api('/events/'+encodeURIComponent(d.delev),{method:'DELETE'}),'Removed.');
     // settings
     if(id==='sSave') return act(()=>put({open:chk('sOpen'),inviteCode:val('sInvite').trim(),requireClaim:chk('sClaim'),vaultOn:chk('sVault')}),'Settings saved.');
+    if(id==='sCopyInvite'){ const v=val('sInviteLink');
+      try{ await navigator.clipboard.writeText(v); note('Invite link copied.'); }catch(e){ const i=$('sInviteLink'); i.focus(); i.select(); note('Select-all done: copy it from the box.'); } return; }
   });
   // narrow screens: the sections fold into a menu under the top bar
   const menu=open=>{ $('side').classList.toggle('open',open); $('menuBtn').setAttribute('aria-expanded',String(open)); $('menuBtn').textContent=open?'Close':'Menu'; };

@@ -63,7 +63,9 @@ const B64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 const MAX_MEMBERS = 5000;
 const STREAK_MARKS = [7, 14, 21, 30, 50, 75, 100, 150, 200, 365];
 const COMP_TYPES = ['discipline', 'survivor', 'journal', 'return'];
-const DEFAULT_CONFIG = { open: true, inviteCode: '', unlocksOn: true, requireClaim: false, approveWallets: false, vaultOn: true,
+// guestCap: people using Pulse without a profile stop at this level (their XP still counts, and creating a
+// profile unlocks what they earned); 0 = no limit
+const DEFAULT_CONFIG = { open: true, inviteCode: '', unlocksOn: true, requireClaim: false, approveWallets: false, vaultOn: true, guestCap: 3,
   unlocks: { trends: 2, share: 3, compete: 4 } };
 const SHARE_KEYS = ['profile', 'boards', 'global', 'page', 'feed', 'habits', 'verify', 'ret', 'usd', 'addr', 'mentor', 'bench', 'duels', 'seek'];
 // mentor: the league's mentors can see your trading days (scores, slips, the lesson you wrote) and comment on them — opt-in
@@ -431,7 +433,7 @@ function createSocial(opts) {
   }
   // every section kept as a kv row: one missing here is never loaded or saved (wallet decisions and
   // the admin log would vanish on the next restart)
-  const KV_KEYS = ['config', 'follows', 'comps', 'league', 'leagues', 'badges', 'ownerCoach', 'partners', 'comments', 'leagueSeq', 'wallets', 'adminLog', 'coachUse', 'migrations', 'bench', 'benchSeeds', 'duels', 'benchHist', 'pods', 'ladder'];
+  const KV_KEYS = ['config', 'follows', 'comps', 'league', 'leagues', 'badges', 'ownerCoach', 'partners', 'comments', 'leagueSeq', 'wallets', 'adminLog', 'coachUse', 'migrations', 'bench', 'benchSeeds', 'duels', 'benchHist', 'pods', 'ladder', 'visits'];
   let S = { v: 1, members: {} };
   const loadedRaw = new Map(); // what each row held, so the first save writes only what loading changed
   for (const r of q('SELECT k, v FROM kv').all()) if (KV_KEYS.includes(r.k)) try { S[r.k] = JSON.parse(r.v); loadedRaw.set(r.k, r.v); } catch (e) {}
@@ -440,9 +442,11 @@ function createSocial(opts) {
   if (!S.follows || typeof S.follows !== 'object') S.follows = {};
   if (!S.comps || typeof S.comps !== 'object') S.comps = {};
   if (!S.league || typeof S.league !== 'object') S.league = { week: null };
+  const claimSaved = typeof S.config.requireClaim === 'boolean';
   S.config = Object.assign({}, DEFAULT_CONFIG, S.config, {
     unlocks: Object.assign({}, DEFAULT_CONFIG.unlocks, S.config && S.config.unlocks) });
   delete S.config.themes; // colour themes were dropped
+  S.config.guestCap = Math.max(0, Math.min(100, Math.round(+S.config.guestCap))) || 0;
   // v0.4 sections; v0.3's three unlock levels carry over into the feature map
   S.config.modules = SC.sanitizeModules(S.config.modules || S.config.unlocks, null);
   S.config.levels = SC.sanitizeLevels(S.config.levels, null);
@@ -478,6 +482,17 @@ function createSocial(opts) {
   // October 2026: duels unlock at level 3 instead of being free. Once, for servers that took the
   // first default (level 1); a level the owner sets afterwards in Features stays.
   if (!S.migrations.duels3) { if (S.config.modules.duels === 1) S.config.modules.duels = 3; S.migrations.duels3 = Date.now(); }
+  // October 2026: a new server counts only wallets a member proved are theirs (signed for), so nobody can
+  // put a well-known trader's wallet on their profile and borrow its verified numbers. Decided once: a
+  // server that already has members keeps what it had (the owner turns it on in Settings, and each member
+  // it affects gets a note on how to claim), and so does one where wallet sign-in isn't available.
+  if (!S.migrations.claimDefault) {
+    if (!claimSaved) S.config.requireClaim = !Object.keys(S.members).length && !!(opts.sig !== undefined ? opts.sig : ethSig);
+    S.migrations.claimDefault = Date.now(); }
+  // people using Pulse without a profile, counted anonymously per UTC day ({days: {key: n}}), and the
+  // new members who had been one of them first ({conv: {key: n}}): no wallet, device or address kept
+  if (!S.visits || typeof S.visits !== 'object') S.visits = {};
+  for (const k of ['days', 'conv']) if (!S.visits[k] || typeof S.visits[k] !== 'object' || Array.isArray(S.visits[k])) S.visits[k] = {};
   if (!S.partners || typeof S.partners !== 'object') S.partners = {};
   if (!S.comments || typeof S.comments !== 'object') S.comments = {};
   if (!S.leagues || typeof S.leagues !== 'object') { // one league for everyone until the owner makes more
@@ -1182,6 +1197,7 @@ function createSocial(opts) {
       claimed: !!m.claimed, av: avUrl(m), bio: m.bio || '', duelsOpen: !!(m.share && m.share.duels !== false), mentor: !!m.mentor, seeking: !!(m.share && m.share.seek) };
     if (out.isMe) Object.assign(out, { claimedAddress: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
       vault: m.vault ? { rev: m.vault.rev, size: m.vault.size, at: m.vault.at } : null, requireClaim: !!S.config.requireClaim, vaultOn: !!S.config.vaultOn,
+      needsClaim: !!(S.config.requireClaim && m.address && m.claimed !== m.address),
       walletStatus: m.address && (S.config.approveWallets || walletStatus(m.address) === 'rejected') ? walletStatus(m.address) : null, admin: !!m.admin,
       passkeys: (m.passkeys || []).map(k => ({ id: k.id, name: k.name, at: k.at, lastUsed: k.lastUsed || null })),
       unlocked: !!m.unlocked, grants: (m.grants || []).map(g => ({ id: g.id, xp: g.xp, why: g.why, at: g.at })), coach: coachStatusFor(m), coachDetail: !!m.coachDetail,
@@ -1303,6 +1319,23 @@ function createSocial(opts) {
     if (full) o.standings = rows.slice(0, 50).map(r => ({ rank: r.rank, handle: r.handle, av: avUrl(S.members[r.id]), note: r.note, out: r.out, score: r.score, me: !!viewer && r.id === viewer.id }));
     return o; };
   const joinTimes = new Map();
+  // visitors counted today, by day and a hash of the address (memory only: a restart forgets it, which
+  // at worst counts someone twice on that day)
+  const visitSeen = new Set();
+  // for the admin Overview: today's visitors, the 7- and 30-day daily averages, and how many of the
+  // new members in the last 30 days had used Pulse without a profile on this device first
+  const visitStats = () => {
+    const t = now(), keys = n => Array.from({ length: n }, (_, i) => utcDayKey(t - i * 86400000));
+    const sum = (o, n) => keys(n).reduce((a, k) => a + (+o[k] || 0), 0);
+    const since = n => members().filter(m => (m.createdAt || 0) > t - n * 86400000).length;
+    return { today: +S.visits.days[utcDayKey(t)] || 0, avg7: Math.round(sum(S.visits.days, 7) / 7 * 10) / 10, avg30: Math.round(sum(S.visits.days, 30) / 30 * 10) / 10,
+      conv30: sum(S.visits.conv, 30), joins30: since(30) };
+  };
+  const bumpVisit = (kind, day) => {
+    const o = S.visits[kind]; o[day] = (o[day] || 0) + 1;
+    const keys = Object.keys(o).sort(); while (keys.length > 400) delete o[keys.shift()];
+    if (visitSeen.size > 50000) for (const x of visitSeen) if (!x.startsWith(day)) visitSeen.delete(x);
+    save('visits'); };
 
   // ---- inbox and web push: nudges, mentor notes, season results and the daily reminders ----
   const push = opts.push || null; // { publicKey, send(sub, message) -> status }
@@ -1517,11 +1550,17 @@ function createSocial(opts) {
     try { arg = decodeURIComponent(arg); } catch (e) { return json(res, 400, { error: 'bad path' }); }
     ensureWeek(); ensureSeasons();
 
+    // a device using Pulse without a profile today (it asks once a day; one address counts once a day too)
+    if (head === 'visit' && !parts[1] && M === 'POST') {
+      const day = utcDayKey(now()), k = day + '|' + sha(ipOf(req) || '');
+      if (!visitSeen.has(k)) { visitSeen.add(k); bumpVisit('days', day); }
+      return json(res, 200, { ok: true });
+    }
     if (head === 'config' && M === 'GET')
       return json(res, 200, { enabled: adminConfigured, open: S.config.open, inviteRequired: !!S.config.inviteCode, unlocksOn: S.config.unlocksOn,
         unlocks: S.config.unlocks, tiers: TIERS, week: S.league.week, members: members().filter(m => !m.banned).length,
         claims: !!sig, passkeys: true, requireClaim: !!S.config.requireClaim, approveWallets: !!S.config.approveWallets, vaultOn: !!S.config.vaultOn,
-        modules: S.config.modules, levels: S.config.levels, xp: S.config.xp, profiles: S.config.profiles,
+        modules: S.config.modules, levels: S.config.levels, xp: S.config.xp, profiles: S.config.profiles, guestCap: S.config.guestCap,
         bench: { on: !!S.config.bench.on, minTrades: S.config.bench.minTrades, days: S.config.bench.days }, duels: { on: !!S.config.duels.on },
         coach: { members: S.config.coach.members, daily: S.config.coach.daily, detail: S.config.coach.detail }, posts: postCfgOut(),
         badges: Object.values(S.badges).map(b => ({ id: b.id, name: b.name, icon: b.icon, desc: b.desc, metric: b.metric, metricLabel: b.metric ? SC.BADGE_METRICS[b.metric] : null, op: b.op, value: b.value, xp: b.xp })),
@@ -1573,7 +1612,8 @@ function createSocial(opts) {
           events: q('SELECT count(*) AS n FROM events').get().n, posts: q("SELECT count(*) AS n FROM events WHERE type = 'post'").get().n,
           reports: q('SELECT count(*) AS n FROM reports WHERE open = 1').get().n, mediaBytes: q('SELECT sum(size) AS n FROM media').get().n || 0, comps: Object.keys(S.comps).length, week: wk, config: S.config,
           walletsPending: S.config.approveWallets ? new Set(members().filter(m => m.address && walletStatus(m.address) === 'pending').map(m => m.address)).size : 0,
-          claimed: members().filter(m => m.claimed).length, vaults: members().filter(m => m.vault).length, vaultBytes: vaultTotal(), claims: !!sig,
+          claimed: members().filter(m => m.claimed).length, unclaimed: members().filter(m => !m.banned && m.address && m.claimed !== m.address).length,
+          visitors: visitStats(), vaults: members().filter(m => m.vault).length, vaultBytes: vaultTotal(), claims: !!sig,
           originPinned: origins.length > 0 || !!opts.hostVetted,
           leagues: Object.keys(S.leagues).length, badges: Object.keys(S.badges).length, coachAi: !!opts.coachAvailable,
           coachToday: Object.keys(S.coachUse).filter(k => k.startsWith('m:')).reduce((a, k) => a + coachUsedKey(k, 'UTC'), 0) + (S.ownerCoach.k === utcDayKey(now()) ? S.ownerCoach.n : 0),
@@ -1739,6 +1779,7 @@ function createSocial(opts) {
         if (typeof body.inviteCode === 'string') c.inviteCode = cleanText(body.inviteCode, 40);
         if (typeof body.unlocksOn === 'boolean') c.unlocksOn = body.unlocksOn;
         if (typeof body.vaultOn === 'boolean') c.vaultOn = body.vaultOn;
+        if (body.guestCap !== undefined && isFinite(+body.guestCap)) c.guestCap = Math.max(0, Math.min(100, Math.round(+body.guestCap)));
         if (body.modules) c.modules = SC.sanitizeModules(body.modules, c.modules);
         if (body.unlocks) c.modules = SC.sanitizeModules(body.unlocks, c.modules); // v0.3 panels send this name
         if (body.levels) c.levels = SC.sanitizeLevels(body.levels, c.levels);
@@ -1756,6 +1797,9 @@ function createSocial(opts) {
           c.requireClaim = body.requireClaim;
           // numbers read from wallets nobody signed for stop counting at once, and come back after a claim
           for (const m of members()) recheckWallet(m);
+          // and each member it affects hears why, and what to do about it
+          if (c.requireClaim) for (const m of members()) if (m.address && m.claimed !== m.address)
+            notify(m, 'claim', 'Your league now counts only wallets a member has proved are theirs. Claim yours in Account: it\u2019s a signature, not a transaction, and nothing moves. Until then your verified Discipline and returns don\u2019t count.', { url: '/keel#account' });
         }
         if (typeof body.approveWallets === 'boolean' && body.approveWallets !== c.approveWallets) {
           c.approveWallets = body.approveWallets;
@@ -1982,6 +2026,7 @@ function createSocial(opts) {
       const skip = new Set(Array.isArray(body.skip) ? body.skip.map(String) : []); // rankings the new member chose not to join
       for (const L of Object.values(S.leagues)) if (L.autoJoin && !skip.has(L.id)) joinLeague(L, m);
       recent.push(now()); joinTimes.set(ip, recent);
+      if (body.visitor === true) bumpVisit('conv', utcDayKey(now()));
       if (joinTimes.size > 1000) for (const [k, v] of joinTimes) if (!v.length || now() - v[v.length - 1] > 3600000) joinTimes.delete(k); // addresses an hour quiet
       if (m.share.feed) pushEvent(m, { type: 'join', text: 'joined the league' });
       save(m, 'follows', 'leagues'); refreshMoney(m, true); refreshBehavior(m, true);

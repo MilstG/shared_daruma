@@ -32,7 +32,8 @@ const wallets = async () => (await call('/admin/wallets', { admin: true })).d;
 const onRetBoard = async (key) => (await call('/leaderboard?board=ret', { key })).d.rows.map(r => r.handle);
 
 try {
-  await call('/admin/config', { method: 'PUT', admin: true, body: { unlocksOn: false } });
+  // wallets count unproven here (approval is what's tested), as on a server from before claimed-only became the default
+  await call('/admin/config', { method: 'PUT', admin: true, body: { unlocksOn: false, requireClaim: false } });
   let A, Bk, C;
   await t('approval off (the default): every wallet counts, as before', async () => {
     A = await join_('alice', W('a')); Bk = await join_('bob', W('b')); await tick();
