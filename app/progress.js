@@ -192,7 +192,7 @@ function challengeStatus(res, ended){
 let _gameMemo={key:null,g:null};
 function gameContext(){
   const ctx=coachContext();
-  const key=_coachMemo.key+'|'+_jrev+'|'+PZ_CFG.rev+'|'+(typeof SOC!=='undefined'&&SOC.me&&SOC.me.mult?JSON.stringify(SOC.me.mult.hist||{}):'')+'|'+(Array.isArray(settings.pzGoals)?settings.pzGoals.filter(x=>x&&x.done).length:0)+'|'+(typeof pzGuestCap==='function'?pzGuestCap():0);
+  const key=_coachMemo.key+'|'+_jrev+'|'+PZ_CFG.rev+'|'+(typeof SOC!=='undefined'&&SOC.me&&SOC.me.mult?JSON.stringify(SOC.me.mult.hist||{}):'')+'|'+(typeof SOC!=='undefined'&&SOC.me&&SOC.me.mentorXp?SOC.me.mentorXp.total:0)+'|'+(Array.isArray(settings.pzGoals)?settings.pzGoals.filter(x=>x&&x.done).length:0)+'|'+(typeof pzGuestCap==='function'?pzGuestCap():0);
   if(_gameMemo.key===key)return _gameMemo.g;
   const X=pzXpCfg();
   const now=Date.now(), nowWeek=isoWeekOfKey(dayKey(now));
@@ -238,10 +238,12 @@ function gameContext(){
   // from the league: XP the owner granted, and their reward badges that carry XP
   const me=typeof SOC!=='undefined'&&SOC.me;
   if(me){ for(const gr of (me.grants||[]))bonuses.push({key:dayKey(gr.at),xp:gr.xp,why:gr.why||'league bonus',src:'grant'});
-    for(const a of (me.awards||[]))if(a.xp)bonuses.push({key:dayKey(a.at),xp:a.xp,why:a.name,src:'award'}); }
+    for(const a of (me.awards||[]))if(a.xp)bonuses.push({key:dayKey(a.at),xp:a.xp,why:a.name,src:'award'});
+    // mentoring: XP the server paid for reviews, notes and mentees' results, per day (levels only: never leagues or duels)
+    for(const [k,d] of Object.entries((me.mentorXp&&me.mentorXp.days)||{}))if(d&&d.xp>0)bonuses.push({key:k,xp:d.xp,why:'mentoring',src:'mentor'}); }
   // the XP multiplier (Trader Age, verified by the server): each week's daily XP times the multiplier that
   // week had; achievements, badges, challenges and grants pay what they say. Leagues and duels get the XP
-  // before the multiplier (xpBase), so a newcomer can still win a week.
+  // before the multiplier (xpBase), so a newcomer can still win a week; mentoring XP stays out of it too.
   const MH=(me&&me.mult&&me.mult.hist)||{}, multOf=k=>{ const v=+MH[isoWeekOfKey(k)]; return v>1?v:1; };
   const baseRows=days.map(d=>({key:d.key,score:Math.round(d.score*X.discipline)+d.bonus.total}));
   const dayRows=baseRows.map(r=>({key:r.key,score:Math.round(r.score*multOf(r.key))}));
@@ -260,7 +262,7 @@ function gameContext(){
   catch(e){ console.warn('badges failed',e); }
   const wkFrom=dayKey(lastCompletedWeekRange(now).to);
   const weekXp=Object.keys(led.byDay).filter(k=>k>=wkFrom).reduce((s,k)=>s+led.byDay[k],0);
-  const xpBase=xpLedger(baseRows,bonuses), weekXpBase=Object.keys(xpBase.byDay).filter(k=>k>=wkFrom).reduce((s,k)=>s+xpBase.byDay[k],0);
+  const xpBase=xpLedger(baseRows,bonuses.filter(b=>b.src!=='mentor')), weekXpBase=Object.keys(xpBase.byDay).filter(k=>k>=wkFrom).reduce((s,k)=>s+xpBase.byDay[k],0);
   const stopsBest=achievements.stopsBest||0;
   const pbs=personalBests(days,streak,stopsBest,jBest,nowWeek);
   const savedItems=[...(ctx.rulePreds||[]).map(x=>({name:x.rule.name.replace(/^Avoid: /,''),pred:x.pred,createdAt:x.rule.createdAt})),
@@ -1022,7 +1024,7 @@ const PZ_TIER_COL=['#C98A5B','#B8C2CC','#F4C04E','#7FE0D2','#8FA8FF','#FF8AD8'];
 const PZ_TIER_TXT_LIGHT=['#99582B','#5E6A77','#8C6400','#16786C','#3A55C9','#A8287F'];
 const pzTierText=r=>(typeof document!=='undefined'&&document.body&&document.body.classList.contains('light')?PZ_TIER_TXT_LIGHT:PZ_TIER_COL)[r];
 const PZ_TIER_XP=[5,10,20,40,80,160];
-const PZ_BADGE_CATS={discipline:'Discipline',habits:'Habits',consistency:'Consistency',journal:'Journaling',routine:'Routines',risk:'Risk control',results:'Results',milestones:'Milestones'};
+const PZ_BADGE_CATS={discipline:'Discipline',habits:'Habits',consistency:'Consistency',journal:'Journaling',routine:'Routines',risk:'Risk control',results:'Results',milestones:'Milestones',mentoring:'Mentoring'};
 const pzN=n=>n>=1e6?(n/1e6)+'M':n>=1e3&&n%1e3===0?(n/1e3)+'k':String(n);
 const pzUsd=n=>'$'+pzN(n);
 // [id, category, title, what one counts, tiers, reveal]
@@ -1072,6 +1074,8 @@ const PZ_FAMILIES=[
   ['level','milestones','Rank up',t=>'level '+t,[2,5,10,20,35,50],0],
   ['xp','milestones','Experience',t=>pzN(t)+' XP',[1000,5000,20000,50000,100000,250000],1],
   ['tenure','milestones','Veteran',t=>t+' days since your first trade',[7,30,90,180,365,730],1],
+  ['teacher','mentoring','Teacher',t=>t+' trade'+(t===1?'':'s')+' reviewed for a mentee',[1,10,30,75,150,300],0],
+  ['helped','mentoring','Made a difference',t=>t+' mentee result'+(t===1?'':'s')+' (a leak plugged, a perfect week, a Trader Age milestone)',[1,3,6,12,24,48],0],
   ['traderage','milestones','Seasoned',t=>'a Trader Age of '+t+' year'+(t===1?'':'s'),[1,2,4,6,8,12],2],
 ];
 // days -> keys where a condition held; nth key = the day the nth was reached
@@ -1147,12 +1151,17 @@ function pzBadgeCatalog(G){
   add('trades',closed.map(t=>dayKey(t.closeTime)));
   { let cum=0; const pairs=Object.keys((G.xpByDay)||{}).sort().map(k=>{ cum+=G.xpByDay[k]; return [k,cum]; });
     run('xp',pairs.length?pairs:[[today,G.xp||0]]); run('level',(pairs.length?pairs:[[today,G.xp||0]]).map(([k,v])=>[k,levelFor(v).level])); }
+  // mentoring (mentors only): reviews and mentees' results, counted per day by the server
+  { const md=(typeof SOC!=='undefined'&&SOC.me&&SOC.me.mentorXp&&SOC.me.mentorXp.days)||{}, rk=[], ok=[];
+    for(const k of Object.keys(md).sort()){ for(let i=0;i<(md[k].r||0);i++)rk.push(k); for(let i=0;i<(md[k].o||0);i++)ok.push(k); }
+    add('teacher',rk); add('helped',ok); }
   // Trader Age (app/features/trader-age.js): its value at the end of each trading day
   if(typeof taHistoryOf==='function'){ try{ run('traderage',taHistoryOf(D).filter(h=>h.age!=null).map(h=>[h.key,h.age])); }catch(e){ console.warn('trader age history',e); } }
   { const first=D.length?D[0].key:null; if(first){ const span=Math.floor((Date.parse(today)-Date.parse(first))/86400000); run('tenure',[[today,span]]); SER.tenureFrom=first; } }
   // tiers -> badges
   const out=[], fams=[], xpScale=(X.achievement||0)/50;
-  for(const [id,cat,title,desc,tiers,reveal] of PZ_FAMILIES){
+  const mentorFams=typeof SOC!=='undefined'&&SOC.me&&(SOC.me.mentor||SOC.me.mentorXp), fams0=PZ_FAMILIES.filter(f=>f[1]!=='mentoring'||mentorFams);
+  for(const [id,cat,title,desc,tiers,reveal] of fams0){
     const ev=EV[id], ser=SER[id];
     const value=ev?ev.length:ser&&ser.length?Math.max(...ser.map(p=>p[1])):0;
     const reached=t=>ev?(ev.length>=t?ev[t-1]:null):id==='tenure'?(value>=t?pzAddDays(SER.tenureFrom,t):null):(ser||[]).find(p=>p[1]>=t)?ser.find(p=>p[1]>=t)[0]:null;
@@ -1165,7 +1174,7 @@ function pzBadgeCatalog(G){
   out.sort((a,b)=>a.k<b.k?-1:a.k>b.k?1:b.r-a.r);
   const n=out.length;
   for(const f of fams)f.visible=f.tiers.some(b=>b.earned)||n>=f.reveal;
-  const total=PZ_FAMILIES.reduce((a,f)=>a+f[4].length,0)+(G.achievements||[]).length;
+  const total=fams0.reduce((a,f)=>a+f[4].length,0)+(G.achievements||[]).length;
   return {earned:out,families:fams,total,hidden:fams.filter(f=>!f.visible).reduce((a,f)=>a+f.tiers.length,0)};
 }
 

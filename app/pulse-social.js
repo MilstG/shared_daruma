@@ -155,7 +155,7 @@ async function socMeRefresh(){
   _socMeAt=Date.now();
   let d; try{ d=await socFetch('/me'); }catch(e){ return; }
   if(!d||!d.me)return;
-  const sig=m=>JSON.stringify([m.grants||[],m.awards||[],!!m.unlocked,!!m.admin,m.tier||0,m.mentor||false,(m.leagues||[]).map(l=>l.id),m.mult&&m.mult.hist]);
+  const sig=m=>JSON.stringify([m.grants||[],m.awards||[],m.mentorXp?m.mentorXp.total:0,!!m.unlocked,!!m.admin,m.tier||0,m.mentor||false,(m.leagues||[]).map(l=>l.id),m.mult&&m.mult.hist]);
   const moved=sig(d.me)!==sig(SOC.me);
   SOC.me=d.me; SOC.share=d.share;
   if(!moved)return;
@@ -1019,7 +1019,7 @@ async function socAction(t){
     // mentor notes
     if(ds.socNotefor!==undefined){ pzS.noteFor=ds.socNotefor||null; pzRender(); const n=$('socNoteIn'); if(n)n.focus(); return true; }
     if(ds.socNsend){ const v=($('socNoteIn')||{value:''}).value.trim(); if(!v)return true;
-      await socFetch('/mentor/'+encodeURIComponent(ds.h)+'/notes',{method:'POST',body:JSON.stringify({day:ds.socNsend,text:v})}); pzS.noteFor=null; delete SOC.cache['mentee:'+ds.h.toLowerCase()]; done('Note sent.'); return true; }
+      const r=await socFetch('/mentor/'+encodeURIComponent(ds.h)+'/notes',{method:'POST',body:JSON.stringify({day:ds.socNsend,text:v})}); pzS.noteFor=null; delete SOC.cache['mentee:'+ds.h.toLowerCase()]; if(r&&r.xp)socMeRefresh(); done('Note sent.'+(r&&r.xp?' +'+r.xp+' XP for mentoring.':'')); return true; }
     if(ds.socNdel){ if(!confirm('Delete this note?'))return true; await socFetch('/mentor/'+encodeURIComponent(ds.h)+'/notes/'+encodeURIComponent(ds.socNdel),{method:'DELETE'}); delete SOC.cache['mentee:'+ds.h.toLowerCase()]; done(''); return true; }
     if(t.id==='socInboxRead'){ await socFetch('/inbox/read',{method:'POST'}); delete SOC.cache.inbox; if(SOC.me)SOC.me.inbox=0; pzRender(); return true; }
     if(ds.socLg){ SOC.lg=ds.socLg; SOC.board='rank'; pzRender(); return true; }

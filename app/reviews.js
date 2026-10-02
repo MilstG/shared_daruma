@@ -82,7 +82,8 @@ async function mrAction(t){ const ds=t.dataset;
     const id=ds.mrSend||ds.mrDone||ds.mrDel, box=t.closest('[data-mr-box]'), tid=box&&box.dataset.mrBox;
     if(ds.mrSend){ const el=(box||document).querySelector('#mrText,[data-mr-text]'), text=(el&&el.value||'').trim(); if(!text){ note('Write the comment first.','err'); return true; }
       t.disabled=true; SOC.cache['tr:'+id]={at:Date.now(),d:await socFetch('/reviews/'+id+'/comments',{method:'POST',body:JSON.stringify({text})}),err:null}; if(el)el.value=''; }
-    else if(ds.mrDone)SOC.cache['tr:'+id]={at:Date.now(),d:await socFetch('/reviews/'+id+'/reviewed',{method:'POST',body:JSON.stringify({done:ds.on==='1'})}),err:null};
+    else if(ds.mrDone){ const d=await socFetch('/reviews/'+id+'/reviewed',{method:'POST',body:JSON.stringify({done:ds.on==='1'})}); SOC.cache['tr:'+id]={at:Date.now(),d,err:null};
+      if(d&&d.xp){ note('Reviewed. +'+d.xp+' XP for mentoring.'); if(typeof socMeRefresh==='function')socMeRefresh(); } }
     else { if(PZ&&SOC.confirm!=='mrdel:'+id){ SOC.confirm='mrdel:'+id; pzRender(); return true; } if(!PZ&&!confirm('Take this trade back? The thread goes with it.'))return true;
       SOC.confirm=null; await socFetch('/reviews/'+id,{method:'DELETE'}); delete SOC.cache['tr:'+id]; note('Taken back.'); if(PZ)location.hash='#reviews'; }
     delete SOC.cache.reviews; redraw(tid);
