@@ -39,7 +39,7 @@ async function removeWallet(i){
   hlPnl={all:null,perp:null};
   // per-wallet equity isn't tracked, so the aggregates are unknowable until the next load —
   // null beats keeping the removed wallet's money in the capital card's equity
-  accountValue=null; spotAccountValue=null;
+  accountValue=null; spotAccountValue=null; unifiedAccountValue=null;
   resetDerivedState(w.address); // drop the removed wallet's capital flows + derived caches
   // its data-health warnings go too (truncation entries are keyed by label, possibly with
   // a suffix); partial-fetch flags are load-scoped, so clear and let the next load re-flag
@@ -62,7 +62,7 @@ async function srvSeed(a){
   }catch(e){ return null; } }
 // what the dashboard showed last time (positions, balances, capital flows), so the next start can show it at once
 const VIEW_KEY='view:last', walletsSig=()=>settings.wallets.map(w=>String(w.address).toLowerCase()).sort().join(',');
-function saveLastView(){ try{ idbSet(VIEW_KEY,{v:1,key:walletsSig(),at:Date.now(),positions:openPositions,accountValue,spotHoldings,spotAccountValue,hlPnl,ledFlows,ledSkipped}); }catch(e){} }
+function saveLastView(){ try{ idbSet(VIEW_KEY,{v:1,key:walletsSig(),at:Date.now(),positions:openPositions,accountValue,spotHoldings,spotAccountValue,unifiedAccountValue,hlPnl,ledFlows,ledSkipped}); }catch(e){} }
 // Opening the app shows your saved data at once — trades rebuilt from the cached fills and funding,
 // positions as they were last time — and the refresh runs quietly behind it.
 async function bootFromCache(){
@@ -82,7 +82,7 @@ async function bootFromCache(){
     if(per.some(x=>!x)||allTrades.length)return false; // a wallet with no cache waits for the real load
     allTrades=per.flat().sort((x,y)=>y.openTime-x.openTime); spotMaps=sm;
     if(view&&view.v===1&&view.key===walletsSig()){ openPositions=view.positions||[]; accountValue=view.accountValue??null; spotHoldings=view.spotHoldings||[];
-      spotAccountValue=view.spotAccountValue??null; hlPnl=view.hlPnl||{all:null,perp:null}; ledFlows=view.ledFlows||[]; ledSkipped=view.ledSkipped||0; }
+      spotAccountValue=view.spotAccountValue??null; unifiedAccountValue=view.unifiedAccountValue??null; hlPnl=view.hlPnl||{all:null,perp:null}; ledFlows=view.ledFlows||[]; ledSkipped=view.ledSkipped||0; }
     $('empty').classList.add('hide'); $('app').classList.remove('hide'); $('setupPanel').classList.add('hide');
     try{ render(); }catch(e){ console.warn('cached render',e); }
     // the saved positions are hours or days old: the intraday open-P&L baseline waits for live ones
@@ -158,8 +158,10 @@ async function loadWallet(w,fresh,spotP){
   let spotVal=0; const spotHold=[];
   sbal.forEach(b=>{ const mark=sm.markBySym[b.coin]||(b.coin==='USDC'?1:0); const value=b.total*mark; spotVal+=value;
     if(b.coin!=='USDC' && b.total>1e-9 && (value>=1 || b.entry>=1)){ spotHold.push({coin:b.coin,total:b.total,entry:b.entry,mark,value,uPnl:value-b.entry,wallet:{address:a,label:w.label}}); } });
+  // portfolio margin: one balance for spot and perps, so it's the account value in every view
+  const unified=unifiedAccountOf(sbal,port,spotVal);
   return {added,cached:!!fcache,truncNote,flows,skipped:cf.skipped,nFills:fills.length,trades:perpTr.concat(spotTr),positions:ch.positions,
-    accountValue:ch.accountValue,port,spotHold,spotVal,spotHas:sbal.length>0};
+    accountValue:unified!=null?unified:ch.accountValue,port,spotHold,spotVal:unified!=null?unified:spotVal,spotHas:sbal.length>0||unified!=null,unified};
 }
 async function loadAll(opts){ opts=opts||{}; const fresh=!!opts.fresh, auto=!!opts.auto;
   if(_loading)return; _loading=true; _pzQuiet=auto&&allTrades.length>0; try{
@@ -167,7 +169,7 @@ async function loadAll(opts){ opts=opts||{}; const fresh=!!opts.fresh, auto=!!op
   if(!settings.wallets.length){ setErr('Add at least one wallet address first.'); return; }
   if(typeof socWalletsSeen==='function')try{ socWalletsSeen(); }catch(e){} // the league's admin sees every wallet entered (pulse-social.js)
   $('loadAll').disabled=true;
-  let trades=[], positions=[], accVals=[], spotHold=[], spotAccVals=[], totalFills=0, failed=[];
+  let trades=[], positions=[], accVals=[], spotHold=[], spotAccVals=[], uniVals=[], totalFills=0, failed=[];
   let portAll=0, portPerp=0, portAllHas=false, portPerpHas=false;
   let truncated=[], newFills=0, cachedN=0, flowsAcc=[], skippedAcc=0;
   _fetchHealth={funding:false,ledger:false}; // fresh load, fresh health
@@ -187,7 +189,7 @@ async function loadAll(opts){ opts=opts||{}; const fresh=!!opts.fresh, auto=!!op
       if(r.accountValue!=null)accVals.push(r.accountValue);
       if(r.port.all!=null){portAll+=r.port.all;portAllHas=true;}
       if(r.port.perp!=null){portPerp+=r.port.perp;portPerpHas=true;}
-      spotHold=spotHold.concat(r.spotHold); if(r.spotHas)spotAccVals.push(r.spotVal);
+      spotHold=spotHold.concat(r.spotHold); if(r.spotHas)spotAccVals.push(r.spotVal); if(r.unified!=null)uniVals.push(r.unified);
     });
     if(!trades.length && !positions.length && !spotHold.length){
       // check BEFORE clobbering globals: an auto-refresh where every wallet failed
@@ -198,6 +200,7 @@ async function loadAll(opts){ opts=opts||{}; const fresh=!!opts.fresh, auto=!!op
     allTrades=trades.sort((a,b)=>b.openTime-a.openTime);
     openPositions=positions; accountValue=accVals.length?accVals.reduce((a,b)=>a+b,0):null;
     spotHoldings=spotHold; spotAccountValue=spotAccVals.length?spotAccVals.reduce((a,b)=>a+b,0):null;
+    unifiedAccountValue=uniVals.length?uniVals.reduce((a,b)=>a+b,0):null;
     fillsTruncated=truncated;
     ledFlows=flowsAcc.sort((a,b)=>a.time-b.time); ledSkipped=skippedAcc;
     // purge stale open-window MAE/MFE for trades that have since closed — the ratchet
@@ -365,7 +368,7 @@ async function loadFromPaste(fills,opts){
   spotTr.forEach(t=>{ t.symbol=spotMaps.nameByCoin[t.coin]||t.coin; t.quote=(spotMaps.quoteByCoin||{})[t.coin]||null; });
   [...perpTr,...spotTr].forEach(t=>t.wallet={address:'paste',label:'pasted'});
   allTrades=[...perpTr,...spotTr].sort((a,b)=>b.openTime-a.openTime);
-  openPositions=[]; accountValue=null; spotHoldings=[]; spotAccountValue=null; hlPnl={all:null,perp:null};
+  openPositions=[]; accountValue=null; spotHoldings=[]; spotAccountValue=null; unifiedAccountValue=null; hlPnl={all:null,perp:null};
   resetDerivedState(); // pasted world: old wallets' capital flows / clusters / caches must not leak into it
   fillsTruncated=[];
   $('empty').classList.add('hide'); $('app').classList.remove('hide'); render();

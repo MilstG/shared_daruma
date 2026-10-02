@@ -693,15 +693,29 @@ async function fetchSpotMaps(){
     return spotMapsFrom(res[0],res[1]||[]);
   }catch(e){ return {nameByCoin:{},markBySym:{'USDC':1}}; }
 }
+// the balances, with `portfolioMargin` on the list: under portfolio margin spot and perps share one
+// balance, and the perp clearinghouse reports 0 for an account that may hold six figures
 async function fetchSpotState(addr){
   try{ const s=await hlPost({type:'spotClearinghouseState',user:addr});
-    return (s.balances||[]).map(b=>({coin:b.coin,total:parseFloat(b.total),entry:parseFloat(b.entryNtl||0)}));
+    const out=(s.balances||[]).map(b=>({coin:b.coin,total:parseFloat(b.total),entry:parseFloat(b.entryNtl||0)}));
+    out.portfolioMargin=!!s.portfolioMarginEnabled; return out;
   }catch(e){ return []; }
 }
+// all-time P&L (whole account and perps), and the exchange's own account value now: the last point
+// of the all-time history is written at the time of the request, so it's live, and under portfolio
+// margin it's the one number that covers spot and perps together
 async function fetchPortfolio(addr){
   try{ const res=await hlPost({type:'portfolio',user:addr});
-    const pick=label=>{ const e=(res||[]).find(x=>x[0]===label); if(!e||!e[1])return null;
-      const h=e[1].pnlHistory||[]; return h.length?parseFloat(h[h.length-1][1]):null; };
-    return {all:pick('allTime'), perp:pick('perpAllTime')};
-  }catch(e){ return {all:null,perp:null}; }
+    const last=(label,field)=>{ const e=(res||[]).find(x=>x[0]===label); if(!e||!e[1])return null;
+      const h=e[1][field]||[]; const v=h.length?parseFloat(h[h.length-1][1]):NaN; return isFinite(v)?v:null; };
+    return {all:last('allTime','pnlHistory'), perp:last('perpAllTime','pnlHistory'), accountValue:last('allTime','accountValueHistory')};
+  }catch(e){ return {all:null,perp:null,accountValue:null}; }
+}
+// A portfolio-margin account's balance: the exchange's own account value (spot and perps as one), or
+// the spot balances valued at mark when that isn't readable. null for an ordinary account, whose perp
+// and spot balances are read separately. Hyperliquid's docs: "Under unified account or portfolio
+// margin, use spot balances endpoint instead for trading account balance across spot and perps."
+function unifiedAccountOf(sbal, port, spotVal){
+  if(!sbal||!sbal.portfolioMargin)return null;
+  const v=port&&port.accountValue; return isFinite(v)&&v!=null?v:(isFinite(spotVal)?spotVal:null);
 }

@@ -148,6 +148,9 @@ let allTrades=[], fundingRows=[], fundingTotal=0, openPositions=[], accountValue
 let ledFlows=[], ledSkipped=0; // classified capital flows (deposits/withdrawals/transfers) across loaded wallets
 let _fetchHealth={funding:false,ledger:false}; // partial-fetch flags for the persistent data-health line
 let spotHoldings=[], spotAccountValue=null, spotMaps={nameByCoin:{},markBySym:{'USDC':1}};
+// portfolio-margin wallets' balances (one pool for spot and perps): counted in both accountValue and
+// spotAccountValue, so a combined total takes this off to count them once
+let unifiedAccountValue=null;
 let hlPnl={all:null,perp:null};
 let fillsTruncated=[];
 let activeTab='dash';
