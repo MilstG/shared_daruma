@@ -382,11 +382,18 @@ actually traded (counted from your first fill). Each trading day is rated from 0
 scores), 10% the loss limit (kept 100, broken 0, none set 70) and 10% prep and journaling.
 Your last 6 months of trading days are averaged, a day's weight halving every 30 trading
 days back, and Trader Age is 2^((rating − 50) / 10) years, capped at 20: every 10 points
-doubles it. Only trading days count, so a break freezes it, and it never comes from profit.
+doubles it. **Confidence:** under 60 trading days the rating is held toward 50 (1 year):
+it's 50 + (raw − 50) × n / (n + k), k = 15 × (1 − n/60), so 15 perfect days read as about 7
+years, not 20; the screen shows the likely range (about 80%, from the spread of daily ratings).
+Only trading days count, so a break freezes it, and it never comes from profit.
 **Pace** is this week (3+ trading days in the last 7) against that 6-month norm, from 0× to
 3×, and names the slip that cost the most when it's below 1×. It appears after 15 trading
-days, as a card on Today and its own screen (`#age`: the parts, what's holding it back, and
-week by week). **Verified:** for a member who shares verified Discipline with a wallet the
+days, as a card on Today and on Progress, and its own screen (`#age`): the parts, what's holding
+it back, **over time** (a line of Trader Age at the end of each week traded, last 26, next to
+time trading, on one doubling scale), and **what your slips cost** (Trader Age worked out again
+as if the trades with only that slip had been clean, in years, biggest first). Milestones are
+badges: the **Seasoned** family at 1, 2, 4, 6, 8 and 12 years, read from the same history, on
+both screens (the feature file loads on both, so XP matches). **Verified:** for a member who shares verified Discipline with a wallet the
 server reads (claimed, when wallet proof is on), the server works it out itself with the app's
 own `traderAge`: Discipline and slips from the wallet's last 6 months of fills (the per-wallet
 fills cache now keeps 6 months; an older, shorter cache is read again once from the start), and

@@ -1072,6 +1072,7 @@ const PZ_FAMILIES=[
   ['level','milestones','Rank up',t=>'level '+t,[2,5,10,20,35,50],0],
   ['xp','milestones','Experience',t=>pzN(t)+' XP',[1000,5000,20000,50000,100000,250000],1],
   ['tenure','milestones','Veteran',t=>t+' days since your first trade',[7,30,90,180,365,730],1],
+  ['traderage','milestones','Seasoned',t=>'a Trader Age of '+t+' year'+(t===1?'':'s'),[1,2,4,6,8,12],2],
 ];
 // days -> keys where a condition held; nth key = the day the nth was reached
 function pzBadgeCatalog(G){
@@ -1146,6 +1147,8 @@ function pzBadgeCatalog(G){
   add('trades',closed.map(t=>dayKey(t.closeTime)));
   { let cum=0; const pairs=Object.keys((G.xpByDay)||{}).sort().map(k=>{ cum+=G.xpByDay[k]; return [k,cum]; });
     run('xp',pairs.length?pairs:[[today,G.xp||0]]); run('level',(pairs.length?pairs:[[today,G.xp||0]]).map(([k,v])=>[k,levelFor(v).level])); }
+  // Trader Age (app/features/trader-age.js): its value at the end of each trading day
+  if(typeof taHistoryOf==='function'){ try{ run('traderage',taHistoryOf(D).filter(h=>h.age!=null).map(h=>[h.key,h.age])); }catch(e){ console.warn('trader age history',e); } }
   { const first=D.length?D[0].key:null; if(first){ const span=Math.floor((Date.parse(today)-Date.parse(first))/86400000); run('tenure',[[today,span]]); SER.tenureFrom=first; } }
   // tiers -> badges
   const out=[], fams=[], xpScale=(X.achievement||0)/50;

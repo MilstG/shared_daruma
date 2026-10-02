@@ -11,10 +11,10 @@ const htmlPath = new URL('../ledger.html', import.meta.url).pathname;
 const { readAppSource } = require('../app-source.js');
 const src = readAppSource(htmlPath);
 const { grabFn, evalModule } = makeExtractor(src);
-const consts = ['taRatingFor'].map(n => src.match(new RegExp('^const ' + n + '=.*$', 'm'))[0]).join('\n');
-const { traderAge, taYears, taRatingFor, taFmtYears, taWeeks, taMultStep, taMultOf, taMultDefaults, taStanding, taStandingDefaults } = await evalModule(
-  ['taConf', 'taYears', 'traderAge', 'isoWeekOfKey', 'taFmtYears', 'taMultDefaults', 'taWeeks', 'taMultTier', 'taMultStep', 'taMultOf', 'taStandingDefaults', 'taStanding'],
-  ['traderAge', 'taYears', 'taRatingFor', 'taFmtYears', 'taWeeks', 'taMultStep', 'taMultOf', 'taMultDefaults', 'taStanding', 'taStandingDefaults'], 'const TA=taConf();\n' + consts);
+const consts = ['taRatingFor', 'TA_SLIPS'].map(n => src.match(new RegExp('^const ' + n + '=.*$', 'm'))[0]).join('\n');
+const { traderAge, taYears, taRatingFor, taFmtYears, taWeeks, taMultStep, taMultOf, taMultDefaults, taStanding, taStandingDefaults, taHistory, taWhatIf } = await evalModule(
+  ['taConf', 'taYears', 'traderAge', 'isoWeekOfKey', 'taFmtYears', 'taMultDefaults', 'taWeeks', 'taMultTier', 'taMultStep', 'taMultOf', 'taStandingDefaults', 'taStanding', 'taHistory', 'taWhatIf'],
+  ['traderAge', 'taYears', 'taRatingFor', 'taFmtYears', 'taWeeks', 'taMultStep', 'taMultOf', 'taMultDefaults', 'taStanding', 'taStandingDefaults', 'taHistory', 'taWhatIf'], 'const TA=taConf();\n' + consts);
 
 const DAY = 864e5, NOW = Date.parse('2026-10-20T12:00:00Z');
 const key = ms => new Date(ms).toISOString().slice(0, 10);
@@ -35,12 +35,24 @@ t('fewer than 15 trading days: still building, with how many to go', () => {
 t('the daily mix: 65% Discipline, 15% steadiness, 10% loss limit, 10% prep and journal', () => {
   // flat 50s, no limit set (70), nothing logged: 0.65·50 + 0.15·100 + 0.10·70 + 0 = 54.5
   const A = age(run(20, () => ({ score: 50 })));
-  near(A.rating, 54.5, 1e-9); near(A.age, Math.pow(2, 0.45), 1e-9); eq(A.drag, 'discipline');
+  near(A.raw, 54.5, 1e-9); eq(A.drag, 'discipline');
   // perfect days: limit kept, prepped, every trade journaled → 100, Trader Age at its cap
   const J = {}; const days = run(20, (i, at) => { J['day:' + key(at)] = { sleep: 4 }; return { score: 100, parts: { limit: 1, journal: 1 } }; });
-  const B = age(days, J); near(B.rating, 100, 1e-9); eq(B.age, 20);
+  const B = age(days, J); near(B.raw, 100, 1e-9);
   // a day traded past the limit scores 0 on that part
-  near(age(run(20, () => ({ score: 50, parts: { limit: 0 } }))).rating, 47.5, 1e-9);
+  near(age(run(20, () => ({ score: 50, parts: { limit: 0 } }))).raw, 47.5, 1e-9);
+});
+t('confidence: under 60 trading days the rating is held toward 50 (1 year), so 15 perfect days aren’t 20 years', () => {
+  const perfect = n => { const J = {}; return age(run(n, (i, at) => { J['day:' + key(at)] = { sleep: 4 }; return { score: 100, parts: { limit: 1, journal: 1 } }; }), J); };
+  const a15 = perfect(15), a30 = perfect(30), a60 = perfect(60);
+  near(a15.raw, 100, 1e-9); ok(a15.age < 8 && a15.age > 6, 'about 7 years at 15 days: ' + a15.age);
+  ok(a30.age > a15.age && a30.age < 20, '30 days: ' + a30.age); eq([a60.age, a60.sure], [20, 1], 'fully trusted from 60');
+  // a weak record is held up toward 1 year the same way
+  ok(age(run(15, () => ({ score: 10 }))).age > age(run(60, () => ({ score: 10 }))).age);
+  // the likely range: around the number, wider when the days swing
+  const even = age(run(40, () => ({ score: 70 }))), swing = age(run(40, i => ({ score: i % 2 ? 100 : 40 })));
+  ok(even.range[0] <= even.age && even.range[1] >= even.age);
+  ok(swing.range[1] / swing.range[0] > even.range[1] / even.range[0], 'wider when it swings');
 });
 t('steadiness: the same average Discipline scores lower when it swings', () => {
   const even = age(run(30, () => ({ score: 70 }))), swing = age(run(30, i => ({ score: i % 2 ? 100 : 40 })));
@@ -140,6 +152,30 @@ t('a slip isn’t cleared by building again (a fresh wallet): only a rating back
   // someone who was only ever unverified and then verifies a new wallet is building, and good
   eq(stand(stand(null, { verified: false }), { verified: true, building: true }, NOW + 20 * DAY).state, 'building');
 });
+t('the history: Trader Age at the end of each trading day, each reading only the days up to it', () => {
+  const days = [...run(30, () => ({ score: 90 }), { endBack: 30 }), ...run(30, () => ({ score: 40 }))];
+  const H = taHistory(days, {}, {});
+  eq(H.length, 60); eq(H.slice(0, 14).every(h => h.age == null), true, 'building for the first 14');
+  near(H[29].age, traderAge(days.slice(0, 30), {}, { now: Date.parse(days[29].key + 'T23:59:59Z') }).age, 1e-9, 'day 30 sees only its 30 days');
+  ok(H[59].age < H[29].age, 'a bad month brings it down');
+});
+// days as the game builds them: behavior with flags, clean count and each slipped trade's flags
+const slipDay = (at, slips) => { const n = 4, clean = n - slips.length, flags = {}; for (const f of slips) for (const k of f) flags[k] = (flags[k] || 0) + 1;
+  return { key: key(at), n, score: Math.round(100 * clean / n), parts: {}, behavior: { n, clean, flags, slips: slips.map((f, i) => ({ id: i, net: -10, f })) } }; };
+t('what each slip costs: Trader Age again with those trades clean, biggest gain first', () => {
+  const days = Array.from({ length: 30 }, (_, i) => slipDay(NOW - (29 - i) * DAY, i % 2 ? [['revenge'], ['revenge']] : [['sizeUp']]));
+  const W = taWhatIf(days, {}, { now: NOW });
+  eq(W.map(x => x.k), ['revenge', 'sizeUp']); eq(W[0].n, 30); ok(W[0].gain > W[1].gain && W[1].gain > 0);
+  near(W[0].age - traderAge(days, {}, { now: NOW }).age, W[0].gain, 1e-9);
+  // a trade with two slips isn't made clean by taking one away
+  const both = Array.from({ length: 20 }, (_, i) => slipDay(NOW - (19 - i) * DAY, [['revenge', 'sizeUp']]));
+  eq(taWhatIf(both, {}, { now: NOW }), [], 'nothing gained by removing either alone');
+  eq(taWhatIf(run(5, () => ({})), {}, { now: NOW }), [], 'still building: nothing to say');
+});
+t('milestone badges: a Seasoned family reads the history (1, 2, 4, 6, 8, 12 years), on both screens', () => {
+  ok(src.includes("['traderage','milestones','Seasoned',t=>'a Trader Age of '+t+' year'+(t===1?'':'s'),[1,2,4,6,8,12],2]"));
+  ok(grabFn('pzBadgeCatalog').includes("run('traderage',taHistoryOf(D)"));
+});
 t('a feature plugs into Keel through pzFeature: a Today card people can hide and move, and a screen of its own', () => {
   ok(grabFn('pzFeature').includes('PZ_SECTIONS.today.push') && grabFn('pzFeature').includes('PZ_TABS.push'));
   ok(src.includes("pzFeature({id:'age', today:{label:'Trader Age'") && src.includes("tab:{name:'age',nav:'progress',html:taScreenHtml}"));
@@ -154,10 +190,10 @@ const server = require('../server.js');
 const app = server.createApp({ dataDir: mkdtempSync(join(tmpdir(), 'ledger-ta-')), auth: '', htmlPath, push: false, pushTick: false, offsiteTimer: false });
 const B = await new Promise(r => app.listen(0, () => r('http://127.0.0.1:' + app.address().port)));
 try {
-  await t('the feature file is on Keel’s page only, versioned like every script', async () => {
+  await t('the feature file loads on both screens, versioned like every script', async () => {
     const k = await (await fetch(B + '/daruma')).text(), j = await (await fetch(B + '/')).text();
     const m = k.match(/<script src="(app\/features\/trader-age\.js\?v=[0-9a-f]{12})"><\/script>/); ok(m, 'on Daruma');
-    ok(!j.includes('trader-age.js'), 'not on the journal');
+    ok(/<script src="app\/features\/trader-age\.js\?v=[0-9a-f]{12}"><\/script>/.test(j), 'on the journal too: its milestone badges count XP on both screens');
     const r = await fetch(B + '/' + m[1]); eq(r.status, 200); ok((await r.text()).includes('function traderAge('));
     for (const p of ['/app/features/../server.js', '/app/features/%2e%2e%2fserver.js', '/app/features/x/y.js', '/app/features/.hidden.js']) eq((await fetch(B + p)).status, 404, p);
   });
