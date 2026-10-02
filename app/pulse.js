@@ -664,7 +664,8 @@ function pzTodayHtml(D){
   let due=[]; try{ due=pzDueItems(D); }catch(err){}
   const bonus=`<section class="pz-card pz-kv"><div class="pz-kvrow"><b class="pz-kvh">Today’s XP</b><span style="font-size:12px;font-weight:700;color:${PZ_COL.xp}">${earned?'+'+earned+' earned':''}${earned&&left?' · ':''}${left?'+'+left+' to go':''}</span></div>
     ${items.map(x=>`<a class="pz-bonus" href="${x.href}"><span class="pz-bc ${x.done?'done':x.partial?'part':''}">${pzI(x.done?'check':x.partial?'minus':'plus',14,3)}</span><span style="flex:1;min-width:0"><b>${esc(x.label)}</b><span>${esc(x.hint)}</span></span><span class="pz-bx">+${x.xp}</span></a>`).join('')}
-    ${due.length?`<span class="pz-lbl pz-sublbl">This week</span>${pzDueRows(due)}`:''}</section>`;
+    ${due.length?`<span class="pz-lbl pz-sublbl">This week</span>${pzDueRows(due)}`:''}
+    ${g.mult>1?`<a class="pz-fine" href="#age" style="color:${PZ_COL.good};text-decoration:none">×${String(g.mult)} XP multiplier this week, for holding your Trader Age ›</a>`:''}</section>`;
   const coach=`<section class="pz-card pz-coach"><span class="pz-ico">${pzI('chat',18)}</span><p>${esc(pzCoachLine(D))}</p></section>`;
   // each section fails on its own (a bad record can't blank the screen), and shows only if you keep it on
   const safe=f=>{ try{ return f(); }catch(err){ console.warn('today section',err); return ''; } };

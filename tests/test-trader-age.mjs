@@ -12,7 +12,9 @@ const { readAppSource } = require('../app-source.js');
 const src = readAppSource(htmlPath);
 const { grabFn, evalModule } = makeExtractor(src);
 const consts = ['taRatingFor'].map(n => src.match(new RegExp('^const ' + n + '=.*$', 'm'))[0]).join('\n');
-const { traderAge, taYears, taRatingFor, taFmtYears } = await evalModule(['taConf', 'taYears', 'traderAge', 'isoWeekOfKey', 'taFmtYears'], ['traderAge', 'taYears', 'taRatingFor', 'taFmtYears'], 'const TA=taConf();\n' + consts);
+const { traderAge, taYears, taRatingFor, taFmtYears, taWeeks, taMultStep, taMultOf, taMultDefaults } = await evalModule(
+  ['taConf', 'taYears', 'traderAge', 'isoWeekOfKey', 'taFmtYears', 'taMultDefaults', 'taWeeks', 'taMultTier', 'taMultStep', 'taMultOf'],
+  ['traderAge', 'taYears', 'taRatingFor', 'taFmtYears', 'taWeeks', 'taMultStep', 'taMultOf', 'taMultDefaults'], 'const TA=taConf();\n' + consts);
 
 const DAY = 864e5, NOW = Date.parse('2026-10-20T12:00:00Z');
 const key = ms => new Date(ms).toISOString().slice(0, 10);
@@ -67,6 +69,34 @@ t('pace: this week against the norm, between 0× and 3×, once there are 3 tradi
 t('trading age from the first fill, and a week-by-week history (last 12 weeks with trading)', () => {
   const A = age(run(120, () => ({})), {}, { firstAt: NOW - 2 * 365.25 * DAY });
   near(A.tradingYears, 2, 1e-9); eq(A.weeks.length, 12); ok(A.weeks.every(w => w.age > 0 && w.n > 0));
+});
+// the multiplier: weeks of the form {week, weekRating, norm}
+const W = (i, wr, norm = 80) => ({ week: '2026-W' + String(i).padStart(2, '0'), weekRating: wr, norm });
+const walk = (weeks, cfg) => weeks.reduce((st, w) => taMultStep(st, w, cfg), null);
+t('the multiplier climbs with good weeks: ×1.05 at 2, ×1.1 at 4, ×1.2 at 8, ×1.3 at 13, ×1.5 at 26', () => {
+  const at = n => taMultOf(walk(Array.from({ length: n }, (_, i) => W(i + 1, 80))));
+  eq([at(1), at(2), at(3), at(4), at(8), at(12), at(13), at(25), at(26), at(40)], [1, 1.05, 1.05, 1.1, 1.2, 1.2, 1.3, 1.3, 1.5, 1.5]);
+});
+t('a week under the bar drops one tier, never back to the start; a week with a low norm neither counts nor drops', () => {
+  const good = Array.from({ length: 10 }, (_, i) => W(i + 1, 80)); // 10 good weeks: ×1.2
+  const st = walk([...good, W(11, 60)]); eq([st.count, taMultOf(st)], [4, 1.1], 'down to the 4-week tier');
+  eq(taMultOf(walk([...good, W(11, 60), W(12, 60)])), 1.05, 'a second bad week: one more tier');
+  eq(walk([W(1, 60)]).count, 0, 'nothing to lose yet');
+  const neutral = walk([...good, W(11, 85, 65)]); eq(neutral.count, 10, 'the week was fine but the 6-month norm under the bar: no climb, no drop');
+  eq(walk([...good, W(11, 85, null)]).count, 10, 'not enough days for a norm yet: no climb');
+});
+t('each week counts once, and the owner’s tiers can change without stranding anyone', () => {
+  const st = walk(Array.from({ length: 5 }, (_, i) => W(i + 1, 80)));
+  eq(taMultStep(st, W(3, 20)).count, 5, 'a week already counted is skipped');
+  eq(taMultOf(st, { on: true, bar: 70, tiers: [[1, 1.2], [5, 2]] }), 2, 'the same 5 weeks read against new tiers');
+  eq(taMultOf(st, Object.assign(taMultDefaults(), { on: false })), 1, 'off: no multiplier');
+});
+t('weeks from days: each trading week’s own rating, and the 6-month norm once there are 15 days', () => {
+  const days = run(25, () => ({ score: 90 }));
+  const ws = taWeeks(days, {}, {});
+  ok(ws.length >= 4); ok(ws.every(w => w.weekRating > 70));
+  eq(ws[0].norm, null, 'the first week has too few days for a norm'); ok(ws[ws.length - 1].norm > 70);
+  eq(taWeeks(days, {}, { after: ws[1].week }).length, ws.length - 2, 'it can start after the last week already counted');
 });
 t('a feature plugs into Keel through pzFeature: a Today card people can hide and move, and a screen of its own', () => {
   ok(grabFn('pzFeature').includes('PZ_SECTIONS.today.push') && grabFn('pzFeature').includes('PZ_TABS.push'));

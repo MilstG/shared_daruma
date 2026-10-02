@@ -56,7 +56,8 @@ function socInviteCode(){ try{ return localStorage.getItem(SOC_INVITE_STORE)||''
 // The numbers a member shares, from the shared game context. Pure given its inputs.
 function pzSocialStats(g, habits, J, withLessons){
   const done=g.challenges.filter(c=>c.status==='done');
-  return {xp:g.xp.total, level:g.level.level, week:g.nowWeek, weekXp:g.weekXp, tz:pzClockZone(),
+  // xp and level count the multiplier; weekly XP and XP by day (what leagues and duels rank on) don't
+  return {xp:g.xp.total, level:g.level.level, week:g.nowWeek, weekXp:g.weekXpBase!=null?g.weekXpBase:g.weekXp, tz:pzClockZone(),
     streak:g.streak.current, best:g.streak.best, shields:g.streak.shields,
     challengesDone:done.length, lastChallenge:done.length?habitSentence(done[done.length-1].ch.spec):'',
     badges:g.catalog?g.catalog.earned.map(b=>({id:b.id,t:b.t,c:b.c,r:b.r,k:b.k,d:b.desc||''})):g.achievements.filter(a=>a.at).map(a=>({id:a.id,t:a.title})),
@@ -69,7 +70,7 @@ function pzSocialStats(g, habits, J, withLessons){
       if(e&&(e.sleep||e.stress||e.focus))o.p=1; const P=d.parts||{}; if(P.journal>0)o.jn=Math.round(P.journal*100)/100; if(P.limit===0||P.limit===1)o.lm=P.limit;
       return o; }),
     firstAt:(()=>{ let a=0; for(const t of (typeof allTrades!=='undefined'?allTrades:[])){ const x=+t.openTime||0; if(x>0&&(!a||x<a))a=x; } return a||null; })(),
-    xpDays:Object.fromEntries(Object.entries((g.xp&&g.xp.byDay)||{}).filter(([k,v])=>v>0).sort().slice(-100))};
+    xpDays:Object.fromEntries(Object.entries(((g.xpBase||g.xp)&&(g.xpBase||g.xp).byDay)||{}).filter(([k,v])=>v>0).sort().slice(-100))};
 }
 // The server only gets a wallet address when a toggle needs it — Verify my discipline (fills),
 // % return or dollar P&L (portfolio), or Show wallet address; otherwise it never leaves the browser.
@@ -154,7 +155,7 @@ async function socMeRefresh(){
   _socMeAt=Date.now();
   let d; try{ d=await socFetch('/me'); }catch(e){ return; }
   if(!d||!d.me)return;
-  const sig=m=>JSON.stringify([m.grants||[],m.awards||[],!!m.unlocked,!!m.admin,m.tier||0,m.mentor||false,(m.leagues||[]).map(l=>l.id)]);
+  const sig=m=>JSON.stringify([m.grants||[],m.awards||[],!!m.unlocked,!!m.admin,m.tier||0,m.mentor||false,(m.leagues||[]).map(l=>l.id),m.mult&&m.mult.hist]);
   const moved=sig(d.me)!==sig(SOC.me);
   SOC.me=d.me; SOC.share=d.share;
   if(!moved)return;

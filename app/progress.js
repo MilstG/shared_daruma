@@ -192,7 +192,7 @@ function challengeStatus(res, ended){
 let _gameMemo={key:null,g:null};
 function gameContext(){
   const ctx=coachContext();
-  const key=_coachMemo.key+'|'+_jrev+'|'+PZ_CFG.rev+'|'+(Array.isArray(settings.pzGoals)?settings.pzGoals.filter(x=>x&&x.done).length:0)+'|'+(typeof pzGuestCap==='function'?pzGuestCap():0);
+  const key=_coachMemo.key+'|'+_jrev+'|'+PZ_CFG.rev+'|'+(typeof SOC!=='undefined'&&SOC.me&&SOC.me.mult?JSON.stringify(SOC.me.mult.hist||{}):'')+'|'+(Array.isArray(settings.pzGoals)?settings.pzGoals.filter(x=>x&&x.done).length:0)+'|'+(typeof pzGuestCap==='function'?pzGuestCap():0);
   if(_gameMemo.key===key)return _gameMemo.g;
   const X=pzXpCfg();
   const now=Date.now(), nowWeek=isoWeekOfKey(dayKey(now));
@@ -239,11 +239,16 @@ function gameContext(){
   const me=typeof SOC!=='undefined'&&SOC.me;
   if(me){ for(const gr of (me.grants||[]))bonuses.push({key:dayKey(gr.at),xp:gr.xp,why:gr.why||'league bonus',src:'grant'});
     for(const a of (me.awards||[]))if(a.xp)bonuses.push({key:dayKey(a.at),xp:a.xp,why:a.name,src:'award'}); }
-  let led=xpLedger(days.map(d=>({key:d.key,score:Math.round(d.score*X.discipline)+d.bonus.total})),bonuses), lv=levelFor(led.total);
+  // the XP multiplier (Trader Age, verified by the server): each week's daily XP times the multiplier that
+  // week had; achievements, badges, challenges and grants pay what they say. Leagues and duels get the XP
+  // before the multiplier (xpBase), so a newcomer can still win a week.
+  const MH=(me&&me.mult&&me.mult.hist)||{}, multOf=k=>{ const v=+MH[isoWeekOfKey(k)]; return v>1?v:1; };
+  const baseRows=days.map(d=>({key:d.key,score:Math.round(d.score*X.discipline)+d.bonus.total}));
+  const dayRows=baseRows.map(r=>({key:r.key,score:Math.round(r.score*multOf(r.key))}));
+  let led=xpLedger(dayRows,bonuses), lv=levelFor(led.total);
   // the badge catalog reads the game so far; its badges then add their own XP on the day they're earned
   let catalog=null;
   try{ const G0={ctx,days,streak,pa,achievements,challenges,journalBest:jBest,stopsBest:achievements.stopsBest||0,now,nowWeek};
-    const dayRows=days.map(d=>({key:d.key,score:Math.round(d.score*X.discipline)+d.bonus.total}));
     catalog=pzBadgeCatalog(Object.assign({},G0,{xp:led.total,xpByDay:led.byDay,level:lv.level}));
     if(catalog.earned.length){
       // the XP and level badges count badge XP too: a second pass reads the total including the first pass's badges
@@ -255,6 +260,7 @@ function gameContext(){
   catch(e){ console.warn('badges failed',e); }
   const wkFrom=dayKey(lastCompletedWeekRange(now).to);
   const weekXp=Object.keys(led.byDay).filter(k=>k>=wkFrom).reduce((s,k)=>s+led.byDay[k],0);
+  const xpBase=xpLedger(baseRows,bonuses), weekXpBase=Object.keys(xpBase.byDay).filter(k=>k>=wkFrom).reduce((s,k)=>s+xpBase.byDay[k],0);
   const stopsBest=achievements.stopsBest||0;
   const pbs=personalBests(days,streak,stopsBest,jBest,nowWeek);
   const savedItems=[...(ctx.rulePreds||[]).map(x=>({name:x.rule.name.replace(/^Avoid: /,''),pred:x.pred,createdAt:x.rule.createdAt})),
@@ -264,7 +270,7 @@ function gameContext(){
   savedItems.forEach((it,i)=>{ const p=pidOf[i]; if(p&&seenPid.has(p))return; if(p)seenPid.add(p); uniq.push(it); });
   const saved=disciplineSaved(ctx.closed,uniq);
   const cur=challenges.find(c=>!c.ended&&c.week===isoWeekKey(now).slice(5))||null;
-  const g={ctx,days,streak,level:lv,xp:led,weekXp,achievements,challenges,current:cur,pbs,saved,stopsBest,journalBest:jBest,nowWeek,bonuses,catalog,pa};
+  const g={ctx,days,streak,level:lv,xp:led,weekXp,xpBase,weekXpBase,mult:multOf(dayKey(now)),achievements,challenges,current:cur,pbs,saved,stopsBest,journalBest:jBest,nowWeek,bonuses,catalog,pa};
   _gameMemo={key,g}; return g;
 }
 // New since the start of this week — feeds the coach's wins row.
