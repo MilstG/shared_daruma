@@ -8,7 +8,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const SRC_RE = /<script src="(app\/[a-z0-9.-]+\.js)(?:\?[^"]*)?"><\/script>/g;
+// app/<name>.js, or app/features/<name>.js for a feature in its own file; data-only="journal" or "keel"
+// marks a script only that screen's page loads (the server leaves it out of the other one)
+const SRC_RE = /<script src="(app\/(?:features\/)?[a-z0-9.-]+\.js)(?:\?[^"]*)?"(?: data-only="(?:journal|keel)")?><\/script>/g;
 
 // the app/ scripts ledger.html loads, in order (paths relative to the HTML file)
 function appScripts(html) {

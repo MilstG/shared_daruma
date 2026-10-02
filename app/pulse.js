@@ -170,7 +170,8 @@ function pzFullHref(){ return /^https?:$/.test(location.protocol)?'/ledger.html'
 
 
 function pzNav(tab, level){
-  const cur=tab==='discipline'||tab==='journal'||tab==='review'||tab==='plan'?'today':tab==='profile'||tab==='comp'||tab==='sharing'||tab==='account'||tab==='leagues'||tab==='mentor'||tab==='mentee'||tab==='reviews'||tab==='tr'||tab==='lginfo'||tab==='duels'||tab==='people'||tab==='duelnew'||tab==='podnew'||tab==='post'||tab==='compose'?'social':tab==='deep'||tab==='how'?'trends':tab==='badges'||tab==='report'||tab==='lessons'?'progress':tab;
+  const ft=pzFeatTab(tab);
+  const cur=ft?(ft.tab.nav||'today'):tab==='discipline'||tab==='journal'||tab==='review'||tab==='plan'?'today':tab==='profile'||tab==='comp'||tab==='sharing'||tab==='account'||tab==='leagues'||tab==='mentor'||tab==='mentee'||tab==='reviews'||tab==='tr'||tab==='lginfo'||tab==='duels'||tab==='people'||tab==='duelnew'||tab==='podnew'||tab==='post'||tab==='compose'?'social':tab==='deep'||tab==='how'?'trends':tab==='badges'||tab==='report'||tab==='lessons'?'progress':tab;
   const items=[['today','Today'],['trends','Stats'],['checkin','Prep'],['coach','Coach'],['social','Social'],['progress','Progress']];
   const lockT=0; // Stats is always open; only its deeper insights are level-gated
   return `<nav class="pz-nav" aria-label="Keel"><div class="pz-brand">${pzRing('',0.72,'var(--pz-acc)',{size:30})}Keel</div>
@@ -215,6 +216,20 @@ const PZ_SECTIONS={
 };
 // Today's cards below the dials can also be put in your own order (the top of the screen stays put)
 const PZ_FLOW={today:[['tilt','insight','session','positions'],['next','now','good','inbox','duels','partners','lesson','xp','week','yesterday']]};
+// New features live in their own file, app/features/<name>.js, and plug into Keel here rather than
+// being written into these screens. A feature can add a card to Today (a section people can hide and
+// reorder like the rest) and a screen of its own:
+//   pzFeature({id, today:{label, hint, col: 0|1, after: '<card id>', html: D => '…'},
+//              tab:{name, nav: '<nav item to light up>', html: D => '…'}})
+const PZ_FEATS=[];
+function pzFeature(f){
+  if(!f||!f.id||PZ_FEATS.some(x=>x.id===f.id))return;
+  PZ_FEATS.push(f);
+  if(f.today){ PZ_SECTIONS.today.push([f.id,f.today.label,f.today.hint||'',1]);
+    const col=PZ_FLOW.today[f.today.col===1?1:0], at=f.today.after?col.indexOf(f.today.after)+1:0; col.splice(at>0?at:0,0,f.id); }
+  if(f.tab&&!PZ_TABS.includes(f.tab.name))PZ_TABS.push(f.tab.name);
+}
+const pzFeatTab=tab=>PZ_FEATS.find(f=>f.tab&&f.tab.name===tab)||null;
 function pzOrdered(screen){ const all=(PZ_FLOW[screen]||[]).flat(), o=((settings.pzLayout||{})[screen]||{})._order;
   if(!Array.isArray(o))return null;
   return [...o.filter(id=>all.includes(id)),...all.filter(id=>!o.includes(id))]; }
@@ -663,6 +678,7 @@ function pzTodayHtml(D){
       ${(()=>{ const card={tilt:()=>sec('tilt',()=>pzTiltHtml(D)),insight:()=>on('insight')?coach:'',session:()=>more('session',pzSessionHtml),positions:()=>more('positions',pzPositionsHtml),
           next:()=>sec('next',()=>pzNextHtml(D)),now:()=>more('now',pzNowHtml),good:()=>sec('good',()=>pzGoodHtml(D)),inbox:()=>sec('inbox',()=>socInboxHtml()),duels:()=>sec('duels',()=>socDuelsTodayHtml(D.g)),partners:()=>sec('partners',()=>socPartnerStripHtml()),
           lesson:()=>sec('lesson',()=>pzLessonDueHtml(D)),xp:()=>on('xp')?bonus:'',week:()=>sec('week',()=>pzWeekSparkHtml(D)),yesterday:()=>sec('yesterday',()=>pzYesterdayHtml(D))};
+        for(const f of PZ_FEATS)if(f.today)card[f.id]=()=>sec(f.id,()=>f.today.html(D));
         // your own order (or the default one) reads top to bottom, then on into the second column on a
         // wide screen, the two balanced so neither runs far below the other
         const ord=pzOrdered('today')||PZ_FLOW.today[0].concat(PZ_FLOW.today[1]), lead=pzLinkCardHtml()+pzNudgesHtml(D)+safe(()=>planTodayHtml(D));
@@ -1305,7 +1321,9 @@ function pzRender(){
     ensureWeekChallenge(D.ctx).then(made=>{ if(made)pzRender(); }).catch(()=>{});
     socBoot(); pzWearSync(); pzPushCheck();
     const lv=D.g.level.level;
-    const body=tab==='trends'?pzTrendsHtml(D):tab==='deep'?pzDeepHtml(D):tab==='how'?pzHowHtml():tab==='badges'?pzBadgesHtml(D):tab==='report'?pzReportHtml(D)
+    const feat=pzFeatTab(tab);
+    const body=feat?(()=>{ try{ return feat.tab.html(D); }catch(e){ console.warn(feat.id,e); return `<a class="pz-back" href="#today">${pzI('back',20)}Today</a><p class="pz-sub pz-err">This screen couldn’t load (${esc(e.message)}).</p>`; } })()
+      :tab==='trends'?pzTrendsHtml(D):tab==='deep'?pzDeepHtml(D):tab==='how'?pzHowHtml():tab==='badges'?pzBadgesHtml(D):tab==='report'?pzReportHtml(D)
       :tab==='review'?pzReviewHtml(D):tab==='coach'?pzCoachHtml(D):tab==='leagues'?socFindHtml(D):tab==='lginfo'?socLeagueInfoHtml(D,pzHashArg()):tab==='checkin'?pzCheckinHtml(D):tab==='progress'?pzProgressHtml(D)
       :tab==='discipline'?pzDisciplineHtml(D):tab==='journal'?pzJournalHtml(D):tab==='social'?socSocialHtml(D):tab==='duels'?socDuelsHtml(D):tab==='people'?socPeopleHtml(D):tab==='duelnew'?socDuelNewHtml(D,pzHashArg()):tab==='podnew'?socPodNewHtml(D):tab==='sharing'?socSharingHtml(D):tab==='account'?socAccountHtml(D)
       :tab==='lessons'?(()=>{ try{ return pzLessonsHtml(D); }catch(e){ console.warn('lessons',e); return `<a class="pz-back" href="#progress">${pzI('back',20)}Progress</a><p class="pz-sub pz-err">Your lessons couldn’t be read (${esc(e.message)}).</p>`; } })():tab==='mentor'?socMentorHtml(D):tab==='mentee'?socMenteeHtml(D,pzHashArg()):tab==='profile'?socProfileHtml(D,pzHashArg()):tab==='post'?socPostHtml(D,pzHashArg()):tab==='compose'?socComposeHtml(D):tab==='reviews'?mrListHtml(D):tab==='tr'?mrThreadHtml(D,pzHashArg(),/\/mod$/.test(location.hash)):tab==='plan'?planPzHtml(D):tab==='comp'?socCompHtml(D,pzHashArg()):pzTodayHtml(D);

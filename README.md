@@ -376,6 +376,19 @@ XP), so Stats' readiness-versus-discipline comparison shows which days your
 discipline breaks. Days sync every 30 minutes while Keel is open and are stored
 with your journal.
 
+**Trader Age.** How seasoned your trading process looks, in years, next to how long you've
+actually traded (counted from your first fill). Each trading day is rated from 0 to 100:
+65% its Discipline score, 15% steadiness (100 minus twice the spread of your last 20 daily
+scores), 10% the loss limit (kept 100, broken 0, none set 70) and 10% prep and journaling.
+Your last 6 months of trading days are averaged, a day's weight halving every 30 trading
+days back, and Trader Age is 2^((rating − 50) / 10) years, capped at 20: every 10 points
+doubles it. Only trading days count, so a break freezes it, and it never comes from profit.
+**Pace** is this week (3+ trading days in the last 7) against that 6-month norm, from 0× to
+3×, and names the slip that cost the most when it's below 1×. It appears after 15 trading
+days, as a card on Today and its own screen (`#age`: the parts, what's holding it back, and
+week by week). For now it's an estimate made on the device; the server checking it, an XP
+multiplier for holding it, and tools that need a current Trader Age come next.
+
 **Tilt meter and quiet mode.** A live reading (0–100) on Today of the triggers
 that come before a blow-up: losses in a row (30 points at three), a loss in the
 last 15 minutes (20), entries at 1.5× your usual size (15), four entries in an
@@ -1754,6 +1767,15 @@ curl -H "Authorization: Bearer $READ_TOKEN" -o trades.csv 'https://your.app/api/
   comparison is apples-to-oranges — read those flags with judgment.
 
 ## Development and testing
+
+**Adding a feature.** New features live in their own file, `app/features/<name>.js`,
+instead of growing the big screen files. A feature plugs into Keel with `pzFeature`
+(`app/pulse.js`): a card on Today (which people can hide and reorder like the rest) and a
+screen of its own, e.g. `pzFeature({id:'age', today:{label, hint, col, after, html}, tab:{name,
+nav, html}})`. Its script tag in `ledger.html` sits before `boot.js`, and `data-only="keel"` or
+`data-only="journal"` puts it on that screen's page only (opened from disk, everything loads).
+Each feature has its own size budget in `test-budget` (40 KB raw, 12 KB gzipped unless
+listed) and its own test suite. Trader Age (`app/features/trader-age.js`) is the first.
 
 ```
 npm test           # or: node tests/run-all.mjs — offline, no dependencies
