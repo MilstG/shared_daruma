@@ -25,7 +25,7 @@ function pzXpSources(g, fromKey){
 }
 function pzProgressHtml(D){
   const {g}=D, L=g.level, cat=g.catalog||{earned:[],families:[],total:0}, nowK=D.todayK, wkFrom=dayKey(lastCompletedWeekRange(Date.now()).to);
-  const src=pzXpSources(g,wkFrom), srcRows=[['discipline','Discipline scores',PZ_COL.good],['bonus','Check-ins, plans, journal, reviews',PZ_COL.xp],['badges','Badges',PZ_TIER_COL[2]],
+  const src=pzXpSources(g,wkFrom), srcRows=[['discipline','Discipline scores',PZ_COL.good],['bonus','Prep, plans, journal, reviews',PZ_COL.xp],['badges','Badges',PZ_TIER_COL[2]],
     ['achievements','Achievements','#F4C04E'],['challenge','Weekly challenge','#FFB25A'],['habits','Focus habit','#5AA9FF'],['league','From your league','#FF8AD8']].filter(([k])=>src[k]);
   const wkTot=Object.values(src).reduce((a,v)=>a+v,0);
   const hero=`<section class="pz-card pz-hero pz-span">
@@ -36,7 +36,7 @@ function pzProgressHtml(D){
     </div></section>`;
   const xpCard=`<section class="pz-card pz-kv"><div class="pz-kvrow"><b class="pz-kvh">Where this week’s XP came from</b><span class="pz-sub" style="font-size:12px">${wkTot.toLocaleString()} XP</span></div>
     ${wkTot?srcRows.map(([k,l,c])=>`<div class="pz-row"><div class="pz-row-t"><span>${esc(l)}</span><b>+${src[k].toLocaleString()}</b></div>${pzBar(src[k]/wkTot,c)}</div>`).join('')
-      :'<p class="pz-sub" style="font-size:13px">No XP yet this week. Every trading day earns its Discipline score; check-ins, plans, journaling and reviews add more.</p>'}
+      :'<p class="pz-sub" style="font-size:13px">No XP yet this week. Every trading day earns its Discipline score; morning prep, plans, journaling and reviews add more.</p>'}
     <p class="pz-fine">XP only comes from process — never from profit or the number of trades. <a href="#how">How it’s counted</a></p></section>`;
   // challenge
   const ch=g.current, chHtml=ch?`<section class="pz-card pz-kv"><div class="pz-kvrow"><span class="pz-lbl" style="color:${PZ_COL.xp}">This week’s challenge</span><span style="font-size:12px;font-weight:700;color:${PZ_COL.xp}">+${pzXpCfg().challenge} XP</span></div>
@@ -231,7 +231,7 @@ function pzReviewHtml(D){
   <div class="pz-wide"><div class="pz-col">${summary}${socNotesHtml()}</div>
     <div class="pz-col"><section class="pz-card pz-kv">${rating}${qs}
       <div class="pz-field"><label for="pzRvLesson" style="font-size:14px">Today’s lesson, in one line</label><input type="text" id="pzRvLesson" maxlength="200" value="${esc(rv.lesson)}"></div>
-      <div class="pz-field"><label for="pzRvTomorrow" style="font-size:14px">One focus for tomorrow</label><input type="text" id="pzRvTomorrow" maxlength="160" value="${esc(rv.tomorrow)}" placeholder="It shows on tomorrow’s check-in"></div></section>
+      <div class="pz-field"><label for="pzRvTomorrow" style="font-size:14px">One focus for tomorrow</label><input type="text" id="pzRvTomorrow" maxlength="160" value="${esc(rv.tomorrow)}" placeholder="It shows in tomorrow’s prep"></div></section>
       <button type="button" class="pz-cta" id="pzRvSave">${saved?'Update my review':'Save my review'} ${saved||!day?'':`<span class="pz-xpb">+${pzXpCfg().review} XP</span>`}</button>
       ${coachOk&&pzCoachAvailable()?'<button type="button" class="pz-ghost" id="pzRvCoach">Ask the coach to review my day</button>':''}
       <p class="pz-fine">Questions for a ${esc(prof.name.toLowerCase())} — <button type="button" class="pz-linkbtn" data-pz-sheet style="display:inline;min-height:0;padding:0">change your profile</button>.</p></div></div>`;
@@ -288,7 +288,7 @@ function pzReportHtml(D){
     </div>
     <div class="pz-col">
       <section class="pz-card pz-kv"><b class="pz-kvh">Routines</b>
-        <div class="pz-row-t"><span>Check-ins</span><b>${r.checkins} of ${r.days}</b></div><div class="pz-row-t"><span>Plans before the first trade</span><b>${r.plans} of ${r.days}</b></div>
+        <div class="pz-row-t"><span>Days prepped</span><b>${r.checkins} of ${r.days}</b></div><div class="pz-row-t"><span>Plans before the first trade</span><b>${r.plans} of ${r.days}</b></div>
         <div class="pz-row-t"><span>End-of-day reviews</span><b>${r.reviews} of ${r.days}</b></div><div class="pz-row-t"><span>Trades journaled</span><b>${pzPct(r.journaled)}</b></div></section>
       ${r.habits.length?`<section class="pz-card pz-kv"><b class="pz-kvh">Habits</b>${r.habits.map(h=>`<div class="pz-row"><div class="pz-row-t"><span>${esc(h.name)}</span><b>${h.kept}/${h.total}</b></div>${pzBar(h.kept/h.total,h.kept===h.total?PZ_COL.good:PZ_COL.mid)}
         ${h.broke.length?`<span class="pz-fine">Broken on ${h.broke.map(b=>esc(dayLabel(b.key).replace(/,.*/,''))+(b.ready!=null?' (readiness '+b.ready+')':'')).join(', ')}</span>`:''}</div>`).join('')}</section>`:''}
@@ -706,7 +706,7 @@ function pzPushHtml(){
   const P=SOC.me.push, on=!!PZ_PUSH.sub, pr=P.prefs||{};
   return `<section><span class="pz-lbl" style="color:var(--pz-muted)">Reminders</span>
     ${!ok?'<p class="pz-sub" style="margin-top:6px;font-size:13px">This browser can’t receive push reminders. On iPhone, add Pulse to your Home Screen first, then open it from there.</p>'
-    :`<div class="pz-toggle"><span style="flex:1"><b id="pzPushL">Remind me on this device</b><span>Morning check-in, evening review, and nudges or notes from partners and mentors</span></span><button type="button" role="switch" class="pz-switch" id="pzPushOn" aria-checked="${!!on}" aria-labelledby="pzPushL"><i></i></button></div>
+    :`<div class="pz-toggle"><span style="flex:1"><b id="pzPushL">Remind me on this device</b><span>Morning prep, evening review, and nudges or notes from partners and mentors</span></span><button type="button" role="switch" class="pz-switch" id="pzPushOn" aria-checked="${!!on}" aria-labelledby="pzPushL"><i></i></button></div>
       ${on?`<div style="display:flex;gap:10px"><div class="pz-field" style="flex:1"><label for="pzPushAm" style="font-size:13px">Morning</label><input type="time" id="pzPushAm" value="${esc(pr.morning||'08:30')}"></div><div class="pz-field" style="flex:1"><label for="pzPushPm" style="font-size:13px">Evening</label><input type="time" id="pzPushPm" value="${esc(pr.eod||'20:30')}"></div></div>
         <div class="pz-toggle"><span style="flex:1"><b id="pzPushTiltL">Tilt alerts while Pulse is closed</b><span>${SOC.share&&SOC.share.verify?'Read from your public fills every few minutes':'Needs verified Discipline (Sharing), so the server can read your fills'}</span></span><button type="button" role="switch" class="pz-switch" data-pz-ta="push" aria-checked="${pr.tilt!==false}" aria-labelledby="pzPushTiltL"><i></i></button></div>
         <button type="button" class="pz-linkbtn" id="pzPushTest" style="margin-top:6px">Send a test</button>`:''}`}</section>`;

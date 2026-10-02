@@ -1346,7 +1346,7 @@ function createSocial(opts) {
         const pr = m.push.prefs = sanitizePrefs(null, m.push.prefs), tz = (m.stats && m.stats.tz) || 'UTC', day = zoneKey(tz, t), hm = localHM(tz, t);
         const sent = m.push.sent = m.push.sent || {};
         if (pr.on.morning && sent.morning !== day && due(hm, pr.morning)) { sent.morning = day; touch(m);
-          jobs.push(() => sendPush(m, { title: 'Morning check-in', body: 'Thirty seconds: sleep, calm, focus — then your rules for today.', tag: 'pulse-morning', url: '/pulse#checkin' })); }
+          jobs.push(() => sendPush(m, { title: 'Morning prep', body: 'Thirty seconds: sleep, calm, focus, then your rules for today.', tag: 'pulse-morning', url: '/pulse#checkin' })); }
         const today = m.stats && Array.isArray(m.stats.days) ? m.stats.days.find(d => d.k === day) : null;
         if (pr.on.eod && sent.eod !== day && due(hm, pr.eod) && today && !today.r) { sent.eod = day; touch(m);
           jobs.push(() => sendPush(m, { title: 'Review your day', body: 'Five minutes: one lesson, one focus for tomorrow.', tag: 'pulse-eod', url: '/pulse#review' })); }

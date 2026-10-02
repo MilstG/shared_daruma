@@ -109,13 +109,13 @@ t('weeks without a slip: the clock restarts after one and finishes at the target
 });
 t('the loss-limit goal: a breached day restarts it, and days without a limit don’t count', () => {
   const g = { kind: 'limit', target: 2, start: '2026-10-01' }, lim = (k, breached) => Object.assign(day(k, 80, {}, { limit: 1 }), { breached });
-  eq(ctx.pzGoalEval(g, X([day('2026-10-02', 80)], { today: '2026-10-20' })).note, 'Counts the days you trade with a loss limit set in your check-in.');
+  eq(ctx.pzGoalEval(g, X([day('2026-10-02', 80)], { today: '2026-10-20' })).note, 'Counts the days you trade with a loss limit set in your prep.');
   const r = ctx.pzGoalEval(g, X([lim('2026-10-02', false), lim('2026-10-05', true)], { today: '2026-10-06' }));
   eq(r.status, 'behind', 'one trade past the limit is a break, even with nothing opened after it');
 });
 t('check-ins and journaling count the month; a check-in goal is missed once it can’t be reached', () => {
   const J = { 'day:2026-10-01': { sleep: 4 }, 'day:2026-10-02': { focus: 3 }, 'day:2026-09-30': { sleep: 5 }, 'abc': { notes: 'x' } };
-  eq(ctx.pzGoalEval({ kind: 'checkin', target: 10, month: '2026-10' }, X([], { J })).now, '2 of 10 check-ins');
+  eq(ctx.pzGoalEval({ kind: 'checkin', target: 10, month: '2026-10' }, X([], { J })).now, '2 of 10 days prepped');
   eq(ctx.pzGoalEval({ kind: 'checkin', target: 20, month: '2026-10' }, X([], { J, today: '2026-10-25' })).status, 'missed');
   const closed = [{ id: 'abc', closeTime: Date.UTC(2026, 9, 3) }, { id: 'def', closeTime: Date.UTC(2026, 9, 4) }];
   eq(ctx.pzGoalEval({ kind: 'journal', target: 80, month: '2026-10' }, X([], { J, closed })).now, '50% · 1 of 2 trades');

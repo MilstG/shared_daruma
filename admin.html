@@ -250,7 +250,7 @@ details>summary{list-style-position:inside}
     position:{name:'Position trader',morning:['What would change your long-term view this week?','Is your size still right for the risk?'],
       eod:['Did today’s noise change anything that matters?','Are you still sized for the worst case?','What do you need to check before the week ends?']},
   };
-  const XP_LABELS={discipline:['Per Discipline point','× each day’s 0–100 score'],checkin:['Morning check-in',''],plan:['Plan set before trading',''],
+  const XP_LABELS={discipline:['Per Discipline point','× each day’s 0–100 score'],checkin:['Morning prep',''],plan:['Plan set before trading',''],
     journal:['Every trade journaled',''],stops:['A stop on every trade',''],limit:['Stayed inside the loss limit',''],review:['End-of-day review',''],
     achievement:['Achievement','The base: badge tiers pay ×0.1 to ×3.2 of it'],challenge:['Weekly challenge kept',''],focus:['Focus habit kept','Per kept day']};
   // the sidebar: sections in groups; each page has a title and a line on what it's for
@@ -270,7 +270,7 @@ details>summary{list-style-position:inside}
     levels:['Levels & XP','Where the levels fall, what each is called, and what members earn XP for.'],
     features:['Features','Which Pulse features open at which level.'],
     coach:['Coach','How much members can ask the AI coach, and what it may see.'],
-    routines:['Routines','The morning check-in and end-of-day questions members answer, by how they trade.'],
+    routines:['Routines','The morning prep and end-of-day questions members answer, by how they trade.'],
     feed:['Feed & reports','Reported posts, announcements to everyone, and what members can post.'],
     settings:['Settings','Joining, wallets, sync, and the security of this panel.']};
   // the owner's AUTH_TOKEN, or (for an admin the owner added) this browser's Pulse member key
@@ -779,10 +779,10 @@ details>summary{list-style-position:inside}
     return `<section class="card"><h2>Built-in routines</h2>
       <p class="hint" style="margin-top:0">Members get the routine that fits how they trade — detected from their trades, or picked by them. Leave a box empty to keep the default questions (shown faded). One question per line.</p>
       <div class="stack" style="gap:12px;margin-top:10px">${Object.entries(ROUTINES).map(([k,r])=>`<div class="sub"><h3 style="margin-top:0">${esc(r.name)}</h3><div class="two" style="gap:12px">
-        ${field('ro_'+k+'_m','Morning check-in',`<textarea id="ro_${k}_m" rows="3" placeholder="${esc(r.morning.join('\n'))}">${esc(((ov[k]||{}).morning||[]).join('\n'))}</textarea>`)}
+        ${field('ro_'+k+'_m','Morning prep',`<textarea id="ro_${k}_m" rows="3" placeholder="${esc(r.morning.join('\n'))}">${esc(((ov[k]||{}).morning||[]).join('\n'))}</textarea>`)}
         ${field('ro_'+k+'_e','End-of-day review',`<textarea id="ro_${k}_e" rows="4" placeholder="${esc(r.eod.join('\n'))}">${esc(((ov[k]||{}).eod||[]).join('\n'))}</textarea>`)}</div></div>`).join('')}</div></section>
       <section class="card"><div class="ch"><h2>Your own profiles</h2><button class="fit" id="rAdd"${custom.length>=12?' disabled':''}>Add profile</button></div>
-        <p class="hint">For example “Funded-account trader”, built on Day trader, with questions about the daily loss rule. Members pick them in Pulse → Check-in.</p>
+        <p class="hint">For example “Funded-account trader”, built on Day trader, with questions about the daily loss rule. Members pick them in Pulse → Prep.</p>
         <div class="stack" style="gap:12px;margin-top:10px">${custom.map((c,i)=>{ const base=ROUTINES[c.base]?c.base:'day'; return `<div class="sub"><div class="row">${field('rc_'+i+'_n','Name',`<input id="rc_${i}_n" maxlength="40" value="${esc(c.name)}">`)}${field('rc_'+i+'_b','Based on',sel('rc_'+i+'_b',Object.entries(ROUTINES).map(([k,r])=>[k,r.name]),base))}</div>
           ${field('rc_'+i+'_d','Who it’s for',`<input id="rc_${i}_d" maxlength="200" value="${esc(c.desc||'')}">`)}
           <div class="two" style="gap:12px">${field('rc_'+i+'_m','Morning questions',`<textarea id="rc_${i}_m" rows="3" placeholder="${esc(ROUTINES[base].morning.join('\n'))}">${esc((c.morning||[]).join('\n'))}</textarea>`)}
@@ -810,7 +810,7 @@ details>summary{list-style-position:inside}
     return `<section class="card"><h2>Reports</h2>${reports}</section>
       <div class="two"><section class="card"><h2>Announcement</h2>
       <p class="muted" style="margin:0 0 8px">Posts to everyone’s feed from the league.</p>
-      <textarea id="ann" rows="3" maxlength="280" placeholder="Survivor starts Monday — set your loss limit in the check-in." aria-label="Announcement"></textarea>
+      <textarea id="ann" rows="3" maxlength="280" placeholder="Survivor starts Monday — set your loss limit in Prep." aria-label="Announcement"></textarea>
       <div class="actions" style="border:0;padding-top:0;margin-top:10px"><button class="primary" id="postAnn">Post</button></div>
       <h3>Members’ posts</h3>
       ${box('pOn','Members can post (trades they took, notes)',pc.on)}

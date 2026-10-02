@@ -91,7 +91,7 @@ function pzBonusItems(D){
   const planned=pzHasPlan(D.dayE), opened=D.risk.trades>0, lim=D.risk.limit;
   const earned=(D.day&&D.day.bonus&&D.day.bonus.parts)||{};
   return [
-    {k:'checkin',label:'Morning check-in',xp:pzXpCfg().checkin,done:pzReadinessManual(D.dayE)!=null,href:'#checkin',hint:'Thirty seconds: sleep, calm, focus'},
+    {k:'checkin',label:'Morning prep',xp:pzXpCfg().checkin,done:pzReadinessManual(D.dayE)!=null,href:'#checkin',hint:'Thirty seconds: sleep, calm, focus'},
     {k:'plan',label:'Plan before your first trade',xp:pzXpCfg().plan,done:planned&&(!opened||earned.plan===pzXpCfg().plan),partial:planned&&opened&&earned.plan>0&&earned.plan<pzXpCfg().plan,href:'#checkin',
       hint:planned?(opened?'Written after your first entry: half the bonus':'Written — it counts when you trade'):'A line and a loss limit, before you trade'},
     {k:'journal',label:'Journal today’s trades',xp:pzXpCfg().journal,done:todayT.length>0&&j===todayT.length,partial:j>0&&j<todayT.length,href:'#journal',
@@ -170,7 +170,7 @@ function pzFullHref(){ return /^https?:$/.test(location.protocol)?'/':location.p
 
 function pzNav(tab, level){
   const cur=tab==='discipline'||tab==='journal'||tab==='review'||tab==='plan'?'today':tab==='profile'||tab==='comp'||tab==='sharing'||tab==='account'||tab==='leagues'||tab==='mentor'||tab==='mentee'||tab==='reviews'||tab==='tr'||tab==='lginfo'||tab==='duels'||tab==='people'||tab==='duelnew'||tab==='podnew'||tab==='post'||tab==='compose'?'social':tab==='deep'||tab==='how'?'trends':tab==='badges'||tab==='report'||tab==='lessons'?'progress':tab;
-  const items=[['today','Today'],['trends','Stats'],['checkin','Check-in'],['coach','Coach'],['social','Social'],['progress','Progress']];
+  const items=[['today','Today'],['trends','Stats'],['checkin','Prep'],['coach','Coach'],['social','Social'],['progress','Progress']];
   const lockT=0; // Stats is always open; only its deeper insights are level-gated
   return `<nav class="pz-nav" aria-label="Pulse"><div class="pz-brand">${pzRing('',0.72,'var(--pz-acc)',{size:30})}Pulse</div>
     ${items.map(([k,l])=>`<a href="#${k}"${k===cur?' aria-current="page"':''}${k==='trends'&&lockT?` aria-label="Trends, unlocks at level ${lockT}"`:''}>${pzI(k==='trends'&&lockT?'lock':k,22)}<span>${l}</span></a>`).join('')}
@@ -201,7 +201,7 @@ const PZ_SECTIONS={
   today:[['oneThing','Today’s one thing','Your focus from last night’s review',1],['numbers','Today in numbers','Net, entries against your cap, risk used',1],
     ['tilt','Tilt meter','Losses in a row, re-entry window, size and pace — and quiet mode when it runs hot',1],
     ['session','Your session','P&L curve, trades, and your rules as they stand',1],['positions','Open positions','Size and hold time against your usual',1],
-    ['insight','Coach insight','One line on what matters most',1],['next','Next step','Check-in in the morning, review at night',1],
+    ['insight','Coach insight','One line on what matters most',1],['next','Next step','Prep in the morning, review at night',1],
     ['now','Right now','This hour in your history, time since a loss',1],['good','Done right today','Moments you followed a rule that usually costs you',1],['duels','Duels','Challenges waiting for you and duels running',1],
     ['lesson','A lesson to revisit','One of your own lessons, back when it’s due',1],
     ['inbox','From your partners and mentor','Nudges, notes and season results',1],['partners','Your partners','Their streak and slips this week',1],
@@ -269,7 +269,7 @@ function pzNextHtml(D){
   const g=D.g, h=tzParts(Date.now()).h, e=D.dayE||{}, traded=D.risk.trades>0||D.todayTrades.length>0;
   const checked=!!(e.sleep||e.stress||e.focus||e.plan||e.rules), reviewed=!!(e.eod&&e.eod.at), lockR=pzLocked('review',g.level.level);
   const card=(href,ic,col,title,sub)=>`<a class="pz-card pz-cardlink" href="${href}"><span class="pz-ico" style="background:color-mix(in srgb, ${col} 16%, transparent);color:${col}">${pzI(ic,20)}</span><span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><b style="font-size:15px">${title}</b><span class="pz-sub" style="font-size:12px">${sub}</span></span>${pzI('chev',18)}</a>`;
-  if(!checked&&!traded)return card('#checkin','checkin',PZ_COL.risk,'Morning check-in','Thirty seconds: readiness, limits and today’s rules · +'+pzXpCfg().checkin+' XP');
+  if(!checked&&!traded)return card('#checkin','checkin',PZ_COL.risk,'Morning prep','Thirty seconds: readiness, limits and today’s rules · +'+pzXpCfg().checkin+' XP');
   if(!lockR&&!reviewed&&(traded||h>=16))return card('#review','pen',PZ_COL.good,'End-of-day review',(D.day?'Five minutes, +'+pzXpCfg().review+' XP. ':'Five minutes. ')+'One lesson, one focus for tomorrow.');
   if(D.inbox.length)return card('#journal','pen',PZ_COL.xp,D.inbox.length+' trade'+(D.inbox.length===1?'':'s')+' to journal','From the last 30 days: a rating, a setup or one line each'+(reviewed?' · today is reviewed':''));
   if(reviewed)return card('#review','check',PZ_COL.good,'Day reviewed',e.eod.tomorrow?'Tomorrow: '+esc(e.eod.tomorrow):'Edit any time tonight');
@@ -614,7 +614,7 @@ function pzTodayHtml(D){
         rows:[{label:'Average trade, '+sc.window,value:signedPlain(sc.avgRec)+' vs '+signedPlain(sc.avgBase)+' usual',pct:0.5+sc.e/3},
           {label:'Win rate, '+sc.window,value:pzPct(sc.wrRec)+' vs '+pzPct(sc.wrBase),pct:0.5+sc.w},
           {label:'From your 30-day high',value:sc.dd>0?'−'+usdPlain(sc.dd):'At the high',pct:1-sc.ddN},
-          ready!=null?{label:'Readiness from your check-in',value:String(ready),pct:ready/100,color:PZ_COL[pzBand(ready)]}:null].filter(Boolean)}; }
+          ready!=null?{label:'Readiness from your prep',value:String(ready),pct:ready/100,color:PZ_COL[pzBand(ready)]}:null].filter(Boolean)}; }
   } else if(sel==='load'){
     const lim=[risk.cap>0?{label:'Trades vs your cap',value:risk.trades+' of '+risk.cap,pct:risk.trades/risk.cap}:null,
       risk.limit>0?{label:'Loss vs your limit',value:usdPlain(risk.loss)+' of '+usdPlain(risk.limit),pct:risk.loss/risk.limit}:null].filter(Boolean);
@@ -722,7 +722,7 @@ function pzHabitModel(g, ctx, fromKey){
   _pzHL={key,v}; return v;
 }
 const pzHlFmt=(v,u,exact)=>v==null||!isFinite(v)?'—':u==='$'?(exact?signedPlain(v):pzSigned(v)):u==='%'?(v>=0?'+':'')+v.toFixed(2)+'%':(v>=0?'+':'')+v.toFixed(2)+'R';
-const PZ_HL_DAY='A “habit day” is a day you kept most of your habits (7 in 10 or more): plan, check-in, journaling, review, and no revenge trades, sizing up after a loss, adding to losers or overtrading. Only the habits you actually use count.';
+const PZ_HL_DAY='A “habit day” is a day you kept most of your habits (7 in 10 or more): plan, morning prep, journaling, review, and no revenge trades, sizing up after a loss, adding to losers or overtrading. Only the habits you actually use count.';
 function pzHabitLinkHtml(g, ctx, fromKey){
   const L=pzHabitModel(g,ctx,fromKey); if(!L)return '';
   const S=hlSummary(L), gd=L.good, rs=L.rest, n=S.n, open=!!pzS.hlOpen, abs=v=>pzShort(Math.abs(v)), dd=k=>k+' day'+(k===1?'':'s');
@@ -825,7 +825,7 @@ function pzTrendsHtml(D){
   // deeper insights: discipline vs results — unlocked by level
   const lock=pzLocked('trends',g.level.level);
   let deep;
-  if(lock) deep=`<section class="pz-card pz-span" style="display:flex;align-items:center;gap:14px">${pzI('lock',22)}<span style="flex:1"><b style="font-size:15px">Deeper insights unlock at level ${lock}</b><br><span class="pz-sub" style="font-size:13px">Does discipline pay for you, how your check-ins relate to your trading, and what moves your score. ${pzXpToGo(lock,g)}</span></span></section>`;
+  if(lock) deep=`<section class="pz-card pz-span" style="display:flex;align-items:center;gap:14px">${pzI('lock',22)}<span style="flex:1"><b style="font-size:15px">Deeper insights unlock at level ${lock}</b><br><span class="pz-sub" style="font-size:13px">Does discipline pay for you, how your morning prep relates to your trading, and what moves your score. ${pzXpToGo(lock,g)}</span></span></section>`;
   else { const ts=pzTrendStats(g.days,ctx.byDay,fromKey), bc=pzBars(ts.days);
     const chart=ts.days.length?`<div class="pz-chart" style="--h:110px;--gap:${bc.bars.length>20?'3px':'8px'}"><span class="pz-thr" style="bottom:${Math.round(70*1.1)}px"></span>${bc.bars.map(b=>`<i style="height:${Math.max(4,Math.round(b.v*1.1))}px;background:${PZ_COL[pzBand(b.v)]}" data-pz-tip="${esc(b.tip)}"></i>`).join('')}</div>`:'<p class="pz-sub">No trading days in this range.</p>';
     const tile=(cls,lbl,x)=>`<div class="pz-tile ${cls}"><span class="pz-lbl" style="font-size:11px">${lbl} · ${x.n} day${x.n===1?'':'s'}</span><span class="pz-n">${esc(money(x.avgNet))}</span><span class="pz-t">avg day · ${pzPct(x.winRate)} win rate</span></div>`;
@@ -835,7 +835,7 @@ function pzTrendsHtml(D){
     deep=`<section class="pz-card pz-span" data-sec="stats:insights" style="display:flex;flex-direction:column;gap:12px"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px"><span><span class="pz-lbl" style="color:${PZ_COL.good}">Discipline</span><br><span class="pz-sub" style="font-size:13px">${bc.unit}</span></span><span style="display:flex;align-items:baseline;gap:6px"><span class="pz-sub" style="font-size:12px">avg</span><span style="font-family:var(--pz-num);font-size:40px;font-weight:600;line-height:1">${ts.avg==null?'—':ts.avg}</span></span></div>${chart}</section>
       <div class="pz-col pz-span" data-sec="stats:insights"><section style="display:flex;flex-direction:column;gap:10px"><b style="font-size:15px">Does discipline pay?</b><div class="pz-grid2">${tile('good','Days 70+',ts.hi)}${tile('hot','Under 70',ts.lo)}</div>
         ${pzLongViewHtml()}
-        ${rl?`<div class="pz-tile cool"><span class="pz-t" style="font-size:13px;line-height:1.45">On days you checked in at readiness 70+, your discipline averaged <b>${rl.hi}</b>; on the other check-in days, <b>${rl.lo}</b>.</span></div>`:''}</section></div>
+        ${rl?`<div class="pz-tile cool"><span class="pz-t" style="font-size:13px;line-height:1.45">On days you checked in at readiness 70+, your discipline averaged <b>${rl.hi}</b>; on the other days you prepped, <b>${rl.lo}</b>.</span></div>`:''}</section></div>
       <div class="pz-col pz-span" data-sec="stats:findings"><section class="pz-card" style="padding:6px 16px"><b style="display:block;font-size:15px;margin:10px 0 2px">What moves your results <span class="pz-sub" style="font-weight:400;font-size:12px">· ${R==='all'?'all time':'last '+R+' days'}${RF.n?', '+RF.n+' trades':''}</span></b>${RF.few?`<p class="pz-sub" style="font-size:13px;padding:6px 0 12px">Needs at least 10 closed trades in this range to find patterns — there ${RF.n===1?'is':'are'} ${RF.n}. Try a longer range.</p>`:''}${F.length?F.map(f=>`<div class="pz-ins"><span class="pz-tag ${esc(f.tone)}">${esc(TONE_TAG[f.tone]||'Note')}</span><span><b>${esc(f.title)}</b><span>${esc(pzPlain(f.action||f.body||''))}</span>${f.evidence?`<details class="pz-why"><summary>Why</summary><span>${esc(f.evidence)} · ${esc(confWords(f.conf))}</span></details>`:''}</span></div>`).join(''):(RF.few?'':'<p class="pz-sub" style="padding:12px 0">Patterns show up here after about five closed trades.</p>')}</section></div>`; }
   if(!lock)deep=pzHabitLinkHtml(g,ctx,fromKey)+deep; // the plain answer first, then the detail
   deep+=pzPeersHtml(g)+pzImproversHtml(g);
@@ -1036,7 +1036,7 @@ function pzDeepHtml(D){
     pa.medRealizedR!=null?['Realized, in units of planned risk',(pa.medRealizedR>=0?'+':'')+pa.medRealizedR.toFixed(2)+'R',pzSignCol(pa.medRealizedR)]:null];
   const planHtml=!planRows.some(Boolean)?'':pzKv('Plan vs execution',planRows,
     dp.length||lim.length||pa.n?'Checked against the numbers you wrote, not by AI: your day plan’s time against your first entry, your loss limit against the day’s realized P&L, and each trade’s stop and target against its actual exit.'
-      :'Nothing to compare yet. Write a day plan and loss limit in the check-in, or a stop and target on trades in the full journal, and this shows how closely you followed them.');
+      :'Nothing to compare yet. Write a day plan and loss limit in Prep, or a stop and target on trades in the full journal, and this shows how closely you followed them.');
   // breakdowns
   const DN=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const hours=Array.from({length:24},(_,h)=>X.hours.find(r=>r.k===h)||{k:h,n:0,net:0});
@@ -1081,8 +1081,8 @@ function pzHowHtml(){
       <p>From 35 it reads “heating up”; at 65 a new loss or entry opens quiet mode. One break or “I’m calm” covers that episode.</p>`)}
     ${sec('Market conditions · from BTC',`<p>Each UTC day, from BTC’s daily candle: <b>volatile</b> when its high–low range is 1.4× the median of the 30 days before, <b>quiet</b> at 0.7× or less. <b>Trending</b> when the 7-day net move is at least half the sum of the daily moves, <b>choppy</b> at a quarter or less.</p>`)}
     </div><div class="pz-col">
-    ${sec('Readiness · from the check-in',`<p>Your 1–5 answers: sleep counts 40%, calm 20%, focus 40%. All 5s = 100. It never changes your Discipline score; Stats shows whether your discipline is better on high-readiness days.</p>`)}
-    ${sec('XP and levels',`<p>Each trading day earns its Discipline score in XP (up to 100), plus optional bonus XP: check-in 10, a plan before your first trade 15 (half if written after), today’s trades journaled 15, stops written while trades were open 10, respecting your loss limit (nothing new opened after hitting it) 10. Plus 50 per achievement, 150 per weekly challenge kept, 25 per focus-habit day. Logging only ever adds.</p>
+    ${sec('Readiness · from your prep',`<p>Your 1–5 answers: sleep counts 40%, calm 20%, focus 40%. All 5s = 100. It never changes your Discipline score; Stats shows whether your discipline is better on high-readiness days.</p>`)}
+    ${sec('XP and levels',`<p>Each trading day earns its Discipline score in XP (up to 100), plus optional bonus XP: morning prep 10, a plan before your first trade 15 (half if written after), today’s trades journaled 15, stops written while trades were open 10, respecting your loss limit (nothing new opened after hitting it) 10. Plus 50 per achievement, 150 per weekly challenge kept, 25 per focus-habit day. Logging only ever adds.</p>
       <p>Level n starts at 200 × n × (n − 1) XP: level 2 at 400, 3 at 1,200, 4 at 2,400, 5 at 4,000.</p>`)}
     ${sec('Streak and shields',`<p>Consecutive trading days scoring 70+. Days you don’t trade never break it. A finished perfect week (every trading day 70+, at least three) earns a shield, two at most; a shield absorbs one off day.</p>`)}
     ${sec('Plan vs execution',`<p>Checked against the numbers you wrote, not judged by AI: a day plan’s time against your first entry; your loss limit against the day’s realized P&L (opening anything after hitting it counts as breaking it); each trade’s stop and target against its actual exit, and, where candles were measured, whether price traded through the stop while you held.</p>
@@ -1109,7 +1109,7 @@ function pzCheckinHtml(D){
   const opened=D.risk.trades>0;
   const Q=[['sleep','How did you sleep?','Badly','Great'],['calm','How calm do you feel?','Wired','Calm'],['focus','How focused are you?','Scattered','Locked in']];
   const q=Q.map(([k,t,lo,hi])=>`<div role="radiogroup" aria-labelledby="pzq_${k}"><p class="pz-q" id="pzq_${k}">${t}</p><div class="pz-pills">${[1,2,3,4,5].map(n=>`<button type="button" role="radio" class="pz-pill" data-pz-ck="${k}" data-n="${n}" aria-checked="${ck[k]===n}" aria-label="${n} of 5">${n}</button>`).join('')}</div><div class="pz-ends"><span>${lo}</span><span>${hi}</span></div></div>`).join('');
-  return `${pzHead(dayLabel(D.todayK),'Check-in')}
+  return `${pzHead(dayLabel(D.todayK),'Prep')}
   <p class="pz-sub" style="margin-top:-6px">Thirty seconds. It sets your readiness and today’s limits.</p>
   ${pzMorningHtml(D,ck)}
   <div class="pz-wide">
@@ -1121,7 +1121,7 @@ function pzCheckinHtml(D){
       ${pzRulesFormHtml(ck)}
       <div class="pz-field"><label for="pzPlan">One-line plan</label><textarea id="pzPlan" rows="2" placeholder="Only A+ setups at the open. Stop after two losses.">${esc(ck.plan)}</textarea></div>
       <button type="button" class="pz-cta" id="pzCkSave">Lock in my day <span class="pz-xpb">+${pzXpCfg().checkin+(opened?Math.round(pzXpCfg().plan/2):pzXpCfg().plan)} XP</span></button>
-      <p class="pz-fine">All optional — your dials work without it. On a trading day the check-in earns +${pzXpCfg().checkin} XP; a plan or loss limit saved before your first trade earns +${pzXpCfg().plan}${opened?' (you’ve already traded today, so a plan now earns half — tomorrow, check in first)':''}.</p>
+      <p class="pz-fine">All optional — your dials work without it. On a trading day your prep earns +${pzXpCfg().checkin} XP; a plan or loss limit saved before your first trade earns +${pzXpCfg().plan}${opened?' (you’ve already traded today, so a plan now earns half — tomorrow, check in first)':''}.</p>
     </div>
   </div>`;
 }
@@ -1189,7 +1189,7 @@ function pzWelcomeHero(){
     <h1>Know when to trade.<br><span>And when to stop.</span></h1>
     <p class="pz-wl-lede">Pulse reads your own fills on Hyperliquid, Lighter, Bybit or Binance and turns them into three dials for your trading day.</p>
     <div class="pz-wl-dials" aria-hidden="true">${dial('78',0.78,'var(--pz-good)','Readiness')}${dial('84',0.84,'var(--pz-xp)','Discipline')}${dial('Low',0.28,'var(--pz-risk)','Risk')}</div>
-    <ul class="pz-wl-points"><li>${pzI('check',16,2.4)}A two-minute check-in before the open</li><li>${pzI('check',16,2.4)}Revenge trades, size-ups and overtrading caught as they happen</li><li>${pzI('check',16,2.4)}One-line journaling, and how you compare with traders like you</li></ul></section>`;
+    <ul class="pz-wl-points"><li>${pzI('check',16,2.4)}Two minutes of prep before the open</li><li>${pzI('check',16,2.4)}Revenge trades, size-ups and overtrading caught as they happen</li><li>${pzI('check',16,2.4)}One-line journaling, and how you compare with traders like you</li></ul></section>`;
 }
 function pzConnectHtml(){
   const synced=SRV.enabled&&(!SRV.needsAuth||(SRV.token&&!SRV.badAuth));
