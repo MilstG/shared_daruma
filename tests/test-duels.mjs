@@ -97,7 +97,7 @@ try {
   await t('duels unlock at level 3 by default', async () => {
     eq((await call('/config')).d.modules.duels, 3);
     const r = await send(ann, 'bob'); eq(r.status, 403); ok(/level 3/.test(r.d.error));
-    await call('/admin/config', { method: 'PUT', owner: true, body: { modules: { duels: 1 } } }); // the rest of this file plays at level 1
+    await call('/admin/config', { method: 'PUT', owner: true, body: { modules: { duels: 1 }, standing: { on: false } } }); // the rest of this file plays at level 1 (standing has its own tests: test-trader-age-server)
   });
   let id;
   await t('a challenge reaches the other side; verified duels need verification switched on', async () => {

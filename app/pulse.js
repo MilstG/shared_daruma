@@ -673,6 +673,7 @@ function pzTodayHtml(D){
   const on=id=>pzShow('today',id), sec=(id,f)=>on(id)?safe(f):'', more=(id,k)=>F&&on(id)?safe(()=>k(D,F)):'';
   return `${pzHead(dayLabel(D.todayK).replace(', ',' · '),'Today',pzChips(g,D.inbox.length))}
     ${safe(()=>pzTaBannerHtml(D))}
+    ${safe(()=>typeof taStandingBannerHtml==='function'?taStandingBannerHtml():'')}
     ${safe(pzInstallCardHtml)}
     ${sec('oneThing',()=>pzOneThingHtml(D))}
     <div class="pz-wide">${ringsHtml}<div class="pz-span" id="pzRingDetail">${detail}</div>${more('numbers',pzTodayStripHtml)}${sec('level',()=>pzProgressRowHtml(D))}

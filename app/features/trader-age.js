@@ -16,7 +16,7 @@
    ============================================================================ */
 // the settings and the years formula are functions so the server can borrow them, with traderAge,
 // to work out members' verified Trader Age from their wallets (server.js ENGINE_FNS)
-function taConf(){ return {halfLife:30, minDays:15, windowDays:183, cap:20, steadyN:20, weekMin:3, paceMax:3}; }
+function taConf(){ return {halfLife:30, minDays:15, windowDays:183, cap:20, steadyN:20, weekMin:3, paceMax:3, standN:20}; }
 const TA=taConf();
 function taYears(r){ return Math.min(TA.cap, Math.pow(2,(r-50)/10)); }
 // a rating back from years (for "get back to 2 years" style messages)
@@ -50,6 +50,8 @@ function traderAge(days, J, opts){
   inWin.forEach((x,i)=>{ const w=Math.pow(0.5,(n-1-i)/TA.halfLife); W+=w; R+=w*x.r; for(const k in parts)parts[k]+=w*x.parts[k]; });
   out.rating=R/W; for(const k in parts)parts[k]=parts[k]/W; out.parts=parts;
   out.age=taYears(out.rating);
+  // the last 20 trading days, plain average: what standing reads
+  const rec=inWin.slice(-TA.standN); out.recent=rec.reduce((a,x)=>a+x.r,0)/rec.length; out.recentN=rec.length;
   // what's holding it back most: the part furthest below 100, by its weight
   const WT={discipline:.65,steadiness:.15,limit:.10,log:.10};
   out.drag=Object.keys(WT).map(k=>[k,(100-parts[k])*WT[k]]).sort((a,b)=>b[1]-a[1])[0][0];
@@ -107,6 +109,61 @@ function taMultCardHtml(A){
   return `<section class="pz-card pz-kv"><div class="pz-kvrow"><b class="pz-kvh">XP multiplier</b><span style="font-family:var(--pz-num);font-size:28px;font-weight:600;color:${M.now>1?PZ_COL.good:'var(--pz-muted)'}">×${(+M.now).toFixed(2).replace(/0$/,'')}</span></div>
     ${pzBar(pct,PZ_COL.xp)}<p class="pz-sub" style="font-size:13px">${M.held} good week${M.held===1?'':'s'} held. ${nx?`${nx.toGo} more for ×${nx.mult}.`:'That’s the top tier.'} This week’s daily XP is multiplied by ×${(+M.now).toFixed(2).replace(/0$/,'')}.</p>${rule}</section>`;
 }
+/* ---- standing (spec step 6): perks are kept by holding Trader Age ----
+   Your last 20 trading days against the bar (60 = Trader Age 2 years). Under it, or without a verified
+   Trader Age, there are 14 days of grace to get back; a lapse also needs a trading day after the slip
+   began, so a break freezes it. Fewer than 15 trading days counts as good.
+   x: {verified, building, recent (the 20-day rating), lastDay (the last trading day's key)} */
+function taStandingDefaults(){ return {on:true, bar:60, grace:14}; }
+function taStanding(prev, x, cfg, now, dayOf){
+  cfg=cfg||taStandingDefaults(); x=x||{}; dayOf=dayOf||(ms=>new Date(ms).toISOString().slice(0,10));
+  if(cfg.on===false)return {state:'off', since:null};
+  // owed: the clock was started by a rating under the bar. Building again (a fresh wallet, or every day
+  // out of the 6 months) doesn't clear it: only a rating back at the bar does.
+  const owed=!!(prev&&prev.since>0&&prev.slip);
+  let state=!x.verified?'unverified':x.building||x.recent==null?'building':x.recent>=cfg.bar?'good':'slipping';
+  if(state==='building'&&owed)state='slipping';
+  if(state==='good'||state==='building')return {state, since:null};
+  // the grace runs from when it first went under (or unverified), and switching between the two doesn't restart it
+  const since=prev&&prev.since>0?prev.since:now, deadline=since+cfg.grace*864e5, slip=owed||state==='slipping';
+  if(now>=deadline&&(state==='unverified'||(x.lastDay&&x.lastDay>dayOf(since))))return {state:'lapsed', why:state==='unverified'?'unverified':'rating', since, deadline, slip};
+  return {state, since, deadline, slip};
+}
+// standing, as the server reports it on /me (null: no profile, or the owner switched it off)
+function taStandingMe(){ const st=typeof SOC!=='undefined'&&SOC.me&&SOC.me.standing; return st&&st.on?st:null; }
+const TA_PERKS='duels, competitions, the leaderboards and the coach’s full allowance';
+function taDaysLeft(at){ const n=Math.max(0,Math.ceil((at-Date.now())/864e5)); return n===0?'today':n===1?'1 day':n+' days'; }
+function taWhen(at){ try{ return new Date(at).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}); }catch(e){ return ''; } }
+// on Today, only when something needs doing: slipping, unverified, or lapsed
+function taStandingBannerHtml(){
+  const st=taStandingMe(); if(!st||st.exempt||!['slipping','unverified','lapsed'].includes(st.state))return '';
+  const yrs=taFmtYears(st.years), now20=st.recent!=null?taFmtYears(taYears(st.recent)):null, lapsed=st.state==='lapsed', col=lapsed?PZ_COL.low:PZ_COL.mid;
+  const unver=st.state==='unverified'||(lapsed&&st.why==='unverified');
+  const head=lapsed?'Standing lapsed':unver?'Verify to keep your perks':'Standing slipping';
+  const text=unver?(lapsed?'Your wallet isn’t verified, so '+TA_PERKS+' are locked. Verify it and they open again.':'Verify your wallet within '+taDaysLeft(st.deadline)+' to keep '+TA_PERKS+'.')
+    :lapsed?(now20?'Your last 20 trading days are at Trader Age '+now20+', under the '+yrs+' that keeps ':'Your Trader Age isn’t back at '+yrs+' yet, so you’ve lost ')+TA_PERKS+'. Get back to '+yrs+' and they open again.'
+    :(now20?'Your last 20 trading days are at Trader Age '+now20+'.':'Your Trader Age isn’t back at '+yrs+' yet.')+' Get back to '+yrs+' by '+taWhen(st.deadline)+' to keep '+TA_PERKS+'.'+(st.deadline<Date.now()?' The clock waits while you’re not trading.':'');
+  return `<section class="pz-card pz-kv pz-span" role="status" style="border:1px solid color-mix(in srgb, ${col} 50%, var(--pz-line));background:color-mix(in srgb, ${col} 9%, var(--pz-card))">
+    <div class="pz-kvrow"><span class="pz-lbl" style="color:${col}">${pzI('shield',14)} ${esc(head)}</span><a class="pz-link" href="${unver?'#sharing':'#age'}" style="min-height:0">${unver?'Verify':'What to do'} ${pzI('chev',14)}</a></div>
+    <p style="margin:0;font-size:14px;line-height:1.45">${esc(text)}</p></section>`;
+}
+// on the Trader Age screen: where your standing is, and the rule
+function taStandingCardHtml(){
+  const st=taStandingMe(), cfg=(typeof SOC!=='undefined'&&SOC.cfg&&SOC.cfg.standing)||null;
+  if(!st&&!(cfg&&cfg.on))return '';
+  const yrs=taFmtYears(st?st.years:cfg.years), grace=st?st.grace:cfg.grace;
+  const rule=`<p class="pz-fine">Your last 20 trading days at Trader Age ${esc(yrs)} or more (rating ${st?st.bar:cfg.bar}) keep ${TA_PERKS}. Under it, or without a verified wallet, you have ${grace} days to get back before they lock. The clock waits while you’re not trading, and it never touches your level, XP or badges.</p>`;
+  if(!st)return `<section class="pz-card pz-kv"><b class="pz-kvh">Standing</b><p class="pz-sub" style="font-size:13px">Members with a profile keep their perks by holding their Trader Age.</p>${rule}</section>`;
+  if(st.exempt)return `<section class="pz-card pz-kv"><b class="pz-kvh">Standing</b><p class="pz-sub" style="font-size:13px">Your perks stay open whatever your Trader Age: the owner unlocked everything for you.</p>${rule}</section>`;
+  const W={good:['Good',PZ_COL.good],building:['Building',PZ_COL.xp],slipping:['Slipping',PZ_COL.mid],unverified:['Not verified',PZ_COL.mid],lapsed:['Lapsed',PZ_COL.low]}[st.state]||['—','var(--pz-muted)'];
+  const now20=st.recent!=null&&st.recentN?`Last ${st.recentN} trading day${st.recentN===1?'':'s'}: Trader Age ${esc(taFmtYears(taYears(st.recent)))}. `:'';
+  const what=st.state==='good'?'Your perks are open.':st.state==='building'?'Your perks are open while your Trader Age builds.'
+    :st.state==='slipping'?`Get back to ${esc(yrs)} by ${esc(taWhen(st.deadline))} to keep your perks.`
+    :st.state==='unverified'?`Verify your wallet within ${esc(taDaysLeft(st.deadline))} to keep your perks. <a href="#sharing">Verify my discipline</a>`
+    :st.why==='unverified'?'Your perks are locked until your wallet is verified. <a href="#sharing">Verify my discipline</a>':`Your perks are locked until you’re back at ${esc(yrs)}.`;
+  return `<section class="pz-card pz-kv"><div class="pz-kvrow"><b class="pz-kvh">Standing</b><span style="font-weight:700;color:${W[1]}">${W[0]}</span></div>
+    <p class="pz-sub" style="font-size:13px">${now20}${what}</p>${rule}</section>`;
+}
 const TA_PART={discipline:['Discipline','Your daily Discipline score, read from your fills',65],steadiness:['Steadiness','How even your daily scores are',15],
   limit:['Loss limit kept','Days inside your loss limit (no limit set counts as 70)',10],log:['Prep and journal','Morning prep done, trades journaled',10]};
 // the server's verified Trader Age when it has one (a member whose wallet it reads), else this device's estimate
@@ -149,8 +206,8 @@ function taScreenHtml(D){
     <p class="pz-sub" style="font-size:13px">Every trading day is rated from 0 to 100. Your last 6 months of trading days are averaged, with recent days counting more (a day's weight halves every 30 trading days). Every 10 points doubles your Trader Age: a rating of 50 is 1 year, 60 is 2, 70 is 4, 80 is 8.</p>
     <p class="pz-sub" style="font-size:13px">Only days you trade count, so a break freezes it. It never comes from profit.</p>
     <p class="pz-fine">${taEstimateNote(A)}</p></section>`;
-  if(!A.n)return `${back}${pzHead('Your process, in years','Trader Age')}<section class="pz-card"><p class="pz-sub">It starts with your first trading day.</p></section>${how}`;
-  if(A.building)return `${back}${pzHead('Your process, in years','Trader Age')}<section class="pz-card pz-kv"><b style="font-size:17px">Building: ${A.need} more trading day${A.need===1?'':'s'}</b>${pzBar((TA.minDays-A.need)/TA.minDays,PZ_COL.xp)}<p class="pz-sub" style="font-size:13px">${A.n} of ${TA.minDays} trading days so far.</p></section>${how}`;
+  if(!A.n)return `${back}${pzHead('Your process, in years','Trader Age')}<section class="pz-card"><p class="pz-sub">It starts with your first trading day.</p></section>${taStandingCardHtml()}${how}`;
+  if(A.building)return `${back}${pzHead('Your process, in years','Trader Age')}<section class="pz-card pz-kv"><b style="font-size:17px">Building: ${A.need} more trading day${A.need===1?'':'s'}</b>${pzBar((TA.minDays-A.need)/TA.minDays,PZ_COL.xp)}<p class="pz-sub" style="font-size:13px">${A.n} of ${TA.minDays} trading days so far.</p></section>${taStandingCardHtml()}${how}`;
   const ahead=A.tradingYears==null?'Your process, in years':A.age>=A.tradingYears?'Ahead of your experience':'Still catching up with your experience';
   const hero=`<section class="pz-card pz-hero pz-span">
     <div class="pz-hero-ring">${pzRing(taFmtYears(A.age).split(' ')[0],Math.min(1,A.rating/100),PZ_COL.xp,{size:132,cap:taFmtYears(A.age).split(' ')[1]||''})}</div>
@@ -161,7 +218,7 @@ function taScreenHtml(D){
     <div style="display:flex;align-items:baseline;gap:10px"><span style="font-family:var(--pz-num);font-size:32px;font-weight:600;color:${taPaceCol(A.pace)}">${A.pace.toFixed(1)}×</span><span class="pz-sub">${taPaceWord(A.pace)}</span></div>
     <p class="pz-sub" style="font-size:13px">Over ${wk.n} trading days you traded like someone with ${esc(taFmtYears(wk.age))} behind them, against your 6-month ${esc(taFmtYears(A.age))}.${A.pace<0.9&&slip?' What cost you most: '+esc(slip.toLowerCase())+'.':''}</p>`
     :`<p class="pz-sub" style="font-size:13px">Pace needs at least 3 trading days in the last 7. ${wk.n?'You have '+wk.n+'.':'No trades yet this week.'}</p>`}</section>`;
-  const mult=taMultCardHtml(A);
+  const mult=taMultCardHtml(A)+taStandingCardHtml();
   const rows=Object.keys(TA_PART).map(k=>{ const [l,h,w]=TA_PART[k], v=A.parts[k];
     return `<div class="pz-row"><div class="pz-row-t"><span>${esc(l)}<span class="pz-sub" style="display:block;font-size:12px">${esc(h)} · ${w}%</span></span><b>${Math.round(v)}</b></div>${pzBar(v/100,k===A.drag?PZ_COL.low:PZ_COL.xp)}</div>`; }).join('');
   const parts=`<section class="pz-card pz-kv"><b class="pz-kvh">What builds it</b>${rows}<p class="pz-fine">Holding it back most: <b>${esc(TA_PART[A.drag][0].toLowerCase())}</b>.</p></section>`;

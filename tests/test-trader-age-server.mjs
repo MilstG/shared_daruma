@@ -87,5 +87,72 @@ try {
     ok(!JSON.stringify(await prof()).includes('"traderAge":20'), 'hidden once verify is off');
     eq((await call('/me', { key: K })).d.me.ta, null, 'and the member’s own goes back to the estimate');
   });
+  // ---- standing (spec step 6) ----
+  const me = async k => (await call('/me', { key: k })).d.me;
+  let k2, watcherId;
+  await t('standing: on by default (bar 60 = 2 years, 14 days of grace); a verified member at the bar is good', async () => {
+    eq((await call('/config')).d.standing, { on: true, bar: 60, grace: 14, years: 2 });
+    await call('/me', { method: 'PUT', key: K, body: { share: { verify: true } } });
+    const st = await until(async () => { const m = await me(K); return m.ta && m.ta.recentN === 20 && m.standing.state === 'good' ? m.standing : null; });
+    ok(st, 'good'); eq([st.locked, st.exempt, st.since], [false, false, null]); near(st.recent, 94.5, 0.05);
+  });
+  await t('without a verified wallet: 14 days of grace, with a heads-up in the inbox', async () => {
+    k2 = (await call('/join', { method: 'POST', body: { handle: 'dodger' } })).d.key;
+    const st = (await me(k2)).standing; eq([st.state, st.deadline - st.since, st.locked], ['unverified', 14 * DAY, false]);
+    ok((await call('/inbox', { key: k2 })).d.items.some(x => x.kind === 'standing' && /Verify your wallet by/.test(x.text)), 'told');
+    watcherId = (await call('/admin/members', { owner: true })).d.members.find(m => m.handle === 'dodger').id;
+    eq((await call('/admin/members', { owner: true })).d.members.find(m => m.handle === 'dodger').standing, 'unverified');
+  });
+  await t('under the bar: slipping, with the deadline; past it without trading since, the clock waits', async () => {
+    // the owner raises the bar to 90; no prep or journaling brings the 20-day rating to 87
+    await call('/admin/config', { method: 'PUT', owner: true, body: { standing: { bar: 90 } } });
+    const noLog = stats(); for (const d of noLog.days) { d.p = 0; d.jn = 0; }
+    await call('/stats', { method: 'POST', key: K, body: noLog });
+    let st = (await me(K)).standing; eq(st.state, 'slipping'); near(st.recent, 87, 0.05); eq(st.deadline, clock + 14 * DAY);
+    clock += 15 * DAY;
+    st = (await me(K)).standing; eq([st.state, st.locked], ['slipping', false], 'no trading day since it began');
+  });
+  await t('lapsed (unverified): duels, competitions and the leaderboards lock, the coach drops to 1 a day', async () => {
+    const st = (await me(k2)).standing; eq([st.state, st.why, st.locked], ['lapsed', 'unverified', true]);
+    const d = await call('/duels', { method: 'POST', key: k2, body: { to: 'steady_one', type: 'disc', period: 'week', verified: false } });
+    eq([d.status, d.d.standing], [403, true]); ok(/verified wallet/.test(d.d.error), d.d.error);
+    const day = key(clock), mk = await call('/admin/competitions', { method: 'POST', owner: true, body: { title: 'Cup', type: 'discipline', start: day, end: key(clock + 7 * DAY) } });
+    const cj = await call('/competitions/' + mk.d.id + '/join', { method: 'POST', key: k2 }); eq([cj.status, cj.d.standing], [403, true]);
+    eq((await me(k2)).coach.limit, 1);
+    // off the leaderboards (global), but the league table keeps everyone
+    await call('/me', { method: 'PUT', key: k2, body: { share: { global: true, boards: true } } });
+    await call('/me', { method: 'PUT', key: K, body: { share: { global: true } } });
+    const lb = (await call('/leaderboard?scope=global&board=level', { key: k2 })).d;
+    eq(lb.offBoards, true); ok(!lb.rows.some(r => r.handle === 'dodger'), 'not on it'); ok(lb.rows.some(r => r.handle === 'steady_one'), 'others are');
+    // someone else can't challenge them either
+    const c = await call('/duels', { method: 'POST', key: K, body: { to: 'dodger', type: 'disc', period: 'week', verified: false } });
+    ok(c.status === 409 && /isn’t taking challenges right now/.test(c.d.error), JSON.stringify(c));
+  });
+  await t('lapsed (rating): a trading day after the deadline locks it; back at the bar opens it again', async () => {
+    // a new trading day comes in from the wallet
+    const d = clock - 2 * 3600e3; FILLS.push({ coin: 'ETH', side: 'B', sz: '1', px: '100', startPosition: '0', closedPnl: '0', fee: '0', crossed: true, time: d, tid: 900, oid: 900 },
+      { coin: 'ETH', side: 'A', sz: '1', px: '110', startPosition: '1', closedPnl: '10', fee: '0', crossed: true, time: d + 600e3, tid: 901, oid: 901 });
+    clock += 31 * 60000; // the wallet is read again at most every 30 minutes; the stats the app sends bring it in
+    await call('/stats', { method: 'POST', key: K, body: Object.assign(stats(), { days: [] }) });
+    const st = await until(async () => { const m = await me(K); return m.standing.state === 'lapsed' ? m.standing : null; });
+    ok(st, 'lapsed'); eq([st.why, st.locked], ['rating', true]);
+    const dl = await call('/duels', { method: 'POST', key: K, body: { to: 'dodger', type: 'disc', period: 'week', verified: false } });
+    ok(dl.status === 403 && /standing is lapsed/.test(dl.d.error), dl.d.error);
+    eq((await call('/leaderboard?scope=global&board=level', { key: K })).d.offBoards, true);
+    await call('/admin/config', { method: 'PUT', owner: true, body: { standing: { bar: 60 } } });
+    eq((await me(K)).standing.state, 'good');
+    ok((await call('/inbox', { key: K })).d.items.some(x => x.kind === 'standing' && /back/.test(x.text)), 'told it’s back');
+  });
+  await t('fully unlocked members are never locked; the owner can switch standing off', async () => {
+    await call('/admin/members/' + watcherId, { method: 'POST', owner: true, body: { action: 'unlock' } });
+    let st = (await me(k2)).standing; eq([st.state, st.exempt, st.locked], ['lapsed', true, false]);
+    ok((await me(k2)).coach.limit > 1, 'the unlocked allowance');
+    await call('/admin/members/' + watcherId, { method: 'POST', owner: true, body: { action: 'lock' } });
+    eq((await call('/admin/config', { method: 'PUT', owner: true, body: { standing: { on: false, grace: 999 } } })).status, 200);
+    eq((await call('/config')).d.standing.grace, 60, 'grace is kept within 3–60 days');
+    eq((await me(k2)).standing, { on: false });
+    eq((await me(k2)).coach.limit, 3);
+    eq((await call('/leaderboard?scope=global&board=level', { key: k2 })).d.offBoards, false);
+  });
 } finally { await new Promise(r => app.close(r)); }
 report('trader age (server)');

@@ -83,7 +83,7 @@ const cfg = duels => call('/admin/config', { method: 'PUT', owner: true, body: {
 
 try {
   for (const h of ['ann', 'bob', 'cat', 'dee', 'eve', 'fay']) await join_(h);
-  await call('/admin/config', { method: 'PUT', owner: true, body: { modules: { duels: 1 } } });
+  await call('/admin/config', { method: 'PUT', owner: true, body: { modules: { duels: 1 }, standing: { on: false } } }); // standing has its own tests (test-trader-age-server)
 
   let ab, ac, ad;
   await t('a played duel moves both ratings; the result says by how much', async () => {
