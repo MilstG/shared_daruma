@@ -386,8 +386,15 @@ doubles it. Only trading days count, so a break freezes it, and it never comes f
 **Pace** is this week (3+ trading days in the last 7) against that 6-month norm, from 0× to
 3×, and names the slip that cost the most when it's below 1×. It appears after 15 trading
 days, as a card on Today and its own screen (`#age`: the parts, what's holding it back, and
-week by week). For now it's an estimate made on the device; the server checking it, an XP
-multiplier for holding it, and tools that need a current Trader Age come next.
+week by week). **Verified:** for a member who shares verified Discipline with a wallet the
+server reads (claimed, when wallet proof is on), the server works it out itself with the app's
+own `traderAge`: Discipline and slips from the wallet's last 6 months of fills (the per-wallet
+fills cache now keeps 6 months; an older, shorter cache is read again once from the start), and
+prep, journaling and the loss limit from the days the app reports (kept by day, 200 days).
+Keel then shows it with a ✓, it goes on the weekly share card (switchable), and others see it
+on the member's profile while they share verified Discipline. Everyone else sees the estimate
+their own app makes, with what it takes to verify it. An XP multiplier for holding it, and
+tools that need a current Trader Age, come next.
 
 **Tilt meter and quiet mode.** A live reading (0–100) on Today of the triggers
 that come before a blow-up: losses in a row (30 points at three), a loss in the

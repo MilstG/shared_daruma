@@ -11,8 +11,8 @@ const htmlPath = new URL('../ledger.html', import.meta.url).pathname;
 const { readAppSource } = require('../app-source.js');
 const src = readAppSource(htmlPath);
 const { grabFn, evalModule } = makeExtractor(src);
-const consts = ['TA', 'taYears', 'taRatingFor'].map(n => src.match(new RegExp('^const ' + n + '=.*$', 'm'))[0]).join('\n');
-const { traderAge, taYears, taRatingFor, taFmtYears } = await evalModule(['traderAge', 'isoWeekOfKey', 'taFmtYears'], ['traderAge', 'taYears', 'taRatingFor', 'taFmtYears'], consts);
+const consts = ['taRatingFor'].map(n => src.match(new RegExp('^const ' + n + '=.*$', 'm'))[0]).join('\n');
+const { traderAge, taYears, taRatingFor, taFmtYears } = await evalModule(['taConf', 'taYears', 'traderAge', 'isoWeekOfKey', 'taFmtYears'], ['traderAge', 'taYears', 'taRatingFor', 'taFmtYears'], 'const TA=taConf();\n' + consts);
 
 const DAY = 864e5, NOW = Date.parse('2026-10-20T12:00:00Z');
 const key = ms => new Date(ms).toISOString().slice(0, 10);

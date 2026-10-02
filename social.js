@@ -103,6 +103,10 @@ function sanitizeStats(b) {
   const days = (Array.isArray(b.days) ? b.days : []).slice(-60)
     .filter(d => d && DAY_RE.test(d.k)).map(d => { const o = { k: d.k, s: clampNum(d.s, 0, 100) || 0, b: !!d.b, j: !!d.j };
       if (d.r) o.r = true;
+      // for Trader Age: morning prep done, the share of trades journaled, the loss limit kept (1) or broken (0)
+      if (d.p) o.p = 1;
+      const jn = clampNum(d.jn, 0, 1); if (jn) o.jn = Math.round(jn * 100) / 100;
+      if (d.lm === 0 || d.lm === 1) o.lm = d.lm;
       const f = Array.isArray(d.f) ? [...new Set(d.f.filter(x => SLIP_KEYS.includes(x)))] : []; if (f.length) o.f = f;
       const l = cleanText(d.l, 200); if (l) o.l = l;
       return o; });
@@ -121,6 +125,8 @@ function sanitizeStats(b) {
     challengesDone: clampNum(b.challengesDone, 0, 10000) || 0, lastChallenge: cleanText(b.lastChallenge, 140),
     tz: typeof b.tz === 'string' && /^[A-Za-z_+\-/0-9]{1,40}$/.test(b.tz) ? b.tz : 'UTC',
     badges, badgeN: clampNum(b.badgeN, 0, 10000) || badges.length, badgeTotal: clampNum(b.badgeTotal, 0, 10000) || 0, habits, days, xpDays,
+    // the first fill in the app's history, for "trading for" next to Trader Age (2015 onwards, never in the future)
+    firstAt: clampNum(b.firstAt, 1420070400000, Date.now() + 864e5) || null,
   };
 }
 function sanitizeShare(s, prev) {
@@ -554,8 +560,8 @@ function createSocial(opts) {
     : S.config.approveWallets && walletStatus(m.address) !== 'approved' ? 'approval' : null;
   // numbers read from a wallet that stopped counting go at once, and come back when it counts again
   // a member's main wallet changed: what was read from the old one goes, competitions included
-  const walletMoved = m => { m.vdays = null; m.vAt = 0; m.money = null; for (const cc of Object.values(S.comps)) if (cc.money) delete cc.money[m.id]; };
-  const dropWalletNumbers = m => { m.vdays = null; m.money = null; for (const cc of Object.values(S.comps)) if (cc.money) delete cc.money[m.id]; };
+  const walletMoved = m => { m.vdays = null; m.ta = null; m.vAt = 0; m.money = null; for (const cc of Object.values(S.comps)) if (cc.money) delete cc.money[m.id]; };
+  const dropWalletNumbers = m => { m.vdays = null; m.ta = null; m.money = null; for (const cc of Object.values(S.comps)) if (cc.money) delete cc.money[m.id]; };
   const recheckWallet = m => { m.vAt = 0; m.vFailAt = 0; m.moneyFailAt = 0; if (!walletFor(m)) dropWalletNumbers(m); };
   const claimedBy = (addr, notId) => addr ? members().find(o => o.id !== notId && o.claimed === addr) || null : null;
   // Wallets the owner or an admin mapped to a member by hand, beside their main one (m.address, the one
@@ -835,13 +841,32 @@ function createSocial(opts) {
       // the member may have changed wallet (or left) while this was running
       const live = own(S.members, m.id) ? S.members[m.id] : null; if (!live || !live.share.verify || walletFor(live) !== addr) return;
       const keep = new Map((live.vdays || []).map(d => [d.k, d]));
-      for (const d of days) if (d && DAY_RE.test(d.k)) keep.set(d.k, { k: d.k, s: clampNum(d.s, 0, 100) || 0, n: clampNum(d.n, 0, 1e5) || 0 });
-      live.vdays = [...keep.values()].sort((a, b) => a.k < b.k ? -1 : 1).slice(-100);
-      live.vAt = now(); live.vFailAt = 0; awardCheck(live); save(live);
+      for (const d of days) if (d && DAY_RE.test(d.k)) { const o = { k: d.k, s: clampNum(d.s, 0, 100) || 0, n: clampNum(d.n, 0, 1e5) || 0 };
+        const f = Array.isArray(d.f) ? d.f.filter(x => SLIP_KEYS.includes(x)) : []; if (f.length) o.f = f; keep.set(d.k, o); }
+      live.vdays = [...keep.values()].sort((a, b) => a.k < b.k ? -1 : 1).slice(-200); // Trader Age reads 6 months
+      live.vAt = now(); live.vFailAt = 0; taCompute(live); awardCheck(live); save(live);
     } catch (e) { m.vFailAt = now(); }
     finally { behaviorBusy.delete(m.id); }
   };
   const refreshAll = m => { refreshMoney(m); refreshBehavior(m); };
+  // Trader Age, verified: the app's own traderAge (app/features/trader-age.js, borrowed by the server's
+  // engine) over the days scored from the member's wallet, with the prep, journal and loss-limit parts
+  // their app reported for those days. Only a member whose wallet the server reads (and who shares
+  // verified Discipline) gets one; everyone else sees the estimate their app makes.
+  const taCompute = m => {
+    if (!opts.traderAge || !m.share || !m.share.verify || !walletFor(m) || !Array.isArray(m.vdays) || !m.vdays.length) { if (m.ta) m.ta = null; return; }
+    try {
+      const L = m.logd || {}, J = {}, tz = (m.stats && m.stats.tz) || 'UTC';
+      const days = m.vdays.map(d => { const l = L[d.k] || {}; if (l.p) J['day:' + d.k] = { sleep: 1 };
+        return { key: d.k, score: d.s, parts: { limit: l.lm, journal: l.jn || 0 }, behavior: { flags: Object.fromEntries((d.f || []).map(k => [k, 1])) } }; });
+      const A = opts.traderAge(days, J, { now: now(), dayOf: ms => zoneKey(tz, ms), firstAt: (m.stats && m.stats.firstAt) || 0 });
+      const r1 = x => x == null ? null : Math.round(x * 10) / 10;
+      m.ta = { at: now(), n: A.n, building: !!A.building, need: A.need, rating: r1(A.rating), age: r1(A.age), pace: r1(A.pace), tradingYears: r1(A.tradingYears), drag: A.drag || null,
+        parts: A.parts ? Object.fromEntries(Object.entries(A.parts).map(([k, v]) => [k, r1(v)])) : null,
+        week: A.week ? { n: A.week.n, age: r1(A.week.age), rating: r1(A.week.rating), slip: A.week.slip || null } : null,
+        weeks: (A.weeks || []).map(w => ({ week: w.week, age: r1(w.age), rating: r1(w.rating), n: w.n })) };
+    } catch (e) { m.ta = null; }
+  };
   // ---- "traders like you": peer groups from members' summaries and the owner's seed wallets ----
   const BENCH_FRESH = 21 * 86400000, SEED_REFRESH = 7 * 86400000, SEED_MAX = 5000;
   const benchRows = () => {
@@ -1194,9 +1219,12 @@ function createSocial(opts) {
     const out = { id: m.id, handle: m.handle, ...tierOf(m), level: st.level || 1, title: levelTitle(st.level || 1),
       followers: followersOf(m.id),
       following: (S.follows[m.id] || []).length, isFollowing: !!viewer && (S.follows[viewer.id] || []).includes(m.id), isMe: !!viewer && viewer.id === m.id,
-      claimed: !!m.claimed, av: avUrl(m), bio: m.bio || '', duelsOpen: !!(m.share && m.share.duels !== false), mentor: !!m.mentor, seeking: !!(m.share && m.share.seek) };
+      claimed: !!m.claimed, av: avUrl(m), bio: m.bio || '', duelsOpen: !!(m.share && m.share.duels !== false), mentor: !!m.mentor, seeking: !!(m.share && m.share.seek),
+      // verified Trader Age, for anyone who shares verified Discipline
+      traderAge: m.ta && !m.ta.building && m.share && m.share.verify ? m.ta.age : null };
     if (out.isMe) Object.assign(out, { claimedAddress: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
       vault: m.vault ? { rev: m.vault.rev, size: m.vault.size, at: m.vault.at } : null, requireClaim: !!S.config.requireClaim, vaultOn: !!S.config.vaultOn,
+      ta: m.share && m.share.verify ? m.ta || null : null, // verified Trader Age (null: the app shows its own estimate)
       needsClaim: !!(S.config.requireClaim && m.address && m.claimed !== m.address),
       walletStatus: m.address && (S.config.approveWallets || walletStatus(m.address) === 'rejected') ? walletStatus(m.address) : null, admin: !!m.admin,
       passkeys: (m.passkeys || []).map(k => ({ id: k.id, name: k.name, at: k.at, lastUsed: k.lastUsed || null })),
@@ -2616,6 +2644,10 @@ function createSocial(opts) {
       }
       me.postedHabits = [...posted].slice(-50);
       me.stats = next; me.statsAt = now();
+      const logd = me.logd && typeof me.logd === 'object' ? me.logd : {};
+      for (const d of next.days) { const o = {}; if (d.p) o.p = 1; if (d.jn) o.jn = d.jn; if (d.lm === 0 || d.lm === 1) o.lm = d.lm; logd[d.k] = o; }
+      const lk = Object.keys(logd).sort(); for (const k of lk.slice(0, Math.max(0, lk.length - 200))) delete logd[k];
+      me.logd = logd; taCompute(me);
       if (body.bench !== undefined) { const b = me.share.bench !== false ? Bench.sanitizeBench(body.bench) : null;
         if (b) { b.ret = null; b.dd = null; } // returns are read on chain on the server (benchRows), never taken from the app
         if (!!b !== !!me.bench) benchDirty = true; me.bench = b ? Object.assign(b, { at: now() }) : null; }

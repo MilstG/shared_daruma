@@ -14,8 +14,11 @@
    every 10 points doubles it. Only trading days count, so a break freezes it.
    Pace is this week (the last 7 days, 3+ trading days) against that norm, from 0× to 3×.
    ============================================================================ */
-const TA={halfLife:30, minDays:15, windowDays:183, cap:20, steadyN:20, weekMin:3, paceMax:3};
-const taYears=r=>Math.min(TA.cap, Math.pow(2,(r-50)/10));
+// the settings and the years formula are functions so the server can borrow them, with traderAge,
+// to work out members' verified Trader Age from their wallets (server.js ENGINE_FNS)
+function taConf(){ return {halfLife:30, minDays:15, windowDays:183, cap:20, steadyN:20, weekMin:3, paceMax:3}; }
+const TA=taConf();
+function taYears(r){ return Math.min(TA.cap, Math.pow(2,(r-50)/10)); }
 // a rating back from years (for "get back to 2 years" style messages)
 const taRatingFor=y=>50+10*Math.log2(Math.max(1e-9,y));
 function taFmtYears(y){
@@ -61,24 +64,35 @@ function traderAge(days, J, opts){
   out.weeks=[...byWeek.entries()].slice(-12).map(([w,rs])=>{ const r=rs.reduce((a,v)=>a+v,0)/rs.length; return {week:w, rating:r, age:taYears(r), n:rs.length}; });
   return out;
 }
+// '2026-W39' as 'Week of Sep 21' (its Monday)
+function taWeekLabel(w){ try{ const k=isoWeekMondayKey(w); return 'Week of '+MONTHS[+k.slice(5,7)-1]+' '+(+k.slice(8)); }catch(e){ return w; } }
 const TA_PART={discipline:['Discipline','Your daily Discipline score, read from your fills',65],steadiness:['Steadiness','How even your daily scores are',15],
   limit:['Loss limit kept','Days inside your loss limit (no limit set counts as 70)',10],log:['Prep and journal','Morning prep done, trades journaled',10]};
+// the server's verified Trader Age when it has one (a member whose wallet it reads), else this device's estimate
 function taOf(D){
+  const v=typeof SOC!=='undefined'&&SOC.me&&SOC.me.ta;
+  // (while the server is still building one, e.g. a wallet just added, this device's estimate shows instead)
+  if(v&&v.n&&!v.building)return Object.assign({},v,{verified:true,week:v.week||{n:0},weeks:v.weeks||[],pace:v.pace==null?undefined:v.pace});
+  return taLocal(D);
+}
+function taLocal(D){
   const g=D.g; let firstAt=0; for(const t of (typeof allTrades!=='undefined'?allTrades:[])){ const a=+t.openTime||+t.closeTime||0; if(a>0&&(!firstAt||a<firstAt))firstAt=a; }
   return traderAge(g.days, typeof journal!=='undefined'?journal:{}, {firstAt, dayOf:typeof dayKey==='function'?dayKey:undefined});
 }
 function taPaceWord(p){ return p>=1.1?'maturing':p<=0.9?'slipping':'steady'; }
 function taPaceCol(p){ return p>=1.1?PZ_COL.good:p<=0.9?PZ_COL.low:PZ_COL.mid; }
-// not checked by the server yet (that's the spec's step 4): say so, and nudge people without a profile
-function taEstimateNote(){
+// verified by the server from the wallet's fills, or an estimate made here (with what it takes to verify it)
+function taEstimateNote(A){
+  if(A&&A.verified)return 'Verified: the server worked it out from your wallet’s fills, with the prep, journal and loss-limit days your app reported.';
   const member=typeof SOC!=='undefined'&&SOC.key, owner=typeof SRV!=='undefined'&&SRV.token&&!SRV.badAuth;
-  return member||owner?'Estimated on this device from your fills and journal.'
-    :'Estimated on this device. <a href="#social">Create a profile</a> to have it verified and to earn the XP multiplier.';
+  if(owner&&!member)return 'Estimated on this device from your fills and journal.';
+  if(member)return 'Estimated on this device. It’s verified once the server reads your wallet: turn on <a href="#sharing">Verify my discipline</a> with a wallet added'+(SOC.me&&SOC.me.needsClaim?' and <a href="#account">claimed</a>':'')+'.';
+  return 'Estimated on this device. <a href="#social">Create a profile</a> to have it verified and to earn the XP multiplier.';
 }
 function taCardHtml(D){
   const A=taOf(D);
   if(!A.n)return '';
-  const head=`<div class="pz-kvrow"><span class="pz-lbl" style="color:${PZ_COL.xp}">Trader Age</span><a class="pz-link" href="#age" style="min-height:0">What builds it ${pzI('chev',14)}</a></div>`;
+  const head=`<div class="pz-kvrow"><span class="pz-lbl" style="color:${PZ_COL.xp}">Trader Age${A.verified?' · ✓ verified':''}</span><a class="pz-link" href="#age" style="min-height:0">What builds it ${pzI('chev',14)}</a></div>`;
   if(A.building)return `<section class="pz-card pz-kv">${head}
     <b style="font-size:17px">Building your Trader Age</b>${pzBar((TA.minDays-A.need)/TA.minDays,PZ_COL.xp)}
     <p class="pz-sub" style="font-size:13px">${A.need} more trading day${A.need===1?'':'s'} and it appears: how seasoned your process looks, in years.</p></section>`;
@@ -93,7 +107,7 @@ function taScreenHtml(D){
   const how=`<section class="pz-card pz-kv"><b class="pz-kvh">How it works</b>
     <p class="pz-sub" style="font-size:13px">Every trading day is rated from 0 to 100. Your last 6 months of trading days are averaged, with recent days counting more (a day's weight halves every 30 trading days). Every 10 points doubles your Trader Age: a rating of 50 is 1 year, 60 is 2, 70 is 4, 80 is 8.</p>
     <p class="pz-sub" style="font-size:13px">Only days you trade count, so a break freezes it. It never comes from profit.</p>
-    <p class="pz-fine">${taEstimateNote()}</p></section>`;
+    <p class="pz-fine">${taEstimateNote(A)}</p></section>`;
   if(!A.n)return `${back}${pzHead('Your process, in years','Trader Age')}<section class="pz-card"><p class="pz-sub">It starts with your first trading day.</p></section>${how}`;
   if(A.building)return `${back}${pzHead('Your process, in years','Trader Age')}<section class="pz-card pz-kv"><b style="font-size:17px">Building: ${A.need} more trading day${A.need===1?'':'s'}</b>${pzBar((TA.minDays-A.need)/TA.minDays,PZ_COL.xp)}<p class="pz-sub" style="font-size:13px">${A.n} of ${TA.minDays} trading days so far.</p></section>${how}`;
   const ahead=A.tradingYears==null?'Your process, in years':A.age>=A.tradingYears?'Ahead of your experience':'Still catching up with your experience';
@@ -111,7 +125,7 @@ function taScreenHtml(D){
   const parts=`<section class="pz-card pz-kv"><b class="pz-kvh">What builds it</b>${rows}<p class="pz-fine">Holding it back most: <b>${esc(TA_PART[A.drag][0].toLowerCase())}</b>.</p></section>`;
   const W=A.weeks||[], max=Math.max(1,...W.map(w=>w.age));
   const hist=W.length>1?`<section class="pz-card pz-kv"><b class="pz-kvh">Week by week</b><div class="pz-chart" style="--h:110px;--gap:${W.length>8?'4px':'8px'}">${W.map(w=>
-    `<i style="height:${Math.max(4,Math.round(w.age/max*110))}px;background:${PZ_COL.xp}" data-pz-tip="${esc(w.week+': '+taFmtYears(w.age)+' · rating '+Math.round(w.rating)+' · '+w.n+' trading day'+(w.n===1?'':'s'))}"></i>`).join('')}</div>
+    `<i style="height:${Math.max(4,Math.round(w.age/max*110))}px;background:${PZ_COL.xp}" data-pz-tip="${esc(taWeekLabel(w.week)+': '+taFmtYears(w.age)+' · rating '+Math.round(w.rating)+' · '+w.n+' trading day'+(w.n===1?'':'s'))}"></i>`).join('')}</div>
     <p class="pz-fine">Each bar is that week on its own, as a Trader Age.</p></section>`:'';
   return `${back}${pzHead('Your process, in years','Trader Age')}<div class="pz-wide">${hero}<div class="pz-col">${pace}${hist}</div><div class="pz-col">${parts}${how}</div></div>`;
 }

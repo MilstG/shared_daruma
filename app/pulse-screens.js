@@ -321,6 +321,8 @@ function pzWeekCardModel(src, show){
     cleanDays:days.filter(x=>x.score>=70).length,tradingDays:days.length,streak:{current:+st.current||0,best:+st.best||0},
     level:show.level===false||!src.level?null:{level:+src.level.level||1,title:String(src.level.title||''),xp:Math.round(xp)},
     duel:show.duel===false||!d||!((+d.w||0)+(+d.l||0)+(+d.d||0))?null:{w:+d.w||0,l:+d.l||0,d:+d.d||0},
+    // only a Trader Age the server verified goes on a card people share
+    traderAge:show.age===false||!src.ta||!(+src.ta.age>0)?null:{age:+src.ta.age,tradingYears:+src.ta.tradingYears||null},
     badges:show.badges===false?[]:top.map(b=>({name:String(b.t).replace(/ · .*/,''),tier:Math.max(0,Math.min(5,+b.r||0)),isNew:inW(b.k)}))};
 }
 // this week on your clock, or last week when this one has no trading yet
@@ -328,7 +330,8 @@ function pzWeekCardSrc(g){
   const mon=isoWeekMondayKey(isoWeekOfKey(dayKey(Date.now()))); let from=mon, to=pzAddDays(mon,6);
   if(!g.days.some(d=>d.key>=from&&d.key<=to)){ from=pzAddDays(mon,-7); to=pzAddDays(mon,-1); }
   const c=SOC.me&&socDuelsOn()?socDuels():null;
-  return {from,to,days:g.days,streak:g.streak,level:g.level,xpByDay:g.xp.byDay,badges:g.catalog?g.catalog.earned:[],duel:c&&c.d?c.d.record:null};
+  const ta=SOC.me&&SOC.me.ta&&!SOC.me.ta.building?SOC.me.ta:null;
+  return {from,to,days:g.days,streak:g.streak,level:g.level,xpByDay:g.xp.byDay,badges:g.catalog?g.catalog.earned:[],duel:c&&c.d?c.d.record:null,ta};
 }
 // fmt: 'portrait' (1080×1350) or 'square' (1080×1080); theme: 'dark' or 'light'
 function pzWeekCardDraw(m, fmt, theme){
@@ -356,8 +359,11 @@ function pzWeekCardDraw(m, fmt, theme){
   text('DISCIPLINE',cx,cy+r+(sq?64:72),F(600,26),C.muted,'center'); text('week average',cx,cy+r+(sq?100:108),F(400,26),C.muted,'center');
   // the tiles: clean days, streak, then level and duels if shown
   const tiles=[['Clean days',m.cleanDays+' of '+m.tradingDays,'trading days at 70+'],['Streak',m.streak.current+' day'+(m.streak.current===1?'':'s'),'best '+m.streak.best]];
+  const yrs=y=>y<1?Math.max(1,Math.round(y*12))+' mo':(y<10?y.toFixed(1):String(Math.round(y)))+' yrs';
+  if(m.traderAge)tiles.push(['Trader Age ✓',yrs(m.traderAge.age),m.traderAge.tradingYears?'trading for '+yrs(m.traderAge.tradingYears):'verified from the wallet']);
   if(m.level)tiles.push(['Level',String(m.level.level),m.level.title+' · +'+m.level.xp.toLocaleString('en-US')+' XP']);
   if(m.duel)tiles.push(['Duels',m.duel.w+'–'+m.duel.l+(m.duel.d?'–'+m.duel.d:''),'won–lost'+(m.duel.d?'–drawn':'')]);
+  tiles.splice(4); // four fit on either card
   const tile=(t,tx,ty,tw,th)=>{ box(tx,ty,tw,th,22); x.fillStyle=C.card; x.fill(); x.lineWidth=2; x.strokeStyle=C.line; x.stroke();
     text(t[0].toUpperCase(),tx+28,ty+44,F(600,22),C.muted,'left',tw-56); text(t[1],tx+28,ty+(sq?100:110),F(600,sq?56:64,'n'),C.text,'left',tw-56);
     text(t[2],tx+28,ty+th-24,F(400,22),C.muted,'left',tw-56); };
@@ -386,9 +392,9 @@ function pzWkHtml(){
   const seg=(lbl,k,opts)=>`<div class="pz-seg" role="group" aria-label="${lbl}" style="flex:1">${opts.map(([v,l])=>`<button type="button" data-pz-wk="${k}:${v}" aria-pressed="${w[k]===v}" style="flex:1">${l}</button>`).join('')}</div>`;
   const sw=(k,lbl,hint)=>`<div class="pz-toggle"><span style="flex:1"><b id="pzWk_${k}">${lbl}</b>${hint?`<span>${hint}</span>`:''}</span><button type="button" role="switch" class="pz-switch" data-pz-wk="show:${k}" aria-checked="${w.show[k]!==false}" aria-labelledby="pzWk_${k}"><i></i></button></div>`;
   return `<section class="pz-card pz-kv pz-span" id="pzWk" aria-labelledby="pzWkT"><div class="pz-kvrow"><b id="pzWkT" class="pz-kvh" style="font-size:16px">Share my week</b><button type="button" class="pz-chip icon" data-pz-wk="close" aria-label="Close share my week">${pzI('x',18)}</button></div>
-    <div style="display:flex;justify-content:center;background:var(--pz-bg);border-radius:14px;padding:10px"><img id="pzWkImg" src="${w.url||''}" alt="Your week: discipline, clean days, streak${w.show.level!==false?', level':''}${w.show.duel!==false?', duels':''}${w.show.badges!==false?', badges':''}" style="display:block;max-width:100%;max-height:440px;aspect-ratio:${w.fmt==='square'?'1/1':'4/5'};border-radius:10px;background:var(--pz-card)"></div>
+    <div style="display:flex;justify-content:center;background:var(--pz-bg);border-radius:14px;padding:10px"><img id="pzWkImg" src="${w.url||''}" alt="Your week: discipline, clean days, streak${m&&m.traderAge?', Trader Age':''}${w.show.level!==false?', level':''}${w.show.duel!==false?', duels':''}${w.show.badges!==false?', badges':''}" style="display:block;max-width:100%;max-height:440px;aspect-ratio:${w.fmt==='square'?'1/1':'4/5'};border-radius:10px;background:var(--pz-card)"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">${seg('Shape','fmt',[['portrait','4:5'],['square','Square']])}${seg('Colours','theme',[['dark','Dark'],['light','Light']])}</div>
-    ${sw('level','Level and XP','')}${sw('duel','Duel record',m&&!m.duel&&w.show.duel!==false?'No duels to show yet':'')}${sw('badges','Top badges','')}
+    ${SOC.me&&SOC.me.ta&&!SOC.me.ta.building?sw('age','Trader Age (verified)',''):''}${sw('level','Level and XP','')}${sw('duel','Duel record',m&&!m.duel&&w.show.duel!==false?'No duels to show yet':'')}${sw('badges','Top badges','')}
     <div style="display:flex;gap:8px;flex-wrap:wrap">${canShare?`<button type="button" class="pz-cta pz-sm" style="flex:1;min-height:44px" data-pz-wk="share">Share…</button>`:''}<button type="button" class="${canShare?'pz-ghost':'pz-cta'} pz-sm" style="flex:1;min-height:44px" data-pz-wk="dl">Download</button>${canCopy?`<button type="button" class="pz-ghost pz-sm" style="flex:1" data-pz-wk="copy">Copy image</button>`:''}</div>
     <p class="pz-fine">No dollar amounts and no P&amp;L on this card, on purpose: only your process.</p></section>`;
 }
@@ -401,7 +407,7 @@ async function pzWkMake(){
 }
 async function pzWkAction(a){
   const w=pzS.wk, [k,v]=a.split(':');
-  if(a==='open'){ pzS.wk={fmt:'portrait',theme:document.body.classList.contains('light')?'light':'dark',show:{level:true,duel:true,badges:true}};
+  if(a==='open'){ pzS.wk={fmt:'portrait',theme:document.body.classList.contains('light')?'light':'dark',show:{age:true,level:true,duel:true,badges:true}};
     pzRender(); const el=$('pzWk'); if(el){ el.scrollIntoView({block:'nearest'}); const c=el.querySelector('[data-pz-wk="close"]'); if(c)c.focus(); } await pzWkMake(); pzRender(); return; }
   if(!w)return;
   if(a==='close'){ if(w.url)URL.revokeObjectURL(w.url); pzS.wk=null; pzRender(); const b=document.querySelector('[data-pz-wk="open"]'); if(b)b.focus(); return; }

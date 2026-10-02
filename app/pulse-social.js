@@ -65,7 +65,10 @@ function pzSocialStats(g, habits, J, withLessons){
     days:g.days.slice(-45).map(d=>{ const o={k:d.key,s:d.score,b:!!d.breached,j:d.parts.journal===1}, fl=(d.behavior&&d.behavior.flags)||{};
       const f=Object.keys(fl).filter(k=>fl[k]>0); if(f.length)o.f=f;
       const e=J&&J['day:'+d.key], v=e&&e.eod; if(v&&v.at)o.r=true; if(withLessons&&v&&v.lesson)o.l=String(v.lesson).slice(0,200);
+      // the parts of Trader Age the server can't read from the wallet: prep, journaling, the loss limit
+      if(e&&(e.sleep||e.stress||e.focus))o.p=1; const P=d.parts||{}; if(P.journal>0)o.jn=Math.round(P.journal*100)/100; if(P.limit===0||P.limit===1)o.lm=P.limit;
       return o; }),
+    firstAt:(()=>{ let a=0; for(const t of (typeof allTrades!=='undefined'?allTrades:[])){ const x=+t.openTime||0; if(x>0&&(!a||x<a))a=x; } return a||null; })(),
     xpDays:Object.fromEntries(Object.entries((g.xp&&g.xp.byDay)||{}).filter(([k,v])=>v>0).sort().slice(-100))};
 }
 // The server only gets a wallet address when a toggle needs it — Verify my discipline (fills),

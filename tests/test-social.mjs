@@ -366,8 +366,9 @@ t('only process numbers go out: no trades, notes, P&L or addresses in the stats 
     achievements: [{ id: 'x', title: 'X', at: '2026-09-01' }, { id: 'y', title: 'Y', at: null }],
     days: [{ key: '2026-09-30', score: 88, breached: false, parts: { journal: 1 }, net: -500, n: 3 }] };
   const p = ctx.pzSocialStats(g, ['When a, b.']);
-  eq(Object.keys(p).sort(), ['badgeN', 'badgeTotal', 'badges', 'best', 'challengesDone', 'days', 'habits', 'lastChallenge', 'level', 'shields', 'streak', 'tz', 'week', 'weekXp', 'xp', 'xpDays']);
-  eq(p.days, [{ k: '2026-09-30', s: 88, b: false, j: true }], 'a day carries its score and flags — never its P&L');
+  // firstAt: when the trading history starts (a date, for Trader Age's "trading for"), never a trade
+  eq(Object.keys(p).sort(), ['badgeN', 'badgeTotal', 'badges', 'best', 'challengesDone', 'days', 'firstAt', 'habits', 'lastChallenge', 'level', 'shields', 'streak', 'tz', 'week', 'weekXp', 'xp', 'xpDays']);
+  eq(p.days, [{ k: '2026-09-30', s: 88, b: false, j: true, jn: 1 }], 'a day carries its score and flags (and the share journaled) — never its P&L');
   eq(p.badges, [{ id: 'x', t: 'X' }]); eq(p.lastChallenge, 'When a, b.');
 });
 t('the wallet address goes to the server only when a money toggle or “show address” needs it', () => {
