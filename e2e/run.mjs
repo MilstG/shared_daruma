@@ -248,6 +248,63 @@ try {
     await p.close();
   });
 
+  console.log('\nPulse: tilt alerts and the week card');
+  for (const width of [360, 1280]) await t(`at ${width} px: a tilt banner, the break timer, and a PNG of the week (1080×1350 and 1080×1080)`, async () => {
+    const { page: p, errors: errs } = await openPage({ width, height: 860 }, { token: false });
+    await p.goto(BASE + '/pulse');
+    await p.click('#pzDemo');
+    await p.waitForFunction(() => allTrades.length > 20 && document.querySelector('.pz-rings'));
+    // three losses in the last few minutes, as a refresh would bring them. Headless Chromium always
+    // says notifications are denied, so permission is stood in for and notifications caught on their way out
+    const pick = await p.evaluate(async () => {
+      window.__notes = [];
+      ServiceWorkerRegistration.prototype.showNotification = async function (t) { __notes.push('sw:' + t); };
+      window.Notification = function (t) { __notes.push('page:' + t); }; window.Notification.permission = 'granted';
+      const base = allTrades.find(t => !t.isOpen && t.market !== 'spot'), now = Date.now();
+      [9, 6, 3].forEach((m, i) => allTrades.unshift(Object.assign({}, base, { id: 'tilt-e2e-' + i, openTime: now - (m + 1) * 60000, closeTime: now - m * 60000, isOpen: false, net: -40, pnl: -39, fees: 1 })));
+      const a = pzTiltAlertCheck(); pzRender(); return a && a.k; });
+    eq(pick, 'streak3');
+    const banner = await p.textContent('.pz-talert');
+    ok(/3 losses in 6 minutes\. This is when revenge trades happen\. Step away for 15 minutes\?/.test(banner), banner);
+    await p.waitForFunction(() => __notes.length > 0); eq(await p.evaluate(() => __notes), ['sw:Three losses close together'], 'a system notification too, through the service worker');
+    eq(await p.evaluate(() => pzTiltAlertCheck()), null, 'the same fills again: nothing new to say');
+    // Taking a break: a 15-minute timer you can see, and the break logged on the day
+    await p.click('[data-pz-ta="break"]');
+    await p.waitForSelector('#pzQuietLeft');
+    ok(/^1[45]:[0-5]\d$/.test(await p.textContent('#pzQuietLeft')), await p.textContent('#pzQuietLeft'));
+    const br = await p.evaluate(() => (journal['day:' + dayKey(Date.now())].breaks || []).slice(-1)[0]);
+    eq([br.src, br.p, br.min], ['alert', 'streak3', 15]);
+    await p.click('[data-pz-quiet="end"]');
+    eq(await p.$('.pz-talert'), null, 'the banner is answered');
+    // Dismiss, and the switch in Settings
+    await p.evaluate(() => { _pzTaMem = null; localStorage.removeItem('pzTiltAlerts'); pzTiltAlertCheck(); pzRender(); });
+    await p.click('.pz-talert [data-pz-ta="dismiss"]');
+    eq(await p.$('.pz-talert'), null, 'dismissed');
+    await p.click('[data-pz-sheet]'); await p.click('#pzSheet [data-pz-ta="toggle"]');
+    eq(await p.evaluate(() => settings.pzTiltAlerts), false, 'tilt alerts off');
+    await p.keyboard.press('Escape');
+    eq(await p.evaluate(() => { _pzTaMem = null; localStorage.removeItem('pzTiltAlerts'); return pzTiltAlertCheck(); }), null, 'off means no alert');
+    // Share my week: a PNG at both sizes, in both colours, and a download
+    await p.evaluate(() => { location.hash = '#progress'; });
+    await p.click('[data-pz-wk="open"]');
+    const dims = () => p.evaluate(async () => { const b = pzS.wk.blob, i = await createImageBitmap(b); return [b.type, i.width, i.height, document.getElementById('pzWkImg').src.slice(0, 5)]; });
+    await p.waitForFunction(() => pzS.wk && pzS.wk.blob);
+    eq(await dims(), ['image/png', 1080, 1350, 'blob:']);
+    const n0 = await p.evaluate(() => pzS.wk.n);
+    await p.click('[data-pz-wk="fmt:square"]'); await p.waitForFunction(n => pzS.wk.n > n && pzS.wk.m && pzS.wk.blob && pzS.wk.fmt === 'square', n0);
+    await p.waitForFunction(async () => (await createImageBitmap(pzS.wk.blob)).height === 1080);
+    eq(await dims(), ['image/png', 1080, 1080, 'blob:']);
+    await p.click('[data-pz-wk="theme:light"]'); await p.click('[data-pz-wk="show:badges"]');
+    await p.waitForFunction(() => pzS.wk.theme === 'light' && pzS.wk.show.badges === false && pzS.wk.m && pzS.wk.m.badges.length === 0);
+    ok(!/\$/.test(JSON.stringify(await p.evaluate(() => pzS.wk.m))), 'no dollar amounts on the card');
+    const [dl] = await Promise.all([p.waitForEvent('download'), p.click('[data-pz-wk="dl"]')]);
+    ok(/^pulse-week-\d{4}-\d{2}-\d{2}-square\.png$/.test(dl.suggestedFilename()), dl.suggestedFilename());
+    const sw = await p.evaluate(() => document.documentElement.scrollWidth);
+    ok(sw <= width, 'no sideways scrolling (page is ' + sw + ' px wide)');
+    eq(errs, [], 'no console errors');
+    await p.close();
+  });
+
   console.log('\nOther venues');
   await t('a Lighter address is found and loaded with nothing but the address', async () => {
     const { page: p, errors: errs } = await openPage({ width: 1366, height: 900 });

@@ -1094,10 +1094,10 @@ function createSocial(opts) {
 
   // ---- inbox and web push: nudges, mentor notes, season results and the daily reminders ----
   const push = opts.push || null; // { publicKey, send(sub, message) -> status }
-  const sanitizePrefs = (p, prev) => { const o = Object.assign({ morning: '08:30', eod: '20:30', partner: true, mentor: true, season: true, comment: true, duel: true, on: { morning: true, eod: true } }, prev || {});
+  const sanitizePrefs = (p, prev) => { const o = Object.assign({ morning: '08:30', eod: '20:30', partner: true, mentor: true, season: true, comment: true, duel: true, tilt: true, on: { morning: true, eod: true } }, prev || {});
     if (p && typeof p === 'object') {
       for (const k of ['morning', 'eod']) if (typeof p[k] === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(p[k])) o[k] = p[k];
-      for (const k of ['partner', 'mentor', 'season', 'comment', 'duel']) if (typeof p[k] === 'boolean') o[k] = p[k];
+      for (const k of ['partner', 'mentor', 'season', 'comment', 'duel', 'tilt']) if (typeof p[k] === 'boolean') o[k] = p[k];
       if (p.on && typeof p.on === 'object') o.on = { morning: p.on.morning !== false, eod: p.on.eod !== false }; }
     return o; };
   const sendPush = async (m, msg) => {
@@ -1141,8 +1141,30 @@ function createSocial(opts) {
       if (jobs.length) save(null); // the members touched above
       // eight at a time: one slow push service doesn't hold up everyone else's reminder
       for (let i = 0; i < jobs.length; i += 8) await Promise.all(jobs.slice(i, i + 8).map(f => f().catch(() => 0)));
-      return jobs.length;
+      return jobs.length + await tiltPass(t);
     } finally { ticking = false; } };
+  // Live tilt alerts while Pulse is closed: members who share verified Discipline (so their public
+  // fills are read anyway), with push on and tilt alerts allowed, and a trading day in the last two
+  // weeks. Each is checked every 5 minutes, four per minute at most, by the app's own pzTiltAlerts
+  // (opts.tiltFor), with its rules: once per pattern a day on their clock, 30 minutes apart. When
+  // Pulse is open on one of their devices (seen in the last 10 minutes) the app says it instead.
+  const tiltChecked = new Map();
+  const tiltPass = async t => {
+    if (!opts.tiltFor || !canVerify) return 0;
+    const recent = addDaysKey(todayKey(), -14), lastDay = m => { const d = Array.isArray(m.vdays) && m.vdays.length ? m.vdays : m.stats && Array.isArray(m.stats.days) ? m.stats.days : []; return d.length ? d[d.length - 1].k : ''; };
+    const due = members().filter(m => !m.banned && m.push && Array.isArray(m.push.subs) && m.push.subs.length && m.share && m.share.verify && walletFor(m)
+      && m.push.prefs && m.push.prefs.tilt !== false && t - (tiltChecked.get(m.id) || 0) >= 5 * 60000 && lastDay(m) >= recent)
+      .sort((a, b) => (tiltChecked.get(a.id) || 0) - (tiltChecked.get(b.id) || 0)).slice(0, 4);
+    let sent = 0;
+    await Promise.all(due.map(async m => { tiltChecked.set(m.id, t);
+      try {
+        const r = await opts.tiltFor(walletFor(m), (m.stats && m.stats.tz) || 'UTC', m.tilt || null);
+        if (!r || !r.st || !own(S.members, m.id)) return;
+        m.tilt = r.st; touch(m);
+        if (r.pick && !(m.lastSeen && t - m.lastSeen < 10 * 60000)) { notify(m, 'tilt', r.pick.text, { title: r.pick.title, url: '/pulse#today' }); sent++; }
+      } catch (e) { /* the exchange or the fills cache failed: the next pass tries again */ } }));
+    if (due.length) save(null);
+    return sent; };
 
   // ---- accountability partners: two members who see each other's process and nudge each other ----
   const pairOf = (m, id) => { const p = own(S.partners, id) ? S.partners[id] : null; return p && (p.a === m.id || p.b === m.id) ? p : null; };

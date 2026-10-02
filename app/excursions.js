@@ -664,7 +664,8 @@ function setupAutoRefresh(){
     btn.onclick=()=>{ settings.autoRefresh=!(settings.autoRefresh!==false); Store.set(S_KEY,settings); setupAutoRefresh(); }; }
   if(!on)return;
   _autoTimer=setInterval(()=>{
-    if(document.visibilityState!=='visible')return;
+    // a hidden tab waits, unless Pulse's tilt alerts want it during a live session (pzTiltBgWanted)
+    if(document.visibilityState!=='visible'&&!(typeof pzTiltBgWanted==='function'&&pzTiltBgWanted()))return;
     if(_loading||!settings.wallets.length)return;
     loadAll({auto:true});
   },180000);

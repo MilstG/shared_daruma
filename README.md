@@ -266,6 +266,17 @@ loss limit and plan) and **Progress** (level, XP, streak and shields, the
 weekly challenge, badges, share cards). A quick journal screen rates and notes
 unjournaled trades from the last 30 days — the ✎ count at the top of Today and Progress opens it. On a wide screen the tabs become a sidebar.
 
+**Share my week.** On Progress (from the level share cards unlock at), **Share my
+week** draws an image of the week on your clock (last week until this one has a
+trading day): its Discipline average as a ring, clean days (70+) out of trading
+days, the streak, level and XP gained, the duel record and the top badges (this
+week's first, by tier). It has no dollar amounts and no P&L, on purpose; badges for
+results are left off too. Choose 4:5 (1080×1350) or square (1080×1080), dark or
+light, and whether level, duel record and badges show; then **Share…** (the phone's
+share sheet, where the browser can share files), **Download**, or **Copy image**.
+It's drawn on a canvas in the browser: nothing is sent anywhere. The model the card
+draws from is `pzWeekCardModel` in `app/pulse-screens.js`.
+
 **Your layout.** Every Pulse screen (Today, Stats, Progress) has **Customize
 this screen** at the bottom: show or hide each section, or reset to the default.
 On Today you can also put the cards below the dials in your own order (the up and
@@ -345,6 +356,30 @@ loss or entry turns on **quiet mode**: a full-screen card that lists what pushed
 the reading up, brings back the lesson you wrote about that slip, and offers a
 15-minute break with a countdown (or "I'm calm"). One answer covers one episode.
 Optionally the browser notifies you when it happens.
+
+**Tilt alerts.** After each refresh that brings new fills for today, Pulse checks
+today's fills for five specific patterns and, when one shows up, puts a calm banner
+at the top of Today that names it ("3 losses in 40 minutes. This is when revenge
+trades happen. Step away for 15 minutes?"): a re-entry within 15 minutes of a loss,
+3 losses within 45 minutes, a trade over 1.5× your usual size right after a loss,
+more trades than your check-in's max trades (or well past your usual day: over
+1.5× its median, at least 3), and your loss limit 80% used or reached (the same
+limit as the tripwire, which keeps its own notification: one, not two). Only what
+happened in the last hour counts, and "today" is today on your clock. **Taking a
+break** starts the same 15-minute break as quiet mode, with its countdown, and logs
+it on the day (`breaks`, marked as from an alert); breaks never change Discipline.
+**Dismiss** puts it away. Each pattern is said at most once a day, and never within
+30 minutes of the last alert (`pzTiltAlerts` and `pzTiltAlertPick` in
+`app/progress.js`). With notification permission, the alert also comes as a system
+notification through the service worker, and while a session is live (a trade in
+the last two hours) the refresh keeps running in a background tab so it can.
+Settings → **Tilt alerts** turns them off. With Pulse closed, members who share
+verified Discipline get the same alerts as a push (pref kind `tilt`, on by default,
+**Tilt alerts while Pulse is closed** under Reminders): the server reads their public
+fills every 5 minutes (four members a minute at most) and runs the same two
+functions on their clock; the plan and loss-limit checks need the journal, so those
+two are app-only. When Pulse was open on one of their devices in the last 10
+minutes, the app says it instead.
 
 **Market conditions.** Each day is tagged from BTC's daily candles: *volatile*,
 *normal* or *quiet* (the day's high–low range against the median of the 30 days
@@ -477,8 +512,8 @@ link to join *your* league. A server upgraded from an older version imports its
   member's inbox (Today → New for you) and as a push notification.
 - **Reminders (web push).** In Pulse's settings, **Remind me on this device** sends a
   morning check-in reminder and, on days you traded and haven't reviewed, an evening
-  review reminder, at times you pick on your own clock; partner nudges, mentor notes
-  and season results come the same way. It's standard web push, encrypted end to end
+  review reminder, at times you pick on your own clock; partner nudges, mentor notes,
+  season results and tilt alerts (see Tilt alerts above) come the same way. It's standard web push, encrypted end to end
   (RFC 8291) with the server's own keys — no third-party service. On iPhone it needs
   Pulse added to the Home Screen.
 
