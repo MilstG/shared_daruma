@@ -393,8 +393,19 @@ fills cache now keeps 6 months; an older, shorter cache is read again once from 
 prep, journaling and the loss limit from the days the app reports (kept by day, 200 days).
 Keel then shows it with a ✓, it goes on the weekly share card (switchable), and others see it
 on the member's profile while they share verified Discipline. Everyone else sees the estimate
-their own app makes, with what it takes to verify it. An XP multiplier for holding it, and
-tools that need a current Trader Age, come next.
+their own app makes, with what it takes to verify it.
+
+**XP multiplier.** Holding a verified Trader Age earns more daily XP. A trading week counts
+when that week's own rating and the 6-month rating at its end are both at the bar (70, Trader
+Age 4 years); by default 2 such weeks give ×1.05, 4 give ×1.1, 8 ×1.2, 13 ×1.3 and 26 ×1.5. A
+trading week under the bar drops one tier (never back to the start), and weeks without trading
+neither count nor break it. The server works it out (the app's own `taMultStep`, one finished
+week at a time) and records each week's multiplier, which applies to that week's daily XP
+(Discipline plus logging bonuses; achievements, badges, challenges and grants pay what they
+say). XP already earned never changes. Levels and lifetime XP count the multiplier; weekly
+league tables and duels use the XP before it, so a newcomer can still win a week. The owner
+sets the bar and the tiers, or switches it off, in Levels & XP. Tools that need a current
+Trader Age come next.
 
 **Tilt meter and quiet mode.** A live reading (0–100) on Today of the triggers
 that come before a blow-up: losses in a row (30 points at three), a loss in the
@@ -829,7 +840,8 @@ action. Sections:
   value (level, XP, streak, 30-day discipline or return, days in the league …) or
   awarded by hand, each paying the XP you set.
 - **Levels & XP** — levels on a curve or a table of thresholds, level titles, a live
-  preview, and the XP every action pays.
+  preview, the XP every action pays, and the XP multiplier for holding Trader Age (on/off,
+  the bar, the tiers).
 - **Features** — the level each feature unlocks at, and the level people without a
   profile stop at.
 - **Coach** — on/off for members, daily allowances, your own limit, whether members

@@ -42,6 +42,7 @@ function traderAge(days, J, opts){
     return {key:d.key, d, parts, r:0.65*parts.discipline+0.15*parts.steadiness+0.10*parts.limit+0.10*parts.log};
   });
   const inWin=rated, n=inWin.length;
+  if(opts.raw)return {daily:rated.map(x=>({key:x.key,r:x.r}))};
   const firstAt=opts.firstAt>0?opts.firstAt:null, tradingYears=firstAt?Math.max(0,(now-firstAt)/(365.25*864e5)):null;
   const out={n, need:Math.max(0,TA.minDays-n), tradingYears, building:n<TA.minDays};
   if(!n)return out;
@@ -66,6 +67,46 @@ function traderAge(days, J, opts){
 }
 // '2026-W39' as 'Week of Sep 21' (its Monday)
 function taWeekLabel(w){ try{ const k=isoWeekMondayKey(w); return 'Week of '+MONTHS[+k.slice(5,7)-1]+' '+(+k.slice(8)); }catch(e){ return w; } }
+/* ---- the XP multiplier (spec step 5): earned by holding Trader Age, worked out by the server ----
+   A trading week counts toward it when that week's own rating and the 6-month rating at its end are
+   both at the bar (70 = Trader Age 4 years). A trading week under the bar drops one tier, never back to
+   the start; weeks without trading neither count nor break it. */
+function taMultDefaults(){ return {on:true, bar:70, tiers:[[2,1.05],[4,1.1],[8,1.2],[13,1.3],[26,1.5]]}; }
+// every trading week in the days given (oldest first): the average rating of its own days, and the
+// 6-month rating at its end (null until there are 15 trading days to go on)
+function taWeeks(days, J, opts){
+  opts=opts||{}; const dayOf=opts.dayOf;
+  const all=(days||[]).filter(d=>d&&d.key&&isFinite(d.score)).slice().sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0);
+  const weeks=[...new Set(all.map(d=>isoWeekOfKey(d.key)))].filter(w=>!opts.after||w>opts.after);
+  return weeks.map(w=>{ const keys=all.filter(d=>isoWeekOfKey(d.key)===w).map(d=>d.key), end=keys[keys.length-1];
+    const upTo=all.filter(d=>d.key<=end), now=Date.parse(end+'T23:59:59Z');
+    const A=traderAge(upTo, J, {now, dayOf}), rs=traderAge(upTo, J, {now, dayOf, raw:true}).daily.filter(x=>keys.includes(x.key)).map(x=>x.r);
+    return {week:w, end, n:keys.length, weekRating:rs.length?rs.reduce((a,v)=>a+v,0)/rs.length:null, norm:A.n>=TA.minDays?A.rating:null}; });
+}
+// the tier a count of good weeks reaches (-1: none yet), under the owner's current tiers
+function taMultTier(count, cfg){ let t=-1; (cfg||taMultDefaults()).tiers.forEach((x,i)=>{ if(count>=x[0])t=i; }); return t; }
+// one finished trading week moves the multiplier. The state is the good weeks held and the last week
+// counted, so the tier always reads from the owner's current tiers (changing them never strands anyone).
+function taMultStep(state, wk, cfg){
+  cfg=cfg||taMultDefaults(); const T=cfg.tiers, st=Object.assign({count:0,last:null},state||{});
+  if(!wk||(st.last&&wk.week<=st.last))return st;
+  if(wk.weekRating!=null&&wk.weekRating<cfg.bar){ const t=taMultTier(st.count,cfg); st.count=t>=1?T[t-1][0]:0; } // down one tier
+  else if(wk.weekRating!=null&&wk.norm!=null&&wk.norm>=cfg.bar)st.count++;
+  st.last=wk.week; return st;
+}
+function taMultOf(state, cfg){ cfg=cfg||taMultDefaults(); const t=state?taMultTier(state.count,cfg):-1; return t>=0&&cfg.on!==false?cfg.tiers[t][1]:1; }
+// the multiplier, as the server reports it: this week's, the good weeks held, and what the next tier needs
+function taMultCardHtml(A){
+  const cfg=(typeof SOC!=='undefined'&&SOC.cfg&&SOC.cfg.mult)||taMultDefaults(), M=typeof SOC!=='undefined'&&SOC.me&&SOC.me.mult;
+  if(cfg.on===false)return '';
+  const top=cfg.tiers[cfg.tiers.length-1], bar=cfg.bar, barYears=taFmtYears(taYears(bar));
+  const rule=`<p class="pz-fine">A good week: that week and your 6-month Trader Age both at ${esc(barYears)} or more (rating ${bar}). A week below drops one tier, never back to the start. Weeks you don’t trade don’t count either way. Leagues and duels use your XP before the multiplier.</p>`;
+  if(!A.verified||!M)return `<section class="pz-card pz-kv"><b class="pz-kvh">XP multiplier</b>
+    <p class="pz-sub" style="font-size:13px">Hold a verified Trader Age of ${esc(barYears)} or more and your daily XP grows, up to ×${top[1]} after ${top[0]} good trading weeks.</p>${rule}</section>`;
+  const nx=M.next, pct=nx?Math.min(1,M.held/nx.weeks):1;
+  return `<section class="pz-card pz-kv"><div class="pz-kvrow"><b class="pz-kvh">XP multiplier</b><span style="font-family:var(--pz-num);font-size:28px;font-weight:600;color:${M.now>1?PZ_COL.good:'var(--pz-muted)'}">×${(+M.now).toFixed(2).replace(/0$/,'')}</span></div>
+    ${pzBar(pct,PZ_COL.xp)}<p class="pz-sub" style="font-size:13px">${M.held} good week${M.held===1?'':'s'} held. ${nx?`${nx.toGo} more for ×${nx.mult}.`:'That’s the top tier.'} This week’s daily XP is multiplied by ×${(+M.now).toFixed(2).replace(/0$/,'')}.</p>${rule}</section>`;
+}
 const TA_PART={discipline:['Discipline','Your daily Discipline score, read from your fills',65],steadiness:['Steadiness','How even your daily scores are',15],
   limit:['Loss limit kept','Days inside your loss limit (no limit set counts as 70)',10],log:['Prep and journal','Morning prep done, trades journaled',10]};
 // the server's verified Trader Age when it has one (a member whose wallet it reads), else this device's estimate
@@ -120,6 +161,7 @@ function taScreenHtml(D){
     <div style="display:flex;align-items:baseline;gap:10px"><span style="font-family:var(--pz-num);font-size:32px;font-weight:600;color:${taPaceCol(A.pace)}">${A.pace.toFixed(1)}×</span><span class="pz-sub">${taPaceWord(A.pace)}</span></div>
     <p class="pz-sub" style="font-size:13px">Over ${wk.n} trading days you traded like someone with ${esc(taFmtYears(wk.age))} behind them, against your 6-month ${esc(taFmtYears(A.age))}.${A.pace<0.9&&slip?' What cost you most: '+esc(slip.toLowerCase())+'.':''}</p>`
     :`<p class="pz-sub" style="font-size:13px">Pace needs at least 3 trading days in the last 7. ${wk.n?'You have '+wk.n+'.':'No trades yet this week.'}</p>`}</section>`;
+  const mult=taMultCardHtml(A);
   const rows=Object.keys(TA_PART).map(k=>{ const [l,h,w]=TA_PART[k], v=A.parts[k];
     return `<div class="pz-row"><div class="pz-row-t"><span>${esc(l)}<span class="pz-sub" style="display:block;font-size:12px">${esc(h)} · ${w}%</span></span><b>${Math.round(v)}</b></div>${pzBar(v/100,k===A.drag?PZ_COL.low:PZ_COL.xp)}</div>`; }).join('');
   const parts=`<section class="pz-card pz-kv"><b class="pz-kvh">What builds it</b>${rows}<p class="pz-fine">Holding it back most: <b>${esc(TA_PART[A.drag][0].toLowerCase())}</b>.</p></section>`;
@@ -127,7 +169,7 @@ function taScreenHtml(D){
   const hist=W.length>1?`<section class="pz-card pz-kv"><b class="pz-kvh">Week by week</b><div class="pz-chart" style="--h:110px;--gap:${W.length>8?'4px':'8px'}">${W.map(w=>
     `<i style="height:${Math.max(4,Math.round(w.age/max*110))}px;background:${PZ_COL.xp}" data-pz-tip="${esc(taWeekLabel(w.week)+': '+taFmtYears(w.age)+' · rating '+Math.round(w.rating)+' · '+w.n+' trading day'+(w.n===1?'':'s'))}"></i>`).join('')}</div>
     <p class="pz-fine">Each bar is that week on its own, as a Trader Age.</p></section>`:'';
-  return `${back}${pzHead('Your process, in years','Trader Age')}<div class="pz-wide">${hero}<div class="pz-col">${pace}${hist}</div><div class="pz-col">${parts}${how}</div></div>`;
+  return `${back}${pzHead('Your process, in years','Trader Age')}<div class="pz-wide">${hero}<div class="pz-col">${pace}${mult}${hist}</div><div class="pz-col">${parts}${how}</div></div>`;
 }
 pzFeature({id:'age', today:{label:'Trader Age',hint:'How seasoned your process looks, in years, against how long you’ve traded',col:0,after:'tilt',html:taCardHtml},
   tab:{name:'age',nav:'progress',html:taScreenHtml}});

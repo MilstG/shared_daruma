@@ -115,7 +115,7 @@ const ENGINE_FNS = [
   // Pulse's Discipline score, recomputed from a member's public fills to verify the social boards
   'nfMedian', 'addedToLoser', 'pzBehaviorDays',
   // Trader Age (app/features/trader-age.js): members' verified Trader Age, from their wallets' fills
-  'taConf', 'taYears', 'traderAge', 'isoWeekOfKey',
+  'taConf', 'taYears', 'traderAge', 'isoWeekOfKey', 'taMultDefaults', 'taWeeks', 'taMultTier', 'taMultStep', 'taMultOf',
   // live tilt alerts, pushed to those members while Pulse is closed (same patterns and rules as the app)
   'pzTiltAlerts', 'pzTiltAlertPick',
   // the anonymous summary a seed wallet contributes to the "traders like you" benchmarks
@@ -2371,7 +2371,8 @@ function createApp(opts) {
   const twofa = Admin2fa.create({ dataDir, json, now: opts.now, lockedOut, noteBadToken, lockMs, sessionMs: opts.admin2faSessionMs,
     mode: opts.admin2fa !== undefined ? opts.admin2fa : process.env.ADMIN_2FA, reset: opts.admin2faReset !== undefined ? opts.admin2faReset : process.env.ADMIN_2FA_RESET });
   const social = createSocial({ dataDir, json, authOk, adminConfigured: !!auth, fetchImpl: opts.fetchImpl, now: opts.now, push: pushCfg, onDrop: id => wearRef.forget && wearRef.forget('m:' + id),
-    behaviorFor, traderAge: engine.ok ? E.traderAge : null, tiltFor: opts.tiltFor || tiltFor, peerSummaryFor: opts.peerSummaryFor || peerSummaryFor, seedDelay: opts.seedDelay, tradeCheck: opts.tradeCheck || tradeCheck, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled, twofa });
+    behaviorFor, traderAge: engine.ok ? E.traderAge : null,
+    taMult: engine.ok ? { weeks: E.taWeeks, step: E.taMultStep, of: E.taMultOf, tier: E.taMultTier, weekOf: E.isoWeekOfKey } : null, tiltFor: opts.tiltFor || tiltFor, peerSummaryFor: opts.peerSummaryFor || peerSummaryFor, seedDelay: opts.seedDelay, tradeCheck: opts.tradeCheck || tradeCheck, verifyAvailable: engine.ok, forgetAddress, publicOrigins, hostVetted, clientIp, coachAvailable: coachCfg.enabled, twofa });
   // readiness from WHOOP, Oura or Apple Health: the owner (AUTH_TOKEN) or a member (Pulse key)
   const wearOrigin = req => { if (publicOrigins[0]) { try { return new URL(publicOrigins[0]).origin; } catch (e) {} }
     return hostVetted && req.headers.host ? 'https://' + req.headers.host : opts.wearOrigin || null; };

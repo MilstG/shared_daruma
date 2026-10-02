@@ -65,6 +65,22 @@ const STREAK_MARKS = [7, 14, 21, 30, 50, 75, 100, 150, 200, 365];
 const COMP_TYPES = ['discipline', 'survivor', 'journal', 'return'];
 // guestCap: people using Pulse without a profile stop at this level (their XP still counts, and creating a
 // profile unlocks what they earned); 0 = no limit
+// mult: the XP multiplier for holding Trader Age (on, the rating bar, and [trading weeks held, multiplier] tiers)
+const DEFAULT_MULT = { on: true, bar: 70, tiers: [[2, 1.05], [4, 1.1], [8, 1.2], [13, 1.3], [26, 1.5]] };
+function sanitizeMult(b, prev) {
+  const o = Object.assign({}, DEFAULT_MULT, prev || {});
+  if (b && typeof b === 'object') {
+    if (typeof b.on === 'boolean') o.on = b.on;
+    const bar = clampNum(b.bar, 40, 95); if (bar != null) o.bar = Math.round(bar);
+    if (Array.isArray(b.tiers)) {
+      // ascending weeks (1–104) and ascending multipliers (1.01–3), at most 8 tiers
+      const t = b.tiers.map(x => Array.isArray(x) ? [Math.round(clampNum(x[0], 1, 104) || 0), Math.round((clampNum(x[1], 1.01, 3) || 0) * 100) / 100] : null)
+        .filter(x => x && x[0] && x[1]).sort((a, c) => a[0] - c[0]).slice(0, 8);
+      if (t.length && t.every((x, i) => !i || (x[0] > t[i - 1][0] && x[1] > t[i - 1][1]))) o.tiers = t;
+    }
+  }
+  return { on: !!o.on, bar: o.bar, tiers: o.tiers.map(x => [x[0], x[1]]) };
+}
 const DEFAULT_CONFIG = { open: true, inviteCode: '', unlocksOn: true, requireClaim: false, approveWallets: false, vaultOn: true, guestCap: 3,
   unlocks: { trends: 2, share: 3, compete: 4 } };
 const SHARE_KEYS = ['profile', 'boards', 'global', 'page', 'feed', 'habits', 'verify', 'ret', 'usd', 'addr', 'mentor', 'bench', 'duels', 'seek'];
@@ -453,6 +469,7 @@ function createSocial(opts) {
     unlocks: Object.assign({}, DEFAULT_CONFIG.unlocks, S.config && S.config.unlocks) });
   delete S.config.themes; // colour themes were dropped
   S.config.guestCap = Math.max(0, Math.min(100, Math.round(+S.config.guestCap))) || 0;
+  S.config.mult = sanitizeMult(S.config.mult, null);
   // v0.4 sections; v0.3's three unlock levels carry over into the feature map
   S.config.modules = SC.sanitizeModules(S.config.modules || S.config.unlocks, null);
   S.config.levels = SC.sanitizeLevels(S.config.levels, null);
@@ -865,8 +882,29 @@ function createSocial(opts) {
         parts: A.parts ? Object.fromEntries(Object.entries(A.parts).map(([k, v]) => [k, r1(v)])) : null,
         week: A.week ? { n: A.week.n, age: r1(A.week.age), rating: r1(A.week.rating), slip: A.week.slip || null } : null,
         weeks: (A.weeks || []).map(w => ({ week: w.week, age: r1(w.age), rating: r1(w.rating), n: w.n })) };
+      try { multCompute(m, days, J, tz); } catch (e) { /* the multiplier waits for the next try; Trader Age stands */ }
     } catch (e) { m.ta = null; }
   };
+  // The XP multiplier: each finished trading week moves it (the app's own taMultStep), and the week
+  // now under way gets the multiplier those weeks earned. Weeks keep the multiplier they had
+  // (multHist), so XP already earned never changes; a week without a verified Trader Age is ×1.
+  const multWeekNow = m => opts.taMult ? opts.taMult.weekOf(zoneKey((m.stats && m.stats.tz) || 'UTC', now())) : null;
+  const multCompute = (m, days, J, tz) => {
+    const M = opts.taMult, cfg = S.config.mult; if (!M) return;
+    const cur = multWeekNow(m);
+    const weeks = M.weeks(days, J, { dayOf: ms => zoneKey(tz, ms), after: m.multState && m.multState.last }).filter(w => w.week < cur);
+    let st = m.multState || null; for (const w of weeks) st = M.step(st, w, cfg);
+    m.multState = st || { count: 0, last: null };
+    const hist = m.multHist && typeof m.multHist === 'object' ? m.multHist : {};
+    hist[cur] = cfg.on ? M.of(m.multState, cfg) : 1;
+    const ks = Object.keys(hist).sort(); for (const k of ks.slice(0, Math.max(0, ks.length - 520))) delete hist[k];
+    m.multHist = hist;
+  };
+  // what the app needs: this week's multiplier, progress to the next tier, and each week's multiplier for its XP
+  const multOut = m => { const cfg = S.config.mult, st = m.multState || { count: 0 }, T = cfg.tiers, tier = opts.taMult ? opts.taMult.tier(st.count, cfg) : -1, nx = T[tier + 1] || null;
+    const hist = m.multHist || {}, cur = multWeekNow(m);
+    return { on: !!cfg.on, now: cur && hist[cur] ? hist[cur] : 1, tier, held: st.count, bar: cfg.bar, hist,
+      next: nx ? { weeks: nx[0], mult: nx[1], toGo: Math.max(0, nx[0] - st.count) } : null }; };
   // ---- "traders like you": peer groups from members' summaries and the owner's seed wallets ----
   const BENCH_FRESH = 21 * 86400000, SEED_REFRESH = 7 * 86400000, SEED_MAX = 5000;
   const benchRows = () => {
@@ -1225,6 +1263,7 @@ function createSocial(opts) {
     if (out.isMe) Object.assign(out, { claimedAddress: m.claimed || null, devices: (m.keyHash ? 1 : 0) + (Array.isArray(m.keyHashes) ? m.keyHashes.length : 0),
       vault: m.vault ? { rev: m.vault.rev, size: m.vault.size, at: m.vault.at } : null, requireClaim: !!S.config.requireClaim, vaultOn: !!S.config.vaultOn,
       ta: m.share && m.share.verify ? m.ta || null : null, // verified Trader Age (null: the app shows its own estimate)
+      mult: multOut(m),
       needsClaim: !!(S.config.requireClaim && m.address && m.claimed !== m.address),
       walletStatus: m.address && (S.config.approveWallets || walletStatus(m.address) === 'rejected') ? walletStatus(m.address) : null, admin: !!m.admin,
       passkeys: (m.passkeys || []).map(k => ({ id: k.id, name: k.name, at: k.at, lastUsed: k.lastUsed || null })),
@@ -1588,7 +1627,7 @@ function createSocial(opts) {
       return json(res, 200, { enabled: adminConfigured, open: S.config.open, inviteRequired: !!S.config.inviteCode, unlocksOn: S.config.unlocksOn,
         unlocks: S.config.unlocks, tiers: TIERS, week: S.league.week, members: members().filter(m => !m.banned).length,
         claims: !!sig, passkeys: true, requireClaim: !!S.config.requireClaim, approveWallets: !!S.config.approveWallets, vaultOn: !!S.config.vaultOn,
-        modules: S.config.modules, levels: S.config.levels, xp: S.config.xp, profiles: S.config.profiles, guestCap: S.config.guestCap,
+        modules: S.config.modules, levels: S.config.levels, xp: S.config.xp, profiles: S.config.profiles, guestCap: S.config.guestCap, mult: S.config.mult,
         bench: { on: !!S.config.bench.on, minTrades: S.config.bench.minTrades, days: S.config.bench.days }, duels: { on: !!S.config.duels.on },
         coach: { members: S.config.coach.members, daily: S.config.coach.daily, detail: S.config.coach.detail }, posts: postCfgOut(),
         badges: Object.values(S.badges).map(b => ({ id: b.id, name: b.name, icon: b.icon, desc: b.desc, metric: b.metric, metricLabel: b.metric ? SC.BADGE_METRICS[b.metric] : null, op: b.op, value: b.value, xp: b.xp })),
@@ -1807,6 +1846,7 @@ function createSocial(opts) {
         if (typeof body.inviteCode === 'string') c.inviteCode = cleanText(body.inviteCode, 40);
         if (typeof body.unlocksOn === 'boolean') c.unlocksOn = body.unlocksOn;
         if (typeof body.vaultOn === 'boolean') c.vaultOn = body.vaultOn;
+        if (body.mult) c.mult = sanitizeMult(body.mult, c.mult);
         if (body.guestCap !== undefined && isFinite(+body.guestCap)) c.guestCap = Math.max(0, Math.min(100, Math.round(+body.guestCap)));
         if (body.modules) c.modules = SC.sanitizeModules(body.modules, c.modules);
         if (body.unlocks) c.modules = SC.sanitizeModules(body.unlocks, c.modules); // v0.3 panels send this name

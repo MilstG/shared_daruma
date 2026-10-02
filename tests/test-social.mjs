@@ -360,6 +360,12 @@ t('a shared habit sentence becomes a self-graded habit', () => {
   eq(ctx.socHabitSpec('When I close two losing trades in a row, I stop for the day.'), { kind: 'self', when: 'I close two losing trades in a row', then: 'I stop for the day' });
   eq(ctx.socHabitSpec('Always use a stop.').then, 'Always use a stop');
 });
+t('leagues and duels get XP before the multiplier; the total (and level) count it', () => {
+  const g = { xp: { total: 1500, byDay: { '2026-10-19': 150 } }, xpBase: { total: 1000, byDay: { '2026-10-19': 100 } }, weekXp: 150, weekXpBase: 100,
+    level: { level: 3 }, nowWeek: '2026-W43', streak: { current: 1, best: 1, shields: 0 }, challenges: [], achievements: [], days: [] };
+  const p = ctx.pzSocialStats(g, []);
+  eq([p.xp, p.weekXp, p.xpDays['2026-10-19']], [1500, 100, 100]);
+});
 t('only process numbers go out: no trades, notes, P&L or addresses in the stats payload', () => {
   const g = { xp: { total: 1234 }, level: { level: 3 }, nowWeek: '2026-W40', weekXp: 210, streak: { current: 4, best: 9, shields: 1 },
     challenges: [{ status: 'done', ch: { spec: { when: 'a', then: 'b' } } }, { status: 'missed' }],

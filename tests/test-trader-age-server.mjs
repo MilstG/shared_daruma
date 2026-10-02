@@ -60,6 +60,25 @@ try {
     const first = Math.min(...starts);
     ok(Math.abs(first - (clock - 183 * DAY)) < DAY, 'fetched from 6 months back, not from the cached last fill: ' + new Date(first).toISOString());
   });
+  await t('the multiplier: finished weeks move it, the week under way gets it, and the owner’s tiers apply', async () => {
+    // 20 days to Tuesday Oct 20: of the finished weeks only Oct 12–18 has 15+ days behind it, and it was good
+    let me = (await call('/me', { key: K })).d.me;
+    eq([me.mult.held, me.mult.now, me.mult.next.toGo, me.mult.next.mult], [1, 1, 1, 1.05]);
+    eq(me.mult.hist, { '2026-W43': 1 }, 'this week, at ×1');
+    // the owner makes 1 good week worth ×1.1: the next sync gives this week ×1.1, the weeks already counted aren't recounted
+    eq((await call('/admin/config', { method: 'PUT', owner: true, body: { mult: { on: true, bar: 70, tiers: [[1, 1.1], [3, 1.2]] } } })).status, 200);
+    await call('/stats', { method: 'POST', key: K, body: stats() });
+    me = (await call('/me', { key: K })).d.me;
+    eq([me.mult.held, me.mult.now, me.mult.hist['2026-W43']], [1, 1.1, 1.1]);
+    // tiers whose multiplier goes down are refused (weeks are sorted); the last good ones stay
+    await call('/admin/config', { method: 'PUT', owner: true, body: { mult: { tiers: [[2, 1.5], [4, 1.2]] } } });
+    eq((await call('/config')).d.mult.tiers, [[1, 1.1], [3, 1.2]]);
+    // off: this week goes back to ×1
+    await call('/admin/config', { method: 'PUT', owner: true, body: { mult: { on: false } } });
+    await call('/stats', { method: 'POST', key: K, body: stats() });
+    eq((await call('/me', { key: K })).d.me.mult.now, 1);
+    await call('/admin/config', { method: 'PUT', owner: true, body: { mult: { on: true } } });
+  });
   await t('others see the Trader Age only while the member shares verified Discipline', async () => {
     const k2 = (await call('/join', { method: 'POST', body: { handle: 'watcher' } })).d.key;
     const prof = async () => (await call('/profile/steady_one', { key: k2 })).d;
