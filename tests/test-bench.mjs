@@ -38,16 +38,20 @@ t('scalpers, swing traders and bigger sizes land in their own ranges', () => {
   eq(peerSummary(trades(40, { size: 10, px: 50000 }), { now: NOW, dayOf }).size, 's4');
   eq(peerSummary(trades(40), { now: NOW, dayOf }).jour, null, 'no journal (a seed wallet): not measured');
 });
-t('under 30 trades or under 3 weeks: no summary, and it says why', () => {
-  eq(peerSummary(trades(20), { now: NOW, dayOf }), { ok: false, why: 'few', n: 20 });
-  eq(peerSummary(trades(40, { every: 12 * 3600e3 }), { now: NOW, dayOf }).why, 'short');
+t('too few trades or under 2 weeks: no summary, and it says why; the owner sets the bar and the look-back', () => {
+  eq(peerSummary(trades(12), { now: NOW, dayOf }), { ok: false, why: 'few', n: 12, need: 15, days: 90 }, '15 closed trades by default');
+  eq(peerSummary(trades(20), { now: NOW, dayOf }).ok, true);
+  eq(peerSummary(trades(20), { now: NOW, dayOf, minTrades: 30 }), { ok: false, why: 'few', n: 20, need: 30, days: 90 });
+  eq(peerSummary(trades(8), { now: NOW, dayOf, minTrades: 3 }).need, 10, 'never under 10');
+  eq(peerSummary(trades(40, { every: 6 * 3600e3 }), { now: NOW, dayOf }).why, 'short');
 });
 
 console.log('\nPeer groups');
 const row = (style, size, exp, wr, extra) => Bench.sanitizeBench(Object.assign({ n: 40, style, size, exp, act: 'a2', disc: 70, rev: 5, wr, pf: wr / 40, pay: 1.2, fees: 15, tw: 8, hold: 90 }, extra));
 t('summaries are checked: real ranges only, at least 30 trades, numbers clamped', () => {
   eq(Bench.sanitizeBench({ ...row('day', 's2', 'e2', 50), style: 'whale' }), null);
-  eq(Bench.sanitizeBench({ ...row('day', 's2', 'e2', 50), n: 12 }), null);
+  eq(Bench.sanitizeBench({ ...row('day', 's2', 'e2', 50), n: 9 }), null, 'under 10 is never a summary');
+  eq(Bench.sanitizeBenchCfg({ minTrades: 5, days: 365 }), Object.assign({}, Bench.DEFAULTS, { minTrades: 10, days: 90 }));
   eq(Bench.sanitizeBench({ ...row('day', 's2', 'e2', 50), wr: 400 }).wr, 100);
   eq(Bench.sanitizeBench({ ...row('day', 's2', 'e2', 50), jour: null }).jour, null);
 });
@@ -131,7 +135,7 @@ try {
     ok(await waitFor(async () => (await call('/admin/bench', { owner: true })).d.seedCounts.queued === 0), 'all three were read');
     const a = (await call('/admin/bench', { owner: true })).d, st = Object.fromEntries(a.seedList.map(x => [x.address, x]));
     eq([st[W('1')].st, st[W('1')].style, st[W('1')].n], ['ok', 'day', 40]);
-    eq([st[W('2')].st, st[W('2')].why], ['skip', 'fewer than 30 closed trades in the last 90 days']);
+    eq([st[W('2')].st, st[W('2')].why], ['skip', '1 closed trade in the last 90 days (needs 15)']);
     eq(st[W('9')].st, 'err');
     eq([a.contributors, a.members, a.seeds], [12, 11, 1]);
   });
@@ -154,7 +158,7 @@ try {
     eq((await call('/admin/bench', { method: 'POST', owner: true, body: { action: 'remove', which: 'all' } })).d.removed, 5000);
   });
   await t('“Traders like you” is a feature the owner can tie to a level (free by default)', async () => {
-    const c = (await call('/config')).d; eq(c.modules.peers, 1); eq(c.bench, { on: true });
+    const c = (await call('/config')).d; eq(c.modules.peers, 1); eq(c.bench, { on: true, minTrades: 15, days: 90 });
     await call('/admin/config', { method: 'PUT', owner: true, body: { unlocksOn: true, modules: { peers: 3 } } });
     const locked = await call('/bench', { key: keys[1] }); eq(locked.status, 403, 'the server holds the level too'); ok(/level 3/.test(locked.d.error));
     eq((await call('/bench', { owner: true })).status, 200, 'the owner always can');

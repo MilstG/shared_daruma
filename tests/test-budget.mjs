@@ -14,7 +14,8 @@ const appFiles = ['ledger.html', ...appScripts(read('ledger.html').toString())];
 const BUDGETS = [ // name, files, raw KB, gzipped KB (as served, file by file)
   // raw went to 1850 with peer benchmarks and duels (Oct 2026); what's downloaded (gzipped) keeps its 700 KB line
   ['the app (ledger.html + ' + (appFiles.length - 1) + ' app/ scripts)', appFiles, 1850, 700],
-  ['admin.html', ['admin.html'], 100, 32],
+  // the owner's panel only (never sent to members): 100 → 200 KB raw with Insights, bulk actions and the seed table (Oct 2026)
+  ['admin.html', ['admin.html'], 200, 60],
 ];
 t('ledger.html loads its code from app/ (at least ten scripts)', () => ok(appFiles.length > 10, appFiles.join(', ')));
 for (const [name, files, rawMax, gzMax] of BUDGETS) {

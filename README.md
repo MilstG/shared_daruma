@@ -524,6 +524,11 @@ waiting wallets first, shows whether the member joined with your invite code, an
 single or bulk approve/reject decisions with an optional note (e.g. "paid"). It is the
 manual base for automatic rules like "approve wallets that joined with my code" or
 "approve paying subscribers".
+
+In the Members list and on each member's page, approving is **Verify** and rejecting
+is **Unverify**, one click each. An **unverified** wallet never counts, whether
+approval is switched on or off. With approval off, a wallet you haven't reviewed
+still counts as before.
 **Mapping wallets to members.** On a member's page (Wallets card), or under Admin →
 **Wallets** (a row nobody uses, or the *Map a wallet to a member* card), an admin can
 map any address to a member. A wallet belongs to one member: one that is mapped, claimed
@@ -578,8 +583,43 @@ wallet decisions record who made them.
   the one their numbers are read from), **boost XP** (or correct it) with a reason they see, fully unlock,
   their coach allowance, leagues and tiers, award or take back reward badges, a new
   sign-in code, suspend or delete. Members' addresses are visible to you; others see them only if the member chose to show theirs.
+  - **Several at once:** tick members, or everyone on the page, then **Verify
+    wallets**, **Unverify wallets**, **Suspend**, **Restore** or **Delete**.
+    Deleting 5 or more asks you to type DELETE. Admins can't act on other admins
+    (only the owner can) or on themselves, and anyone skipped is listed with the
+    reason.
+  - **More filters:** wallet unverified, wallet waiting for you, and no wallet.
 - **Duels** — on/off, which kinds are allowed, the winner's XP and the limits,
   every duel running or waiting (with cancel) and recent results.
+- **Insights** — the whole league at once, or any segment of it. Filter by style,
+  trade size, experience and activity (the "Traders like you" ranges), league,
+  level, month joined, verified, and when last seen. For whatever is in view:
+  - **Headline medians:** Discipline over 30 days, days journaled, win rate,
+    profit factor and 30-day return.
+  - **From joining to active:** joined → wallet → synced → traded → journaled →
+    seen in 30 / 7 days → verified.
+  - **Week by week:** Discipline, members trading and days journaled for the last
+    8 weeks, plus the slips that happen most.
+  - **How members spread** on any measure (a histogram with deciles).
+  - **Segments:** a table split by any dimension (click one to look at it), and
+    retention by month joined.
+  - **Members:** a sortable list, including **"Slipping"** (Discipline down 10 or
+    more on the 30 days before).
+
+  A segment with fewer than 5 members shows its size only.
+- **Each member's page** has a **Performance** card:
+  - Their segment, a bar per trading day of Discipline, and the trend against the
+    30 days before.
+  - Days journaled and reviewed, win rate, profit factor, average win ÷ loss,
+    fees, revenge entries, trades a week, typical hold, 30-day return and
+    drawdown, streak and XP.
+  - For each measure: where they stand in the league, and among traders like them
+    (estimated from their peer group's deciles).
+  - Their most common slips, and the habits they're working on.
+
+  Members are told in Profile & privacy that the owner and admins can see their
+  stats. Members who switch off "Traders like you" keep their win rate, profit
+  factor and fees hidden from you too.
 - **Benchmarks** — "Traders like you": contributors, peer groups and settings
   (smallest group, when to split groups, whether seed wallets count), a rebuild
   button, and **seed wallets**: paste any text and every 0x address in it is
@@ -1047,7 +1087,9 @@ dimensions to match and see each group's spread.
 - **What's shared.** Each member's app works out a summary of about a dozen
   numbers (Discipline, revenge trades, % journaled, win rate, profit factor,
   average win ÷ loss, fees, trades a week, typical hold) and the four ranges, and
-  sends it with its usual sync. No trades, coins, amounts, name or wallet. Returns
+  sends it with its usual sync. No trades, coins, amounts or wallet; other members only
+  ever see groups, while the owner and admins can see a member's own summary (they're
+  told so in Profile & privacy). Returns
   and drawdown are added only from wallets read on chain. It's **on by default**;
   members switch it off under Profile & privacy ("Count me in Traders like you"),
   which removes them from the next build. They can still see the comparison.
@@ -1055,13 +1097,25 @@ dimensions to match and see each group's spread.
   A group needs at least 25 traders (the owner can set 10 or more); below 200
   contributors only "everyone" and "same style" groups exist. Only each group's
   deciles leave the server, and a "best quarter" figure only when it covers at
-  least 10 traders. Summaries need 30 closed trades over at least 3 weeks.
+  least 10 traders. A trader counts with 15 closed trades in the last 90 days, over at
+  least 2 weeks; the owner sets the bar (10–100 trades) and the look-back (90 or 180
+  days) in Admin → Benchmarks, and changing either re-reads the seed wallets it affects.
 - **Seed wallets.** To get started before you have many members, the owner can
   bulk-add public Hyperliquid wallets in Admin → Benchmarks. The server reads
   each one's last 90 days of fills, a few seconds apart, and runs the same
   summary function the app uses (plus the wallet's 30-day return). Wallets with
-  under 30 trades, or with more than 20,000 fills (bots, market makers), are left
+  under the bar, or with more than 20,000 fills (bots, market makers), are left
   out. Counted wallets are re-read weekly; up to 5,000.
+- **The seed table** shows what was read from each wallet:
+  - segment: style, trade size, experience and pace;
+  - trades, win rate and profit factor;
+  - realised P&L in dollars over the look-back, 30-day return and drawdown, and
+    account value.
+
+  You can filter it by status and sort it by P&L, return, profit factor, win rate,
+  trades, account value or drawdown. The dollar figures are for you only; they
+  never go into the groups. Left-out wallets show how many trades they had.
+  "How traders are grouped" in the same tab spells out the rules.
 - It's a Pulse feature like the others, **free at level 1**. Set a level under
   Admin → Features to make it an unlock. The AI coach sees the member's standing
   (group spreads only) and can use it to make a habit concrete.

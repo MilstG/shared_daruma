@@ -21,7 +21,8 @@ const DIM_KEYS = Object.keys(DIMS);
 const METRICS = { disc: [0, 100], rev: [0, 100], jour: [0, 100], wr: [0, 100], pf: [0, 50], pay: [0, 50], fees: [0, 500], tw: [0, 5000], hold: [0, 1e7], ret: [-100, 1000], dd: [0, 100] };
 const MKEYS = Object.keys(METRICS);
 const DECILES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
-const DEFAULTS = { on: true, min: 25, splitAt: 200, seeds: true };
+// minTrades / days: a contributor needs that many closed trades in the last `days` (90 or 180) days
+const DEFAULTS = { on: true, min: 25, splitAt: 200, seeds: true, minTrades: 15, days: 90 };
 
 const fin = v => typeof v === 'number' && isFinite(v);
 // A summary from the app or the engine -> the stored shape, or null when it isn't one.
@@ -29,7 +30,7 @@ function sanitizeBench(b) {
   if (!b || typeof b !== 'object' || b.ok === false) return null;
   const out = {};
   for (const k of DIM_KEYS) { if (!Object.prototype.hasOwnProperty.call(DIMS[k], b[k])) return null; out[k] = b[k]; }
-  const n = Math.round(+b.n); if (!(n >= 30 && n <= 1e6)) return null; out.n = n;
+  const n = Math.round(+b.n); if (!(n >= 10 && n <= 1e6)) return null; out.n = n; // the owner's bar (cfg.minTrades) is applied where rows are counted
   for (const k of MKEYS) { const v = +b[k]; out[k] = b[k] != null && b[k] !== '' && isFinite(v) ? Math.min(METRICS[k][1], Math.max(METRICS[k][0], Math.round(v * 100) / 100)) : null; }
   return out;
 }
@@ -40,6 +41,8 @@ function sanitizeBenchCfg(b, prev) {
   const int = (v, lo, hi, d) => { const n = Math.round(+v); return v !== '' && v != null && isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
   if (b.min !== undefined) out.min = int(b.min, 10, 1000, out.min); // never under 10: below that a group's deciles are nearly individual numbers
   if (b.splitAt !== undefined) out.splitAt = int(b.splitAt, 0, 100000, out.splitAt);
+  if (b.minTrades !== undefined) out.minTrades = int(b.minTrades, 10, 100, out.minTrades);
+  if (b.days !== undefined) out.days = +b.days === 180 ? 180 : 90;
   return out;
 }
 // linear-interpolated quantile of a sorted array
