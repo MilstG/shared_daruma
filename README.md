@@ -416,7 +416,9 @@ before) and *trending up/down*, *mixed* or *choppy* (the 7-day efficiency ratio:
 net move over the sum of daily moves). In-depth stats breaks results down by
 volatility and by trend and says so when you lose in one and make it back in
 another ("You lose on volatile days … and make it back on normal days"); Today's
-**Right now** shows today's conditions and how you do on days like it.
+**Before you trade** shows today's conditions and how you do on days like it, with how you
+usually do at this hour and how long since your last loss (a warning in the 15 minutes after
+one). It shows during the hours you usually trade, or once you've traded today.
 
 **Lessons library.** Each review's lesson line and its mistake answer become
 lessons (you can add your own). They come back on Today after 1, 3, 7, 14, 30 and
