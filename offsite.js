@@ -96,6 +96,18 @@ function packBundle(dataDir, opts) {
   }
   return { buf: zlib.gzipSync(Buffer.concat(parts)), files: files.length, bytes: total, skipped };
 }
+// The same bundle for the daily ship, without holding up the server: files are read and the whole
+// thing is gzipped off the event loop (libuv's pool), so requests keep flowing meanwhile.
+async function packBundleAsync(dataDir, opts) {
+  const { files, total, skipped } = collectFiles(dataDir, opts);
+  const parts = [];
+  for (const f of files) {
+    let buf; try { buf = await fs.promises.readFile(path.join(dataDir, f.p)); } catch (e) { continue; }
+    parts.push(Buffer.from(JSON.stringify({ p: f.p, n: buf.length, m: Math.round(f.m) }) + '\n'), buf);
+  }
+  const gz = await new Promise((res, rej) => zlib.gzip(Buffer.concat(parts), (e, out) => e ? rej(e) : res(out)));
+  return { buf: gz, files: files.length, bytes: total, skipped };
+}
 function unpackBundle(gz) {
   const raw = zlib.gunzipSync(gz);
   const out = []; let i = 0;
@@ -234,7 +246,7 @@ function createOffsite({ cfg, dataDir, fetchImpl, maxBundleBytes, log }) {
       if (state.busy) return null;
       state.busy = true;
       try {
-        const b = packBundle(dataDir, { maxBytes: maxBundleBytes });
+        const b = await packBundleAsync(dataDir, { maxBytes: maxBundleBytes });
         if (b.skipped.length) warn('bundle over the size cap — left out: ' + b.skipped.join(', '));
         const key = await ship('data', b.buf, 'bundle.gz');
         state.lastDataAt = Date.now();
@@ -249,7 +261,7 @@ function createOffsite({ cfg, dataDir, fetchImpl, maxBundleBytes, log }) {
   };
 }
 
-module.exports = { encrypt, decrypt, sigv4, configFrom, createClient, createOffsite, packBundle, unpackBundle, restoreBundle, collectFiles };
+module.exports = { encrypt, decrypt, sigv4, configFrom, createClient, createOffsite, packBundle, packBundleAsync, unpackBundle, restoreBundle, collectFiles };
 
 /* ---------------- CLI ---------------- */
 if (require.main === module) {

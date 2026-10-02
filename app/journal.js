@@ -639,10 +639,10 @@ function renderReviewInner(){
   if(fee){
     const fmtVol=v=>v>=1e9?'$'+(v/1e9).toFixed(2)+'B':v>=1e6?'$'+(v/1e6).toFixed(2)+'M':fmtUsd(v).replace('.00','');
     feeCard=`<div class="diag-card"><h3 data-tip="Hyperliquid fees step by trailing-14-day volume. Rates here are the BASE schedule (no staking discounts) — verify against app.hyperliquid.xyz/fees before acting on the dollar figures; last checked September 2026.">Fee tier <span style="font-size:11px;color:var(--faint);font-weight:400">14d volume</span></h3>
-      ${mrow('14-day volume',fmtVol(fee.vol14),'Summed fill notional (both sides) across all loaded wallets over the trailing 14 days.')}
-      ${mrow('Current tier','tier '+fee.tier+' · taker '+bp(fee.cur.taker)+' / maker '+bp(fee.cur.maker))}
+      ${mrow('14-day volume',fmtVol(fee.vol14),'What Hyperliquid tiers on: perps volume plus twice spot volume (spot counts double), summed fill notional over the trailing 14 days across your Hyperliquid wallets.'+(fee.spot14>0?' Perps '+fmtVol(fee.perp14)+' + 2 × spot '+fmtVol(fee.spot14)+'.':''))}
+      ${mrow('Current tier','tier '+fee.tier+' · taker '+bp(fee.cur.taker)+' / maker '+bp(fee.cur.maker),'Perps rates. Spot at this tier: taker '+bp(fee.cur.spotTaker)+' / maker '+bp(fee.cur.spotMaker)+'.')}
       ${fee.next?mrow('Next tier at',fmtVol(fee.next.min)+' · '+fmtVol(fee.toNext)+' away','Volume needed in a 14-day window to reach taker '+bp(fee.next.taker)+' / maker '+bp(fee.next.maker)+'.'):mrow('Next tier','— top tier')}
-      ${mrow('Taker fees · last 30d','<span class="'+cls(-fee.takerFee30)+'">'+fmtUsd(fee.takerFee30)+'</span>','Estimated: taker notional × your current tier rate. Actual paid fees over 30d: '+fmtUsd(fee.fees30)+'.')}
+      ${mrow('Taker fees · last 30d','<span class="'+cls(-fee.takerFee30)+'">'+fmtUsd(fee.takerFee30)+'</span>','Estimated: taker notional × your current tier rate (spot at spot rates). Actual paid fees over 30d: '+fmtUsd(fee.fees30)+'.')}
       ${fee.saveNextTier30!=null?mrow('One tier up saves','~'+fmtUsd(fee.saveNextTier30)+'/mo','Last 30 days’ taker flow re-priced at the next tier’s taker rate.'):''}
       ${mrow('As maker instead','~'+fmtUsd(fee.saveAsMaker30)+'/mo cheaper','Last 30 days’ taker flow re-priced at your tier’s MAKER rate — the concrete answer to “does resting orders pay”. Fills change when you rest orders, so treat as an upper bound.')}
       <p class="mini-note">Base schedule, hardcoded — verify at app.hyperliquid.xyz/fees (last checked Sep 2026).</p></div>`;

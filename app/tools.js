@@ -518,13 +518,14 @@ $('clearCandles').onclick=async()=>{
 // Hyperliquid perp fees step by trailing-14-day volume. This table is the BASE schedule
 // (no staking discounts, no referral rebates) — VERIFY against app.hyperliquid.xyz/fees
 // before trusting the dollar figures; last checked September 2026. Rates are decimals.
-const FEE_TIERS=[
-  {min:0,    taker:0.00045, maker:0.00015},
-  {min:5e6,  taker:0.00040, maker:0.00012},
-  {min:25e6, taker:0.00035, maker:0.00008},
-  {min:100e6,taker:0.00030, maker:0.00004},
-  {min:500e6,taker:0.00028, maker:0},
-  {min:2e9,  taker:0.00026, maker:0},
+const FEE_TIERS=[ // Hyperliquid's base schedule (no staking discount): perps, and spot's own rates
+  {min:0,    taker:0.00045, maker:0.00015, spotTaker:0.0007,  spotMaker:0.0004},
+  {min:5e6,  taker:0.00040, maker:0.00012, spotTaker:0.0006,  spotMaker:0.0003},
+  {min:25e6, taker:0.00035, maker:0.00008, spotTaker:0.0005,  spotMaker:0.0002},
+  {min:100e6,taker:0.00030, maker:0.00004, spotTaker:0.0004,  spotMaker:0.0001},
+  {min:500e6,taker:0.00028, maker:0,       spotTaker:0.00035, spotMaker:0},
+  {min:2e9,  taker:0.00026, maker:0,       spotTaker:0.0003,  spotMaker:0},
+  {min:7e9,  taker:0.00024, maker:0,       spotTaker:0.00025, spotMaker:0},
 ];
 // Rolling volume from the per-fill events each reconstructed trade carries ([time,px,sz,k]),
 // so the 14-day window is exact even when a trade spans it. The "what would last month have
@@ -532,20 +533,24 @@ const FEE_TIERS=[
 function feeTierModel(trades, now){
   now=now||Date.now();
   const cut14=now-14*86400000, cut30=now-30*86400000;
-  let vol14=0, fees30=0, takerN30=0, makerN30=0, unk30=0;
-  for(const t of (trades||[])){
-    for(const ev of (t.events||[])){ const n=Math.abs((ev[1]||0)*(ev[2]||0)); if(ev[0]>=cut14&&ev[0]<=now)vol14+=n; }
+  // Hyperliquid's tier volume: perps + 2 × spot ("spot volume counts double toward your fee tier")
+  let vol14=0, perp14=0, spot14=0, fees30=0, takerN30=0, makerN30=0, unk30=0, spotTakerN30=0;
+  for(const t of (trades||[])){ const spot=t.market==='spot';
+    for(const ev of (t.events||[])){ const n=Math.abs((ev[1]||0)*(ev[2]||0)); if(ev[0]>=cut14&&ev[0]<=now){ if(spot)spot14+=n; else perp14+=n; } }
     const last=t.closeTime||t.openTime;
-    if(last>=cut30&&last<=now){ fees30+=t.fees||0; takerN30+=t.takerNotional||0; makerN30+=t.makerNotional||0; unk30+=t.unkNotional||0; }
+    if(last>=cut30&&last<=now){ fees30+=t.fees||0; takerN30+=t.takerNotional||0; makerN30+=t.makerNotional||0; unk30+=t.unkNotional||0; if(spot)spotTakerN30+=t.takerNotional||0; }
   }
+  vol14=perp14+2*spot14;
   if(!(vol14>0)&&!(takerN30+makerN30+unk30>0))return null;
   let tier=0; for(let i=0;i<FEE_TIERS.length;i++)if(vol14>=FEE_TIERS[i].min)tier=i;
-  const cur=FEE_TIERS[tier], next=FEE_TIERS[tier+1]||null;
-  const takerFee30=takerN30*cur.taker;
-  return {vol14, tier, cur, next, toNext:next?Math.max(0,next.min-vol14):null,
+  const cur=FEE_TIERS[tier], next=FEE_TIERS[tier+1]||null, perpTakerN30=takerN30-spotTakerN30;
+  // taker flow priced at its own market's rate: spot fees are higher than perps at every tier
+  const at=(T,k)=>perpTakerN30*T[k]+spotTakerN30*T[k==='taker'?'spotTaker':'spotMaker'];
+  const takerFee30=at(cur,'taker');
+  return {vol14, perp14, spot14, tier, cur, next, toNext:next?Math.max(0,next.min-vol14):null,
     takerN30, makerN30, unk30, fees30, takerFee30,
-    saveAsMaker30:takerFee30-takerN30*cur.maker,
-    saveNextTier30:next?takerFee30-takerN30*next.taker:null};
+    saveAsMaker30:takerFee30-at(cur,'maker'),
+    saveNextTier30:next?takerFee30-at(next,'taker'):null};
 }
 
 /* ============================ weekly review wizard + lessons ============================ */

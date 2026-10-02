@@ -65,9 +65,18 @@ t('no flow at all → null (card hidden)', () => {
   eq(feeTierModel([{ events: [], closeTime: NOW - 90 * DAY, fees: 1 }], NOW), null);
 });
 t('top tier reports no next tier', () => {
-  const m = feeTierModel([{ events: [[NOW - DAY, 1, 3e9, 1]], closeTime: NOW - DAY,
+  const m = feeTierModel([{ events: [[NOW - DAY, 1, 8e9, 1]], closeTime: NOW - DAY,
     fees: 0, takerNotional: 0, makerNotional: 0, unkNotional: 1 }], NOW);
-  eq(m.tier, 5); eq(m.next, null); eq(m.toNext, null); eq(m.saveNextTier30, null);
+  eq(m.tier, 6); eq(m.next, null); eq(m.toNext, null); eq(m.saveNextTier30, null);
+});
+t('spot volume counts double toward the tier, and spot taker flow is priced at spot rates', () => {
+  const m = feeTierModel([
+    { market: 'perp', events: [[NOW - DAY, 1, 1e6, 1]], closeTime: NOW - DAY, fees: 0, takerNotional: 1e6, makerNotional: 0, unkNotional: 0 },
+    { market: 'spot', events: [[NOW - DAY, 1, 2.1e6, 1]], closeTime: NOW - DAY, fees: 0, takerNotional: 1e6, makerNotional: 0, unkNotional: 0 },
+  ], NOW);
+  eq([m.perp14, m.spot14, m.vol14, m.tier], [1e6, 2.1e6, 5.2e6, 1], '1M + 2 × 2.1M = 5.2M: tier 1');
+  near(m.takerFee30, 1e6 * 0.0004 + 1e6 * 0.0006, 1e-6);
+  near(m.saveAsMaker30, (1e6 * 0.0004 + 1e6 * 0.0006) - (1e6 * 0.00012 + 1e6 * 0.0003), 1e-6);
 });
 
 console.log('\nISO week keys');

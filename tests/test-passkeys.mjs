@@ -102,6 +102,15 @@ try {
     eq((await call('/me', { key: fin.d.key })).d.me.handle, 'passy', 'the new key works');
     eq((await call('/passkey/login/finish', { method: 'POST', body: { credential: cred } })).status, 400, 'replay refused');
   });
+  await t('signing out other devices keeps passkeys unless asked; with ?passkeys=1 they go too', async () => {
+    eq((await call('/devices', { method: 'DELETE', key })).d.me.passkeys.length, 1, 'kept by default');
+    const B2 = authenticator(), k3 = (await call('/join', { method: 'POST', body: { handle: 'lost_phone' } })).d.key;
+    const st = await call('/passkey/register/start', { method: 'POST', key: k3 });
+    await call('/passkey/register/finish', { method: 'POST', key: k3, body: { credential: B2.create(st.d.challenge, ORIGIN, RP) } });
+    eq((await call('/devices?passkeys=1', { method: 'DELETE', key: k3 })).d.me.passkeys, []);
+    const s5 = await call('/passkey/login/start', { method: 'POST' });
+    eq((await call('/passkey/login/finish', { method: 'POST', body: { credential: B2.get(s5.d.challenge, ORIGIN, RP) } })).status, 404, 'that passkey no longer signs in');
+  });
   await t('a passkey from elsewhere, a wrong origin or a bad signature gets nothing', async () => {
     const st = await call('/passkey/login/start', { method: 'POST' });
     eq((await call('/passkey/login/finish', { method: 'POST', body: { credential: authenticator().get(st.d.challenge, ORIGIN, RP) } })).status, 404);

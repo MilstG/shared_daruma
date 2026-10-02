@@ -104,9 +104,31 @@ async function socFetch(p,o){ o=o||{};
 function socBoot(){
   if(SOC.cfgTried||!socAvailable())return; SOC.cfgTried=true;
   socFetch('/config').then(c=>{ SOC.cfg=c; pzApplyCfg(c); if(!SOC.key)return;
+    socMeWatch();
     return socFetch('/me').then(d=>{ SOC.me=d.me; SOC.share=d.share; PZ_CFG.rev++; },e=>{
       if(e.status===401||e.status===403){ SOC.key=null; vaultForget(); try{ localStorage.removeItem(SOC_KEY_STORE); }catch(_){} if(e.status===403)pzNote(e.message,'err'); } }); })
     .catch(()=>{}).finally(()=>{ if(PZ)pzRender(); else if(typeof allTrades!=='undefined'&&allTrades.length)render(); });
+}
+// What the owner changes for a member (an XP grant, a reward badge, a full unlock, admin rights)
+// reaches an open app without a reload: /me is re-read every two minutes while the page is in
+// view, and on coming back to it; the game is recomputed only when something that feeds it moved.
+let _socMeTimer=null, _socMeAt=0;
+function socMeWatch(){
+  if(_socMeTimer)return;
+  _socMeTimer=setInterval(()=>socMeRefresh(),120000);
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&Date.now()-_socMeAt>30000)socMeRefresh(); });
+}
+async function socMeRefresh(){
+  if(!SOC.key||!SOC.me||document.visibilityState==='hidden')return;
+  _socMeAt=Date.now();
+  let d; try{ d=await socFetch('/me'); }catch(e){ return; }
+  if(!d||!d.me)return;
+  const sig=m=>JSON.stringify([m.grants||[],m.awards||[],!!m.unlocked,!!m.admin,m.tier||0,m.mentor||false,(m.leagues||[]).map(l=>l.id)]);
+  const moved=sig(d.me)!==sig(SOC.me);
+  SOC.me=d.me; SOC.share=d.share;
+  if(!moved)return;
+  PZ_CFG.rev++; // levels and XP are rebuilt from the new grants and awards
+  if(PZ)pzRender(); else if(typeof allTrades!=='undefined'&&allTrades.length)render();
 }
 // the league's levels, titles and XP weights reach the game layer (both views)
 function pzApplyCfg(c){ if(!c)return; PZ_CFG={rev:PZ_CFG.rev+1,levels:c.levels||null,xp:c.xp||null}; }
@@ -1139,7 +1161,9 @@ async function acctAction(t){
     case 'socLinkNew': { const r=await socFetch('/link/start',{method:'POST'}); SOC.link={code:r.code,exp:r.expiresAt};
       setTimeout(()=>{ if(SOC.link&&SOC.link.code===r.code){ SOC.link=null; if(pzTab()==='account')pzRender(); } },10*60000); pzRender(); return true; }
     case 'socSignOutOthers': { if(!confirm('Sign out every other device? They’ll need your wallet or a new code to sign back in.'))return true;
-      const r=await socFetch('/devices',{method:'DELETE'}); SOC.me=r.me; PZ_CFG.rev++; SOC.link=null; done('Other devices are signed out.'); return true; }
+      // a passkey signs straight back in, so if a device was lost (or someone else had your key) they go too
+      const pk=(SOC.me&&SOC.me.passkeys||[]).length&&confirm('Also remove your '+SOC.me.passkeys.length+' passkey'+(SOC.me.passkeys.length===1?'':'s')+'?\n\nDo this if a device was lost or someone else may have had your key. You can add a passkey again on this device afterwards.');
+      const r=await socFetch('/devices'+(pk?'?passkeys=1':''),{method:'DELETE'}); SOC.me=r.me; PZ_CFG.rev++; SOC.link=null; done('Other devices are signed out.'); return true; }
     case 'vaultOn': { const p=pass(), p2=($('vaultPass2')||{value:''}).value;
       if(p.length<10){ pzNote('Use at least 10 characters — a few words you’ll remember works well.','err'); return true; }
       if(p!==p2){ pzNote('The two passphrases don’t match.','err'); return true; }

@@ -894,7 +894,8 @@ It also carries the habit loops:
   browsable **lessons library** with the latest surfaced on top.
 - **Monthly goals** — target, max drawdown, trades/week cap vs the month so far.
 - **Costs & variance** — your current **Hyperliquid fee tier** from exact
-  trailing-14-day fill volume, distance to the next tier, and last month's
+  trailing-14-day fill volume (perps plus twice spot, as Hyperliquid counts it,
+  with spot flow priced at spot rates), distance to the next tier, and last month's
   taker flow re-priced one tier up / at maker rates (base schedule, hardcoded —
   verify against app.hyperliquid.xyz/fees); plus **variance expectations**, a
   seeded simulation from your own win rate and distribution: the probability of
