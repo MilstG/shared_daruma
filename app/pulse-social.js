@@ -1055,6 +1055,7 @@ async function socAction(t){
     if(ds.socLeave){ if(!confirm('Leave this competition?'))return true; await socFetch('/competitions/'+encodeURIComponent(ds.socLeave)+'/join',{method:'DELETE'}); done('You left the competition.'); return true; }
     if(ds.socAdopt){ await adoptHabit(socHabitSpec(ds.socAdopt)); done('Added to your habits. It’s tracked by the day journal’s “I followed the plan”.'); return true; }
     if(ds.pzAppear){ await setAppearance(ds.pzAppear); return true; }
+    if(ds.pzColorway){ await setColorway(ds.pzColorway); return true; }
     if((t.id||(t.dataset&&t.dataset.pkDel))&&await acctAction(t))return true;
     switch(t.id){
       case 'socJoin': { const h=($('socHandle')||{value:''}).value.trim(), inv=($('socInvite')||{value:''}).value.trim();
