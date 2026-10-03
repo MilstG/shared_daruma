@@ -141,12 +141,17 @@ try {
   });
   await t('TS9 is the default colorway on both screens; a pick cycles, carries across and survives a reload', async () => {
     const { page: cp, errors: ce } = await openPage({ width: 1280, height: 800 });
-    await cp.goto(BASE + '/'); await cp.waitForFunction(() => typeof settings !== 'undefined' && document.body.classList.contains('ts9'));
+    await cp.goto(BASE + '/'); await cp.waitForFunction(() => typeof SRV !== 'undefined' && SRV.enabled && SRV.rev > 0 && document.body.classList.contains('ts9'));
     eq(await cp.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(5, 7, 5)', 'the TS9 ground');
     eq(await cp.evaluate(() => document.getElementById('themeBtn').textContent), '◧ TS9');
     await cp.evaluate(() => setColorway('ink')); await cp.waitForFunction(() => settings.colorway === 'ink' && !document.body.classList.contains('ts9'));
     eq(await cp.evaluate(() => document.getElementById('themeBtn').textContent), '◧ INK', 'the footer button follows');
-    await cp.reload(); await cp.waitForFunction(() => typeof settings !== 'undefined' && settings.colorway === 'ink');
+    // the pick reaches the server (a fresh Daruma session takes the server's copy)
+    let synced = false;
+    for (let i = 0; i < 40 && !synced; i++) { await new Promise(r => setTimeout(r, 250));
+      const d = await (await fetch(BASE + '/api/data', { headers: { Authorization: 'Bearer ' + TOKEN } })).json(); synced = !!(d.snapshot && d.snapshot.settings && d.snapshot.settings.colorway === 'ink'); }
+    ok(synced, 'the pick is on the server');
+    await cp.reload(); await cp.waitForFunction(() => typeof SRV !== 'undefined' && SRV.rev > 0 && settings.colorway === 'ink', null, { timeout: 10000 });
     ok(!(await cp.evaluate(() => document.body.classList.contains('ts9') || document.body.classList.contains('bb'))), 'Ink survives a reload');
     await cp.goto(BASE + '/daruma'); await cp.waitForFunction(() => typeof settings !== 'undefined' && settings.colorway === 'ink');
     ok(!(await cp.evaluate(() => document.body.classList.contains('ts9'))), 'and carries to Daruma');
