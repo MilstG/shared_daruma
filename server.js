@@ -941,6 +941,9 @@ function createApp(opts) {
   // Each screen gets only the scripts it uses: a script tag marked data-only="journal" or "keel" goes in
   // that screen's page only (Chart.js is journal-only: Keel never draws one). Opened from disk,
   // ledger.html still loads everything.
+  // DEFAULT_THEME=ts9|ink|bb: the colorway the app opens in for anyone who hasn't picked one (unset: TS9).
+  // Served as a <meta> so the first paint and the app agree; a user's own pick always wins.
+  const defaultTheme = (() => { const v = String(opts.defaultTheme !== undefined ? opts.defaultTheme : process.env.DEFAULT_THEME || '').trim().toLowerCase(); return /^(ts9|ink|bb)$/.test(v) ? v : ''; })();
   const appShell = (surface) => {
     surface = surface === 'keel' ? 'keel' : 'journal';
     let st; try { st = fs.statSync(htmlPath); } catch (e) { return { error: 'app HTML not found on server' }; }
@@ -960,7 +963,7 @@ function createApp(opts) {
       const buf = Buffer.from(raw.replace(/<script src="app\/((?:features\/)?[a-z0-9.-]+\.js)"(?: data-only="(journal|keel)")?><\/script>\n?/g, (m, n, only) => { const f = files[i++];
         return only && only !== surface ? '' : '<script src="app/' + n + '?v=' + f.hash + '"></script>' + (m.endsWith('\n') ? '\n' : ''); })
         .replace(/url\(app\/fonts\/([a-z0-9-]+\.woff2)\)/g, (m, n) => fh.get(n) ? 'url(app/fonts/' + n + '?v=' + fh.get(n) + ')' : m)
-        .replace('<head>', '<head>\n<meta name="app-version" content="' + ver + '">'));
+        .replace('<head>', '<head>\n<meta name="app-version" content="' + ver + '">' + (defaultTheme ? '\n<meta name="default-theme" content="' + defaultTheme + '">' : '')));
       _appHtml[surface] = { mtime: st.mtimeMs, size: st.size, raw, rawHash, sig, ver, buf, gz: zlib.gzipSync(buf, { level: 9 }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 20) + '"' };
     }
     return _appHtml[surface];

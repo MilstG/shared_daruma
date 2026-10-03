@@ -1539,7 +1539,11 @@ Treat it as positive visualization of staying the course, nothing more.
   has the same switch). It syncs with your settings and is applied before the first
   paint, so someone who picked Light never flashes the dark palette. In light mode, profit/loss
   colours are deepened to hold contrast on white.
-- **Colors:** two dark-mode colorways, INK and BB (black & amber).
+- **Colors:** three dark-mode colorways. **TS9** (the default): acid green on a green-black
+  ground, mono for anything measured, glow only on what is live. **INK**: the midnight terminal
+  it replaced. **BB**: black & amber. The footer button cycles them; Daruma → Settings has the
+  same switch; the pick syncs and rides backups. Light replaces them all. The server owner can
+  set the default for everyone with `DEFAULT_THEME=ts9|ink|bb` (a user's own pick still wins).
 - **R basis:** what 1R means when a trade has no planned risk journaled —
   average loss, fixed $ amount, or other bases.
 - **Breakeven threshold:** the ±$ band treated as "scratch" rather than
