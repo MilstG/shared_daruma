@@ -145,6 +145,8 @@ t('inbox lists unjournaled closed trades from the window, newest first', () => {
   const tr = [mk('i1', 9, 10), mk('i2', 8, 10), mk('i3', 7, 10), mk('old', -40, 10), { ...mk('op', 9, 0), isOpen: true }];
   const J = { i2: { rating: 3 } };
   eq(ctx.journalInbox(tr, J, now, 30).map(x => x.id), ['i1', 'i3']);
+  J.i3 = { skip: now }; eq(ctx.journalInbox(tr, J, now, 30).map(x => x.id), ['i1'], 'a skipped trade is out of the backlog');
+  ok(!ctx.isJournaled(J.i3), 'but a skip is not journaling');
 });
 t('streak counts fully journaled trading days; an unfinished today does not break it', () => {
   const tr = [mk('s1', 0, 1), mk('s2', 1, 1), mk('s3', 2, 1), mk('s4', 3, 1), mk('s5', 4, 1)];

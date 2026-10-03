@@ -283,7 +283,11 @@ time, month, market volatility and trend;
 **How the scores work** spells out every formula), **Prep** (readiness, today's trade cap,
 loss limit and plan) and **Progress** (level, XP, streak and shields, the
 weekly challenge, badges, share cards). A quick journal screen rates and notes
-unjournaled trades from the last 30 days — the ✎ count at the top of Today and Progress opens it. Each card
+unjournaled trades from the last 30 days — the ✎ count at the top of Today and Progress opens it.
+**Skip** on a card takes that trade out of the backlog, and **Clear them** at the top skips every
+trade from before today in one tap (today's stay: journaling them is today's XP), with an Undo until
+you leave the screen. A skipped trade is not journaled — no XP, streak or discipline credit — it is
+just out of the way, and a note on it later counts as usual. Each card
 shows the market and side, the net result and %, when it opened and closed, how long it
 was held, the size and the fill count, then a chart of the trade: candles around it with
 a price axis, the holding period shaded and the ground between entry and exit tinted

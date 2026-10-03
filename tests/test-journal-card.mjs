@@ -76,4 +76,13 @@ t('the fill replay: a dot per fill jumps to it, the arrows step, and prices use 
   ok(grabFn('planPzStep').includes('abs?d:') && grabFn('planPzAction').includes('ds.pzRpi!==undefined'));
   ok(grabFn('pzJournalHtml').includes('class="pz-side"') && grabFn('pzJournalHtml').includes('pz-trade-meta'), 'the card header: side pill and the meta line');
 });
+t('clearing the backlog: Skip on each card, Clear for the trades from before today, Undo until you leave; none of it journals', () => {
+  const jh = grabFn('pzJournalHtml'), sk = grabFn('pzSkipJournal'), un = grabFn('pzUnskipJournal');
+  ok(jh.includes('data-pz-jskip') && jh.includes('data-pz-jclear') && jh.includes('data-pz-jundo'));
+  ok(jh.includes("dayKey(t.closeTime)<D.todayK"), 'Clear leaves today’s trades alone');
+  ok(sk.includes('j.skip=Date.now()') && sk.includes('markJEdit(id)') && !sk.includes('rating'), 'a skip is a synced flag, never a rating');
+  ok(un.includes('delete j.skip'));
+  ok(grabFn('pzSaveJournal').includes('delete j.skip'), 'a note later overrides the skip');
+  ok(html.includes("if(tb!=='journal')pzS.jundo=null"), 'the undo line goes with the screen');
+});
 report('journal card');

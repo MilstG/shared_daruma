@@ -399,10 +399,11 @@ function liveRuleHits(openTrades, preds){
 
 // ---- journal inbox + streak ----
 function isJournaled(j){ return !!(j&&(j.notes||j.setup||(j.tags&&j.tags.length)||j.rating||(j.mistakes&&j.mistakes.length))); }
-// Closed trades from the last `days` days with nothing journaled, newest first.
+// Closed trades from the last `days` days with nothing journaled, newest first. A skipped trade
+// (j.skip, from the quick journal) stays out of it without counting as journaled.
 function journalInbox(trades, journalObj, now, days){
-  const cut=(now||Date.now())-(days||30)*86400000;
-  return (trades||[]).filter(t=>!t.isOpen&&t.closeTime>=cut&&!isJournaled((journalObj||{})[t.id]))
+  const cut=(now||Date.now())-(days||30)*86400000, J=journalObj||{};
+  return (trades||[]).filter(t=>!t.isOpen&&t.closeTime>=cut&&!isJournaled(J[t.id])&&!(J[t.id]&&J[t.id].skip))
     .sort((a,b)=>b.closeTime-a.closeTime);
 }
 // Consecutive trading days (by close day, newest first) on which every trade is journaled.
