@@ -1191,7 +1191,12 @@ async function pzSaveCheckin(){
 function pzJournalHtml(D){
   const jpg=pzPage('journal',D.inbox,6), list=jpg.items, setups=pzSetups().slice(0,8);
   const back=`<a class="pz-back" href="#today">${pzI('back',20)}Today</a>`;
-  if(!list.length)return `${back}${pzHead('Journal','All caught up')}<p class="pz-sub">Every trade from the last 30 days has a note, a setup or a rating. That’s the habit — keep it going.</p>`;
+  // what the last Skip or Clear took out, with the way back (until you leave the screen)
+  const undo=pzS.jundo?`<p class="pz-sub pz-jundo" role="status">${esc(pzS.jundo.what)} — not journaled, just out of the way. <button type="button" class="pz-linkbtn" data-pz-jundo>Undo</button></p>`:'';
+  if(!list.length)return `${back}${pzHead('Journal','All caught up')}${undo}<p class="pz-sub">Every trade from the last 30 days has a note, a setup or a rating${pzS.jundo?', or was skipped':''}. That’s the habit — keep it going.</p>`;
+  // the backlog from before today clears in one tap; today's trades stay (journaling them is today's XP)
+  const older=D.inbox.filter(t=>dayKey(t.closeTime)<D.todayK).length;
+  const clear=older?`<p class="pz-sub pz-jclear">${older===D.inbox.length?(older===1?'It is':'All '+older+' are'):older+' of these are'} from before today. <button type="button" class="pz-linkbtn" data-pz-jclear>Clear ${older===1?'it':'them'}</button></p>`:'';
   const card=t=>{ const r=pzS.jr[t.id]||0, q=tradeQuestion(t,journal[t.id],_excM[t.id]).q, short=t.dir==='Short';
     const be=isBE(t.net), col=be?'var(--pz-soft)':t.net>=0?PZ_COL.good:PZ_COL.low, hm=x=>String(x.h).padStart(2,'0')+':'+String(x.min).padStart(2,'0');
     const pct=!t.isOpen&&t.avgEntry>0&&t.avgExit>0?(t.avgExit/t.avgEntry-1)*100*(short?-1:1):null, nf=(t.events||[]).length;
@@ -1205,8 +1210,8 @@ function pzJournalHtml(D){
       <input type="text" id="pzSetup_${esc(t.id)}" aria-label="Setup" placeholder="Setup (breakout, fade, retest…)" autocomplete="off">
       ${setups.length?`<div class="pz-chiprow pz-wrapr" aria-label="Your setups">${setups.map(x=>`<button type="button" class="pz-chipbtn" data-pz-setupchip="${esc(x)}">${esc(x)}</button>`).join('')}</div>`:''}
       <textarea id="pzNoteT_${esc(t.id)}" rows="2" aria-label="${esc(q)}" placeholder="${esc(q)}"></textarea>
-      <div style="display:flex;gap:8px"><button type="button" class="pz-cta pz-sm" data-pz-jsave style="flex:1">Save</button>${SOC.me&&!pzS.demo&&!(SOC.cfg&&SOC.cfg.posts&&!SOC.cfg.posts.on)?`<button type="button" class="pz-ghost pz-sm" data-soc-share="${esc(t.id)}">Share</button>`:''}${mrCanShare()?`<button type="button" class="pz-ghost pz-sm" data-mr-share="${esc(t.id)}">Ask mentor</button>`:''}</div></section>`; };
-  return `${back}${pzHead(D.inbox.length+' to journal','Journal')}<p class="pz-sub" style="margin-top:-6px">Rate how well you executed each trade, not how it paid. One line is enough.</p>
+      <div style="display:flex;gap:8px"><button type="button" class="pz-cta pz-sm" data-pz-jsave style="flex:1">Save</button><button type="button" class="pz-ghost pz-sm" data-pz-jskip aria-label="Skip this trade: out of the backlog, not journaled">Skip</button>${SOC.me&&!pzS.demo&&!(SOC.cfg&&SOC.cfg.posts&&!SOC.cfg.posts.on)?`<button type="button" class="pz-ghost pz-sm" data-soc-share="${esc(t.id)}">Share</button>`:''}${mrCanShare()?`<button type="button" class="pz-ghost pz-sm" data-mr-share="${esc(t.id)}">Ask mentor</button>`:''}</div></section>`; };
+  return `${back}${pzHead(D.inbox.length+' to journal','Journal')}<p class="pz-sub" style="margin-top:-6px">Rate how well you executed each trade, not how it paid. One line is enough.</p>${undo}${clear}
     <div class="pz-jgrid">${list.map(card).join('')}</div>${jpg.html}`;
 }
 async function pzSaveJournal(sec){
@@ -1214,10 +1219,21 @@ async function pzSaveJournal(sec){
   const setup=(sec.querySelector('input[type=text]')||{value:''}).value.trim(), note=(sec.querySelector('textarea')||{value:''}).value.trim();
   if(!rating&&!setup&&!note){ pzNote('Pick a rating or write a line first.','err'); return; }
   const t=allTrades.find(x=>x.id===id)||{};
-  const j=ensureJ(id); if(setup)j.setup=pzCanonSetup(setup); if(rating)j.rating=rating; // one spelling per setup, so stats by setup add up
+  const j=ensureJ(id); if(setup)j.setup=pzCanonSetup(setup); if(rating)j.rating=rating; delete j.skip; // one spelling per setup, so stats by setup add up
   if(note){ const q=tradeQuestion(t,j,_excM[id]).q; j.notes=(j.notes?j.notes+'\n\n':'')+q+'\n'+note; }
   delete pzS.jr[id]; markJEdit(id); await Store.set(J_KEY,journal);
   pzNote('Saved.'); pzRender();
+}
+// Skip takes a trade out of the backlog without journaling it: no XP, no streak, no discipline
+// credit, and the trade still sits in the full journal for a note later. The flag syncs like a note.
+async function pzSkipJournal(ids,what){
+  for(const id of ids){ const j=ensureJ(id); j.skip=Date.now(); delete pzS.jr[id]; markJEdit(id); }
+  await Store.set(J_KEY,journal); pzS.jundo={ids,what}; pzRender();
+}
+async function pzUnskipJournal(){
+  const u=pzS.jundo; if(!u)return; pzS.jundo=null;
+  for(const id of u.ids){ const j=journal[id]; if(j&&j.skip){ delete j.skip; markJEdit(id); } }
+  await Store.set(J_KEY,journal); pzRender();
 }
 
 
@@ -1394,6 +1410,11 @@ function wirePulse(){
     if(ds.pzRate){ const sec=t.closest('[data-pz-trade]'); if(!sec)return; const id=sec.dataset.pzTrade, n=+ds.pzRate;
       pzS.jr[id]=pzS.jr[id]===n?0:n; sec.querySelectorAll('[data-pz-rate]').forEach(b=>b.setAttribute('aria-checked',String(+b.dataset.pzRate===pzS.jr[id]))); return; }
     if(ds.pzJsave!==undefined){ const sec=t.closest('[data-pz-trade]'); if(sec)await pzSaveJournal(sec); return; }
+    if(ds.pzJskip!==undefined){ const sec=t.closest('[data-pz-trade]'); if(!sec)return; const id=sec.dataset.pzTrade, tr=allTrades.find(x=>x.id===id);
+      await pzSkipJournal([id],'Skipped '+(tr?dispMarket(dcoin(tr))+' '+(tr.dir==='Short'?'short':'long'):'the trade')); return; }
+    if(ds.pzJclear!==undefined){ const D=pzData(), ids=D.inbox.filter(x=>dayKey(x.closeTime)<D.todayK).map(x=>x.id);
+      if(ids.length)await pzSkipJournal(ids,'Cleared '+(ids.length===1?'1 older trade':ids.length+' older trades')); return; }
+    if(ds.pzJundo!==undefined){ await pzUnskipJournal(); return; }
     if(ds.pzSheet!==undefined){ pzS.sheet=true; pzRender(); const c=$('pzSheet').querySelector('[data-pz-close].pz-chip'); if(c)c.focus(); return; }
     if(ds.pzClose!==undefined){ if(t.classList.contains('pz-sheet-bg')&&ev.target!==t)return; pzS.sheet=false; pzS.custom=null; pzRender(); return; }
     if(ds.pzCustomize){ pzS.custom=ds.pzCustomize; pzRender(); const c=$('pzSheet').querySelector('[data-pz-close].pz-chip'); if(c)c.focus(); return; }
@@ -1464,7 +1485,7 @@ function wirePulse(){
   { const n=$('pzNote'); if(n)n.addEventListener('click',()=>{ if(pzS.note&&pzS.note.kind!=='busy')pzNote(null); }); }
   let prevTab=pzTab(); window.addEventListener('hashchange',()=>{ const tb=pzTab(); SOC.confirm=null; if(pzS.note&&pzS.note.kind==='err')pzNote(null);
     // a half-typed comment or update belongs to the post it was written on
-    for(const id of ['socCText','socUNote','socUExit']){ const el=$(id); if(el)el.value=''; } if(tb==='checkin')pzS.ck=null; if(tb==='sharing'&&prevTab!=='account'){ SOC.draft=null; SOC.draftHandle=null; SOC.draftBio=null; } prevTab=tb; pzRender(); window.scrollTo(0,0); });
+    for(const id of ['socCText','socUNote','socUExit']){ const el=$(id); if(el)el.value=''; } if(tb==='checkin')pzS.ck=null; if(tb!=='journal')pzS.jundo=null; if(tb==='sharing'&&prevTab!=='account'){ SOC.draft=null; SOC.draftHandle=null; SOC.draftBio=null; } prevTab=tb; pzRender(); window.scrollTo(0,0); });
   // the join screen's "What you share" stays open across re-renders (each switch re-renders the screen)
   document.addEventListener('toggle',ev=>{ if(ev.target&&ev.target.id==='socShareBox')pzS.joinShare=ev.target.open; },true);
   window.addEventListener('beforeinstallprompt',()=>{ if(pzS.sheet||!location.hash||location.hash==='#today')pzRender(); });
